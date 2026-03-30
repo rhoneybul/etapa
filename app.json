@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "Etapa",
+    "slug": "etapa",
+    "scheme": "etapa",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icons/ios/AppIcon-1024.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0C0D10"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.etapa.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icons/android/playstore-icon.png",
+        "backgroundColor": "#0C0D10"
+      },
+      "package": "com.etapa.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/icons/web/favicon-32x32.png",
+      "name": "Etapa",
+      "shortName": "Etapa",
+      "description": "Make me a plan",
+      "themeColor": "#D97706",
+      "backgroundColor": "#0C0D10",
+      "preferRelatedApplications": false
+    },
+    "plugins": [
+      "expo-web-browser",
+      "expo-font"
+    ],
+    "extra": {
+      "serverUrl": "https://etapa-production.up.railway.app",
+      "eas": {
+        "projectId": "1f143dcb-8744-4f1e-8e39-9ac9389eae73"
+      }
+    },
+    "owner": "rhoneybul"
+  }
+}

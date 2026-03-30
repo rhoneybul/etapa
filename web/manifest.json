@@ -1,0 +1,21 @@
+{
+  "short_name": "Etapa",
+  "name": "Etapa",
+  "description": "Make me a plan",
+  "icons": [
+    {
+      "src": "/assets/icons/web/android-chrome-192x192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/assets/icons/web/android-chrome-512x512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#D97706",
+  "background_color": "#0C0D10"
+}

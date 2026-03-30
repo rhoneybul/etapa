@@ -1,0 +1,329 @@
+/**
+ * Storage service — persists goals, plans, and activities.
+ * Uses AsyncStorage locally + syncs to Supabase via the API server.
+ * AsyncStorage is the source of truth; API sync is fire-and-forget.
+ */
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { api } from './api';
+
+const KEYS = {
+  GOALS:       '@etapa_goals',
+  PLAN_CONFIGS:'@etapa_plan_configs',
+  PLANS:       '@etapa_plans',
+  STRAVA:      '@etapa_strava',
+  // Legacy single-item keys (for migration)
+  GOAL:        '@etapa_goal',
+  PLAN_CONFIG: '@etapa_plan_config',
+  PLAN:        '@etapa_plan',
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+async function getJSON(key) {
+  const raw = await AsyncStorage.getItem(key);
+  return raw ? JSON.parse(raw) : null;
+}
+
+async function setJSON(key, value) {
+  await AsyncStorage.setItem(key, JSON.stringify(value));
+}
+
+// ── Migration — one-time upgrade from single to multi ────────────────────────
+
+async function migrateIfNeeded() {
+  const oldGoal = await getJSON(KEYS.GOAL);
+  const oldPlan = await getJSON(KEYS.PLAN);
+
+  if (oldGoal || oldPlan) {
+    const goals = oldGoal ? [oldGoal] : [];
+    const plans = oldPlan ? [oldPlan] : [];
+    const existingGoals = (await getJSON(KEYS.GOALS)) || [];
+    const existingPlans = (await getJSON(KEYS.PLANS)) || [];
+
+    if (existingGoals.length === 0 && goals.length > 0) {
+      await setJSON(KEYS.GOALS, goals);
+    }
+    if (existingPlans.length === 0 && plans.length > 0) {
+      await setJSON(KEYS.PLANS, plans);
+    }
+
+    // Remove old keys
+    await AsyncStorage.multiRemove([KEYS.GOAL, KEYS.PLAN_CONFIG, KEYS.PLAN]);
+  }
+}
+
+let migrated = false;
+async function ensureMigrated() {
+  if (!migrated) {
+    await migrateIfNeeded();
+    migrated = true;
+  }
+}
+
+// ── Goals ────────────────────────────────────────────────────────────────────
+
+export async function saveGoal(goal) {
+  await ensureMigrated();
+  const data = { id: uid(), createdAt: new Date().toISOString(), ...goal };
+  const goals = (await getJSON(KEYS.GOALS)) || [];
+  goals.push(data);
+  await setJSON(KEYS.GOALS, goals);
+  // Sync to server
+  api.goals.create(data).catch(() => {});
+  return data;
+}
+
+export async function getGoals() {
+  await ensureMigrated();
+  return (await getJSON(KEYS.GOALS)) || [];
+}
+
+export async function getGoal(id) {
+  const goals = await getGoals();
+  if (!id) return goals[0] || null;
+  return goals.find(g => g.id === id) || null;
+}
+
+export async function deleteGoal(goalId) {
+  await ensureMigrated();
+  let goals = (await getJSON(KEYS.GOALS)) || [];
+  goals = goals.filter(g => g.id !== goalId);
+  await setJSON(KEYS.GOALS, goals);
+  // Also delete associated plans
+  let plans = (await getJSON(KEYS.PLANS)) || [];
+  const plansToDelete = plans.filter(p => p.goalId === goalId);
+  plans = plans.filter(p => p.goalId !== goalId);
+  await setJSON(KEYS.PLANS, plans);
+  // Sync to server
+  plansToDelete.forEach(p => api.plans.delete(p.id).catch(() => {}));
+  api.goals.delete(goalId).catch(() => {});
+}
+
+// ── Plan Config ──────────────────────────────────────────────────────────────
+
+export async function savePlanConfig(config) {
+  await ensureMigrated();
+  const data = { id: uid(), createdAt: new Date().toISOString(), ...config };
+  const configs = (await getJSON(KEYS.PLAN_CONFIGS)) || [];
+  configs.push(data);
+  await setJSON(KEYS.PLAN_CONFIGS, configs);
+  return data;
+}
+
+export async function getPlanConfig(id) {
+  const configs = (await getJSON(KEYS.PLAN_CONFIGS)) || [];
+  if (!id) return configs[configs.length - 1] || null;
+  return configs.find(c => c.id === id) || null;
+}
+
+// ── Plans ────────────────────────────────────────────────────────────────────
+
+export async function savePlan(plan) {
+  await ensureMigrated();
+  let plans = (await getJSON(KEYS.PLANS)) || [];
+  const idx = plans.findIndex(p => p.id === plan.id);
+  const isNew = idx < 0;
+  if (idx >= 0) {
+    plans[idx] = plan;
+  } else {
+    plans.push(plan);
+  }
+  await setJSON(KEYS.PLANS, plans);
+  // Sync to server
+  if (isNew) {
+    api.plans.create(plan).catch(() => {});
+  } else {
+    api.plans.update(plan.id, plan).catch(() => {});
+  }
+  return plan;
+}
+
+export async function getPlans() {
+  await ensureMigrated();
+  return (await getJSON(KEYS.PLANS)) || [];
+}
+
+export async function getPlan(planId) {
+  const plans = await getPlans();
+  if (planId) return plans.find(p => p.id === planId) || null;
+  // Backward compat: return the most recent active plan
+  const active = plans.filter(p => p.status === 'active');
+  return active.length > 0 ? active[active.length - 1] : plans[plans.length - 1] || null;
+}
+
+export async function getActivePlans() {
+  const plans = await getPlans();
+  return plans.filter(p => p.status === 'active');
+}
+
+export async function getAllActivities() {
+  const plans = await getPlans();
+  const activities = [];
+  for (const plan of plans) {
+    if (plan.activities) {
+      for (const a of plan.activities) {
+        // Attach plan metadata for calendar display
+        activities.push({ ...a, _planStartDate: plan.startDate, _planWeeks: plan.weeks, _planId: plan.id });
+      }
+    }
+  }
+  return activities;
+}
+
+export async function clearPlan(planId) {
+  await ensureMigrated();
+  if (planId) {
+    let plans = (await getJSON(KEYS.PLANS)) || [];
+    plans = plans.filter(p => p.id !== planId);
+    await setJSON(KEYS.PLANS, plans);
+  } else {
+    // Clear everything (legacy behavior)
+    await setJSON(KEYS.GOALS, []);
+    await setJSON(KEYS.PLANS, []);
+    await setJSON(KEYS.PLAN_CONFIGS, []);
+  }
+}
+
+/**
+ * Delete a plan and its associated goal.
+ */
+export async function deletePlan(planId) {
+  await ensureMigrated();
+  let plans = (await getJSON(KEYS.PLANS)) || [];
+  const plan = plans.find(p => p.id === planId);
+  if (!plan) return;
+
+  // Remove the plan
+  plans = plans.filter(p => p.id !== planId);
+  await setJSON(KEYS.PLANS, plans);
+
+  // Sync to server
+  api.plans.delete(planId).catch(() => {});
+
+  // Remove the associated goal if no other plan references it
+  if (plan.goalId) {
+    const otherPlanWithGoal = plans.find(p => p.goalId === plan.goalId);
+    if (!otherPlanWithGoal) {
+      let goals = (await getJSON(KEYS.GOALS)) || [];
+      goals = goals.filter(g => g.id !== plan.goalId);
+      await setJSON(KEYS.GOALS, goals);
+      api.goals.delete(plan.goalId).catch(() => {});
+    }
+  }
+
+  // Clean up associated config
+  if (plan.configId) {
+    let configs = (await getJSON(KEYS.PLAN_CONFIGS)) || [];
+    configs = configs.filter(c => c.id !== plan.configId);
+    await setJSON(KEYS.PLAN_CONFIGS, configs);
+  }
+}
+
+export async function updateActivity(activityId, updates) {
+  const plans = await getPlans();
+  for (const plan of plans) {
+    const idx = plan.activities?.findIndex(a => a.id === activityId);
+    if (idx >= 0) {
+      plan.activities[idx] = { ...plan.activities[idx], ...updates };
+      await savePlan(plan);
+      return plan.activities[idx];
+    }
+  }
+  return null;
+}
+
+export async function markActivityComplete(activityId) {
+  return updateActivity(activityId, {
+    completed: true,
+    completedAt: new Date().toISOString(),
+  });
+}
+
+export async function scheduleActivity(activityId, dayOfWeek) {
+  return updateActivity(activityId, { dayOfWeek });
+}
+
+// ── Strava tokens ────────────────────────────────────────────────────────────
+
+export async function saveStravaTokens(tokens) {
+  await setJSON(KEYS.STRAVA, tokens);
+}
+
+export async function getStravaTokens() {
+  return getJSON(KEYS.STRAVA);
+}
+
+export async function clearStravaTokens() {
+  await AsyncStorage.removeItem(KEYS.STRAVA);
+}
+
+// ── Progress helpers ─────────────────────────────────────────────────────────
+
+export function getWeekActivities(plan, weekNumber) {
+  if (!plan?.activities) return [];
+  return plan.activities.filter(a => a.week === weekNumber);
+}
+
+export function getWeekProgress(plan, weekNumber) {
+  const activities = getWeekActivities(plan, weekNumber);
+  const total = activities.filter(a => a.type !== 'rest').length;
+  const done = activities.filter(a => a.completed && a.type !== 'rest').length;
+  return { total, done, pct: total > 0 ? Math.round((done / total) * 100) : 0 };
+}
+
+export function isOnTrack(plan) {
+  if (!plan) return null;
+  const now = new Date();
+  const start = new Date(plan.startDate);
+  const daysSinceStart = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+  const currentWeek = Math.min(Math.floor(daysSinceStart / 7) + 1, plan.weeks);
+
+  let totalExpected = 0;
+  let totalDone = 0;
+  for (let w = 1; w <= currentWeek; w++) {
+    const { total, done } = getWeekProgress(plan, w);
+    totalExpected += total;
+    totalDone += done;
+  }
+
+  if (totalExpected === 0) return true;
+  return (totalDone / totalExpected) >= 0.6;
+}
+
+/**
+ * Get the date for a specific day in a specific week of a plan.
+ */
+export function getActivityDate(planStartDate, week, dayOfWeek) {
+  const start = new Date(planStartDate);
+  const offset = (week - 1) * 7 + (dayOfWeek ?? 0);
+  const d = new Date(start);
+  d.setDate(d.getDate() + offset);
+  return d;
+}
+
+/**
+ * Get the month label for a given week.
+ */
+export function getWeekMonthLabel(planStartDate, week) {
+  const start = new Date(planStartDate);
+  const weekStart = new Date(start);
+  weekStart.setDate(weekStart.getDate() + (week - 1) * 7);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const startMonth = months[weekStart.getMonth()];
+  const endMonth = months[weekEnd.getMonth()];
+
+  if (startMonth === endMonth) {
+    return `${startMonth} ${weekStart.getFullYear()}`;
+  }
+  return `${startMonth} / ${endMonth} ${weekEnd.getFullYear()}`;
+}
+
+export { uid };

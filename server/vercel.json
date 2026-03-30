@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "src/index.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/health",
+      "dest": "src/index.js"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "src/index.js"
+    }
+  ],
+  "env": {
+    "SUPABASE_URL": "@supabase-url",
+    "SUPABASE_ANON_KEY": "@supabase-anon-key",
+    "SUPABASE_SERVICE_ROLE_KEY": "@supabase-service-role-key",
+    "ALLOWED_ORIGINS": "@allowed-origins"
+  }
+}

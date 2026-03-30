@@ -1,0 +1,639 @@
+/**
+ * Home screen — dark theme with amber accents.
+ * Shows all plans, week calendar with toggle, today's activities.
+ * If no plan exists, shows "Make me a plan" CTA.
+ */
+import { useEffect, useState, useCallback } from 'react';
+import {
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors, fontFamily } from '../theme';
+import { getCurrentUser } from '../services/authService';
+import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan } from '../services/storageService';
+import { isStravaConnected } from '../services/stravaService';
+
+const FF = fontFamily;
+const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const CYCLING_LABELS = { road: 'Road', gravel: 'Gravel', mtb: 'MTB', mixed: 'Mixed' };
+
+const EFFORT_COLORS = {
+  easy:     '#22C55E',
+  moderate: '#D97706',
+  hard:     '#EF4444',
+  recovery: '#64748B',
+  max:      '#DC2626',
+};
+
+const TYPE_ICONS = {
+  ride:     '\uD83D\uDEB4',
+  strength: '\uD83D\uDCAA',
+  rest:     '\uD83D\uDCA4',
+};
+
+/**
+ * Compute total plan distance and weekly hours from activities.
+ */
+function getPlanStats(plan) {
+  if (!plan?.activities) return { totalKm: 0, weeklyHrs: 0, sessionsPerWeek: 0 };
+  let totalKm = 0;
+  let totalMins = 0;
+  plan.activities.forEach(a => {
+    if (a.distanceKm) totalKm += a.distanceKm;
+    if (a.durationMins) totalMins += a.durationMins;
+  });
+  const weeks = plan.weeks || 1;
+  return {
+    totalKm: Math.round(totalKm),
+    weeklyHrs: (totalMins / weeks / 60).toFixed(1),
+    sessionsPerWeek: Math.round(plan.activities.length / weeks),
+  };
+}
+
+export default function HomeScreen({ navigation }) {
+  const [name, setName] = useState(null);
+  const [plans, setPlans] = useState([]);
+  const [goals, setGoals] = useState([]);
+  const [selectedPlanIdx, setSelectedPlanIdx] = useState(0);
+  const [currentWeek, setCurrentWeek] = useState(1);
+  const [stravaOk, setStravaOk] = useState(false);
+
+  const load = useCallback(async () => {
+    const [user, p, g, strava] = await Promise.all([
+      getCurrentUser(), getPlans(), getGoals(), isStravaConnected(),
+    ]);
+    const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || null;
+    setName(displayName);
+    setPlans(p);
+    setGoals(g);
+    setStravaOk(strava);
+
+    if (p.length > 0) {
+      const plan = p[selectedPlanIdx] || p[0];
+      if (plan?.startDate) {
+        const start = new Date(plan.startDate);
+        const now = new Date();
+        const daysSince = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+        const wk = Math.max(1, Math.min(Math.floor(daysSince / 7) + 1, plan.weeks));
+        setCurrentWeek(wk);
+      }
+    }
+  }, [selectedPlanIdx]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', load);
+    return unsub;
+  }, [navigation, load]);
+
+  const firstName = name?.split(' ')[0] ?? null;
+  const activePlan = plans[selectedPlanIdx] || null;
+  const activeGoal = activePlan ? goals.find(g => g.id === activePlan.goalId) : null;
+
+  // ── No plan state ─────────────────────────────────────────────────────────
+  if (plans.length === 0) {
+    return (
+      <View style={s.container}>
+        <SafeAreaView style={s.safe}>
+          <View style={s.header}>
+            <View style={s.headerLeft}>
+              <Image source={require('../../assets/icon.png')} style={s.headerLogo} />
+              <View>
+                <Text style={s.appName}>Etapa</Text>
+                {firstName && <Text style={s.greeting}>Hi, {firstName}</Text>}
+              </View>
+            </View>
+            <TouchableOpacity onPress={() => navigation.navigate('Settings')} hitSlop={HIT}>
+              <View style={s.iconBtn}><Text style={s.iconBtnText}>{'\u2022\u2022\u2022'}</Text></View>
+            </TouchableOpacity>
+          </View>
+
+          {!stravaOk && (
+            <TouchableOpacity style={s.stravaCard} onPress={() => navigation.navigate('Settings')} activeOpacity={0.85}>
+              <Text style={s.stravaTitle}>Connect Strava</Text>
+              <Text style={s.stravaSub}>Track your rides and sync automatically</Text>
+            </TouchableOpacity>
+          )}
+
+          <View style={s.emptyPlanWrap}>
+            <View style={s.emptyIconCircle}>
+              <Text style={s.emptyIcon}>{'\u2192'}</Text>
+            </View>
+            <Text style={s.emptyTitle}>A new plan awaits{firstName ? `, ${firstName}` : ''}</Text>
+            <Text style={s.emptySub}>Set a goal and we'll build your training plan</Text>
+
+            <TouchableOpacity
+              style={s.createBtn}
+              onPress={() => navigation.navigate('GoalSetup')}
+              activeOpacity={0.88}
+            >
+              <Text style={s.createBtnText}>Make me a plan</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  // ── Active plan state ─────────────────────────────────────────────────────
+  const progress = getWeekProgress(activePlan, currentWeek);
+  const weekActivities = getWeekActivities(activePlan, currentWeek);
+  const monthLabel = activePlan ? getWeekMonthLabel(activePlan.startDate, currentWeek) : '';
+
+  const jsDay = new Date().getDay();
+  const todayIdx = jsDay === 0 ? 6 : jsDay - 1;
+
+  // Group activities by day for the week strip
+  const activitiesByDay = {};
+  weekActivities.forEach(a => {
+    if (a.dayOfWeek != null) {
+      if (!activitiesByDay[a.dayOfWeek]) activitiesByDay[a.dayOfWeek] = [];
+      activitiesByDay[a.dayOfWeek].push(a);
+    }
+  });
+
+  const todayActivities = weekActivities.filter(a => a.dayOfWeek === todayIdx);
+
+  // Structured summary for a day's activities: returns array of { icon, label, color }
+  const getDayItems = (dayIdx) => {
+    const acts = activitiesByDay[dayIdx];
+    if (!acts || acts.length === 0) return [];
+    return acts.map(a => {
+      const icon = TYPE_ICONS[a.type] || '\uD83D\uDEB4';
+      let label = '';
+      if (a.distanceKm) label = `${a.distanceKm}km`;
+      else if (a.durationMins) label = `${a.durationMins}m`;
+      else label = a.type === 'strength' ? 'str' : a.type?.slice(0, 3) || '';
+      const typeColor = a.type === 'strength' ? '#8B5CF6' : a.type === 'ride' && a.title?.toLowerCase().includes('indoor') ? '#3B82F6' : colors.primary;
+      return { icon, label, color: typeColor };
+    });
+  };
+
+  const handleDayPress = (dayIdx) => {
+    const acts = activitiesByDay[dayIdx];
+    if (!acts || acts.length === 0) return;
+    if (acts.length === 1) {
+      navigation.navigate('ActivityDetail', { activityId: acts[0].id });
+    } else {
+      navigation.navigate('WeekView', { week: currentWeek, planId: activePlan.id });
+    }
+  };
+
+  const handleDeletePlan = (targetPlan, targetGoal) => {
+    const planName = targetPlan.name || targetGoal?.eventName || (targetGoal?.targetDistance ? `${targetGoal.targetDistance} km plan` : 'this plan');
+    Alert.alert(
+      'Delete plan?',
+      `This will permanently delete "${planName}" and all its progress.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deletePlan(targetPlan.id);
+            setSelectedPlanIdx(0);
+            await load();
+          },
+        },
+      ],
+    );
+  };
+
+  const handlePlanLongPress = (targetPlan, targetGoal) => {
+    const planName = targetPlan.name || targetGoal?.eventName || (targetGoal?.targetDistance ? `${targetGoal.targetDistance} km plan` : 'this plan');
+    Alert.alert(
+      planName,
+      null,
+      [
+        {
+          text: 'Rename',
+          onPress: () => {
+            const currentName = targetPlan.name || targetGoal?.eventName || (targetGoal?.targetDistance ? `${targetGoal.targetDistance} km` : 'Plan');
+            Alert.prompt(
+              'Rename plan',
+              'Enter a name for this plan',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Save',
+                  onPress: async (name) => {
+                    if (name?.trim()) {
+                      targetPlan.name = name.trim();
+                      await savePlan(targetPlan);
+                      await load();
+                    }
+                  },
+                },
+              ],
+              'plain-text',
+              currentName,
+            );
+          },
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deletePlan(targetPlan.id);
+            setSelectedPlanIdx(0);
+            await load();
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
+  };
+
+  return (
+    <View style={s.container}>
+      <SafeAreaView style={s.safe}>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Header */}
+          <View style={s.header}>
+            <View style={s.headerLeft}>
+              <Image source={require('../../assets/icon.png')} style={s.headerLogo} />
+              <View>
+                <Text style={s.appName}>Etapa</Text>
+                {firstName && <Text style={s.greeting}>Hi, {firstName}</Text>}
+              </View>
+            </View>
+            <TouchableOpacity onPress={() => navigation.navigate('Settings')} hitSlop={HIT}>
+              <View style={s.iconBtn}><Text style={s.iconBtnText}>{'\u2022\u2022\u2022'}</Text></View>
+            </TouchableOpacity>
+          </View>
+
+          {/* New plan button */}
+          <TouchableOpacity
+            style={s.newPlanBtn}
+            onPress={() => navigation.navigate('GoalSetup')}
+            activeOpacity={0.85}
+          >
+            <Text style={s.newPlanBtnPlus}>+</Text>
+            <Text style={s.newPlanBtnText}>New plan</Text>
+          </TouchableOpacity>
+
+          {/* Plan tabs — always visible, scrollable */}
+          {plans.length > 0 && (
+            <View>
+              {/* Header row: label + dots */}
+              <View style={s.planTabsHeader}>
+                <Text style={s.planTabsLabel}>YOUR PLANS</Text>
+                {plans.length > 1 && (
+                  <View style={s.planDots}>
+                    {plans.map((_, i) => (
+                      <View key={i} style={[s.planDot, i === selectedPlanIdx && s.planDotActive]} />
+                    ))}
+                    <Text style={s.planDotsHint}>swipe {'\u00B7'} hold to manage</Text>
+                  </View>
+                )}
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={s.planTabs}
+                contentContainerStyle={s.planTabsContent}
+                snapToAlignment="start"
+                decelerationRate="fast"
+              >
+                {plans.map((p, i) => {
+                  const g = goals.find(gl => gl.id === p.goalId);
+                  const stats = getPlanStats(p);
+                  const title = p.name
+                    || g?.eventName
+                    || (g?.goalType === 'distance' ? `${g.targetDistance} km` : null)
+                    || (CYCLING_LABELS[g?.cyclingType] || 'Plan');
+                  const meta = [
+                    stats.totalKm > 0 ? `${stats.totalKm} km` : null,
+                    `${p.weeks} wks`,
+                    stats.weeklyHrs > 0 ? `~${stats.weeklyHrs} h/wk` : null,
+                  ].filter(Boolean).join(' \u00B7 ');
+                  const isActive = i === selectedPlanIdx;
+
+                  return (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={[s.planTab, isActive && s.planTabActive]}
+                      onPress={() => setSelectedPlanIdx(i)}
+                      onLongPress={() => handlePlanLongPress(p, g)}
+                      activeOpacity={0.8}
+                      delayLongPress={400}
+                    >
+                      <Text style={[s.planTabTitle, isActive && s.planTabTitleActive]} numberOfLines={1}>{title}</Text>
+                      <Text style={[s.planTabMeta, isActive && s.planTabMetaActive]} numberOfLines={1}>{meta}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              {/* Delete / rename for active plan */}
+              <View style={s.planActions}>
+                <TouchableOpacity
+                  style={s.planActionBtn}
+                  onPress={() => {
+                    const p = plans[selectedPlanIdx];
+                    const g = p ? goals.find(gl => gl.id === p.goalId) : null;
+                    if (p) handlePlanLongPress(p, g);
+                  }}
+                >
+                  <Text style={s.planActionText}>{'\u2022\u2022\u2022'} Manage plan</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Goal summary — at top */}
+          {activeGoal && (
+            <View style={s.goalCard}>
+              <Text style={s.goalLabel}>YOUR GOAL</Text>
+              <Text style={s.goalTitle}>
+                {activeGoal.goalType === 'race'
+                  ? activeGoal.eventName || 'Race'
+                  : activeGoal.goalType === 'distance'
+                    ? `Ride ${activeGoal.targetDistance} km`
+                    : 'Improve my cycling'}
+              </Text>
+              <Text style={s.goalMeta}>
+                {CYCLING_LABELS[activeGoal.cyclingType] || activeGoal.cyclingType} {'\u00B7'} {activePlan.weeks} week plan
+                {activeGoal.targetDate ? ` ${'\u00B7'} Target: ${activeGoal.targetDate}` : ''}
+              </Text>
+            </View>
+          )}
+
+          {/* Week calendar strip with navigation */}
+          <View style={s.weekStrip}>
+            <View style={s.weekNav}>
+              <TouchableOpacity
+                onPress={() => setCurrentWeek(Math.max(1, currentWeek - 1))}
+                disabled={currentWeek <= 1}
+                hitSlop={HIT}
+              >
+                <Text style={[s.weekNavArrow, currentWeek <= 1 && s.weekNavDisabled]}>{'\u2039'}</Text>
+              </TouchableOpacity>
+              <View style={s.weekNavCenter}>
+                <Text style={s.weekLabel}>Week {currentWeek}/{activePlan.weeks}</Text>
+                <Text style={s.monthLabel}>{monthLabel}</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setCurrentWeek(Math.min(activePlan.weeks, currentWeek + 1))}
+                disabled={currentWeek >= activePlan.weeks}
+                hitSlop={HIT}
+              >
+                <Text style={[s.weekNavArrow, currentWeek >= activePlan.weeks && s.weekNavDisabled]}>{'\u203A'}</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={s.dayRow}>
+              {DAY_LABELS.map((d, i) => {
+                const items = getDayItems(i);
+                const hasActs = items.length > 0;
+                const CellWrap = hasActs ? TouchableOpacity : View;
+                const cellProps = hasActs ? { onPress: () => handleDayPress(i), activeOpacity: 0.7 } : {};
+                return (
+                  <CellWrap key={i} style={s.dayCell} {...cellProps}>
+                    <Text style={[s.dayLabelText, i === todayIdx && s.dayLabelToday]}>{d}</Text>
+                    <View style={[s.dayCircle, i === todayIdx && s.dayCircleToday]}>
+                      <Text style={[s.dayNumber, i === todayIdx && s.dayNumberToday]}>
+                        {getDayDate(activePlan.startDate, currentWeek, i)}
+                      </Text>
+                    </View>
+                    {items.map((item, idx) => (
+                      <View key={idx} style={s.daySummaryRow}>
+                        <Text style={s.daySummaryIcon}>{item.icon}</Text>
+                        <Text style={[s.daySummaryLabel, { color: item.color }]}>{item.label}</Text>
+                      </View>
+                    ))}
+                  </CellWrap>
+                );
+              })}
+            </View>
+            {/* Calendar button */}
+            <TouchableOpacity
+              style={s.calendarBtn}
+              onPress={() => navigation.navigate('Calendar')}
+              activeOpacity={0.8}
+            >
+              <Text style={s.calendarBtnIcon}>{'\uD83D\uDCC5'}</Text>
+              <Text style={s.calendarBtnText}>View calendar</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Today's workouts */}
+          {todayActivities.length > 0 && (
+            <View style={s.section}>
+              <Text style={s.sectionTitle}>Today</Text>
+              {todayActivities.map(activity => (
+                <TouchableOpacity
+                  key={activity.id}
+                  style={s.todayCard}
+                  onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
+                  activeOpacity={0.8}
+                >
+                  <View style={[s.todayAccent, { backgroundColor: EFFORT_COLORS[activity.effort] || colors.primary }]} />
+                  <View style={s.todayBody}>
+                    <View style={s.todayTitleRow}>
+                      <Text style={s.todayIcon}>{TYPE_ICONS[activity.type] || '\uD83D\uDEB4'}</Text>
+                      <View style={s.todayTitleWrap}>
+                        <Text style={s.todayTitle}>{activity.title}</Text>
+                        <Text style={s.todayMeta}>
+                          {activity.distanceKm ? `${activity.distanceKm} km` : ''}
+                          {activity.distanceKm && activity.durationMins ? ' \u00B7 ' : ''}
+                          {activity.durationMins ? `${activity.durationMins} min` : ''}
+                          {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  {activity.completed
+                    ? <View style={s.doneBadge}><Text style={s.doneMark}>{'\u2713'}</Text></View>
+                    : <Text style={s.todayArrow}>{'\u203A'}</Text>
+                  }
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Week progress */}
+          <View style={s.section}>
+            <View style={s.sectionRow}>
+              <Text style={s.sectionTitle}>This week</Text>
+              <Text style={s.sectionMeta}>{progress.done}/{progress.total} done</Text>
+            </View>
+            <View style={s.weekProgressTrack}>
+              <View style={[s.weekProgressFill, { width: `${progress.pct}%` }]} />
+            </View>
+          </View>
+
+          {/* View full week + View full plan — side by side */}
+          <View style={s.viewBtnRow}>
+            <TouchableOpacity
+              style={s.viewBtnHalf}
+              onPress={() => navigation.navigate('WeekView', { week: currentWeek, planId: activePlan.id })}
+              activeOpacity={0.85}
+            >
+              <Text style={s.viewBtnText}>View full week</Text>
+              <Text style={s.viewBtnArrow}>{'\u203A'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={s.viewBtnHalf}
+              onPress={() => navigation.navigate('PlanOverview', { planId: activePlan.id })}
+              activeOpacity={0.85}
+            >
+              <Text style={s.viewBtnText}>View full plan</Text>
+              <Text style={s.viewBtnArrow}>{'\u203A'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </SafeAreaView>
+    </View>
+  );
+}
+
+function getDayDate(startDateStr, week, dayIdx) {
+  const start = new Date(startDateStr);
+  const offset = (week - 1) * 7 + dayIdx;
+  const d = new Date(start);
+  d.setDate(d.getDate() + offset);
+  return d.getDate();
+}
+
+const HIT = { top: 8, bottom: 8, left: 8, right: 8 };
+
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
+  safe:      { flex: 1 },
+
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerLogo: { width: 38, height: 38, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(217,119,6,0.2)' },
+  appName: { fontSize: 24, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, letterSpacing: 0.5 },
+  greeting: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 1 },
+
+  // Minimalist icon button (three dots)
+  iconBtn: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  iconBtnText: { fontSize: 14, color: colors.textMuted, letterSpacing: 1 },
+
+  // New plan button
+  newPlanBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: 20, marginBottom: 12,
+    paddingVertical: 12, paddingHorizontal: 16,
+    borderRadius: 14, borderWidth: 1.5,
+    borderColor: colors.primary, borderStyle: 'dashed',
+    backgroundColor: 'rgba(217,119,6,0.06)',
+  },
+  newPlanBtnPlus: { fontSize: 20, fontWeight: '300', color: colors.primary },
+  newPlanBtnText: { fontSize: 15, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+
+  // Plan tabs
+  planTabsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 8 },
+  planTabsLabel: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 },
+  planDots: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  planDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
+  planDotActive: { backgroundColor: colors.primary, width: 16, borderRadius: 3 },
+  planDotsHint: { fontSize: 10, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginLeft: 4 },
+  planTabs: { marginBottom: 12, maxHeight: 80 },
+  planTabsContent: { paddingHorizontal: 16, gap: 8 },
+  planTab: {
+    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    minWidth: 130,
+  },
+  planTabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  planTabTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 2 },
+  planTabTitleActive: { color: '#fff' },
+  planTabMeta: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
+  planTabMetaActive: { color: 'rgba(255,255,255,0.7)' },
+  planActions: { paddingHorizontal: 20, marginTop: 4, marginBottom: 4 },
+  planActionBtn: { alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 2 },
+  planActionText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
+
+  // Strava connect
+  stravaCard: {
+    backgroundColor: colors.surface, marginHorizontal: 20, borderRadius: 16, padding: 18, marginBottom: 16,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  stravaTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
+  stravaSub: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
+
+  // Empty plan state
+  emptyPlanWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingTop: 40 },
+  emptyIconCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(217,119,6,0.08)', alignItems: 'center', justifyContent: 'center', marginBottom: 20, borderWidth: 1, borderColor: 'rgba(217,119,6,0.15)' },
+  emptyIcon: { fontSize: 28, color: colors.primary },
+  emptyTitle: { fontSize: 22, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, textAlign: 'center', marginBottom: 8 },
+  emptySub: { fontSize: 15, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center', marginBottom: 28 },
+  createBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: 16, paddingHorizontal: 40, shadowColor: '#D97706', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 6 },
+  createBtnText: { fontSize: 17, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
+
+  // Week calendar strip
+  weekStrip: { backgroundColor: colors.surface, marginHorizontal: 16, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border },
+  weekNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  weekNavCenter: { alignItems: 'center' },
+  weekNavArrow: { fontSize: 28, color: colors.text, fontWeight: '300', paddingHorizontal: 8 },
+  weekNavDisabled: { color: colors.textFaint },
+  weekLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  monthLabel: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 2 },
+  calendarBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginTop: 12, paddingVertical: 8, borderRadius: 10,
+    backgroundColor: 'rgba(217,119,6,0.08)', borderWidth: 1, borderColor: 'rgba(217,119,6,0.15)',
+  },
+  calendarBtnIcon: { fontSize: 14 },
+  calendarBtnText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+  dayRow: { flexDirection: 'row', justifyContent: 'space-around' },
+  dayCell: { alignItems: 'center', minWidth: 40, gap: 3 },
+  dayLabelText: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
+  dayLabelToday: { color: colors.primary },
+  dayCircle: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  dayCircleToday: { backgroundColor: colors.primary },
+  dayNumber: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
+  dayNumberToday: { color: '#fff' },
+  daySummaryRow: { flexDirection: 'row', alignItems: 'center', gap: 1, marginTop: 1 },
+  daySummaryIcon: { fontSize: 10 },
+  daySummaryLabel: { fontSize: 9, fontWeight: '600', fontFamily: FF.semibold },
+
+  // Section
+  section: { paddingHorizontal: 20, marginBottom: 16 },
+  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sectionTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 10 },
+  sectionMeta: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
+
+  // Today's cards
+  todayCard: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: 14,
+    overflow: 'hidden', marginBottom: 8, borderWidth: 1, borderColor: colors.border,
+  },
+  todayAccent: { width: 4, alignSelf: 'stretch' },
+  todayBody: { flex: 1, padding: 14 },
+  todayTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  todayIcon: { fontSize: 20, width: 28, textAlign: 'center' },
+  todayTitleWrap: { flex: 1 },
+  todayTitle: { fontSize: 15, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
+  todayMeta: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 2 },
+  todayArrow: { fontSize: 24, color: colors.textFaint, paddingRight: 14, fontWeight: '300' },
+  doneBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#22C55E', alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  doneMark: { fontSize: 14, color: '#fff', fontWeight: '700' },
+
+  // Week progress
+  weekProgressTrack: { height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden' },
+  weekProgressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 3 },
+
+  // View buttons — side by side
+  viewBtnRow: { flexDirection: 'row', gap: 10, marginHorizontal: 20, marginBottom: 16 },
+  viewBtnHalf: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: colors.surface, borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  viewBtnText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+  viewBtnArrow: { fontSize: 20, color: colors.primary, fontWeight: '300' },
+
+  // Goal card
+  goalCard: {
+    backgroundColor: colors.surface, marginHorizontal: 20, borderRadius: 16, padding: 18, marginBottom: 16,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  goalLabel: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 },
+  goalTitle: { fontSize: 17, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
+  goalMeta: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
+
+});
