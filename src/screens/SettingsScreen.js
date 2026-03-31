@@ -10,6 +10,7 @@ import { colors, fontFamily } from '../theme';
 import { signOut } from '../services/authService';
 import { clearPlan, getPlans, deletePlan } from '../services/storageService';
 import { connectStrava, disconnectStrava, isStravaConnected, isStravaConfigured, getStravaTokens } from '../services/stravaService';
+import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
 
@@ -39,6 +40,7 @@ export default function SettingsScreen({ navigation }) {
     setLoading(true);
     try {
       await connectStrava();
+      analytics.events.stravaConnected();
       await checkStrava();
     } catch (err) {
       Alert.alert('Error', err.message);
@@ -50,6 +52,7 @@ export default function SettingsScreen({ navigation }) {
     Alert.alert('Disconnect Strava?', 'Your synced activities will remain but no new syncs will happen.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Disconnect', style: 'destructive', onPress: async () => {
+        analytics.events.stravaDisconnected();
         await disconnectStrava();
         setStravaOk(false);
         setStravaName(null);
@@ -59,6 +62,8 @@ export default function SettingsScreen({ navigation }) {
 
 
   const handleSignOut = async () => {
+    analytics.events.signedOut();
+    analytics.reset();
     await signOut();
     navigation.replace('SignIn');
   };
@@ -97,6 +102,36 @@ export default function SettingsScreen({ navigation }) {
               </TouchableOpacity>
             )}
           </View>
+        </View>
+
+        {/* Coaching */}
+        <Text style={s.sectionLabel}>COACHING</Text>
+        <View style={s.card}>
+          <TouchableOpacity style={s.row} onPress={() => navigation.navigate('ChangeCoach')}>
+            <View style={s.rowLeft}>
+              <Text style={s.rowIcon}>{'\uD83C\uDFC5'}</Text>
+              <View>
+                <Text style={s.rowTitle}>Change Coach</Text>
+                <Text style={s.rowSub}>Switch your AI coaching personality</Text>
+              </View>
+            </View>
+            <Text style={s.chevron}>{'\u203A'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Support */}
+        <Text style={s.sectionLabel}>SUPPORT</Text>
+        <View style={s.card}>
+          <TouchableOpacity style={s.row} onPress={() => navigation.navigate('Feedback')}>
+            <View style={s.rowLeft}>
+              <Text style={s.rowIcon}>{'\uD83D\uDCAC'}</Text>
+              <View>
+                <Text style={s.rowTitle}>Send Feedback</Text>
+                <Text style={s.rowSub}>Bug reports, feature requests & support</Text>
+              </View>
+            </View>
+            <Text style={s.chevron}>{'\u203A'}</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Account */}

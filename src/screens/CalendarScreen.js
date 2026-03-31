@@ -8,8 +8,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
-import { getPlans, getGoals, getActivityDate } from '../services/storageService';
-import { getSessionColor, getSessionLabel, getMetricLabel } from '../utils/sessionLabels';
+import { getPlans, getGoals, getActivityDate, getPlanConfig } from '../services/storageService';
+import { getSessionColor, getSessionLabel, getMetricLabel, CROSS_TRAINING_COLOR, getCrossTrainingLabel } from '../utils/sessionLabels';
+import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
 const DAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -19,6 +20,7 @@ const CYCLING_LABELS = { road: 'Road', gravel: 'Gravel', mtb: 'MTB', mixed: 'Mix
 export default function CalendarScreen({ navigation }) {
   const [plans, setPlans] = useState([]);
   const [goals, setGoals] = useState([]);
+  const [planConfigs, setPlanConfigs] = useState({}); // configId → config
   const [viewDate, setViewDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
   const [filterPlanId, setFilterPlanId] = useState(null); // null = all
@@ -27,9 +29,18 @@ export default function CalendarScreen({ navigation }) {
     const [p, g] = await Promise.all([getPlans(), getGoals()]);
     setPlans(p);
     setGoals(g);
+    // Load configs for cross-training
+    const cfgs = {};
+    for (const plan of p) {
+      if (plan.configId && !cfgs[plan.configId]) {
+        const cfg = await getPlanConfig(plan.configId);
+        if (cfg) cfgs[plan.configId] = cfg;
+      }
+    }
+    setPlanConfigs(cfgs);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); analytics.events.calendarViewed(MONTHS[viewDate.getMonth()]); }, [load]);
   useEffect(() => {
     const unsub = navigation.addListener('focus', load);
     return unsub;
@@ -49,6 +60,9 @@ export default function CalendarScreen({ navigation }) {
 
   // Build activity map: date string → activities
   const activityMap = {};
+  const crossTrainingMap = {}; // date key → [{ label, color }]
+  const DAY_KEY_MAP = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+
   visiblePlans.forEach(plan => {
     if (!plan.activities || !plan.startDate) return;
     plan.activities.forEach(a => {
@@ -58,6 +72,28 @@ export default function CalendarScreen({ navigation }) {
       if (!activityMap[key]) activityMap[key] = [];
       activityMap[key].push({ ...a, _planId: plan.id });
     });
+
+    // Add cross-training pseudo-entries
+    const cfg = plan.configId ? planConfigs[plan.configId] : null;
+    const ctDays = cfg?.crossTrainingDaysFull;
+    if (ctDays) {
+      for (let week = 1; week <= plan.weeks; week++) {
+        DAY_KEY_MAP.forEach((dayKey, dayIdx) => {
+          const activities = ctDays[dayKey];
+          if (!activities || activities.length === 0) return;
+          const d = getActivityDate(plan.startDate, week, dayIdx);
+          const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+          if (!crossTrainingMap[key]) crossTrainingMap[key] = [];
+          activities.forEach(ct => {
+            crossTrainingMap[key].push({
+              label: getCrossTrainingLabel(ct),
+              color: CROSS_TRAINING_COLOR,
+              _isCrossTraining: true,
+            });
+          });
+        });
+      }
+    }
   });
 
   const year = viewDate.getFullYear();
@@ -90,17 +126,32 @@ export default function CalendarScreen({ navigation }) {
   // Day cell items: array of { label, metric, color }
   const getDayCellItems = (day) => {
     if (!day) return [];
+    const items = [];
     const acts = activityMap[getKey(day)];
-    if (!acts || acts.length === 0) return [];
-    return acts.map(a => ({
-      label: getSessionLabel(a),
-      metric: getMetricLabel(a),
-      color: getSessionColor(a),
-    }));
+    if (acts && acts.length > 0) {
+      acts.forEach(a => items.push({
+        label: getSessionLabel(a),
+        metric: getMetricLabel(a),
+        color: getSessionColor(a),
+      }));
+    }
+    const ct = crossTrainingMap[getKey(day)];
+    if (ct && ct.length > 0) {
+      ct.forEach(c => items.push({
+        label: c.label,
+        metric: null,
+        color: c.color,
+        isCrossTraining: true,
+      }));
+    }
+    return items;
   };
 
   const selectedActivities = selectedDate
     ? activityMap[`${selectedDate.getFullYear()}-${selectedDate.getMonth()}-${selectedDate.getDate()}`] || []
+    : [];
+  const selectedCrossTraining = selectedDate
+    ? crossTrainingMap[`${selectedDate.getFullYear()}-${selectedDate.getMonth()}-${selectedDate.getDate()}`] || []
     : [];
 
   // Plan tab label
@@ -227,9 +278,25 @@ export default function CalendarScreen({ navigation }) {
               </View>
             </View>
           )}
-          {selectedActivities.length === 0 && selectedDate && !goalDateMap[`${selectedDate.getFullYear()}-${selectedDate.getMonth()}-${selectedDate.getDate()}`] && (
+          {selectedActivities.length === 0 && selectedCrossTraining.length === 0 && selectedDate && !goalDateMap[`${selectedDate.getFullYear()}-${selectedDate.getMonth()}-${selectedDate.getDate()}`] && (
             <Text style={s.noActivities}>No activities this day</Text>
           )}
+          {selectedCrossTraining.map((ct, idx) => (
+            <View key={`ct-${idx}`} style={s.ctCard}>
+              <View style={[s.actAccent, { backgroundColor: CROSS_TRAINING_COLOR }]} />
+              <View style={s.actBody}>
+                <View style={s.actTop}>
+                  <View style={[s.actTypeBadge, { backgroundColor: CROSS_TRAINING_COLOR + '18' }]}>
+                    <Text style={[s.actTypeText, { color: CROSS_TRAINING_COLOR }]}>Your activity</Text>
+                  </View>
+                  <View style={s.actTextWrap}>
+                    <Text style={s.actTitle}>{ct.label}</Text>
+                    <Text style={s.actMeta}>Factored into plan recovery</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          ))}
           {selectedActivities.map(activity => (
             <TouchableOpacity
               key={activity.id}
@@ -328,6 +395,11 @@ const s = StyleSheet.create({
   selectedLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, marginBottom: 8, marginTop: 4 },
   noActivities: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, textAlign: 'center', marginTop: 20 },
 
+  ctCard: {
+    flexDirection: 'row', backgroundColor: colors.surface, marginBottom: 8,
+    borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: CROSS_TRAINING_COLOR + '30',
+    borderStyle: 'dashed',
+  },
   actCard: {
     flexDirection: 'row', backgroundColor: colors.surface, marginBottom: 8,
     borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: colors.border,

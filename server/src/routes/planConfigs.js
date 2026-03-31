@@ -66,6 +66,7 @@ function toRow(c, userId) {
     cross_training_days_full: c.crossTrainingDaysFull || null,
     indoor_trainer: c.indoorTrainer || false,
     extra_notes: c.extraNotes || null,
+    coach_id: c.coachId || null,
     created_at: c.createdAt || new Date().toISOString(),
   };
 }
@@ -79,6 +80,7 @@ function toClient(row) {
     crossTrainingDaysFull: row.cross_training_days_full,
     indoorTrainer: row.indoor_trainer,
     extraNotes: row.extra_notes,
+    coachId: row.coach_id,
     createdAt: row.created_at,
   };
 }

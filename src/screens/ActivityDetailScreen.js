@@ -14,6 +14,7 @@ import { colors, fontFamily } from '../theme';
 import { getPlans, getGoals, markActivityComplete, updateActivity, savePlan } from '../services/storageService';
 import { editActivityWithAI } from '../services/llmPlanService';
 import { getSessionColor, getSessionLabel, SESSION_COLORS, EFFORT_LABELS as EFFORT_GUIDE_LABELS } from '../utils/sessionLabels';
+import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
 
@@ -98,6 +99,7 @@ export default function ActivityDetailScreen({ navigation, route }) {
         setPlan(p);
         setActivity(a);
         setGoal(goals.find(g => g.id === p.goalId) || null);
+        analytics.events.activityViewed({ activityType: a.type, subType: a.subType, effort: a.effort, week: a.week, completed: !!a.completed });
         setEditValues({
           distanceKm: a.distanceKm?.toString() || '',
           durationMins: a.durationMins?.toString() || '',
@@ -112,6 +114,11 @@ export default function ActivityDetailScreen({ navigation, route }) {
   useEffect(() => { loadActivity(); }, [activityId]);
 
   const handleComplete = async () => {
+    if (activity && !activity.completed) {
+      analytics.events.activityCompleted({ activityType: activity.type, subType: activity.subType, effort: activity.effort, week: activity.week, distanceKm: activity.distanceKm, durationMins: activity.durationMins });
+    } else if (activity) {
+      analytics.events.activityUncompleted({ activityType: activity.type, week: activity.week });
+    }
     await markActivityComplete(activityId);
     await loadActivity();
   };
@@ -166,6 +173,14 @@ export default function ActivityDetailScreen({ navigation, route }) {
       }
     }
 
+    const changedFields = [];
+    if (parseFloat(editValues.distanceKm) !== activity.distanceKm) changedFields.push('distance');
+    if (parseInt(editValues.durationMins) !== activity.durationMins) changedFields.push('duration');
+    if (editValues.effort !== activity.effort) changedFields.push('effort');
+    if (editValues.dayOfWeek !== (activity.dayOfWeek ?? 0)) changedFields.push('day');
+    if (changedFields.length > 0) {
+      analytics.events.activityEditedManual({ activityType: activity.type, week: activity.week, changedFields });
+    }
     setIsEditing(false);
     await loadActivity();
   };
@@ -188,6 +203,7 @@ export default function ActivityDetailScreen({ navigation, route }) {
       }
 
       if (result.updatedActivity) {
+        analytics.events.activityEditedAI({ activityType: activity.type, subType: activity.subType, week: activity.week, hadChanges: true });
         // Apply the AI's changes to the activity
         const updates = {};
         if (result.updatedActivity.title) updates.title = result.updatedActivity.title;

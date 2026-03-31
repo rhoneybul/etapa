@@ -14,6 +14,8 @@ import { colors, fontFamily } from '../theme';
 import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan } from '../services/storageService';
 import { coachChat } from '../services/llmPlanService';
 import { api } from '../services/api';
+import { getCoach } from '../data/coaches';
+import analytics from '../services/analyticsService';
 
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
@@ -23,40 +25,50 @@ const FF = fontFamily;
  * Parse simple markdown (bold and italic) into an array of Text elements.
  * Supports **bold**, *italic*, and plain text.
  */
-function renderMarkdown(text, baseStyle) {
-  // Split on **bold** and *italic* patterns
+function renderMarkdown(text, baseStyle, onWeekPress) {
+  // Combined regex: **bold**, *italic*, and "Week N" / "week N" references
+  const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|[Ww]eek\s+(\d+))/g;
   const parts = [];
-  // Regex: match **bold** or *italic* or plain text
-  const regex = /(\*\*(.+?)\*\*|\*(.+?)\*)/g;
   let lastIndex = 0;
   let match;
 
   while ((match = regex.exec(text)) !== null) {
-    // Plain text before this match
     if (match.index > lastIndex) {
-      parts.push({ text: text.slice(lastIndex, match.index), style: null });
+      parts.push({ text: text.slice(lastIndex, match.index), type: 'plain' });
     }
     if (match[2]) {
-      // **bold**
-      parts.push({ text: match[2], style: { fontWeight: '700', fontFamily: FF.semibold } });
+      parts.push({ text: match[2], type: 'bold' });
     } else if (match[3]) {
-      // *italic*
-      parts.push({ text: match[3], style: { fontStyle: 'italic' } });
+      parts.push({ text: match[3], type: 'italic' });
+    } else if (match[4]) {
+      parts.push({ text: match[0], type: 'week', weekNum: parseInt(match[4], 10) });
     }
     lastIndex = match.index + match[0].length;
   }
-  // Trailing plain text
   if (lastIndex < text.length) {
-    parts.push({ text: text.slice(lastIndex), style: null });
+    parts.push({ text: text.slice(lastIndex), type: 'plain' });
   }
 
   if (parts.length === 0) return <Text style={baseStyle}>{text}</Text>;
 
   return (
     <Text style={baseStyle}>
-      {parts.map((p, i) =>
-        p.style ? <Text key={i} style={p.style}>{p.text}</Text> : p.text
-      )}
+      {parts.map((p, i) => {
+        if (p.type === 'bold') return <Text key={i} style={{ fontWeight: '700', fontFamily: FF.semibold }}>{p.text}</Text>;
+        if (p.type === 'italic') return <Text key={i} style={{ fontStyle: 'italic' }}>{p.text}</Text>;
+        if (p.type === 'week' && onWeekPress) {
+          return (
+            <Text
+              key={i}
+              style={{ color: '#D97706', textDecorationLine: 'underline' }}
+              onPress={() => onWeekPress(p.weekNum)}
+            >
+              {p.text}
+            </Text>
+          );
+        }
+        return p.text;
+      })}
     </Text>
   );
 }
@@ -90,6 +102,7 @@ export default function CoachChatScreen({ navigation, route }) {
         setGoal(goals.find(g => g.id === p.goalId) || null);
         const cfg = await getPlanConfig(p.configId);
         setPlanConfig(cfg);
+        analytics.events.coachChatOpened(cfg?.coachId || null, weekNum ? 'week' : 'plan');
 
         // Load saved chat — try local first, then server
         const saved = await AsyncStorage.getItem(chatKey(p.id, weekNum));
@@ -129,6 +142,8 @@ export default function CoachChatScreen({ navigation, route }) {
     if (!input.trim() || sending || !plan) return;
     const userMsg = { role: 'user', content: input.trim(), ts: Date.now() };
     const updated = [...messages, userMsg];
+    const userMsgCount = updated.filter(m => m.role === 'user').length;
+    analytics.events.chatMessageSent({ coachId: planConfig?.coachId || null, messageLength: input.trim().length, messageIndex: userMsgCount, scope: weekNum ? 'week' : 'plan' });
     setMessages(updated);
     setInput('');
     setSending(true);
@@ -176,11 +191,13 @@ export default function CoachChatScreen({ navigation, route }) {
         goalType: goal.goalType,
         eventName: goal.eventName,
         targetDistance: goal.targetDistance,
-        targetDate: goal.targetDate,
         targetElevation: goal.targetElevation,
+        targetTime: goal.targetTime,
+        targetDate: goal.targetDate,
         cyclingType: goal.cyclingType,
       } : null,
       fitnessLevel: planConfig?.fitnessLevel || null,
+      coachId: planConfig?.coachId || null,
       weekSummaries,
       allActivities,
     };
@@ -223,6 +240,7 @@ export default function CoachChatScreen({ navigation, route }) {
   const handleApplyUpdate = async () => {
     if (!pendingUpdate || !plan || applyingUpdate) return;
     setApplyingUpdate(true);
+    analytics.events.chatPlanUpdateApplied(planConfig?.coachId || null);
 
     try {
       const updated = { ...plan };
@@ -302,8 +320,25 @@ export default function CoachChatScreen({ navigation, route }) {
             <Text style={s.backArrow}>{'\u2190'}</Text>
           </TouchableOpacity>
           <View style={s.headerCenter}>
-            <Text style={s.headerTitle}>Ask your coach</Text>
-            <Text style={s.headerScope}>{scopeLabel}</Text>
+            {(() => {
+              const coach = getCoach(planConfig?.coachId);
+              return coach ? (
+                <>
+                  <View style={s.headerCoachRow}>
+                    <View style={[s.headerCoachDot, { backgroundColor: coach.avatarColor }]}>
+                      <Text style={s.headerCoachInitials}>{coach.avatarInitials}</Text>
+                    </View>
+                    <Text style={s.headerTitle}>{coach.name}</Text>
+                  </View>
+                  <Text style={s.headerScope}>{scopeLabel}</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={s.headerTitle}>Ask your coach</Text>
+                  <Text style={s.headerScope}>{scopeLabel}</Text>
+                </>
+              );
+            })()}
           </View>
           {messages.length > 0 ? (
             <TouchableOpacity onPress={handleClearChat} hitSlop={HIT}>
@@ -357,10 +392,14 @@ export default function CoachChatScreen({ navigation, route }) {
             {messages.map((msg, i) => (
               <View key={i} style={[s.bubble, msg.role === 'user' ? s.bubbleUser : s.bubbleCoach]}>
                 {msg.role === 'assistant' && (
-                  <Text style={s.bubbleLabel}>Coach</Text>
+                  <Text style={s.bubbleLabel}>{getCoach(planConfig?.coachId)?.name || 'Coach'}</Text>
                 )}
                 {msg.role === 'assistant'
-                  ? renderMarkdown(msg.content, [s.bubbleText])
+                  ? renderMarkdown(msg.content, [s.bubbleText], (wk) => {
+                      if (plan && wk >= 1 && wk <= plan.weeks) {
+                        navigation.navigate('WeekView', { week: wk, planId: plan.id });
+                      }
+                    })
                   : <Text style={[s.bubbleText, s.bubbleTextUser]}>{msg.content}</Text>
                 }
               </View>
@@ -368,7 +407,7 @@ export default function CoachChatScreen({ navigation, route }) {
 
             {sending && (
               <View style={[s.bubble, s.bubbleCoach]}>
-                <Text style={s.bubbleLabel}>Coach</Text>
+                <Text style={s.bubbleLabel}>{getCoach(planConfig?.coachId)?.name || 'Coach'}</Text>
                 <ActivityIndicator size="small" color={colors.primary} style={{ alignSelf: 'flex-start', marginTop: 4 }} />
               </View>
             )}
@@ -443,6 +482,9 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
   backArrow: { fontSize: 22, color: colors.text, width: 32 },
   headerCenter: { flex: 1, alignItems: 'center' },
+  headerCoachRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center' },
+  headerCoachDot: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  headerCoachInitials: { fontSize: 10, fontWeight: '700', color: '#fff', fontFamily: FF.semibold },
   headerTitle: { fontSize: 17, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
   headerScope: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary, marginTop: 1 },
   clearBtn: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, width: 40, textAlign: 'right' },

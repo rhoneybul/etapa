@@ -1,0 +1,2 @@
+-- Feedback is now handled via Linear issues — this migration is no longer needed.
+-- Kept as empty placeholder to preserve migration ordering.

@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { generatePlanWithLLM } from '../services/llmPlanService';
 import { savePlan } from '../services/storageService';
+import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
 
@@ -44,11 +45,22 @@ export default function PlanLoadingScreen({ navigation, route }) {
   }, []);
 
   const generate = async () => {
+    analytics.events.planGenerationStarted({ weeks: config.weeks, coachId: config.coachId });
     try {
       const plan = await generatePlanWithLLM(goal, config, setMessage);
       await savePlan(plan);
+      const totalKm = (plan.activities || []).reduce((s, a) => s + (a.distanceKm || 0), 0);
+      const totalMins = (plan.activities || []).reduce((s, a) => s + (a.durationMins || 0), 0);
+      analytics.events.planGenerated({
+        weeks: plan.weeks,
+        totalKm: Math.round(totalKm),
+        totalSessions: plan.activities?.length || 0,
+        totalHours: Math.round(totalMins / 60),
+        coachId: config.coachId,
+      });
       navigation.replace('PlanReady', { planId: plan.id });
     } catch (err) {
+      analytics.events.planGenerationFailed(err.message);
       setMessage('Something went wrong. Retrying...');
       setTimeout(() => navigation.goBack(), 2000);
     }

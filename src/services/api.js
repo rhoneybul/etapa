@@ -79,6 +79,10 @@ export const api = {
     save:   (planId, weekNum, messages) => request('PUT', `/api/chat-sessions/${planId}/${weekNum || 0}`, { messages }),
     delete: (planId, weekNum)           => request('DELETE', `/api/chat-sessions/${planId}/${weekNum || 0}`),
   },
+
+  feedback: {
+    submit: (feedback) => request('POST', '/api/feedback', feedback),
+  },
 };
 
 export default api;

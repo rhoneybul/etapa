@@ -12,9 +12,11 @@ import WizardShell, { CheckCard } from '../components/WizardShell';
 import { savePlanConfig } from '../services/storageService';
 import { suggestWeeks } from '../services/planGenerator';
 import DatePicker from '../components/DatePicker';
+import { COACHES, DEFAULT_COACH_ID } from '../data/coaches';
+import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
 
 const FITNESS_LEVEL_COLORS = {
   beginner:     '#22C55E',
@@ -127,6 +129,9 @@ export default function PlanConfigScreen({ navigation, route }) {
 
   // Currently selected activity type for tap-to-place
   const [selectedActivity, setSelectedActivity] = useState('outdoor');
+
+  // Coach selection
+  const [coachId, setCoachId] = useState(DEFAULT_COACH_ID);
 
   const toggleTrainingType = (type) => {
     setTrainingTypes(prev => {
@@ -273,12 +278,15 @@ export default function PlanConfigScreen({ navigation, route }) {
       if (!goal.targetDate && !planWeeks) return false;
       return true;
     }
+    if (step === 5) return !!coachId;
     return false;
   };
 
   const handleContinue = async () => {
     if (step < TOTAL_STEPS) {
+      if (step === 1) analytics.events.configStepCompleted(1, { fitnessLevel });
       if (step === 2) {
+        analytics.events.configStepCompleted(2, { trainingTypes });
         setSessionCounts(prev => {
           const next = {};
           trainingTypes.forEach(t => { next[t] = prev[t] || 1; });
@@ -287,6 +295,8 @@ export default function PlanConfigScreen({ navigation, route }) {
         setDayActivities({});
         setSelectedActivity(trainingTypes[0] || 'outdoor');
       }
+      if (step === 3) analytics.events.configStepCompleted(3, { sessionsPerWeek: totalSessions, daysPlaced: Object.keys(dayActivities).length });
+      if (step === 4) analytics.events.configStepCompleted(4, { planWeeks, startDateChoice });
       setStep(step + 1);
       return;
     }
@@ -306,9 +316,21 @@ export default function PlanConfigScreen({ navigation, route }) {
       availableDays,
       dayAssignments,
       fitnessLevel,
+      coachId,
       crossTrainingDays: crossTrainingDaysLegacy,
       crossTrainingDaysFull: crossTrainingDays,
       startDate: startDate.toISOString(),
+    });
+
+    analytics.events.configStepCompleted(5, { coachId });
+    analytics.events.coachSelected(coachId);
+    analytics.events.configCompleted({
+      fitnessLevel,
+      trainingTypes,
+      sessionsPerWeek: totalSessions,
+      weeks: config.weeks,
+      coachId,
+      daysPerWeek: availableDays.length,
     });
 
     navigation.replace('PlanLoading', { goal, config });
@@ -638,6 +660,67 @@ export default function PlanConfigScreen({ navigation, route }) {
         </ScrollView>
       );
     }
+
+    // ── Step 5: Choose your coach ────────────────────────────────────────────
+    if (step === 5) {
+      return (
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {COACHES.map(coach => {
+            const selected = coachId === coach.id;
+            return (
+              <TouchableOpacity
+                key={coach.id}
+                style={[s.coachCard, selected && s.coachCardSelected]}
+                onPress={() => setCoachId(coach.id)}
+                activeOpacity={0.8}
+              >
+                <View style={[s.coachAvatar, { backgroundColor: coach.avatarColor }]}>
+                  <Text style={s.coachAvatarText}>{coach.avatarInitials}</Text>
+                </View>
+                <View style={s.coachInfo}>
+                  <View style={s.coachNameRow}>
+                    <Text style={[s.coachName, selected && s.coachNameSelected]}>
+                      {coach.name} {coach.surname}
+                    </Text>
+                    <Text style={s.coachPronouns}>{coach.pronouns}</Text>
+                  </View>
+                  <Text style={[s.coachTagline, selected && s.coachTaglineSelected]}>
+                    {coach.tagline}
+                  </Text>
+                  <Text style={s.coachBio} numberOfLines={2}>{coach.bio}</Text>
+                  <View style={s.coachBadgeRow}>
+                    <View style={[s.coachLevelBadge, {
+                      backgroundColor: coach.level === 'beginner' ? 'rgba(34,197,94,0.12)'
+                        : coach.level === 'intermediate' ? 'rgba(217,119,6,0.12)'
+                        : 'rgba(239,68,68,0.12)'
+                    }]}>
+                      <Text style={[s.coachLevelText, {
+                        color: coach.level === 'beginner' ? '#22C55E'
+                          : coach.level === 'intermediate' ? '#D97706'
+                          : '#EF4444'
+                      }]}>
+                        {coach.level === 'beginner' ? 'Great for beginners'
+                          : coach.level === 'intermediate' ? 'Intermediate+'
+                          : 'Advanced+'}
+                      </Text>
+                    </View>
+                  </View>
+                  {selected && (
+                    <Text style={s.coachQuote}>"{coach.sampleQuote}"</Text>
+                  )}
+                </View>
+                {selected && (
+                  <View style={s.coachCheck}>
+                    <Text style={s.coachCheckMark}>{'\u2713'}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+          <View style={{ height: 20 }} />
+        </ScrollView>
+      );
+    }
   };
 
   // ── Date helpers ──────────────────────────────────────────────────────────
@@ -718,6 +801,7 @@ export default function PlanConfigScreen({ navigation, route }) {
     2: 'What types of training?',
     3: 'Build your week',
     4: goal.targetDate ? 'When should it start?' : 'Duration & start date',
+    5: 'Choose your coach',
   };
 
   const subtitles = {
@@ -725,6 +809,7 @@ export default function PlanConfigScreen({ navigation, route }) {
     2: 'Choose as many as you like',
     3: 'Set session counts, place them on days, and add any other training',
     4: goal.targetDate ? 'Pick a start date for your training plan' : 'How long and when to begin',
+    5: 'Pick a coaching personality that fits your style',
   };
 
   return (
@@ -893,4 +978,33 @@ const s = StyleSheet.create({
   },
   startDateSummaryLabel: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 },
   startDateSummaryText: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 20 },
+
+  // ── Coach selection (step 5) ────────────────────────────────────────────
+  coachCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    backgroundColor: colors.surface, borderRadius: 14, padding: 14, marginBottom: 10,
+    borderWidth: 1.5, borderColor: colors.border,
+  },
+  coachCardSelected: { borderColor: colors.primary, backgroundColor: 'rgba(217,119,6,0.04)' },
+  coachAvatar: {
+    width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
+  },
+  coachAvatarText: { fontSize: 15, fontWeight: '700', color: '#fff', fontFamily: FF.semibold },
+  coachInfo: { flex: 1 },
+  coachNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  coachName: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  coachNameSelected: { color: colors.primary },
+  coachPronouns: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint },
+  coachTagline: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, marginTop: 1 },
+  coachTaglineSelected: { color: colors.primary },
+  coachBio: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 17, marginTop: 4 },
+  coachBadgeRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
+  coachLevelBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  coachLevelText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold },
+  coachQuote: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, fontStyle: 'italic', marginTop: 6, lineHeight: 17 },
+  coachCheck: {
+    width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primary,
+    alignItems: 'center', justifyContent: 'center', marginTop: 4,
+  },
+  coachCheckMark: { fontSize: 13, color: '#fff', fontWeight: '700' },
 });

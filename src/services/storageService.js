@@ -117,6 +117,17 @@ export async function savePlanConfig(config) {
   return data;
 }
 
+export async function updatePlanConfig(id, updates) {
+  await ensureMigrated();
+  const configs = (await getJSON(KEYS.PLAN_CONFIGS)) || [];
+  const idx = configs.findIndex(c => c.id === id);
+  if (idx < 0) return null;
+  configs[idx] = { ...configs[idx], ...updates };
+  await setJSON(KEYS.PLAN_CONFIGS, configs);
+  api.planConfigs.update(id, configs[idx]).catch(() => {});
+  return configs[idx];
+}
+
 export async function getPlanConfig(id) {
   const configs = (await getJSON(KEYS.PLAN_CONFIGS)) || [];
   if (!id) return configs[configs.length - 1] || null;

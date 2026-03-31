@@ -1,13 +1,19 @@
 -- Etapa — update plan_configs to match client data model & add chat history
 -- Run via: supabase db push  (or paste into Supabase SQL editor)
 
+-- ── Update goals with elevation and target time ─────────────────────────────
+alter table public.goals
+  add column if not exists target_elevation numeric,
+  add column if not exists target_time      numeric;
+
 -- ── Update plan_configs with columns the client actually sends ──────────────
 alter table public.plan_configs
   add column if not exists sessions_per_week integer,
   add column if not exists session_types     jsonb,
   add column if not exists cross_training_days_full jsonb,
   add column if not exists indoor_trainer    boolean default false,
-  add column if not exists extra_notes       text;
+  add column if not exists extra_notes       text,
+  add column if not exists coach_id          text;
 
 -- ── Coach chat history ──────────────────────────────────────────────────────
 create table if not exists public.chat_sessions (

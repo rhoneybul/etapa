@@ -6,7 +6,56 @@
 const express = require('express');
 const router = express.Router();
 
+// Ensure fetch is available (Node 18+ has it, but polyfill for older runtimes)
+const _fetch = typeof globalThis.fetch === 'function'
+  ? globalThis.fetch
+  : (() => { const f = require('node-fetch'); return f.default || f; })();
+
 const getAnthropicKey = () => process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY || null;
+
+// ── Coach personas (server-side mirror of client coaches.js) ──────────────
+const COACHES = {
+  clara: {
+    name: 'Clara Moreno', pronouns: 'she/her',
+    bio: 'Former recreational cyclist turned coaching enthusiast. Clara believes everyone can fall in love with cycling. She focuses on building confidence and making training enjoyable.',
+    personality: 'Warm, patient, and genuinely encouraging. Celebrates every small win. Uses simple language, avoids jargon. Asks how the rider is feeling. Never pushes too hard — believes consistency beats intensity. Loves to add motivational notes and reminders to enjoy the ride.',
+  },
+  marcus: {
+    name: 'Marcus Webb', pronouns: 'he/him',
+    bio: 'Ex-military fitness instructor and competitive criterium racer. Marcus doesn\'t sugarcoat anything. He\'ll push you harder than you think possible — and you\'ll thank him for it.',
+    personality: 'Direct, demanding, and brutally honest. Doesn\'t waste words. Expects discipline and consistency. Will call out excuses. Uses short, punchy sentences. Pushes the rider to their limit. Believes in earned rest, not easy days. Says things like "No excuses" and "Pain is temporary, fitness is forever."',
+  },
+  aisha: {
+    name: 'Aisha Okonkwo', pronouns: 'she/her',
+    bio: 'Sports science PhD and data-driven coach. Aisha explains the why behind every session. She\'ll reference training zones, periodisation theory, and recovery science — but keeps it accessible.',
+    personality: 'Methodical, precise, and educational. Explains the science behind training decisions. References heart rate zones, TSS, CTL, and periodisation theory. Backs recommendations with evidence. Patient with questions. Loves data and tracking. Will suggest specific metrics to monitor.',
+  },
+  kai: {
+    name: 'Kai Tanaka', pronouns: 'they/them',
+    bio: 'Former touring cyclist who\'s ridden across three continents. Kai brings a zen-like calm to coaching — balancing the joy of cycling with structured training.',
+    personality: 'Calm, thoughtful, and balanced. Mixes structure with flexibility. Understands life gets in the way and adapts gracefully. Encourages mindfulness on the bike. Uses metaphors and storytelling. Believes training should enhance life, not dominate it. Good at managing stress and overtraining.',
+  },
+  elena: {
+    name: 'Elena Vasquez', pronouns: 'she/her',
+    bio: 'Former professional road racer with Grand Fondo podium finishes. Elena knows what it takes to peak for race day and will structure every week around that goal.',
+    personality: 'Passionate, intense, and race-focused. Every session has a purpose tied to the goal event. Thinks in terms of race strategy — pacing, nutrition, mental preparation. High energy and motivating but expects commitment. Will push hard in build weeks and enforce recovery. Uses racing terminology naturally.',
+  },
+  james: {
+    name: 'James Obi', pronouns: 'he/him',
+    bio: 'Club cyclist and group ride leader who got into coaching to help mates improve. James makes training feel like chatting with a friend who happens to know a lot about cycling.',
+    personality: 'Chatty, friendly, and relatable. Uses casual language and humour. Makes cycling culture references. Talks like a mate at the coffee stop. Very approachable for beginners. Will simplify complex concepts into everyday language. Loves talking about routes, bikes, and cycling culture alongside training.',
+  },
+};
+
+function getCoachPromptBlock(coachId) {
+  const coach = coachId ? COACHES[coachId] : null;
+  if (!coach) return '';
+  return `\n\n## Your coaching persona
+You are ${coach.name} (${coach.pronouns}).
+Bio: ${coach.bio}
+Your coaching style: ${coach.personality}
+IMPORTANT: Stay fully in character as ${coach.name.split(' ')[0]}. Your tone, word choice, and approach should consistently reflect the personality described above. Do NOT break character or speak generically.`;
+}
 
 // ── Rider level benchmarks ─────────────────────────────────────────────────
 const RIDER_BENCHMARKS = {
@@ -54,8 +103,9 @@ router.post('/generate-plan', async (req, res) => {
 
   try {
     const prompt = buildPlanPrompt(goal, config);
+    const systemWithCoach = COACH_SYSTEM_PROMPT + getCoachPromptBlock(config.coachId);
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await _fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -65,7 +115,7 @@ router.post('/generate-plan', async (req, res) => {
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 8192,
-        system: COACH_SYSTEM_PROMPT,
+        system: systemWithCoach,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -99,15 +149,16 @@ router.post('/edit-plan', async (req, res) => {
     return res.status(503).json({ error: 'AI editing not configured. Set ANTHROPIC_API_KEY.' });
   }
 
-  const { plan, goal, instruction, scope, currentWeek } = req.body;
+  const { plan, goal, instruction, scope, currentWeek, coachId } = req.body;
   if (!plan || !instruction) {
     return res.status(400).json({ error: 'Missing plan or instruction.' });
   }
 
   try {
     const prompt = buildEditPrompt(plan, goal, instruction, scope, currentWeek);
+    const systemWithCoach = COACH_SYSTEM_PROMPT + getCoachPromptBlock(coachId);
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await _fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -117,7 +168,7 @@ router.post('/edit-plan', async (req, res) => {
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 8192,
-        system: COACH_SYSTEM_PROMPT,
+        system: systemWithCoach,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -151,15 +202,16 @@ router.post('/edit-activity', async (req, res) => {
     return res.status(503).json({ error: 'AI not configured.' });
   }
 
-  const { activity, goal, instruction } = req.body;
+  const { activity, goal, instruction, coachId } = req.body;
   if (!activity || !instruction) {
     return res.status(400).json({ error: 'Missing activity or instruction.' });
   }
 
   try {
     const prompt = buildActivityEditPrompt(activity, goal, instruction);
+    const systemWithCoach = COACH_SYSTEM_PROMPT + getCoachPromptBlock(coachId);
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await _fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -169,7 +221,7 @@ router.post('/edit-activity', async (req, res) => {
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 2048,
-        system: COACH_SYSTEM_PROMPT,
+        system: systemWithCoach,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -274,6 +326,7 @@ IMPORTANT: These activities add training stress. Factor them into recovery plann
 ${goal.eventName ? `- Event: ${goal.eventName}` : ''}
 ${goal.targetDistance ? `- Target distance: ${goal.targetDistance} km` : ''}
 ${goal.targetElevation ? `- Target elevation: ${goal.targetElevation} m` : ''}
+${goal.targetTime ? `- Target finish time: ${goal.targetTime} hours` : ''}
 ${goal.targetDate ? `- Event/target date: ${goal.targetDate}` : ''}
 - Plan start date: ${config.startDate || 'next Monday'}
 
@@ -309,6 +362,21 @@ The athlete's goal event is ${goal.targetDistance} km. The plan MUST progressive
 - The longest ride each week should progressively increase: start at ~${Math.round(benchmark.maxComfortableDistKm * 0.5)} km and reach ~${Math.round(goal.targetDistance * 0.85)} km.
 - During taper, the longest ride drops back but the athlete should feel confident they can cover ${goal.targetDistance} km on event day.
 - If the plan has enough weeks, include at least 2 rides of 80%+ of target distance in the peak phase.` : ''}
+${goal.targetElevation ? `
+### ELEVATION REQUIREMENT
+The event has ${goal.targetElevation} m of elevation gain. The plan must prepare the athlete for sustained climbing:
+- Include hill repeat sessions from the Build phase onwards (e.g. "Hill Repeats: 4x5 min at tempo on a climb, recover descending")
+- Long rides should progressively include more climbing — mention "hilly route" or "include climbs" in descriptions
+- Build climbing endurance: start with shorter climbs and progress to longer sustained efforts
+- By peak phase, the athlete should be comfortable with rides that include significant climbing
+- Strength sessions should focus on leg strength and core stability to support climbing` : ''}
+${goal.targetTime ? `
+### TARGET TIME REQUIREMENT
+The athlete wants to complete the event in ${goal.targetTime} hours. This implies an average speed of ~${goal.targetDistance ? Math.round(goal.targetDistance / goal.targetTime) : '?'} km/h.
+- Include tempo and threshold sessions to build sustained power at race pace
+- Add race-pace simulation rides in the Build and Peak phases: "Ride ${goal.targetDistance ? Math.round(goal.targetDistance * 0.5) : 30}+ km at target pace (~${goal.targetDistance ? Math.round(goal.targetDistance / goal.targetTime) : '?'} km/h average)"
+- The plan should include pacing practice so the athlete learns to sustain their target speed
+- If the target time requires a higher speed than their current level, build progressively towards it` : ''}
 
 ### Ride variety
 - Mix: endurance (zone 2), tempo (zone 3–4), intervals (zone 4–5), recovery (zone 1)
@@ -443,9 +511,12 @@ router.post('/coach-chat', async (req, res) => {
   }
 
   try {
-    // Build system prompt with full plan context
-    let systemPrompt = COACH_SYSTEM_PROMPT + '\n\n';
-    systemPrompt += 'You are having a conversation with your athlete. Be warm, encouraging, and specific in your advice. ';
+    // Build system prompt with full plan context + coach persona
+    const coachId = context?.coachId || null;
+    let systemPrompt = COACH_SYSTEM_PROMPT;
+    systemPrompt += getCoachPromptBlock(coachId);
+    systemPrompt += '\n\n';
+    systemPrompt += 'You are having a conversation with your athlete. Be specific in your advice. ';
     systemPrompt += 'Keep responses concise (2-4 paragraphs max). Use plain language. ';
     systemPrompt += 'You can use **bold** for emphasis but avoid other markdown.\n';
     systemPrompt += 'IMPORTANT: Base your answers ONLY on the plan data provided below. Do not guess or invent session details.\n\n';
@@ -491,6 +562,7 @@ Only include the plan_update block when you are actually making changes. For que
         if (context.goal.eventName) systemPrompt += `- Event: ${context.goal.eventName}\n`;
         if (context.goal.targetDistance) systemPrompt += `- Target event distance: ${context.goal.targetDistance} km — this is the distance the athlete needs to be ready for\n`;
         if (context.goal.targetElevation) systemPrompt += `- Target elevation: ${context.goal.targetElevation} m\n`;
+        if (context.goal.targetTime) systemPrompt += `- Target finish time: ${context.goal.targetTime} hours\n`;
         if (context.goal.targetDate) systemPrompt += `- Event date: ${context.goal.targetDate}\n`;
         if (context.goal.cyclingType) systemPrompt += `- Cycling type: ${context.goal.cyclingType}\n`;
       }
@@ -527,7 +599,7 @@ Only include the plan_update block when you are actually making changes. For que
       content: m.content,
     }));
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await _fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

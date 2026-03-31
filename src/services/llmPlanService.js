@@ -134,7 +134,7 @@ function buildPlanFromActivities(activities, goal, config) {
  * Edit an existing plan with LLM.
  * scope: 'plan' (all future weeks), 'week' (single week)
  */
-export async function editPlanWithLLM(plan, goal, instruction, scope, onProgress) {
+export async function editPlanWithLLM(plan, goal, instruction, scope, onProgress, coachId) {
   const serverUrl = getServerUrl();
 
   // Calculate current week
@@ -150,7 +150,7 @@ export async function editPlanWithLLM(plan, goal, instruction, scope, onProgress
       const response = await fetch(`${serverUrl}/api/ai/edit-plan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan, goal, instruction, scope, currentWeek }),
+        body: JSON.stringify({ plan, goal, instruction, scope, currentWeek, coachId }),
       });
 
       if (response.ok) {
@@ -238,7 +238,7 @@ export async function editPlanWithLLM(plan, goal, instruction, scope, onProgress
 /**
  * Edit a single activity with AI — ask questions or request changes.
  */
-export async function editActivityWithAI(activity, goal, instruction, onProgress) {
+export async function editActivityWithAI(activity, goal, instruction, onProgress, coachId) {
   const serverUrl = getServerUrl();
 
   if (serverUrl) {
@@ -247,7 +247,7 @@ export async function editActivityWithAI(activity, goal, instruction, onProgress
       const response = await fetch(`${serverUrl}/api/ai/edit-activity`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activity, goal, instruction }),
+        body: JSON.stringify({ activity, goal, instruction, coachId }),
       });
 
       if (response.ok) {
@@ -289,10 +289,16 @@ export async function coachChat(messages, context) {
       return await response.json();
     }
 
-    console.warn('Coach chat server error:', response.status);
-    return { reply: 'Could not reach your AI coach right now. Please try again.' };
+    // Try to extract a useful error message from the server
+    let errMsg = 'Could not reach your AI coach right now. Please try again.';
+    try {
+      const errData = await response.json();
+      if (errData?.error) errMsg = errData.error;
+    } catch {}
+    console.warn('Coach chat server error:', response.status, errMsg);
+    return { reply: errMsg };
   } catch (err) {
     console.warn('Coach chat failed:', err);
-    return { reply: 'Could not connect to the server. Make sure it\'s running on the correct port.' };
+    return { reply: 'Could not connect to the server. Check your internet connection and try again.' };
   }
 }

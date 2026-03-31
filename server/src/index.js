@@ -8,6 +8,7 @@ const plansRouter       = require('./routes/plans');
 const planConfigsRouter  = require('./routes/planConfigs');
 const chatSessionsRouter = require('./routes/chatSessions');
 const aiRouter           = require('./routes/ai');
+const feedbackRouter     = require('./routes/feedback');
 
 const { authMiddleware } = require('./middleware/auth');
 
@@ -31,6 +32,7 @@ app.use('/api/plans', authMiddleware, plansRouter);
 app.use('/api/plan-configs', authMiddleware, planConfigsRouter);
 app.use('/api/chat-sessions', authMiddleware, chatSessionsRouter);
 app.use('/api/ai', aiRouter); // AI routes (no auth required for now)
+app.use('/api/feedback', authMiddleware, feedbackRouter);
 
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {

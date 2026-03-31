@@ -13,6 +13,7 @@ import { getCurrentUser } from '../services/authService';
 import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig } from '../services/storageService';
 import { isStravaConnected } from '../services/stravaService';
 import { getSessionColor, getSessionLabel, getMetricLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
+import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -64,6 +65,7 @@ export default function HomeScreen({ navigation }) {
         const daysSince = Math.floor((now - start) / (1000 * 60 * 60 * 24));
         const wk = Math.max(1, Math.min(Math.floor(daysSince / 7) + 1, plan.weeks));
         setCurrentWeek(wk);
+        analytics.events.planViewed({ planId: plan.id, currentWeek: wk, totalWeeks: plan.weeks });
       }
       if (plan?.configId) {
         const cfg = await getPlanConfig(plan.configId);
@@ -191,6 +193,9 @@ export default function HomeScreen({ navigation }) {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            const completed = (targetPlan.activities || []).filter(a => a.completed).length;
+            const total = (targetPlan.activities || []).length;
+            analytics.events.planDeleted({ weeks: targetPlan.weeks, completionPct: total > 0 ? Math.round((completed / total) * 100) : 0 });
             await deletePlan(targetPlan.id);
             setSelectedPlanIdx(0);
             await load();
@@ -235,6 +240,9 @@ export default function HomeScreen({ navigation }) {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            const completed = (targetPlan.activities || []).filter(a => a.completed).length;
+            const total = (targetPlan.activities || []).length;
+            analytics.events.planDeleted({ weeks: targetPlan.weeks, completionPct: total > 0 ? Math.round((completed / total) * 100) : 0 });
             await deletePlan(targetPlan.id);
             setSelectedPlanIdx(0);
             await load();
@@ -350,7 +358,7 @@ export default function HomeScreen({ navigation }) {
           <View style={s.weekStrip}>
             <View style={s.weekNav}>
               <TouchableOpacity
-                onPress={() => setCurrentWeek(Math.max(1, currentWeek - 1))}
+                onPress={() => { const to = Math.max(1, currentWeek - 1); analytics.events.weekNavigated('prev', currentWeek, to); setCurrentWeek(to); }}
                 disabled={currentWeek <= 1}
                 hitSlop={HIT}
               >
@@ -361,7 +369,7 @@ export default function HomeScreen({ navigation }) {
                 <Text style={s.monthLabel}>{monthLabel}</Text>
               </View>
               <TouchableOpacity
-                onPress={() => setCurrentWeek(Math.min(activePlan.weeks, currentWeek + 1))}
+                onPress={() => { const to = Math.min(activePlan.weeks, currentWeek + 1); analytics.events.weekNavigated('next', currentWeek, to); setCurrentWeek(to); }}
                 disabled={currentWeek >= activePlan.weeks}
                 hitSlop={HIT}
               >
@@ -474,6 +482,22 @@ export default function HomeScreen({ navigation }) {
               <Text style={s.viewBtnArrow}>{'\u203A'}</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Ask coach */}
+          {activePlan && (
+            <TouchableOpacity
+              style={s.coachBtn}
+              onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
+              activeOpacity={0.7}
+            >
+              <View style={[s.coachDot, { backgroundColor: colors.primary }]} />
+              <View style={s.coachBtnTextWrap}>
+                <Text style={s.coachBtnLabel}>Ask your coach</Text>
+                <Text style={s.coachBtnHint}>Get advice, tweak your plan, or change your schedule</Text>
+              </View>
+              <Text style={s.coachBtnArrow}>{'\u203A'}</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Manage plan — bottom of screen */}
           {activePlan && (
@@ -638,6 +662,19 @@ const s = StyleSheet.create({
   },
   viewBtnText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
   viewBtnArrow: { fontSize: 20, color: colors.primary, fontWeight: '300' },
+
+  // Coach button
+  coachBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginHorizontal: 20, marginBottom: 16,
+    paddingHorizontal: 16, paddingVertical: 14, borderRadius: 14,
+    backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border,
+  },
+  coachDot: { width: 10, height: 10, borderRadius: 5 },
+  coachBtnTextWrap: { flex: 1 },
+  coachBtnLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  coachBtnHint: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 1 },
+  coachBtnArrow: { fontSize: 22, color: colors.textFaint, fontWeight: '300' },
 
   // Goal card
   goalCard: {

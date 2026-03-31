@@ -12,6 +12,7 @@ import { colors, fontFamily } from '../theme';
 import { getPlan, getPlans, getWeekActivities, getWeekProgress, markActivityComplete, getWeekMonthLabel, getGoals, getPlanConfig, updateActivity } from '../services/storageService';
 import { editActivityWithAI } from '../services/llmPlanService';
 import { getSessionColor, getSessionLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
+import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
 const DAY_LABELS_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -52,6 +53,9 @@ export default function WeekViewScreen({ navigation, route }) {
     const unsub = navigation.addListener('focus', loadPlan);
     return unsub;
   }, [navigation, loadPlan]);
+  useEffect(() => {
+    if (plan) analytics.events.weekViewed(week, plan.id);
+  }, [week, plan?.id]);
 
   const onRefresh = async () => { setRefreshing(true); await loadPlan(); setRefreshing(false); };
 
@@ -65,7 +69,18 @@ export default function WeekViewScreen({ navigation, route }) {
   const byDay = {};
   activities.forEach(a => { const d = a.dayOfWeek ?? 0; if (!byDay[d]) byDay[d] = []; byDay[d].push(a); });
 
-  const handleComplete = async (id) => { await markActivityComplete(id); await loadPlan(); };
+  const handleComplete = async (id) => {
+    const act = activities.find(a => a.id === id);
+    if (act) {
+      if (!act.completed) {
+        analytics.events.activityCompleted({ activityType: act.type, subType: act.subType, effort: act.effort, week, distanceKm: act.distanceKm, durationMins: act.durationMins });
+      } else {
+        analytics.events.activityUncompleted({ activityType: act.type, week });
+      }
+    }
+    await markActivityComplete(id);
+    await loadPlan();
+  };
 
   // Inline activity edit via AI
   const handleActivityEdit = async () => {
@@ -75,6 +90,7 @@ export default function WeekViewScreen({ navigation, route }) {
     try {
       const result = await editActivityWithAI(editingActivity, goal, actEditText.trim(), (msg) => setActEditStatus(msg));
       if (result.updatedActivity) {
+        analytics.events.activityEditedAI({ activityType: editingActivity.type, subType: editingActivity.subType, week, hadChanges: true });
         await updateActivity(editingActivity.id, result.updatedActivity);
         setActEditStatus('Updated!');
         await loadPlan();
@@ -108,7 +124,7 @@ export default function WeekViewScreen({ navigation, route }) {
 
         {/* Week selector */}
         <View style={s.weekNav}>
-          <TouchableOpacity onPress={() => setWeek(Math.max(1, week - 1))} disabled={week <= 1} style={s.weekNavBtn}>
+          <TouchableOpacity onPress={() => { const to = Math.max(1, week - 1); analytics.events.weekNavigated('prev', week, to); setWeek(to); }} disabled={week <= 1} style={s.weekNavBtn}>
             <Text style={[s.weekNavArrow, week <= 1 && s.weekNavDisabled]}>{'\u2039'}</Text>
           </TouchableOpacity>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.weekPills}>
@@ -118,7 +134,7 @@ export default function WeekViewScreen({ navigation, route }) {
               </TouchableOpacity>
             ))}
           </ScrollView>
-          <TouchableOpacity onPress={() => setWeek(Math.min(plan.weeks, week + 1))} disabled={week >= plan.weeks} style={s.weekNavBtn}>
+          <TouchableOpacity onPress={() => { const to = Math.min(plan.weeks, week + 1); analytics.events.weekNavigated('next', week, to); setWeek(to); }} disabled={week >= plan.weeks} style={s.weekNavBtn}>
             <Text style={[s.weekNavArrow, week >= plan.weeks && s.weekNavDisabled]}>{'\u203A'}</Text>
           </TouchableOpacity>
         </View>

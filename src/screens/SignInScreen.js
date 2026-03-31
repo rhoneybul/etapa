@@ -8,6 +8,7 @@ import { colors, fontFamily } from '../theme';
 import {
   signInWithGoogle, onAuthStateChange, getSession, isSupabaseConfigured,
 } from '../services/authService';
+import analytics from '../services/analyticsService';
 
 const { width, height } = Dimensions.get('window');
 const FF = fontFamily;
@@ -51,7 +52,11 @@ export default function SignInScreen({ navigation }) {
     });
 
     const unsubscribe = onAuthStateChange(user => {
-      if (user) navigation.replace('Home');
+      if (user) {
+        analytics.events.signedIn('google');
+        analytics.identify(user.id, { email: user.email });
+        navigation.replace('Home');
+      }
     });
     return unsubscribe;
   }, []);

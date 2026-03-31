@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { getPlans, getGoals, getWeekActivities } from '../services/storageService';
+import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
 
@@ -29,13 +30,90 @@ function getPlanPhases(totalWeeks) {
   return phases.filter(p => p.start <= p.end);
 }
 
+// Week flag colours and labels
+const WEEK_FLAGS = {
+  recovery: { label: 'Recovery', color: '#64748B', bg: 'rgba(100,116,139,0.12)' },
+  peak:     { label: 'Peak week', color: '#EF4444', bg: 'rgba(239,68,68,0.12)' },
+  longest:  { label: 'Longest ride', color: '#D97706', bg: 'rgba(217,119,6,0.12)' },
+  taper:    { label: 'Taper', color: '#22C55E', bg: 'rgba(34,197,94,0.12)' },
+  test:     { label: 'Test week', color: '#6366F1', bg: 'rgba(99,102,241,0.12)' },
+};
+
+function getWeekFlags(weekVolumes, phases, plan) {
+  const flags = weekVolumes.map(() => []);
+  const maxKmWeek = weekVolumes.reduce((best, v, i) => v.totalKm > (weekVolumes[best]?.totalKm || 0) ? i : best, 0);
+
+  // Find the week with the single longest ride
+  let longestRideKm = 0;
+  let longestRideWeek = -1;
+  for (let w = 0; w < plan.weeks; w++) {
+    const acts = (plan.activities || []).filter(a => a.week === w + 1);
+    acts.forEach(a => {
+      if ((a.distanceKm || 0) > longestRideKm) {
+        longestRideKm = a.distanceKm;
+        longestRideWeek = w;
+      }
+    });
+  }
+
+  weekVolumes.forEach((v, i) => {
+    const weekNum = i + 1;
+    const isDeload = weekNum % 4 === 0;
+    const phase = phases.find(p => weekNum >= p.start && weekNum <= p.end);
+
+    if (isDeload) flags[i].push('recovery');
+    if (phase?.name === 'Taper') flags[i].push('taper');
+    if (phase?.name === 'Peak' && i === maxKmWeek) flags[i].push('peak');
+    else if (phase?.name === 'Peak' && !isDeload) flags[i].push('peak');
+    if (i === longestRideWeek && longestRideKm > 0) flags[i].push('longest');
+  });
+
+  return flags;
+}
+
+// Ride type colors for stacked bars
+const RIDE_TYPE_COLORS = {
+  endurance:  '#D97706', // amber (primary)
+  tempo:      '#F59E0B', // lighter amber
+  intervals:  '#EF4444', // red
+  recovery:   '#64748B', // slate
+  indoor:     '#6366F1', // indigo
+  strength:   '#A855F7', // purple
+  other:      '#94A3B8', // muted
+};
+
+const RIDE_TYPE_LABELS = {
+  endurance: 'Endurance',
+  tempo: 'Tempo',
+  intervals: 'Intervals',
+  recovery: 'Recovery',
+  indoor: 'Indoor',
+  strength: 'Strength',
+};
+
 function getWeekVolume(plan, weekNum) {
   const acts = getWeekActivities(plan, weekNum);
   const totalKm = acts.reduce((s, a) => s + (a.distanceKm || 0), 0);
   const totalMins = acts.reduce((s, a) => s + (a.durationMins || 0), 0);
   const rideCount = acts.filter(a => a.type === 'ride').length;
   const strengthCount = acts.filter(a => a.type === 'strength').length;
-  return { totalKm, totalMins, rideCount, strengthCount, total: acts.length };
+
+  // Break down km by ride subType for stacked bars
+  const byType = {};
+  acts.forEach(a => {
+    const key = a.type === 'strength' ? 'strength' : (a.subType || 'other');
+    const km = a.distanceKm || 0;
+    if (!byType[key]) byType[key] = 0;
+    byType[key] += km;
+  });
+
+  // Convert to ordered segments array
+  const typeOrder = ['endurance', 'tempo', 'intervals', 'indoor', 'recovery', 'strength', 'other'];
+  const segments = typeOrder
+    .filter(t => byType[t] > 0)
+    .map(t => ({ type: t, km: byType[t], color: RIDE_TYPE_COLORS[t] || RIDE_TYPE_COLORS.other }));
+
+  return { totalKm, totalMins, rideCount, strengthCount, total: acts.length, segments };
 }
 
 export default function PlanOverviewScreen({ navigation, route }) {
@@ -50,6 +128,7 @@ export default function PlanOverviewScreen({ navigation, route }) {
     if (p) {
       const goals = await getGoals();
       setGoal(goals.find(g => g.id === p.goalId) || null);
+      analytics.events.planOverviewViewed(p.id, p.weeks);
     }
   }, [planId]);
 
@@ -64,6 +143,7 @@ export default function PlanOverviewScreen({ navigation, route }) {
   const phases = getPlanPhases(plan.weeks);
   const weekVolumes = Array.from({ length: plan.weeks }, (_, i) => getWeekVolume(plan, i + 1));
   const maxKm = Math.max(...weekVolumes.map(v => v.totalKm), 1);
+  const weekFlags = getWeekFlags(weekVolumes, phases, plan);
 
   const now = new Date();
   const start = new Date(plan.startDate);
@@ -107,13 +187,12 @@ export default function PlanOverviewScreen({ navigation, route }) {
               </View>
             </View>
 
-            {/* Volume chart */}
+            {/* Volume chart — stacked by ride type */}
             <View style={s.chartCard}>
               <Text style={s.chartTitle}>Weekly volume</Text>
               <View style={s.chartArea}>
                 {weekVolumes.map((v, i) => {
-                  const h = maxKm > 0 ? Math.max(4, (v.totalKm / maxKm) * 100) : 4;
-                  const isDeload = (i + 1) % 4 === 0;
+                  const totalH = maxKm > 0 ? Math.max(4, (v.totalKm / maxKm) * 100) : 4;
                   const isCurrent = i + 1 === currentWeek;
                   return (
                     <TouchableOpacity
@@ -122,12 +201,28 @@ export default function PlanOverviewScreen({ navigation, route }) {
                       onPress={() => navigation.navigate('WeekView', { week: i + 1, planId: plan.id })}
                       activeOpacity={0.7}
                     >
-                      <View style={[
-                        s.chartBar,
-                        { height: h },
-                        isDeload && s.chartBarDeload,
-                        isCurrent && s.chartBarCurrent,
-                      ]} />
+                      {v.totalKm > 0 && (
+                        <Text style={[s.chartBarLabel, isCurrent && { color: '#22C55E' }]}>
+                          {Math.round(v.totalKm)}
+                        </Text>
+                      )}
+                      <View style={[s.chartBarStack, { height: totalH }, isCurrent && s.chartBarStackCurrent]}>
+                        {v.segments.length > 0 ? v.segments.map((seg, si) => {
+                          const segH = v.totalKm > 0 ? (seg.km / v.totalKm) * totalH : 0;
+                          return (
+                            <View
+                              key={si}
+                              style={{
+                                width: '100%',
+                                height: segH,
+                                backgroundColor: seg.color,
+                              }}
+                            />
+                          );
+                        }) : (
+                          <View style={{ width: '100%', height: totalH, backgroundColor: '#64748B', borderRadius: 3 }} />
+                        )}
+                      </View>
                     </TouchableOpacity>
                   );
                 })}
@@ -148,15 +243,19 @@ export default function PlanOverviewScreen({ navigation, route }) {
                   );
                 })}
               </View>
+              {/* Dynamic legend based on ride types present */}
               <View style={s.chartLegend}>
-                <View style={s.legendItem}>
-                  <View style={[s.legendDot, { backgroundColor: colors.primary }]} />
-                  <Text style={s.legendText}>Training</Text>
-                </View>
-                <View style={s.legendItem}>
-                  <View style={[s.legendDot, { backgroundColor: '#64748B' }]} />
-                  <Text style={s.legendText}>Deload</Text>
-                </View>
+                {(() => {
+                  const typesUsed = new Set();
+                  weekVolumes.forEach(v => v.segments.forEach(seg => typesUsed.add(seg.type)));
+                  const typeOrder = ['endurance', 'tempo', 'intervals', 'indoor', 'recovery', 'strength'];
+                  return typeOrder.filter(t => typesUsed.has(t)).map(t => (
+                    <View key={t} style={s.legendItem}>
+                      <View style={[s.legendDot, { backgroundColor: RIDE_TYPE_COLORS[t] }]} />
+                      <Text style={s.legendText}>{RIDE_TYPE_LABELS[t]}</Text>
+                    </View>
+                  ));
+                })()}
                 <View style={s.legendItem}>
                   <View style={[s.legendDot, { backgroundColor: '#22C55E' }]} />
                   <Text style={s.legendText}>Current</Text>
@@ -206,9 +305,20 @@ export default function PlanOverviewScreen({ navigation, route }) {
                     <Text style={[s.weekNum, isCurrent && s.weekNumCurrent]}>{weekNum}</Text>
                   </View>
                   <View style={s.weekInfo}>
-                    <Text style={[s.weekTitle, isPast && s.weekTitlePast]}>
-                      {isDeload ? 'Recovery week' : `Week ${weekNum}`}
-                    </Text>
+                    <View style={s.weekTitleRow}>
+                      <Text style={[s.weekTitle, isPast && s.weekTitlePast]}>
+                        {isDeload ? 'Recovery week' : `Week ${weekNum}`}
+                      </Text>
+                      {weekFlags[i].map((flag, fi) => {
+                        const f = WEEK_FLAGS[flag];
+                        if (!f) return null;
+                        return (
+                          <View key={fi} style={[s.weekFlagBadge, { backgroundColor: f.bg }]}>
+                            <Text style={[s.weekFlagText, { color: f.color }]}>{f.label}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
                     <Text style={s.weekDate}>{dateRange}</Text>
                     <Text style={s.weekMeta}>
                       {v.rideCount > 0 ? `${v.rideCount} ride${v.rideCount > 1 ? 's' : ''}` : ''}
@@ -263,11 +373,11 @@ const s = StyleSheet.create({
 
   chartCard: { backgroundColor: colors.surface, marginHorizontal: 16, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border },
   chartTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 12 },
-  chartArea: { flexDirection: 'row', alignItems: 'flex-end', height: 110, gap: 2 },
+  chartArea: { flexDirection: 'row', alignItems: 'flex-end', height: 125, gap: 2 },
   chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
-  chartBar: { width: '80%', backgroundColor: colors.primary, borderRadius: 3, minHeight: 4 },
-  chartBarDeload: { backgroundColor: '#64748B' },
-  chartBarCurrent: { backgroundColor: '#22C55E' },
+  chartBarStack: { width: '80%', borderRadius: 3, minHeight: 4, overflow: 'hidden' },
+  chartBarStackCurrent: { borderWidth: 1.5, borderColor: '#22C55E' },
+  chartBarLabel: { fontSize: 9, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, marginBottom: 2 },
   chartDateRow: { flexDirection: 'row', marginTop: 6, gap: 2 },
   chartDateCol: { flex: 1, alignItems: 'center' },
   chartDateLabel: { fontSize: 9, fontWeight: '500', fontFamily: FF.medium, color: colors.textFaint },
@@ -294,6 +404,9 @@ const s = StyleSheet.create({
   weekNum: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted },
   weekNumCurrent: { color: colors.primary },
   weekInfo: { flex: 1 },
+  weekTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  weekFlagBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  weekFlagText: { fontSize: 9, fontWeight: '600', fontFamily: FF.semibold, textTransform: 'uppercase', letterSpacing: 0.3 },
   weekTitle: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
   weekTitlePast: { color: colors.textMuted },
   weekDate: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: colors.primary, marginTop: 1, opacity: 0.8 },

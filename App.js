@@ -8,6 +8,7 @@ import { useFonts, Poppins_300Light, Poppins_400Regular, Poppins_500Medium, Popp
 import * as SplashScreen from 'expo-splash-screen';
 import { getSession } from './src/services/authService';
 import { hydrateFromServer } from './src/services/storageService';
+import analytics from './src/services/analyticsService';
 
 import SignInScreen        from './src/screens/SignInScreen';
 import HomeScreen          from './src/screens/HomeScreen';
@@ -21,6 +22,8 @@ import CalendarScreen      from './src/screens/CalendarScreen';
 import PlanOverviewScreen  from './src/screens/PlanOverviewScreen';
 import PlanReadyScreen     from './src/screens/PlanReadyScreen';
 import CoachChatScreen     from './src/screens/CoachChatScreen';
+import FeedbackScreen      from './src/screens/FeedbackScreen';
+import ChangeCoachScreen   from './src/screens/ChangeCoachScreen';
 import WebWrapper          from './src/components/WebWrapper';
 
 const Stack = createStackNavigator();
@@ -44,6 +47,8 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function App() {
   const [initialRoute, setInitialRoute] = useState(null);
+  const navigationRef = React.useRef(null);
+  const routeNameRef = React.useRef(null);
 
   const [fontsLoaded] = useFonts({
     Poppins_300Light,
@@ -53,8 +58,10 @@ export default function App() {
   });
 
   useEffect(() => {
+    analytics.init();
     getSession().then(async session => {
       if (session) {
+        analytics.identify(session.user?.id, { email: session.user?.email });
         // Hydrate local storage from server if empty (e.g. fresh install)
         await hydrateFromServer().catch(() => {});
       }
@@ -75,7 +82,20 @@ export default function App() {
       <StatusBar style="light" />
       <WebWrapper>
         <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-          <NavigationContainer>
+          <NavigationContainer
+              ref={navigationRef}
+              onReady={() => {
+                routeNameRef.current = navigationRef.current?.getCurrentRoute()?.name;
+              }}
+              onStateChange={() => {
+                const prev = routeNameRef.current;
+                const current = navigationRef.current?.getCurrentRoute()?.name;
+                if (current && current !== prev) {
+                  analytics.events.screenViewed(current);
+                }
+                routeNameRef.current = current;
+              }}
+            >
             <Stack.Navigator
               initialRouteName={initialRoute}
               screenOptions={{
@@ -96,6 +116,8 @@ export default function App() {
               <Stack.Screen name="CoachChat"      component={CoachChatScreen} />
               <Stack.Screen name="ActivityDetail" component={ActivityDetailScreen} />
               <Stack.Screen name="Settings"       component={SettingsScreen} />
+              <Stack.Screen name="Feedback"       component={FeedbackScreen} />
+              <Stack.Screen name="ChangeCoach"    component={ChangeCoachScreen} />
             </Stack.Navigator>
           </NavigationContainer>
         </View>

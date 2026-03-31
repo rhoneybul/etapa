@@ -10,6 +10,7 @@ import { colors, fontFamily } from '../theme';
 import WizardShell, { OptionCard } from '../components/WizardShell';
 import DatePicker from '../components/DatePicker';
 import { saveGoal } from '../services/storageService';
+import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
 const TOTAL_STEPS = 3;
@@ -34,6 +35,7 @@ export default function GoalSetupScreen({ navigation }) {
   const [planName, setPlanName] = useState('');
   const [targetDistance, setTargetDistance] = useState('');
   const [targetElevation, setTargetElevation] = useState('');
+  const [targetTime, setTargetTime] = useState('');
   const [targetDate, setTargetDate] = useState('');
   const [eventName, setEventName] = useState('');
 
@@ -51,6 +53,8 @@ export default function GoalSetupScreen({ navigation }) {
 
   const handleContinue = async () => {
     if (step < TOTAL_STEPS) {
+      if (step === 1) analytics.events.goalStepCompleted(1, { cyclingType });
+      if (step === 2) analytics.events.goalStepCompleted(2, { goalType });
       setStep(step + 1);
       return;
     }
@@ -66,9 +70,19 @@ export default function GoalSetupScreen({ navigation }) {
       goalType,
       targetDistance: targetDistance ? parseFloat(targetDistance) : null,
       targetElevation: targetElevation ? parseFloat(targetElevation) : null,
+      targetTime: targetTime ? parseFloat(targetTime) : null,
       targetDate: targetDate || null,
       eventName: eventName || null,
       planName: autoName,
+    });
+
+    analytics.events.goalStepCompleted(3, { goalType, hasEventName: !!eventName, hasTargetDate: !!targetDate });
+    analytics.events.goalCreated({
+      cyclingType,
+      goalType,
+      targetDistance: targetDistance ? parseFloat(targetDistance) : null,
+      targetDate: targetDate || null,
+      eventName: eventName || null,
     });
 
     navigation.replace('PlanConfig', { goal });
@@ -163,6 +177,17 @@ export default function GoalSetupScreen({ navigation }) {
                 returnKeyType="done"
                 onSubmitEditing={() => Keyboard.dismiss()}
               />
+              <Text style={s.fieldLabel}>Target time (hours, optional)</Text>
+              <TextInput
+                style={s.input}
+                placeholder="e.g. 5.5"
+                placeholderTextColor={colors.textFaint}
+                value={targetTime}
+                onChangeText={setTargetTime}
+                keyboardType="decimal-pad"
+                returnKeyType="done"
+                onSubmitEditing={() => Keyboard.dismiss()}
+              />
               <DatePicker
                 label="Race date (optional)"
                 value={targetDate}
@@ -181,6 +206,28 @@ export default function GoalSetupScreen({ navigation }) {
                 value={targetDistance}
                 onChangeText={setTargetDistance}
                 keyboardType="numeric"
+                returnKeyType="done"
+                onSubmitEditing={() => Keyboard.dismiss()}
+              />
+              <Text style={s.fieldLabel}>Elevation gain (m, optional)</Text>
+              <TextInput
+                style={s.input}
+                placeholder="e.g. 1500"
+                placeholderTextColor={colors.textFaint}
+                value={targetElevation}
+                onChangeText={setTargetElevation}
+                keyboardType="numeric"
+                returnKeyType="done"
+                onSubmitEditing={() => Keyboard.dismiss()}
+              />
+              <Text style={s.fieldLabel}>Target time (hours, optional)</Text>
+              <TextInput
+                style={s.input}
+                placeholder="e.g. 4"
+                placeholderTextColor={colors.textFaint}
+                value={targetTime}
+                onChangeText={setTargetTime}
+                keyboardType="decimal-pad"
                 returnKeyType="done"
                 onSubmitEditing={() => Keyboard.dismiss()}
               />

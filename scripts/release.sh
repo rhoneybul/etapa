@@ -48,4 +48,4 @@ echo "Building + submitting to TestFlight (preview profile)..."
 echo ""
 
 # Build and auto-submit to TestFlight
-npx eas build --platform ios --profile preview --auto-submit --non-interactive
+npx eas build --platform ios --profile production --auto-submit
