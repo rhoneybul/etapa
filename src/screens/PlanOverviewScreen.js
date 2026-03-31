@@ -5,12 +5,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
-import { getPlans, getGoals, savePlan, getWeekActivities } from '../services/storageService';
-import { editPlanWithLLM } from '../services/llmPlanService';
+import { getPlans, getGoals, getWeekActivities } from '../services/storageService';
 
 const FF = fontFamily;
 
@@ -43,9 +42,6 @@ export default function PlanOverviewScreen({ navigation, route }) {
   const planId = route.params?.planId;
   const [plan, setPlan] = useState(null);
   const [goal, setGoal] = useState(null);
-  const [editText, setEditText] = useState('');
-  const [editing, setEditing] = useState(false);
-  const [editStatus, setEditStatus] = useState('');
 
   const load = useCallback(async () => {
     const plans = await getPlans();
@@ -62,23 +58,6 @@ export default function PlanOverviewScreen({ navigation, route }) {
     const unsub = navigation.addListener('focus', load);
     return unsub;
   }, [navigation, load]);
-
-  const handleEditPlan = async () => {
-    if (!editText.trim() || !plan || editing) return;
-    setEditing(true);
-    setEditStatus('Thinking...');
-    try {
-      const updated = await editPlanWithLLM(plan, goal, editText.trim(), 'plan', (msg) => setEditStatus(msg));
-      await savePlan(updated);
-      setPlan(updated);
-      setEditText('');
-      setEditStatus('');
-    } catch (err) {
-      setEditStatus('Failed to update plan');
-      setTimeout(() => setEditStatus(''), 3000);
-    }
-    setEditing(false);
-  };
 
   if (!plan) return null;
 
@@ -209,6 +188,13 @@ export default function PlanOverviewScreen({ navigation, route }) {
               const isDeload = weekNum % 4 === 0;
               const isCurrent = weekNum === currentWeek;
               const isPast = weekNum < currentWeek;
+              const weekStart = new Date(start);
+              weekStart.setDate(weekStart.getDate() + i * 7);
+              const weekEnd = new Date(weekStart);
+              weekEnd.setDate(weekEnd.getDate() + 6);
+              const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+              const fmtDate = (d) => `${d.getDate()} ${monthNames[d.getMonth()]}`;
+              const dateRange = `${fmtDate(weekStart)} \u2013 ${fmtDate(weekEnd)}`;
               return (
                 <TouchableOpacity
                   key={i}
@@ -223,6 +209,7 @@ export default function PlanOverviewScreen({ navigation, route }) {
                     <Text style={[s.weekTitle, isPast && s.weekTitlePast]}>
                       {isDeload ? 'Recovery week' : `Week ${weekNum}`}
                     </Text>
+                    <Text style={s.weekDate}>{dateRange}</Text>
                     <Text style={s.weekMeta}>
                       {v.rideCount > 0 ? `${v.rideCount} ride${v.rideCount > 1 ? 's' : ''}` : ''}
                       {v.rideCount > 0 && v.strengthCount > 0 ? ' \u00B7 ' : ''}
@@ -237,33 +224,20 @@ export default function PlanOverviewScreen({ navigation, route }) {
             <View style={{ height: 100 }} />
           </ScrollView>
 
-          {/* AI Edit bar */}
+          {/* Bottom bar */}
           <View style={s.editBar}>
-            {editStatus ? (
-              <View style={s.editStatusRow}>
-                {editing && <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 8 }} />}
-                <Text style={s.editStatusText}>{editStatus}</Text>
+            <TouchableOpacity
+              style={s.coachBtn}
+              onPress={() => navigation.navigate('CoachChat', { planId: plan.id })}
+              activeOpacity={0.7}
+            >
+              <View style={[s.coachDot, { backgroundColor: colors.primary }]} />
+              <View style={s.coachBtnTextWrap}>
+                <Text style={s.coachBtnLabel}>Ask coach about your plan</Text>
+                <Text style={s.coachBtnHint}>Get advice or ask your coach to restructure your plan</Text>
               </View>
-            ) : null}
-            <View style={s.editInputRow}>
-              <TextInput
-                style={s.editInput}
-                value={editText}
-                onChangeText={setEditText}
-                placeholder={'Adjust your plan\u2026'}
-                placeholderTextColor={colors.textFaint}
-                multiline
-                editable={!editing}
-              />
-              <TouchableOpacity
-                style={[s.editSendBtn, (!editText.trim() || editing) && s.editSendBtnDisabled]}
-                onPress={handleEditPlan}
-                disabled={!editText.trim() || editing}
-              >
-                <Text style={s.editSendText}>{'\u2191'}</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={s.editHint}>e.g. "Make week 6 easier" or "Add more intervals"</Text>
+              <Text style={s.coachBtnArrow}>{'\u203A'}</Text>
+            </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -322,20 +296,19 @@ const s = StyleSheet.create({
   weekInfo: { flex: 1 },
   weekTitle: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
   weekTitlePast: { color: colors.textMuted },
+  weekDate: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: colors.primary, marginTop: 1, opacity: 0.8 },
   weekMeta: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 1 },
   weekArrow: { fontSize: 20, color: colors.textFaint, fontWeight: '300' },
 
-  editBar: { paddingHorizontal: 16, paddingVertical: 10, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
-  editStatusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  editStatusText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
-  editInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-  editInput: {
-    flex: 1, backgroundColor: colors.bg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
-    color: colors.text, fontFamily: FF.regular, fontSize: 14, maxHeight: 80,
-    borderWidth: 1, borderColor: colors.border,
+  editBar: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
+  coachBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14,
+    backgroundColor: colors.bg, borderWidth: 1.5, borderColor: colors.border,
   },
-  editSendBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  editSendBtnDisabled: { opacity: 0.3 },
-  editSendText: { fontSize: 18, color: '#fff', fontWeight: '700' },
-  editHint: { fontSize: 10, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 6 },
+  coachDot: { width: 10, height: 10, borderRadius: 5 },
+  coachBtnTextWrap: { flex: 1 },
+  coachBtnLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  coachBtnHint: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 1 },
+  coachBtnArrow: { fontSize: 22, color: colors.textFaint, fontWeight: '300' },
 });

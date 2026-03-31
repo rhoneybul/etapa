@@ -1,32 +1,30 @@
 /**
  * Activity detail screen — shows full info for a single activity.
  * Editable metrics (distance, duration, effort, day).
+ * AI chat: ask questions or request changes to the session.
  * Changes cascade to adjust future activities proportionally.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert, ActivityIndicator,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert,
+  ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
-import { getPlans, markActivityComplete, updateActivity, savePlan } from '../services/storageService';
+import { getPlans, getGoals, markActivityComplete, updateActivity, savePlan } from '../services/storageService';
+import { editActivityWithAI } from '../services/llmPlanService';
+import { getSessionColor, getSessionLabel, SESSION_COLORS, EFFORT_LABELS as EFFORT_GUIDE_LABELS } from '../utils/sessionLabels';
 
 const FF = fontFamily;
 
-const EFFORT_COLORS = {
-  easy:     '#22C55E',
-  moderate: '#F59E0B',
-  hard:     '#EF4444',
-  recovery: '#60A5FA',
-  max:      '#DC2626',
-};
+const EFFORT_COLORS = SESSION_COLORS;
 
 const EFFORT_LABELS = {
-  easy:     'Easy — Zone 2',
-  moderate: 'Moderate — Zone 3-4',
-  hard:     'Hard — Zone 4-5',
-  recovery: 'Recovery — Zone 1',
-  max:      'All out — Zone 5+',
+  easy:     'Easy \u2014 Zone 2',
+  moderate: 'Moderate \u2014 Zone 3-4',
+  hard:     'Hard \u2014 Zone 4-5',
+  recovery: 'Recovery \u2014 Zone 1',
+  max:      'All out \u2014 Zone 5+',
 };
 
 const EFFORT_LIST = ['easy', 'moderate', 'hard', 'recovery', 'max'];
@@ -36,45 +34,39 @@ const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 function generateRideTips(activity) {
   const tips = [];
   const dur = activity.durationMins || 60;
-  const dist = activity.distanceKm || 0;
   const effort = activity.effort || 'moderate';
   const subType = activity.subType || 'endurance';
 
-  // Hydration
   if (dur <= 45) {
-    tips.push({ icon: '\uD83D\uDCA7', title: 'Hydration', text: 'A single bottle of water should be enough for this session. Sip regularly rather than waiting until you feel thirsty.' });
+    tips.push({ title: 'Hydration', text: 'A single bottle of water should be enough. Sip regularly rather than waiting until you feel thirsty.' });
   } else if (dur <= 90) {
-    tips.push({ icon: '\uD83D\uDCA7', title: 'Hydration', text: 'Bring one full bottle (500\u2013750 ml). Aim for a few sips every 15 minutes. Add an electrolyte tab if it\'s warm out.' });
+    tips.push({ title: 'Hydration', text: 'Bring one full bottle (500\u2013750 ml). Aim for a few sips every 15 minutes. Add an electrolyte tab if it\'s warm.' });
   } else {
-    tips.push({ icon: '\uD83D\uDCA7', title: 'Hydration', text: `For a ${dur}-minute ride, bring two bottles or plan a refill stop. Drink 500\u2013750 ml per hour and use electrolytes to replace what you lose through sweat.` });
+    tips.push({ title: 'Hydration', text: `For a ${dur}-minute ride, bring two bottles or plan a refill stop. Drink 500\u2013750 ml per hour and use electrolytes.` });
   }
 
-  // Fueling
   if (dur <= 60) {
-    tips.push({ icon: '\uD83C\uDF4C', title: 'Fueling', text: 'You shouldn\'t need to eat during the ride. Make sure you\'ve had a light meal 1\u20132 hours beforehand.' });
+    tips.push({ title: 'Fueling', text: 'You shouldn\'t need to eat during the ride. Make sure you\'ve had a light meal 1\u20132 hours beforehand.' });
   } else if (dur <= 120) {
-    tips.push({ icon: '\uD83C\uDF4C', title: 'Fueling', text: 'Pack a banana or energy bar. Start eating around the 45-minute mark \u2014 aim for 30\u201360g of carbs per hour to keep your energy steady.' });
+    tips.push({ title: 'Fueling', text: 'Pack a banana or energy bar. Start eating around the 45-minute mark \u2014 aim for 30\u201360g of carbs per hour.' });
   } else {
-    tips.push({ icon: '\uD83C\uDF4C', title: 'Fueling', text: `Long ride! Aim for 60\u201390g carbs per hour. Pack gels, bars, or real food like rice cakes. Start fueling early \u2014 don't wait until you feel depleted.` });
+    tips.push({ title: 'Fueling', text: `Long ride! Aim for 60\u201390g carbs per hour. Pack gels, bars, or real food. Start fueling early \u2014 don't wait until you feel depleted.` });
   }
 
-  // Pre-ride stretching
-  tips.push({ icon: '\uD83E\uDDD8', title: 'Before the ride', text: 'Do 5 minutes of dynamic stretching: leg swings, hip circles, and gentle squats. Skip static stretches \u2014 save those for after.' });
+  tips.push({ title: 'Before the ride', text: 'Do 5 minutes of dynamic stretching: leg swings, hip circles, and gentle squats. Skip static stretches \u2014 save those for after.' });
 
-  // Post-ride stretching
   if (effort === 'hard' || effort === 'max' || dur > 90) {
-    tips.push({ icon: '\uD83E\uDD38', title: 'After the ride', text: 'This is a tough session \u2014 spend 10\u201315 minutes stretching afterwards. Focus on quads, hamstrings, hip flexors, and lower back. Foam rolling helps too.' });
+    tips.push({ title: 'After the ride', text: 'This is a tough session \u2014 spend 10\u201315 minutes stretching afterwards. Focus on quads, hamstrings, hip flexors, and lower back.' });
   } else {
-    tips.push({ icon: '\uD83E\uDD38', title: 'After the ride', text: 'Cool down with 5\u201310 minutes of gentle stretching. Hit your quads, hamstrings, and calves while they\'re still warm.' });
+    tips.push({ title: 'After the ride', text: 'Cool down with 5\u201310 minutes of gentle stretching. Hit your quads, hamstrings, and calves while they\'re still warm.' });
   }
 
-  // Effort-specific tip
   if (subType === 'intervals' || effort === 'hard' || effort === 'max') {
-    tips.push({ icon: '\u26A1', title: 'Interval tip', text: 'Warm up for at least 10 minutes before hitting any hard efforts. Your body needs time to shift into high gear. Cool down with easy spinning afterwards.' });
+    tips.push({ title: 'Interval tip', text: 'Warm up for at least 10 minutes before hitting any hard efforts. Cool down with easy spinning afterwards.' });
   } else if (subType === 'endurance' || effort === 'easy') {
-    tips.push({ icon: '\uD83D\uDCAC', title: 'Pacing tip', text: 'Keep it conversational \u2014 you should be able to talk in full sentences. If you can\'t, ease off. Building your aerobic base is about consistency, not speed.' });
+    tips.push({ title: 'Pacing tip', text: 'Keep it conversational \u2014 you should be able to talk in full sentences. If you can\'t, ease off.' });
   } else if (subType === 'recovery') {
-    tips.push({ icon: '\uD83D\uDCA4', title: 'Recovery tip', text: 'This is an active recovery session. Keep the effort genuinely easy \u2014 resist the temptation to push. Your legs are rebuilding from harder efforts.' });
+    tips.push({ title: 'Recovery tip', text: 'Keep the effort genuinely easy \u2014 resist the temptation to push. Your legs are rebuilding from harder efforts.' });
   }
 
   return tips;
@@ -84,17 +76,28 @@ export default function ActivityDetailScreen({ navigation, route }) {
   const { activityId } = route.params;
   const [activity, setActivity] = useState(null);
   const [plan, setPlan] = useState(null);
+  const [goal, setGoal] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editValues, setEditValues] = useState({});
   const [showTips, setShowTips] = useState(false);
 
+  // AI chat state
+  const [chatText, setChatText] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatStatus, setChatStatus] = useState('');
+  const [chatMessages, setChatMessages] = useState([]); // { role: 'user'|'coach', text: string }
+
+  const scrollRef = useRef(null);
+
   const loadActivity = async () => {
     const plans = await getPlans();
+    const goals = await getGoals();
     for (const p of plans) {
       const a = p.activities?.find(act => act.id === activityId);
       if (a) {
         setPlan(p);
         setActivity(a);
+        setGoal(goals.find(g => g.id === p.goalId) || null);
         setEditValues({
           distanceKm: a.distanceKm?.toString() || '',
           durationMins: a.durationMins?.toString() || '',
@@ -122,7 +125,6 @@ export default function ActivityDetailScreen({ navigation, route }) {
     const oldDist = activity.distanceKm;
     const oldDur = activity.durationMins;
 
-    // Update this activity
     await updateActivity(activityId, {
       distanceKm: newDist,
       durationMins: newDur,
@@ -130,17 +132,14 @@ export default function ActivityDetailScreen({ navigation, route }) {
       dayOfWeek: newDay,
     });
 
-    // Cascade: adjust future activities of the same type proportionally
     if (plan && (oldDist !== newDist || oldDur !== newDur)) {
       const distRatio = oldDist && newDist ? newDist / oldDist : 1;
       const durRatio = oldDur && newDur ? newDur / oldDur : 1;
 
-      // Only cascade if the change is meaningful (> 5%)
       if (Math.abs(distRatio - 1) > 0.05 || Math.abs(durRatio - 1) > 0.05) {
         const updatedPlan = { ...plan, activities: plan.activities.map(a => {
-          // Only adjust future activities of the same type
-          if (a.id === activityId) return a; // already updated
-          if (a.week < activity.week) return a; // past
+          if (a.id === activityId) return a;
+          if (a.week < activity.week) return a;
           if (a.week === activity.week && (a.dayOfWeek ?? 0) <= (activity.dayOfWeek ?? 0)) return a;
           if (a.type !== activity.type) return a;
           if (a.completed) return a;
@@ -152,7 +151,6 @@ export default function ActivityDetailScreen({ navigation, route }) {
           };
         })};
 
-        // Re-apply the direct edit to this activity
         const idx = updatedPlan.activities.findIndex(a => a.id === activityId);
         if (idx >= 0) {
           updatedPlan.activities[idx] = {
@@ -172,6 +170,48 @@ export default function ActivityDetailScreen({ navigation, route }) {
     await loadActivity();
   };
 
+  // AI chat handler
+  const handleChatSend = async () => {
+    if (!chatText.trim() || chatLoading) return;
+    const msg = chatText.trim();
+    setChatText('');
+    Keyboard.dismiss();
+
+    setChatMessages(prev => [...prev, { role: 'user', text: msg }]);
+    setChatLoading(true);
+
+    try {
+      const result = await editActivityWithAI(activity, goal, msg, setChatStatus);
+
+      if (result.answer) {
+        setChatMessages(prev => [...prev, { role: 'coach', text: result.answer }]);
+      }
+
+      if (result.updatedActivity) {
+        // Apply the AI's changes to the activity
+        const updates = {};
+        if (result.updatedActivity.title) updates.title = result.updatedActivity.title;
+        if (result.updatedActivity.description) updates.description = result.updatedActivity.description;
+        if (result.updatedActivity.notes !== undefined) updates.notes = result.updatedActivity.notes;
+        if (result.updatedActivity.durationMins) updates.durationMins = result.updatedActivity.durationMins;
+        if (result.updatedActivity.distanceKm !== undefined) updates.distanceKm = result.updatedActivity.distanceKm;
+        if (result.updatedActivity.effort) updates.effort = result.updatedActivity.effort;
+        if (result.updatedActivity.subType !== undefined) updates.subType = result.updatedActivity.subType;
+
+        await updateActivity(activityId, updates);
+        await loadActivity();
+      }
+    } catch (err) {
+      setChatMessages(prev => [...prev, { role: 'coach', text: 'Sorry, something went wrong. Try again.' }]);
+    }
+
+    setChatLoading(false);
+    setChatStatus('');
+
+    // Scroll to bottom
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+  };
+
   if (!activity) return null;
 
   const isRide = activity.type === 'ride';
@@ -181,6 +221,7 @@ export default function ActivityDetailScreen({ navigation, route }) {
   return (
     <View style={s.container}>
       <SafeAreaView style={s.safe}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {/* Header */}
         <View style={s.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={HIT}>
@@ -198,12 +239,12 @@ export default function ActivityDetailScreen({ navigation, route }) {
           )}
         </View>
 
-        <ScrollView style={s.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={scrollRef} style={s.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Title card */}
           <View style={s.titleCard}>
             <View style={[s.typeTag, { backgroundColor: effortColor + '20' }]}>
               <Text style={[s.typeTagText, { color: effortColor }]}>
-                {isRide ? (activity.subType || 'ride') : activity.type}
+                {isStrength ? 'strength' : (activity.subType || 'ride')}
               </Text>
             </View>
             <Text style={s.title}>{activity.title}</Text>
@@ -228,6 +269,8 @@ export default function ActivityDetailScreen({ navigation, route }) {
                       keyboardType="numeric"
                       placeholder="km"
                       placeholderTextColor={colors.textFaint}
+                      returnKeyType="done"
+                      onSubmitEditing={() => Keyboard.dismiss()}
                     />
                     <Text style={s.metricUnit}>km</Text>
                   </View>
@@ -240,6 +283,8 @@ export default function ActivityDetailScreen({ navigation, route }) {
                       keyboardType="numeric"
                       placeholder="min"
                       placeholderTextColor={colors.textFaint}
+                      returnKeyType="done"
+                      onSubmitEditing={() => Keyboard.dismiss()}
                     />
                     <Text style={s.metricUnit}>min</Text>
                   </View>
@@ -292,6 +337,8 @@ export default function ActivityDetailScreen({ navigation, route }) {
                       onChangeText={v => setEditValues(prev => ({ ...prev, durationMins: v }))}
                       keyboardType="numeric"
                       placeholderTextColor={colors.textFaint}
+                      returnKeyType="done"
+                      onSubmitEditing={() => Keyboard.dismiss()}
                     />
                     <Text style={s.metricUnit}>min</Text>
                   </View>
@@ -354,21 +401,20 @@ export default function ActivityDetailScreen({ navigation, route }) {
                   onPress={() => setShowTips(true)}
                   activeOpacity={0.8}
                 >
-                  <Text style={s.tipsBtnIcon}>{'\uD83D\uDCA1'}</Text>
                   <Text style={s.tipsBtnText}>Show ride tips</Text>
                   <Text style={s.tipsBtnArrow}>{'\u203A'}</Text>
                 </TouchableOpacity>
               ) : (
                 <View style={s.tipsCard}>
                   <View style={s.tipsHeader}>
-                    <Text style={s.tipsTitle}>{'\uD83D\uDCA1'} Ride tips</Text>
+                    <Text style={s.tipsTitle}>Ride tips</Text>
                     <TouchableOpacity onPress={() => setShowTips(false)} hitSlop={HIT}>
                       <Text style={s.tipsHide}>Hide</Text>
                     </TouchableOpacity>
                   </View>
                   {generateRideTips(activity).map((tip, idx) => (
                     <View key={idx} style={s.tipRow}>
-                      <Text style={s.tipIcon}>{tip.icon}</Text>
+                      <View style={s.tipDot} />
                       <View style={s.tipContent}>
                         <Text style={s.tipTitle}>{tip.title}</Text>
                         <Text style={s.tipText}>{tip.text}</Text>
@@ -402,17 +448,64 @@ export default function ActivityDetailScreen({ navigation, route }) {
             </View>
           )}
 
-          <View style={{ height: 40 }} />
+          {/* AI chat history */}
+          {chatMessages.length > 0 && (
+            <View style={s.chatHistory}>
+              <Text style={s.chatHistoryTitle}>Coach chat</Text>
+              {chatMessages.map((msg, idx) => (
+                <View key={idx} style={[s.chatBubble, msg.role === 'user' ? s.chatBubbleUser : s.chatBubbleCoach]}>
+                  <Text style={[s.chatBubbleText, msg.role === 'user' ? s.chatBubbleTextUser : s.chatBubbleTextCoach]}>
+                    {msg.text}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <View style={{ height: 80 }} />
         </ScrollView>
 
-        {/* Bottom action */}
-        {!activity.completed && !isEditing && (
+        {/* AI chat bar — always visible */}
+        {!isEditing && (
+          <View style={s.chatBar}>
+            {chatStatus ? (
+              <View style={s.chatStatusRow}>
+                {chatLoading && <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 8 }} />}
+                <Text style={s.chatStatusText}>{chatStatus}</Text>
+              </View>
+            ) : null}
+            <View style={s.chatInputRow}>
+              <TextInput
+                style={s.chatInput}
+                value={chatText}
+                onChangeText={setChatText}
+                placeholder="Ask your coach anything\u2026"
+                placeholderTextColor={colors.textFaint}
+                editable={!chatLoading}
+                returnKeyType="send"
+                onSubmitEditing={handleChatSend}
+                multiline={false}
+              />
+              <TouchableOpacity
+                style={[s.chatSendBtn, (!chatText.trim() || chatLoading) && s.chatSendBtnDisabled]}
+                onPress={handleChatSend}
+                disabled={!chatText.trim() || chatLoading}
+              >
+                <Text style={s.chatSendText}>{'\u2191'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Bottom action — mark complete */}
+        {!activity.completed && isEditing && (
           <View style={s.bottomBar}>
             <TouchableOpacity style={s.completeBtn} onPress={handleComplete} activeOpacity={0.85}>
               <Text style={s.completeBtnText}>Mark as complete</Text>
             </TouchableOpacity>
           </View>
         )}
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
   );
@@ -456,7 +549,6 @@ const s = StyleSheet.create({
   },
   metricUnit: { fontSize: 10, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 2, textAlign: 'center' },
 
-  // Day selector
   daySelectorCard: {
     backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 12, borderRadius: 16, padding: 16,
     borderWidth: 1, borderColor: colors.border,
@@ -468,7 +560,6 @@ const s = StyleSheet.create({
   dayPillText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
   dayPillTextActive: { color: '#fff' },
 
-  // Cascade notice
   cascadeNotice: { marginHorizontal: 20, marginBottom: 12 },
   cascadeText: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, fontStyle: 'italic' },
 
@@ -489,7 +580,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 12, borderRadius: 16, padding: 16,
     borderWidth: 1, borderColor: colors.border,
   },
-  tipsBtnIcon: { fontSize: 18 },
+  tipsBtnDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary },
   tipsBtnText: { flex: 1, fontSize: 15, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
   tipsBtnArrow: { fontSize: 20, color: colors.primary, fontWeight: '300' },
 
@@ -502,7 +593,7 @@ const s = StyleSheet.create({
   tipsHide: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
 
   tipRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
-  tipIcon: { fontSize: 18, width: 26, textAlign: 'center', marginTop: 1 },
+  tipDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary, marginTop: 7 },
   tipContent: { flex: 1 },
   tipTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, marginBottom: 3 },
   tipText: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 19 },
@@ -521,6 +612,29 @@ const s = StyleSheet.create({
   stravaLabel: { fontSize: 12, fontWeight: '600', fontFamily: FF.semibold, color: '#FB923C', marginBottom: 4 },
   stravaId: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
   stravaMeta: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, marginTop: 4 },
+
+  // AI chat
+  chatHistory: { marginHorizontal: 16, marginBottom: 12 },
+  chatHistoryTitle: { fontSize: 12, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10 },
+  chatBubble: { borderRadius: 14, padding: 14, marginBottom: 8, maxWidth: '85%' },
+  chatBubbleUser: { backgroundColor: colors.primary, alignSelf: 'flex-end', borderBottomRightRadius: 4 },
+  chatBubbleCoach: { backgroundColor: colors.surface, alignSelf: 'flex-start', borderBottomLeftRadius: 4, borderWidth: 1, borderColor: colors.border },
+  chatBubbleText: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, lineHeight: 20 },
+  chatBubbleTextUser: { color: '#fff' },
+  chatBubbleTextCoach: { color: colors.textMid },
+
+  chatBar: { paddingHorizontal: 16, paddingVertical: 10, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
+  chatStatusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  chatStatusText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+  chatInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  chatInput: {
+    flex: 1, backgroundColor: colors.bg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+    color: colors.text, fontFamily: FF.regular, fontSize: 14,
+    borderWidth: 1, borderColor: colors.border, maxHeight: 80,
+  },
+  chatSendBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  chatSendBtnDisabled: { opacity: 0.3 },
+  chatSendText: { fontSize: 18, color: '#fff', fontWeight: '700' },
 
   bottomBar: { paddingHorizontal: 20, paddingBottom: 12, paddingTop: 8 },
   completeBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center', shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 4 },

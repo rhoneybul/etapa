@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0C0D10"
+      "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": false,
@@ -22,7 +22,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/icons/android/playstore-icon.png",
-        "backgroundColor": "#0C0D10"
+        "backgroundColor": "#000000"
       },
       "package": "com.etapa.app"
     },
@@ -34,7 +34,7 @@
       "shortName": "Etapa",
       "description": "Make me a plan",
       "themeColor": "#D97706",
-      "backgroundColor": "#0C0D10",
+      "backgroundColor": "#000000",
       "preferRelatedApplications": false
     },
     "plugins": [

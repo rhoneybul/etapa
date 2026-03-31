@@ -1,6 +1,7 @@
 {
   "name": "etapa",
   "version": "0.1.0",
+  "main": "index.js",
   "private": true,
   "scripts": {
     "dev": "npm run dev:server & npm run dev:app",

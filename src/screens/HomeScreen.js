@@ -10,26 +10,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { getCurrentUser } from '../services/authService';
-import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan } from '../services/storageService';
+import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig } from '../services/storageService';
 import { isStravaConnected } from '../services/stravaService';
+import { getSessionColor, getSessionLabel, getMetricLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
 
 const FF = fontFamily;
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const CYCLING_LABELS = { road: 'Road', gravel: 'Gravel', mtb: 'MTB', mixed: 'Mixed' };
-
-const EFFORT_COLORS = {
-  easy:     '#22C55E',
-  moderate: '#D97706',
-  hard:     '#EF4444',
-  recovery: '#64748B',
-  max:      '#DC2626',
-};
-
-const TYPE_ICONS = {
-  ride:     '\uD83D\uDEB4',
-  strength: '\uD83D\uDCAA',
-  rest:     '\uD83D\uDCA4',
-};
 
 /**
  * Compute total plan distance and weekly hours from activities.
@@ -57,6 +44,7 @@ export default function HomeScreen({ navigation }) {
   const [selectedPlanIdx, setSelectedPlanIdx] = useState(0);
   const [currentWeek, setCurrentWeek] = useState(1);
   const [stravaOk, setStravaOk] = useState(false);
+  const [activePlanConfig, setActivePlanConfig] = useState(null);
 
   const load = useCallback(async () => {
     const [user, p, g, strava] = await Promise.all([
@@ -76,6 +64,10 @@ export default function HomeScreen({ navigation }) {
         const daysSince = Math.floor((now - start) / (1000 * 60 * 60 * 24));
         const wk = Math.max(1, Math.min(Math.floor(daysSince / 7) + 1, plan.weeks));
         setCurrentWeek(wk);
+      }
+      if (plan?.configId) {
+        const cfg = await getPlanConfig(plan.configId);
+        setActivePlanConfig(cfg);
       }
     }
   }, [selectedPlanIdx]);
@@ -154,19 +146,28 @@ export default function HomeScreen({ navigation }) {
 
   const todayActivities = weekActivities.filter(a => a.dayOfWeek === todayIdx);
 
-  // Structured summary for a day's activities: returns array of { icon, label, color }
+  const crossTraining = activePlanConfig?.crossTrainingDaysFull || {};
+
+  // Structured summary for a day's activities: returns array of { label, metric, color }
   const getDayItems = (dayIdx) => {
+    const items = [];
     const acts = activitiesByDay[dayIdx];
-    if (!acts || acts.length === 0) return [];
-    return acts.map(a => {
-      const icon = TYPE_ICONS[a.type] || '\uD83D\uDEB4';
-      let label = '';
-      if (a.distanceKm) label = `${a.distanceKm}km`;
-      else if (a.durationMins) label = `${a.durationMins}m`;
-      else label = a.type === 'strength' ? 'str' : a.type?.slice(0, 3) || '';
-      const typeColor = a.type === 'strength' ? '#8B5CF6' : a.type === 'ride' && a.title?.toLowerCase().includes('indoor') ? '#3B82F6' : colors.primary;
-      return { icon, label, color: typeColor };
-    });
+    if (acts && acts.length > 0) {
+      acts.forEach(a => items.push({
+        label: getSessionLabel(a),
+        metric: getMetricLabel(a),
+        color: getSessionColor(a),
+      }));
+    }
+    // Add cross-training items
+    const ctItems = getCrossTrainingForDay(crossTraining, dayIdx);
+    ctItems.forEach(ct => items.push({
+      label: ct.label,
+      metric: null,
+      color: CROSS_TRAINING_COLOR,
+      isCrossTraining: true,
+    }));
+    return items;
   };
 
   const handleDayPress = (dayIdx) => {
@@ -266,7 +267,7 @@ export default function HomeScreen({ navigation }) {
           <TouchableOpacity
             style={s.newPlanBtn}
             onPress={() => navigation.navigate('GoalSetup')}
-            activeOpacity={0.85}
+            activeOpacity={0.8}
           >
             <Text style={s.newPlanBtnPlus}>+</Text>
             <Text style={s.newPlanBtnText}>New plan</Text>
@@ -324,19 +325,6 @@ export default function HomeScreen({ navigation }) {
                   );
                 })}
               </ScrollView>
-              {/* Delete / rename for active plan */}
-              <View style={s.planActions}>
-                <TouchableOpacity
-                  style={s.planActionBtn}
-                  onPress={() => {
-                    const p = plans[selectedPlanIdx];
-                    const g = p ? goals.find(gl => gl.id === p.goalId) : null;
-                    if (p) handlePlanLongPress(p, g);
-                  }}
-                >
-                  <Text style={s.planActionText}>{'\u2022\u2022\u2022'} Manage plan</Text>
-                </TouchableOpacity>
-              </View>
             </View>
           )}
 
@@ -396,8 +384,10 @@ export default function HomeScreen({ navigation }) {
                     </View>
                     {items.map((item, idx) => (
                       <View key={idx} style={s.daySummaryRow}>
-                        <Text style={s.daySummaryIcon}>{item.icon}</Text>
-                        <Text style={[s.daySummaryLabel, { color: item.color }]}>{item.label}</Text>
+                        <View style={[s.daySummaryDot, { backgroundColor: item.color }]} />
+                        <Text style={[s.daySummaryLabel, { color: item.color }]}>
+                          {item.metric || item.label}
+                        </Text>
                       </View>
                     ))}
                   </CellWrap>
@@ -410,8 +400,8 @@ export default function HomeScreen({ navigation }) {
               onPress={() => navigation.navigate('Calendar')}
               activeOpacity={0.8}
             >
-              <Text style={s.calendarBtnIcon}>{'\uD83D\uDCC5'}</Text>
               <Text style={s.calendarBtnText}>View calendar</Text>
+              <Text style={s.calendarBtnArrow}>{'\u203A'}</Text>
             </TouchableOpacity>
           </View>
 
@@ -426,10 +416,14 @@ export default function HomeScreen({ navigation }) {
                   onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
                   activeOpacity={0.8}
                 >
-                  <View style={[s.todayAccent, { backgroundColor: EFFORT_COLORS[activity.effort] || colors.primary }]} />
+                  <View style={[s.todayAccent, { backgroundColor: getSessionColor(activity) }]} />
                   <View style={s.todayBody}>
                     <View style={s.todayTitleRow}>
-                      <Text style={s.todayIcon}>{TYPE_ICONS[activity.type] || '\uD83D\uDEB4'}</Text>
+                      <View style={s.todayTypeCol}>
+                        <View style={[s.todayTypeBadge, { backgroundColor: getSessionColor(activity) + '18' }]}>
+                          <Text style={[s.todayTypeText, { color: getSessionColor(activity) }]}>{getSessionLabel(activity)}</Text>
+                        </View>
+                      </View>
                       <View style={s.todayTitleWrap}>
                         <Text style={s.todayTitle}>{activity.title}</Text>
                         <Text style={s.todayMeta}>
@@ -481,6 +475,22 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
+          {/* Manage plan — bottom of screen */}
+          {activePlan && (
+            <View style={s.planActions}>
+              <TouchableOpacity
+                style={s.planActionBtn}
+                onPress={() => {
+                  const p = plans[selectedPlanIdx];
+                  const g = p ? goals.find(gl => gl.id === p.goalId) : null;
+                  if (p) handlePlanLongPress(p, g);
+                }}
+              >
+                <Text style={s.planActionText}>{'\u2022\u2022\u2022'} Manage plan</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           <View style={{ height: 40 }} />
         </ScrollView>
       </SafeAreaView>
@@ -514,15 +524,15 @@ const s = StyleSheet.create({
 
   // New plan button
   newPlanBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginHorizontal: 20, marginBottom: 12,
-    paddingVertical: 12, paddingHorizontal: 16,
-    borderRadius: 14, borderWidth: 1.5,
-    borderColor: colors.primary, borderStyle: 'dashed',
-    backgroundColor: 'rgba(217,119,6,0.06)',
+    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+    marginLeft: 20, marginBottom: 12,
+    paddingVertical: 7, paddingHorizontal: 14,
+    borderRadius: 20, borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  newPlanBtnPlus: { fontSize: 20, fontWeight: '300', color: colors.primary },
-  newPlanBtnText: { fontSize: 15, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+  newPlanBtnPlus: { fontSize: 16, fontWeight: '400', color: colors.primary },
+  newPlanBtnText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
 
   // Plan tabs
   planTabsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 8 },
@@ -543,9 +553,9 @@ const s = StyleSheet.create({
   planTabTitleActive: { color: '#fff' },
   planTabMeta: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
   planTabMetaActive: { color: 'rgba(255,255,255,0.7)' },
-  planActions: { paddingHorizontal: 20, marginTop: 4, marginBottom: 4 },
-  planActionBtn: { alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 2 },
-  planActionText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
+  planActions: { paddingHorizontal: 20, marginTop: 8, alignItems: 'center' },
+  planActionBtn: { paddingVertical: 10, paddingHorizontal: 16 },
+  planActionText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.textFaint },
 
   // Strava connect
   stravaCard: {
@@ -577,8 +587,8 @@ const s = StyleSheet.create({
     marginTop: 12, paddingVertical: 8, borderRadius: 10,
     backgroundColor: 'rgba(217,119,6,0.08)', borderWidth: 1, borderColor: 'rgba(217,119,6,0.15)',
   },
-  calendarBtnIcon: { fontSize: 14 },
   calendarBtnText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+  calendarBtnArrow: { fontSize: 18, color: colors.primary, fontWeight: '300' },
   dayRow: { flexDirection: 'row', justifyContent: 'space-around' },
   dayCell: { alignItems: 'center', minWidth: 40, gap: 3 },
   dayLabelText: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
@@ -587,8 +597,8 @@ const s = StyleSheet.create({
   dayCircleToday: { backgroundColor: colors.primary },
   dayNumber: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
   dayNumberToday: { color: '#fff' },
-  daySummaryRow: { flexDirection: 'row', alignItems: 'center', gap: 1, marginTop: 1 },
-  daySummaryIcon: { fontSize: 10 },
+  daySummaryRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
+  daySummaryDot: { width: 5, height: 5, borderRadius: 2.5 },
   daySummaryLabel: { fontSize: 9, fontWeight: '600', fontFamily: FF.semibold },
 
   // Section
@@ -605,7 +615,9 @@ const s = StyleSheet.create({
   todayAccent: { width: 4, alignSelf: 'stretch' },
   todayBody: { flex: 1, padding: 14 },
   todayTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  todayIcon: { fontSize: 20, width: 28, textAlign: 'center' },
+  todayTypeCol: { alignItems: 'center' },
+  todayTypeBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  todayTypeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, textTransform: 'uppercase', letterSpacing: 0.3 },
   todayTitleWrap: { flex: 1 },
   todayTitle: { fontSize: 15, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
   todayMeta: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 2 },

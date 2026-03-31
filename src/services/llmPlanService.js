@@ -1,12 +1,16 @@
 /**
- * LLM-based plan generation service.
- * Calls the Etapa server which proxies to Claude API for plan generation.
+ * LLM-based plan generation & editing service.
+ * Calls the Etapa server which proxies to Claude API.
  * Falls back to the local planGenerator if the server is unavailable.
  */
 import { generatePlan as localGeneratePlan } from './planGenerator';
 import { uid } from './storageService';
 
 const getServerUrl = () => {
+  // EXPO_PUBLIC_ env vars are inlined at build time by Expo
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
   try {
     const Constants = require('expo-constants').default;
     return Constants.expoConfig?.extra?.serverUrl || null;
@@ -81,7 +85,6 @@ export async function generatePlanWithLLM(goal, config, onProgress) {
  * Build a full plan object from LLM-generated activities array.
  */
 function buildPlanFromActivities(activities, goal, config) {
-  // Use config start date if provided, otherwise next Monday
   let startDate;
   if (config.startDate) {
     startDate = new Date(config.startDate);
@@ -111,12 +114,12 @@ function buildPlanFromActivities(activities, goal, config) {
       week: a.week,
       dayOfWeek: a.dayOfWeek,
       type: a.type || 'ride',
-      subType: a.subType || 'endurance',
+      subType: a.subType || (a.type === 'strength' ? null : 'endurance'),
       title: a.title || 'Session',
       description: a.description || '',
       notes: a.notes || null,
       durationMins: a.durationMins || 45,
-      distanceKm: a.distanceKm || null,
+      distanceKm: a.type === 'strength' ? null : (a.distanceKm || null),
       effort: a.effort || 'moderate',
       completed: false,
       completedAt: null,
@@ -128,17 +131,69 @@ function buildPlanFromActivities(activities, goal, config) {
 }
 
 /**
- * Edit an existing plan with LLM or local fallback.
+ * Edit an existing plan with LLM.
  * scope: 'plan' (all future weeks), 'week' (single week)
  */
 export async function editPlanWithLLM(plan, goal, instruction, scope, onProgress) {
   const serverUrl = getServerUrl();
 
-  // Determine which weeks/activities to modify
+  // Calculate current week
   const now = new Date();
   const start = new Date(plan.startDate);
   const daysSince = Math.floor((now - start) / (1000 * 60 * 60 * 24));
   const currentWeek = Math.max(1, Math.min(Math.floor(daysSince / 7) + 1, plan.weeks));
+
+  // Try server LLM edit first
+  if (serverUrl) {
+    onProgress?.('Consulting your AI coach...');
+    try {
+      const response = await fetch(`${serverUrl}/api/ai/edit-plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan, goal, instruction, scope, currentWeek }),
+      });
+
+      if (response.ok) {
+        onProgress?.('Applying changes...');
+        await delay(400);
+
+        const data = await response.json();
+
+        if (data.activities && data.activities.length > 0) {
+          // Merge AI-edited activities back into the plan
+          const updated = { ...plan };
+          const editedIds = new Set(data.activities.map(a => a.id));
+
+          // Replace activities that were edited, keep the rest
+          updated.activities = plan.activities.map(a => {
+            if (editedIds.has(a.id)) {
+              const edited = data.activities.find(e => e.id === a.id);
+              return { ...a, ...edited };
+            }
+            return a;
+          });
+
+          // Handle newly added activities (ones without matching IDs)
+          const existingIds = new Set(plan.activities.map(a => a.id));
+          const newActivities = data.activities
+            .filter(a => !existingIds.has(a.id))
+            .map(a => ({ ...a, id: a.id || uid(), planId: plan.id, completed: false, completedAt: null }));
+
+          if (newActivities.length > 0) {
+            updated.activities = [...updated.activities, ...newActivities];
+          }
+
+          onProgress?.('Plan updated!');
+          await delay(300);
+          return updated;
+        }
+      }
+
+      console.warn('Server edit returned non-OK, falling back to local');
+    } catch (err) {
+      console.warn('Server edit failed, falling back to local:', err);
+    }
+  }
 
   // Local fallback: simple adjustments
   onProgress?.('Analysing your request...');
@@ -154,7 +209,7 @@ export async function editPlanWithLLM(plan, goal, instruction, scope, onProgress
     const targetWeek = weekMatch ? parseInt(weekMatch[1]) : null;
     updated.activities = updated.activities.map(a => {
       const inScope = targetWeek ? a.week === targetWeek : a.week >= currentWeek;
-      if (!inScope) return a;
+      if (!inScope || a.completed) return a;
       return {
         ...a,
         distanceKm: a.distanceKm ? Math.round(a.distanceKm * 0.8) : a.distanceKm,
@@ -166,7 +221,7 @@ export async function editPlanWithLLM(plan, goal, instruction, scope, onProgress
     const targetWeek = weekMatch ? parseInt(weekMatch[1]) : null;
     updated.activities = updated.activities.map(a => {
       const inScope = targetWeek ? a.week === targetWeek : a.week >= currentWeek;
-      if (!inScope) return a;
+      if (!inScope || a.completed) return a;
       return {
         ...a,
         distanceKm: a.distanceKm ? Math.round(a.distanceKm * 1.15) : a.distanceKm,
@@ -178,4 +233,66 @@ export async function editPlanWithLLM(plan, goal, instruction, scope, onProgress
   onProgress?.('Plan updated!');
   await delay(400);
   return updated;
+}
+
+/**
+ * Edit a single activity with AI — ask questions or request changes.
+ */
+export async function editActivityWithAI(activity, goal, instruction, onProgress) {
+  const serverUrl = getServerUrl();
+
+  if (serverUrl) {
+    onProgress?.('Asking your coach...');
+    try {
+      const response = await fetch(`${serverUrl}/api/ai/edit-activity`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activity, goal, instruction }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        onProgress?.('');
+        return data; // { answer: string, updatedActivity: object|null }
+      }
+    } catch (err) {
+      console.warn('Server activity edit failed:', err);
+    }
+  }
+
+  // Local fallback: just return a generic answer
+  onProgress?.('');
+  return {
+    answer: 'AI editing requires a server connection. Try again when connected.',
+    updatedActivity: null,
+  };
+}
+
+/**
+ * Coach chat — multi-turn conversation with the AI coach.
+ * Returns the coach's reply string.
+ */
+export async function coachChat(messages, context) {
+  const serverUrl = getServerUrl();
+  if (!serverUrl) {
+    return { reply: 'Coach chat requires a server connection. Make sure your local server is running.' };
+  }
+
+  try {
+    const response = await fetch(`${serverUrl}/api/ai/coach-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, context }),
+    });
+
+    if (response.ok) {
+      return await response.json();
+    }
+
+    console.warn('Coach chat server error:', response.status);
+    return { reply: 'Could not reach your AI coach right now. Please try again.' };
+  } catch (err) {
+    console.warn('Coach chat failed:', err);
+    return { reply: 'Could not connect to the server. Make sure it\'s running on the correct port.' };
+  }
 }

@@ -4,8 +4,8 @@
  *  Step 2: Goal type (race / distance / improve)
  *  Step 3: Goal details (plan name, target distance/elevation, date, event name)
  */
-import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, ScrollView } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, TextInput, StyleSheet, ScrollView, Keyboard } from 'react-native';
 import { colors, fontFamily } from '../theme';
 import WizardShell, { OptionCard } from '../components/WizardShell';
 import DatePicker from '../components/DatePicker';
@@ -15,16 +15,16 @@ const FF = fontFamily;
 const TOTAL_STEPS = 3;
 
 const CYCLING_TYPES = [
-  { key: 'road',   emoji: '\uD83D\uDEB4', label: 'Road', description: 'Road cycling on tarmac' },
-  { key: 'gravel', emoji: '\u26F0\uFE0F',  label: 'Gravel', description: 'Mixed surface and gravel riding' },
-  { key: 'mtb',    emoji: '\uD83C\uDFD4\uFE0F', label: 'Mountain Bike', description: 'Off-road and trail riding' },
-  { key: 'mixed',  emoji: '\uD83D\uDD00', label: 'Mixed', description: 'A bit of everything' },
+  { key: 'road',   label: 'Road', description: 'Road cycling on tarmac' },
+  { key: 'gravel', label: 'Gravel', description: 'Mixed surface and gravel riding' },
+  { key: 'mtb',    label: 'Mountain Bike', description: 'Off-road and trail riding' },
+  { key: 'mixed',  label: 'Mixed', description: 'A bit of everything' },
 ];
 
 const GOAL_TYPES = [
-  { key: 'race',    emoji: '\uD83C\uDFC1', label: 'Race', description: 'Training for a specific race or sportive' },
-  { key: 'distance',emoji: '\uD83D\uDCCF', label: 'Hit a distance', description: 'Build up to a target distance' },
-  { key: 'improve', emoji: '\uD83D\uDCAA', label: 'Just want to improve', description: 'Get fitter and stronger on the bike' },
+  { key: 'race',    label: 'Race', description: 'Training for a specific race or sportive' },
+  { key: 'distance',label: 'Hit a distance', description: 'Build up to a target distance' },
+  { key: 'improve', label: 'Just want to improve', description: 'Get fitter and stronger on the bike' },
 ];
 
 export default function GoalSetupScreen({ navigation }) {
@@ -86,7 +86,6 @@ export default function GoalSetupScreen({ navigation }) {
           {CYCLING_TYPES.map(ct => (
             <OptionCard
               key={ct.key}
-              emoji={ct.emoji}
               label={ct.label}
               description={ct.description}
               selected={cyclingType === ct.key}
@@ -103,7 +102,6 @@ export default function GoalSetupScreen({ navigation }) {
           {GOAL_TYPES.map(gt => (
             <OptionCard
               key={gt.key}
-              emoji={gt.emoji}
               label={gt.label}
               description={gt.description}
               selected={goalType === gt.key}
@@ -151,6 +149,8 @@ export default function GoalSetupScreen({ navigation }) {
                 value={targetDistance}
                 onChangeText={setTargetDistance}
                 keyboardType="numeric"
+                returnKeyType="done"
+                onSubmitEditing={() => Keyboard.dismiss()}
               />
               <Text style={s.fieldLabel}>Elevation gain (m, optional)</Text>
               <TextInput
@@ -160,6 +160,8 @@ export default function GoalSetupScreen({ navigation }) {
                 value={targetElevation}
                 onChangeText={setTargetElevation}
                 keyboardType="numeric"
+                returnKeyType="done"
+                onSubmitEditing={() => Keyboard.dismiss()}
               />
               <DatePicker
                 label="Race date (optional)"
@@ -179,6 +181,8 @@ export default function GoalSetupScreen({ navigation }) {
                 value={targetDistance}
                 onChangeText={setTargetDistance}
                 keyboardType="numeric"
+                returnKeyType="done"
+                onSubmitEditing={() => Keyboard.dismiss()}
               />
               <DatePicker
                 label="By when? (optional)"
@@ -223,7 +227,7 @@ export default function GoalSetupScreen({ navigation }) {
 const s = StyleSheet.create({
   fieldLabel: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid, marginBottom: 8, marginTop: 16, marginHorizontal: 8 },
   input: {
-    backgroundColor: colors.surface, borderRadius: 12, padding: 16, marginBottom: 4,
+    backgroundColor: colors.surface, borderRadius: 12, padding: 16, marginBottom: 16,
     fontSize: 16, fontWeight: '400', fontFamily: FF.regular, color: colors.text,
     borderWidth: 1, borderColor: colors.border,
   },

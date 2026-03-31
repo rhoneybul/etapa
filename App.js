@@ -7,6 +7,7 @@ import { View } from 'react-native';
 import { useFonts, Poppins_300Light, Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold } from '@expo-google-fonts/poppins';
 import * as SplashScreen from 'expo-splash-screen';
 import { getSession } from './src/services/authService';
+import { hydrateFromServer } from './src/services/storageService';
 
 import SignInScreen        from './src/screens/SignInScreen';
 import HomeScreen          from './src/screens/HomeScreen';
@@ -18,6 +19,8 @@ import SettingsScreen      from './src/screens/SettingsScreen';
 import PlanLoadingScreen   from './src/screens/PlanLoadingScreen';
 import CalendarScreen      from './src/screens/CalendarScreen';
 import PlanOverviewScreen  from './src/screens/PlanOverviewScreen';
+import PlanReadyScreen     from './src/screens/PlanReadyScreen';
+import CoachChatScreen     from './src/screens/CoachChatScreen';
 import WebWrapper          from './src/components/WebWrapper';
 
 const Stack = createStackNavigator();
@@ -50,7 +53,11 @@ export default function App() {
   });
 
   useEffect(() => {
-    getSession().then(session => {
+    getSession().then(async session => {
+      if (session) {
+        // Hydrate local storage from server if empty (e.g. fresh install)
+        await hydrateFromServer().catch(() => {});
+      }
       setInitialRoute(session ? 'Home' : 'SignIn');
     });
   }, []);
@@ -73,7 +80,7 @@ export default function App() {
               initialRouteName={initialRoute}
               screenOptions={{
                 headerShown: false,
-                cardStyle: { backgroundColor: '#0C0D10' },
+                cardStyle: { backgroundColor: '#000000' },
                 cardStyleInterpolator: slide,
               }}
             >
@@ -84,7 +91,9 @@ export default function App() {
               <Stack.Screen name="PlanLoading"    component={PlanLoadingScreen} />
               <Stack.Screen name="WeekView"       component={WeekViewScreen} />
               <Stack.Screen name="Calendar"       component={CalendarScreen} />
+              <Stack.Screen name="PlanReady"      component={PlanReadyScreen} />
               <Stack.Screen name="PlanOverview"   component={PlanOverviewScreen} />
+              <Stack.Screen name="CoachChat"      component={CoachChatScreen} />
               <Stack.Screen name="ActivityDetail" component={ActivityDetailScreen} />
               <Stack.Screen name="Settings"       component={SettingsScreen} />
             </Stack.Navigator>

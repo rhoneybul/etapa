@@ -9,39 +9,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { getPlans, getGoals, getActivityDate } from '../services/storageService';
+import { getSessionColor, getSessionLabel, getMetricLabel } from '../utils/sessionLabels';
 
 const FF = fontFamily;
 const DAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const CYCLING_LABELS = { road: 'Road', gravel: 'Gravel', mtb: 'MTB', mixed: 'Mixed' };
-
-const EFFORT_COLORS = {
-  easy:     '#22C55E',
-  moderate: '#D97706',
-  hard:     '#EF4444',
-  recovery: '#64748B',
-  max:      '#DC2626',
-};
-
-const TYPE_ICONS = {
-  ride:     '\uD83D\uDEB4',
-  strength: '\uD83D\uDCAA',
-  rest:     '\uD83D\uDCA4',
-};
-
-const TYPE_COLORS = {
-  ride:     '#D97706',
-  indoor:   '#3B82F6',
-  strength: '#8B5CF6',
-  rest:     '#64748B',
-};
-
-function getTypeColor(a) {
-  if (a.type === 'strength') return TYPE_COLORS.strength;
-  if (a.type === 'rest') return TYPE_COLORS.rest;
-  if (a.type === 'ride' && a.title?.toLowerCase().includes('indoor')) return TYPE_COLORS.indoor;
-  return TYPE_COLORS.ride;
-}
 
 export default function CalendarScreen({ navigation }) {
   const [plans, setPlans] = useState([]);
@@ -114,19 +87,16 @@ export default function CalendarScreen({ navigation }) {
   const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
   const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
 
-  // Day cell items: array of { icon, label, color }
+  // Day cell items: array of { label, metric, color }
   const getDayCellItems = (day) => {
     if (!day) return [];
     const acts = activityMap[getKey(day)];
     if (!acts || acts.length === 0) return [];
-    return acts.map(a => {
-      const icon = TYPE_ICONS[a.type] || '\uD83D\uDEB4';
-      let label = '';
-      if (a.distanceKm) label = `${a.distanceKm}km`;
-      else if (a.durationMins) label = `${a.durationMins}m`;
-      else label = a.type === 'strength' ? 'str' : a.type?.slice(0, 3) || '';
-      return { icon, label, color: getTypeColor(a) };
-    });
+    return acts.map(a => ({
+      label: getSessionLabel(a),
+      metric: getMetricLabel(a),
+      color: getSessionColor(a),
+    }));
   };
 
   const selectedActivities = selectedDate
@@ -219,14 +189,14 @@ export default function CalendarScreen({ navigation }) {
                         </Text>
                         {goalDateMap[getKey(day)] && (
                           <View style={[s.goalFlag, isSelected(day) && s.goalFlagSelected]}>
-                            <Text style={s.goalFlagIcon}>{'\uD83C\uDFC1'}</Text>
+                            <View style={s.goalFlagDot} />
                           </View>
                         )}
                         {items.map((item, idx) => (
                           <View key={idx} style={s.cellItemRow}>
-                            <Text style={s.cellItemIcon}>{item.icon}</Text>
+                            <View style={[s.cellItemDot, { backgroundColor: isSelected(day) ? 'rgba(255,255,255,0.7)' : item.color }]} />
                             <Text style={[s.cellItemLabel, isSelected(day) ? { color: 'rgba(255,255,255,0.8)' } : { color: item.color }]}>
-                              {item.label}
+                              {item.metric || item.label}
                             </Text>
                           </View>
                         ))}
@@ -248,7 +218,7 @@ export default function CalendarScreen({ navigation }) {
           )}
           {selectedDate && goalDateMap[`${selectedDate.getFullYear()}-${selectedDate.getMonth()}-${selectedDate.getDate()}`] && (
             <View style={s.goalBanner}>
-              <Text style={s.goalBannerIcon}>{'\uD83C\uDFC1'}</Text>
+              <View style={s.goalBannerDot} />
               <View style={s.goalBannerText}>
                 <Text style={s.goalBannerTitle}>Goal target date</Text>
                 <Text style={s.goalBannerLabel}>
@@ -267,10 +237,12 @@ export default function CalendarScreen({ navigation }) {
               onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
               activeOpacity={0.75}
             >
-              <View style={[s.actAccent, { backgroundColor: EFFORT_COLORS[activity.effort] || colors.primary }]} />
+              <View style={[s.actAccent, { backgroundColor: getSessionColor(activity) }]} />
               <View style={s.actBody}>
                 <View style={s.actTop}>
-                  <Text style={s.actIcon}>{TYPE_ICONS[activity.type] || '\uD83D\uDEB4'}</Text>
+                  <View style={[s.actTypeBadge, { backgroundColor: getSessionColor(activity) + '18' }]}>
+                    <Text style={[s.actTypeText, { color: getSessionColor(activity) }]}>{getSessionLabel(activity)}</Text>
+                  </View>
                   <View style={s.actTextWrap}>
                     <Text style={[s.actTitle, activity.completed && s.actTitleDone]}>{activity.title}</Text>
                     <Text style={s.actMeta}>
@@ -333,12 +305,12 @@ const s = StyleSheet.create({
   dayTextSelected: { color: '#fff' },
 
   dayCellGoal: { backgroundColor: 'rgba(217,119,6,0.12)', borderWidth: 1, borderColor: 'rgba(217,119,6,0.3)' },
-  goalFlag: { marginTop: 1 },
+  goalFlag: { marginTop: 2 },
   goalFlagSelected: { opacity: 0.9 },
-  goalFlagIcon: { fontSize: 9 },
+  goalFlagDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary },
 
-  cellItemRow: { flexDirection: 'row', alignItems: 'center', gap: 1, marginTop: 1 },
-  cellItemIcon: { fontSize: 8 },
+  cellItemRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 1 },
+  cellItemDot: { width: 4, height: 4, borderRadius: 2 },
   cellItemLabel: { fontSize: 8, fontWeight: '600', fontFamily: FF.semibold },
 
   // Goal banner in selected day detail
@@ -347,7 +319,7 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(217,119,6,0.1)', borderRadius: 14, padding: 14, marginBottom: 10,
     borderWidth: 1, borderColor: 'rgba(217,119,6,0.25)',
   },
-  goalBannerIcon: { fontSize: 22 },
+  goalBannerDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
   goalBannerText: { flex: 1 },
   goalBannerTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, marginBottom: 2 },
   goalBannerLabel: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid },
@@ -364,7 +336,8 @@ const s = StyleSheet.create({
   actAccent: { width: 4 },
   actBody: { flex: 1, padding: 14 },
   actTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  actIcon: { fontSize: 20, width: 28, textAlign: 'center' },
+  actTypeBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  actTypeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, textTransform: 'uppercase', letterSpacing: 0.3 },
   actTextWrap: { flex: 1 },
   actTitle: { fontSize: 15, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
   actTitleDone: { textDecorationLine: 'line-through', color: colors.textMuted },

@@ -4,8 +4,10 @@ const cors    = require('cors');
 
 const usersRouter = require('./routes/users');
 const goalsRouter = require('./routes/goals');
-const plansRouter = require('./routes/plans');
-const aiRouter    = require('./routes/ai');
+const plansRouter       = require('./routes/plans');
+const planConfigsRouter  = require('./routes/planConfigs');
+const chatSessionsRouter = require('./routes/chatSessions');
+const aiRouter           = require('./routes/ai');
 
 const { authMiddleware } = require('./middleware/auth');
 
@@ -26,6 +28,8 @@ app.get('/health', (_req, res) => {
 app.use('/api/users', authMiddleware, usersRouter);
 app.use('/api/goals', authMiddleware, goalsRouter);
 app.use('/api/plans', authMiddleware, plansRouter);
+app.use('/api/plan-configs', authMiddleware, planConfigsRouter);
+app.use('/api/chat-sessions', authMiddleware, chatSessionsRouter);
 app.use('/api/ai', aiRouter); // AI routes (no auth required for now)
 
 // ── Error handler ─────────────────────────────────────────────────────────────

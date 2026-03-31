@@ -66,6 +66,19 @@ export const api = {
     updateActivity: (planId, actId, updates) =>
       request('PATCH', `/api/plans/${planId}/activities/${actId}`, updates),
   },
+
+  planConfigs: {
+    list:   ()             => request('GET', '/api/plan-configs'),
+    create: (config)       => request('POST', '/api/plan-configs', config),
+    update: (id, config)   => request('PUT', `/api/plan-configs/${id}`, config),
+    delete: (id)           => request('DELETE', `/api/plan-configs/${id}`),
+  },
+
+  chatSessions: {
+    list:   (planId)                    => request('GET', `/api/chat-sessions?planId=${planId}`),
+    save:   (planId, weekNum, messages) => request('PUT', `/api/chat-sessions/${planId}/${weekNum || 0}`, { messages }),
+    delete: (planId, weekNum)           => request('DELETE', `/api/chat-sessions/${planId}/${weekNum || 0}`),
+  },
 };
 
 export default api;

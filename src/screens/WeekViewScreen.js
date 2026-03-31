@@ -5,40 +5,30 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, RefreshControl,
-  TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
+  TextInput, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
-import { getPlan, getPlans, getWeekActivities, getWeekProgress, markActivityComplete, getWeekMonthLabel, savePlan, getGoals } from '../services/storageService';
-import { editPlanWithLLM } from '../services/llmPlanService';
+import { getPlan, getPlans, getWeekActivities, getWeekProgress, markActivityComplete, getWeekMonthLabel, getGoals, getPlanConfig, updateActivity } from '../services/storageService';
+import { editActivityWithAI } from '../services/llmPlanService';
+import { getSessionColor, getSessionLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
 
 const FF = fontFamily;
 const DAY_LABELS_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-const EFFORT_COLORS = {
-  easy:     '#22C55E',
-  moderate: '#D97706',
-  hard:     '#EF4444',
-  recovery: '#64748B',
-  max:      '#DC2626',
-};
-
-const TYPE_ICONS = {
-  ride:     '\uD83D\uDEB4',
-  strength: '\uD83D\uDCAA',
-  rest:     '\uD83D\uDCA4',
-};
 
 export default function WeekViewScreen({ navigation, route }) {
   const initialWeek = route.params?.week || 1;
   const planId = route.params?.planId || null;
   const [plan, setPlan] = useState(null);
   const [goal, setGoal] = useState(null);
+  const [planConfig, setPlanConfig] = useState(null);
   const [week, setWeek] = useState(initialWeek);
   const [refreshing, setRefreshing] = useState(false);
-  const [editText, setEditText] = useState('');
-  const [editing, setEditing] = useState(false);
-  const [editStatus, setEditStatus] = useState('');
+  // Activity inline edit
+  const [editingActivity, setEditingActivity] = useState(null); // activity object being edited
+  const [actEditText, setActEditText] = useState('');
+  const [actEditing, setActEditing] = useState(false);
+  const [actEditStatus, setActEditStatus] = useState('');
 
   const loadPlan = useCallback(async () => {
     let p;
@@ -52,6 +42,8 @@ export default function WeekViewScreen({ navigation, route }) {
     if (p) {
       const goals = await getGoals();
       setGoal(goals.find(g => g.id === p.goalId) || null);
+      const cfg = await getPlanConfig(p.configId);
+      setPlanConfig(cfg);
     }
   }, [planId]);
 
@@ -75,28 +67,34 @@ export default function WeekViewScreen({ navigation, route }) {
 
   const handleComplete = async (id) => { await markActivityComplete(id); await loadPlan(); };
 
-  const handleEditWeek = async () => {
-    if (!editText.trim() || !plan || editing) return;
-    setEditing(true);
-    setEditStatus('Thinking...');
+  // Inline activity edit via AI
+  const handleActivityEdit = async () => {
+    if (!actEditText.trim() || !editingActivity || actEditing) return;
+    setActEditing(true);
+    setActEditStatus('Asking coach...');
     try {
-      const instruction = `For week ${week} only: ${editText.trim()}`;
-      const updated = await editPlanWithLLM(plan, goal, instruction, 'week', (msg) => setEditStatus(msg));
-      await savePlan(updated);
-      setPlan(updated);
-      setEditText('');
-      setEditStatus('');
-    } catch (err) {
-      setEditStatus('Failed to update');
-      setTimeout(() => setEditStatus(''), 3000);
+      const result = await editActivityWithAI(editingActivity, goal, actEditText.trim(), (msg) => setActEditStatus(msg));
+      if (result.updatedActivity) {
+        await updateActivity(editingActivity.id, result.updatedActivity);
+        setActEditStatus('Updated!');
+        await loadPlan();
+        setTimeout(() => { setEditingActivity(null); setActEditText(''); setActEditStatus(''); }, 800);
+      } else if (result.answer) {
+        setActEditStatus(result.answer);
+        setTimeout(() => setActEditStatus(''), 5000);
+      }
+    } catch {
+      setActEditStatus('Failed to update');
+      setTimeout(() => setActEditStatus(''), 3000);
     }
-    setEditing(false);
+    setActEditing(false);
   };
+
+  const crossTraining = planConfig?.crossTrainingDaysFull || {};
 
   return (
     <View style={s.container}>
       <SafeAreaView style={s.safe}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={s.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={HIT}>
             <Text style={s.backArrow}>{'\u2190'}</Text>
@@ -136,87 +134,129 @@ export default function WeekViewScreen({ navigation, route }) {
 
         {isDeload && (
           <View style={s.deloadBanner}>
-            <Text style={s.deloadText}>{'\uD83D\uDE34'} Recovery week — lighter load to let your body adapt</Text>
+            <Text style={s.deloadText}>Recovery week \u2014 lighter load to let your body adapt</Text>
           </View>
         )}
 
         <ScrollView style={s.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#666" />}>
           {DAY_LABELS_FULL.map((dayLabel, dayIdx) => {
             const dayActivities = byDay[dayIdx] || [];
-            if (dayActivities.length === 0) return null;
+            const ctItems = getCrossTrainingForDay(crossTraining, dayIdx);
+            if (dayActivities.length === 0 && ctItems.length === 0) return null;
 
-            // Get actual date for this day
             const dayDate = getDayDate(plan.startDate, week, dayIdx);
 
             return (
               <View key={dayIdx} style={s.dayGroup}>
                 <Text style={s.dayHeader}>{dayLabel} {dayDate}</Text>
-                {dayActivities.map(activity => (
-                  <TouchableOpacity
-                    key={activity.id}
-                    style={[s.activityCard, activity.completed && s.activityCardDone]}
-                    onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
-                    activeOpacity={0.75}
-                  >
-                    <View style={[s.activityAccent, { backgroundColor: EFFORT_COLORS[activity.effort] || colors.primary }]} />
-                    <View style={s.activityBody}>
-                      <View style={s.activityTop}>
-                        <Text style={s.activityIcon}>{TYPE_ICONS[activity.type] || '\uD83D\uDEB4'}</Text>
-                        <View style={s.activityTitleWrap}>
-                          <Text style={[s.activityTitle, activity.completed && s.activityTitleDone]}>{activity.title}</Text>
-                          <Text style={s.activityMeta}>
-                            {activity.type === 'ride' && activity.distanceKm ? `${activity.distanceKm} km \u00B7 ` : ''}
-                            {activity.durationMins ? `${activity.durationMins} min` : ''}
-                            {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
-                          </Text>
+                {dayActivities.map(activity => {
+                  const isEditing = editingActivity?.id === activity.id;
+                  return (
+                    <View key={activity.id}>
+                      <TouchableOpacity
+                        style={[s.activityCard, activity.completed && s.activityCardDone, isEditing && s.activityCardEditing]}
+                        onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
+                        onLongPress={() => { setEditingActivity(activity); setActEditText(''); setActEditStatus(''); }}
+                        activeOpacity={0.75}
+                        delayLongPress={400}
+                      >
+                        <View style={[s.activityAccent, { backgroundColor: getSessionColor(activity) }]} />
+                        <View style={s.activityBody}>
+                          <View style={s.activityTop}>
+                            <View style={[s.activityTypeBadge, { backgroundColor: getSessionColor(activity) + '18' }]}>
+                              <Text style={[s.activityTypeText, { color: getSessionColor(activity) }]}>{getSessionLabel(activity)}</Text>
+                            </View>
+                            <View style={s.activityTitleWrap}>
+                              <Text style={[s.activityTitle, activity.completed && s.activityTitleDone]}>{activity.title}</Text>
+                              <Text style={s.activityMeta}>
+                                {activity.type === 'ride' && activity.distanceKm ? `${activity.distanceKm} km \u00B7 ` : ''}
+                                {activity.durationMins ? `${activity.durationMins} min` : ''}
+                                {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              style={[s.checkBtn, activity.completed && s.checkBtnDone]}
+                              onPress={() => !activity.completed && handleComplete(activity.id)}
+                              disabled={activity.completed}
+                            >
+                              <Text style={s.checkMark}>{activity.completed ? '\u2713' : ''}</Text>
+                            </TouchableOpacity>
+                          </View>
+                          {!activity.completed && (
+                            <Text style={s.editHint}>Hold to edit</Text>
+                          )}
                         </View>
-                        <TouchableOpacity
-                          style={[s.checkBtn, activity.completed && s.checkBtnDone]}
-                          onPress={() => !activity.completed && handleComplete(activity.id)}
-                          disabled={activity.completed}
-                        >
-                          <Text style={s.checkMark}>{activity.completed ? '\u2713' : ''}</Text>
-                        </TouchableOpacity>
-                      </View>
+                      </TouchableOpacity>
+                      {/* Inline edit bar for this activity */}
+                      {isEditing && (
+                        <View style={s.actEditBar}>
+                          {actEditStatus ? (
+                            <Text style={s.actEditStatusText}>{actEditStatus}</Text>
+                          ) : null}
+                          <View style={s.actEditRow}>
+                            <TextInput
+                              style={s.actEditInput}
+                              value={actEditText}
+                              onChangeText={setActEditText}
+                              placeholder={`e.g. "Make it shorter" or "Change to intervals"`}
+                              placeholderTextColor={colors.textFaint}
+                              editable={!actEditing}
+                              autoFocus
+                              returnKeyType="send"
+                              onSubmitEditing={handleActivityEdit}
+                            />
+                            <TouchableOpacity
+                              style={[s.actEditSendBtn, (!actEditText.trim() || actEditing) && { opacity: 0.3 }]}
+                              onPress={handleActivityEdit}
+                              disabled={!actEditText.trim() || actEditing}
+                            >
+                              <Text style={s.actEditSendText}>{'\u2191'}</Text>
+                            </TouchableOpacity>
+                          </View>
+                          <TouchableOpacity onPress={() => setEditingActivity(null)} style={s.actEditCancel}>
+                            <Text style={s.actEditCancelText}>Cancel</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
-                  </TouchableOpacity>
+                  );
+                })}
+                {/* Cross-training items */}
+                {ctItems.map((ct, i) => (
+                  <View key={`ct-${i}`} style={s.ctCard}>
+                    <View style={[s.activityAccent, { backgroundColor: CROSS_TRAINING_COLOR }]} />
+                    <View style={s.ctBody}>
+                      <View style={[s.activityTypeBadge, { backgroundColor: CROSS_TRAINING_COLOR + '18' }]}>
+                        <Text style={[s.activityTypeText, { color: CROSS_TRAINING_COLOR }]}>{ct.label}</Text>
+                      </View>
+                      <Text style={s.ctNote}>Your activity {'\u00B7'} Factored into plan recovery</Text>
+                    </View>
+                  </View>
                 ))}
               </View>
             );
           })}
-          {activities.length === 0 && (
+          {activities.length === 0 && Object.keys(crossTraining).length === 0 && (
             <View style={s.emptyWeek}><Text style={s.emptyText}>No activities this week</Text></View>
           )}
           <View style={{ height: 80 }} />
         </ScrollView>
 
-        {/* AI Edit bar */}
+        {/* Bottom bar */}
         <View style={s.editBar}>
-          {editStatus ? (
-            <View style={s.editStatusRow}>
-              {editing && <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 8 }} />}
-              <Text style={s.editStatusText}>{editStatus}</Text>
+          <TouchableOpacity
+            style={s.coachBtn}
+            onPress={() => navigation.navigate('CoachChat', { planId: plan.id, weekNum: week })}
+            activeOpacity={0.7}
+          >
+            <View style={[s.coachDot, { backgroundColor: colors.primary }]} />
+            <View style={s.coachBtnTextWrap}>
+              <Text style={s.coachBtnLabel}>Ask coach about week {week}</Text>
+              <Text style={s.coachBtnHint}>Get advice or ask your coach to change this week</Text>
             </View>
-          ) : null}
-          <View style={s.editInputRow}>
-            <TextInput
-              style={s.editInput}
-              value={editText}
-              onChangeText={setEditText}
-              placeholder={`Edit week ${week}\u2026`}
-              placeholderTextColor={colors.textFaint}
-              editable={!editing}
-            />
-            <TouchableOpacity
-              style={[s.editSendBtn, (!editText.trim() || editing) && s.editSendBtnDisabled]}
-              onPress={handleEditWeek}
-              disabled={!editText.trim() || editing}
-            >
-              <Text style={s.editSendText}>{'\u2191'}</Text>
-            </TouchableOpacity>
-          </View>
+            <Text style={s.coachBtnArrow}>{'\u203A'}</Text>
+          </TouchableOpacity>
         </View>
-        </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
   );
@@ -276,7 +316,8 @@ const s = StyleSheet.create({
   activityAccent: { width: 4 },
   activityBody: { flex: 1, padding: 14 },
   activityTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  activityIcon: { fontSize: 20, width: 28, textAlign: 'center' },
+  activityTypeBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  activityTypeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, textTransform: 'uppercase', letterSpacing: 0.3 },
   activityTitleWrap: { flex: 1 },
   activityTitle: { fontSize: 15, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
   activityTitleDone: { textDecorationLine: 'line-through', color: colors.textMuted },
@@ -289,17 +330,41 @@ const s = StyleSheet.create({
   emptyWeek: { padding: 40, alignItems: 'center' },
   emptyText: { fontSize: 15, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
 
-  // Edit bar
-  editBar: { paddingHorizontal: 16, paddingVertical: 10, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
-  editStatusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  editStatusText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
-  editInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-  editInput: {
-    flex: 1, backgroundColor: colors.bg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
-    color: colors.text, fontFamily: FF.regular, fontSize: 14,
+  editHint: { fontSize: 10, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 6 },
+
+  // Activity inline edit
+  activityCardEditing: { borderColor: colors.primary },
+  actEditBar: { marginHorizontal: 16, marginBottom: 8, backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.primary + '44' },
+  actEditStatusText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary, marginBottom: 6 },
+  actEditRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  actEditInput: {
+    flex: 1, backgroundColor: colors.bg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+    color: colors.text, fontFamily: FF.regular, fontSize: 13,
     borderWidth: 1, borderColor: colors.border,
   },
-  editSendBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  editSendBtnDisabled: { opacity: 0.3 },
-  editSendText: { fontSize: 18, color: '#fff', fontWeight: '700' },
+  actEditSendBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  actEditSendText: { fontSize: 16, color: '#fff', fontWeight: '700' },
+  actEditCancel: { marginTop: 6, alignSelf: 'flex-end' },
+  actEditCancelText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
+
+  // Cross-training cards
+  ctCard: {
+    flexDirection: 'row', backgroundColor: 'rgba(6,182,212,0.06)', marginHorizontal: 16, marginBottom: 8,
+    borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(6,182,212,0.2)', borderStyle: 'dashed',
+  },
+  ctBody: { flex: 1, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  ctNote: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, flex: 1 },
+
+  // Bottom bar — single coach button
+  editBar: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
+  coachBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14,
+    backgroundColor: colors.bg, borderWidth: 1.5, borderColor: colors.border,
+  },
+  coachDot: { width: 10, height: 10, borderRadius: 5 },
+  coachBtnTextWrap: { flex: 1 },
+  coachBtnLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  coachBtnHint: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 1 },
+  coachBtnArrow: { fontSize: 22, color: colors.textFaint, fontWeight: '300' },
 });

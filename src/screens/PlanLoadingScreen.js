@@ -47,7 +47,7 @@ export default function PlanLoadingScreen({ navigation, route }) {
     try {
       const plan = await generatePlanWithLLM(goal, config, setMessage);
       await savePlan(plan);
-      navigation.replace('Home');
+      navigation.replace('PlanReady', { planId: plan.id });
     } catch (err) {
       setMessage('Something went wrong. Retrying...');
       setTimeout(() => navigation.goBack(), 2000);

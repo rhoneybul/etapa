@@ -84,9 +84,10 @@ const STRENGTH_TEMPLATES = [
 // ── Base durations/distances by fitness level ────────────────────────────────
 
 const BASE_PARAMS = {
-  beginner:     { shortMins: 30, medMins: 45, longMins: 60,  shortKm: 15, medKm: 25, longKm: 35 },
-  intermediate: { shortMins: 45, medMins: 60, longMins: 90,  shortKm: 25, medKm: 40, longKm: 60 },
-  advanced:     { shortMins: 60, medMins: 75, longMins: 120, shortKm: 35, medKm: 55, longKm: 80 },
+  beginner:     { shortMins: 30, medMins: 45, longMins: 60,  shortKm: 10, medKm: 18, longKm: 30 },
+  intermediate: { shortMins: 45, medMins: 60, longMins: 90,  shortKm: 18, medKm: 35, longKm: 55 },
+  advanced:     { shortMins: 60, medMins: 75, longMins: 120, shortKm: 28, medKm: 50, longKm: 80 },
+  expert:       { shortMins: 60, medMins: 90, longMins: 150, shortKm: 35, medKm: 65, longKm: 110 },
 };
 
 // ── Periodisation: split weeks into phases ──────────────────────────────────
@@ -384,16 +385,19 @@ function buildWeekRides(rideDays, isDeload, isTaper, isLastTaperWeek, isPeak, go
 
 // ── Determine plan duration from goal ────────────────────────────────────────
 
-export function suggestWeeks(goal, fitnessLevel) {
+export function suggestWeeks(goal, fitnessLevel, startDate) {
   if (goal.targetDate) {
-    const now = new Date();
-    const target = new Date(goal.targetDate);
-    const diffWeeks = Math.max(4, Math.ceil((target - now) / (7 * 24 * 60 * 60 * 1000)));
-    // Ensure we don't go past the target date — the plan ends ON or BEFORE the target
-    return Math.min(diffWeeks, 24);
+    const from = startDate ? new Date(startDate) : new Date();
+    from.setHours(0, 0, 0, 0);
+    const target = new Date(goal.targetDate + (goal.targetDate.includes('T') ? '' : 'T00:00:00'));
+    // Plan should finish the week BEFORE the event — leave race week free
+    const msToTarget = target - from;
+    const weeksToTarget = Math.floor(msToTarget / (7 * 24 * 60 * 60 * 1000));
+    // At least 4 weeks, at most 24, and end 1 week before event
+    return Math.min(Math.max(4, weeksToTarget), 24);
   }
 
   // Default durations by fitness level
-  const defaults = { beginner: 10, intermediate: 8, advanced: 6 };
+  const defaults = { beginner: 10, intermediate: 8, advanced: 6, expert: 6 };
   return defaults[fitnessLevel] || 8;
 }

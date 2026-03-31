@@ -112,6 +112,8 @@ export async function savePlanConfig(config) {
   const configs = (await getJSON(KEYS.PLAN_CONFIGS)) || [];
   configs.push(data);
   await setJSON(KEYS.PLAN_CONFIGS, configs);
+  // Sync to server
+  api.planConfigs.create(data).catch(() => {});
   return data;
 }
 
@@ -221,6 +223,7 @@ export async function deletePlan(planId) {
     let configs = (await getJSON(KEYS.PLAN_CONFIGS)) || [];
     configs = configs.filter(c => c.id !== plan.configId);
     await setJSON(KEYS.PLAN_CONFIGS, configs);
+    api.planConfigs.delete(plan.configId).catch(() => {});
   }
 }
 
@@ -231,6 +234,8 @@ export async function updateActivity(activityId, updates) {
     if (idx >= 0) {
       plan.activities[idx] = { ...plan.activities[idx], ...updates };
       await savePlan(plan);
+      // Sync activity update to server
+      api.plans.updateActivity(plan.id, activityId, updates).catch(() => {});
       return plan.activities[idx];
     }
   }
@@ -260,6 +265,50 @@ export async function getStravaTokens() {
 
 export async function clearStravaTokens() {
   await AsyncStorage.removeItem(KEYS.STRAVA);
+}
+
+// ── Startup hydration ───────────────────────────────────────────────────────
+// On first launch after install (or after cache clear), if the user is
+// authenticated but local storage is empty, pull everything from the server.
+
+export async function hydrateFromServer() {
+  await ensureMigrated();
+
+  const localGoals  = (await getJSON(KEYS.GOALS)) || [];
+  const localPlans  = (await getJSON(KEYS.PLANS)) || [];
+  const localConfigs = (await getJSON(KEYS.PLAN_CONFIGS)) || [];
+
+  // Only hydrate if ALL local stores are empty — avoids overwriting edits
+  if (localGoals.length > 0 || localPlans.length > 0 || localConfigs.length > 0) {
+    return { hydrated: false, reason: 'local_data_exists' };
+  }
+
+  try {
+    const [serverGoals, serverPlans, serverConfigs] = await Promise.all([
+      api.goals.list(),
+      api.plans.list(),
+      api.planConfigs.list(),
+    ]);
+
+    let count = 0;
+    if (serverGoals?.length > 0) {
+      await setJSON(KEYS.GOALS, serverGoals);
+      count += serverGoals.length;
+    }
+    if (serverPlans?.length > 0) {
+      await setJSON(KEYS.PLANS, serverPlans);
+      count += serverPlans.length;
+    }
+    if (serverConfigs?.length > 0) {
+      await setJSON(KEYS.PLAN_CONFIGS, serverConfigs);
+      count += serverConfigs.length;
+    }
+
+    return { hydrated: count > 0, count };
+  } catch (err) {
+    console.warn('Hydration from server failed:', err);
+    return { hydrated: false, reason: 'api_error' };
+  }
 }
 
 // ── Progress helpers ─────────────────────────────────────────────────────────

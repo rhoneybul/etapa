@@ -21,7 +21,7 @@ export default function WebWrapper({ children }) {
 const s = StyleSheet.create({
   outer: {
     flex: 1,
-    backgroundColor: '#08090B',
+    backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: '100vh',
@@ -32,7 +32,7 @@ const s = StyleSheet.create({
     height: '100vh',
     maxHeight: 844,
     overflow: 'hidden',
-    backgroundColor: '#0C0D10',
+    backgroundColor: '#000000',
     boxShadow: '0 24px 80px rgba(0,0,0,0.4)',
     borderRadius: 8,
     position: 'relative',

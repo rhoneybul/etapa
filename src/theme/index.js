@@ -1,26 +1,26 @@
 // ── Etapa App Theme ──────────────────────────────────────────────────────────
-// Dark, serious, performance-focused. Font: Poppins.
-// Near-black base with warm amber accent.
+// Dark, crisp, performance-focused. Inspired by Ladder's serious aesthetic.
+// Deep black base with warm amber accent. Sharp edges, bold type.
 
 export const colors = {
   // ── Surfaces ─────────────────────────────────────────────────────────────
-  bg:           '#0C0D10',   // near-black background
-  bgDeep:       '#08090B',   // deepest background (sunken areas)
-  surface:      '#16181D',   // card / elevated surface
-  surfaceLight: '#1E2028',   // lighter surface (hover / raised)
-  white:        '#16181D',   // alias — cards use surface, not white
-  border:       '#2A2D35',   // subtle border
-  borderLight:  '#22252D',   // faint divider
+  bg:           '#000000',   // true black background
+  bgDeep:       '#000000',   // deepest background
+  surface:      '#111113',   // card / elevated surface
+  surfaceLight: '#1A1A1E',   // lighter surface (hover / raised)
+  white:        '#111113',   // alias — cards use surface
+  border:       '#222226',   // subtle border
+  borderLight:  '#1A1A1E',   // faint divider
 
   // ── Text ─────────────────────────────────────────────────────────────────
-  text:         '#F0F0F2',   // primary text (near-white)
-  textMid:      '#A0A3AD',   // secondary text
-  textMuted:    '#6B6F7B',   // labels / captions
-  textFaint:    '#3D4049',   // placeholders / disabled
+  text:         '#FFFFFF',   // pure white primary text
+  textMid:      '#A0A0A8',   // secondary text
+  textMuted:    '#606068',   // labels / captions
+  textFaint:    '#35353D',   // placeholders / disabled
 
   // ── Primary accent — warm amber ──────────────────────────────────────────
   primary:      '#D97706',
-  primaryLight: '#D9770618', // amber at 10% opacity for tinted backgrounds
+  primaryLight: '#D9770615', // amber at ~8% opacity
   primaryDark:  '#B45309',
 
   // ── Extended amber palette ───────────────────────────────────────────────
@@ -35,18 +35,18 @@ export const colors = {
   amber800:     '#783510',
   amber900:     '#5C2D14',
 
-  // ── Accent — cool slate blue for secondary highlights ────────────────────
+  // ── Accent — cool slate for secondary ───────────────────────────────────
   accent:       '#64748B',
-  accentLight:  '#64748B18',
+  accentLight:  '#64748B15',
 
   // ── Functional status ────────────────────────────────────────────────────
   good:         '#22C55E',
-  goodLight:    '#22C55E18',
+  goodLight:    '#22C55E15',
   caution:      '#F59E0B',
-  cautionLight: '#F59E0B18',
+  cautionLight: '#F59E0B15',
   cautionBorder:'#78350F',
   warn:         '#EF4444',
-  warnLight:    '#EF444418',
+  warnLight:    '#EF444415',
   warnBorder:   '#7F1D1D',
 };
 
@@ -70,35 +70,35 @@ export const text = {
   body:       { fontSize: 15, fontWeight: '400', color: colors.text, fontFamily: fontFamily.regular },
   bodyLight:  { fontSize: 15, fontWeight: '300', color: colors.textMid, fontFamily: fontFamily.light },
   small:      { fontSize: 13, fontWeight: '300', color: colors.textMid, fontFamily: fontFamily.light },
-  label:      { fontSize: 10, fontWeight: '500', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, fontFamily: fontFamily.medium },
+  label:      { fontSize: 10, fontWeight: '500', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, fontFamily: fontFamily.medium },
   caption:    { fontSize: 11, fontWeight: '300', color: colors.textMuted, fontFamily: fontFamily.light },
 };
 
 export const layout = {
   pagePad:    20,
-  cardRadius: 18,
+  cardRadius: 14,
   cardShadow: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 4,
   },
   card: (extra = {}) => ({
     backgroundColor: colors.surface,
-    borderRadius: 18,
+    borderRadius: 14,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 4,
     ...extra,
   }),
 };
 
 export const sheetHandle = {
   width: 36, height: 4, borderRadius: 2,
-  backgroundColor: '#3D4049',
+  backgroundColor: '#35353D',
   alignSelf: 'center',
   marginTop: 10, marginBottom: 8,
 };
