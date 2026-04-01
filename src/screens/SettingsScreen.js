@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { signOut } from '../services/authService';
 import { clearPlan, getPlans, deletePlan, clearUserData } from '../services/storageService';
+import { openBillingPortal, getSubscriptionStatus } from '../services/subscriptionService';
 import { connectStrava, disconnectStrava, isStravaConnected, isStravaConfigured, getStravaTokens } from '../services/stravaService';
 import analytics from '../services/analyticsService';
 
@@ -18,9 +19,12 @@ export default function SettingsScreen({ navigation }) {
   const [stravaOk, setStravaOk] = useState(false);
   const [stravaName, setStravaName] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [subscription, setSubscription] = useState(null);
+  const [portalLoading, setPortalLoading] = useState(false);
 
   useEffect(() => {
     checkStrava();
+    getSubscriptionStatus().then(setSubscription).catch(() => {});
   }, []);
 
   const checkStrava = async () => {
@@ -60,6 +64,17 @@ export default function SettingsScreen({ navigation }) {
     ]);
   };
 
+
+  const handleManagePlan = async () => {
+    setPortalLoading(true);
+    try {
+      await openBillingPortal();
+    } catch (err) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setPortalLoading(false);
+    }
+  };
 
   const handleSignOut = async () => {
     analytics.events.signedOut();
@@ -109,6 +124,44 @@ export default function SettingsScreen({ navigation }) {
             <Text style={s.chevron}>{'\u203A'}</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Subscription */}
+        {subscription?.active && (
+          <>
+            <Text style={s.sectionLabel}>SUBSCRIPTION</Text>
+            <View style={s.card}>
+              <TouchableOpacity style={s.row} onPress={handleManagePlan} disabled={portalLoading}>
+                <View style={s.rowLeft}>
+                  <Text style={s.rowIcon}>💳</Text>
+                  <View>
+                    <Text style={s.rowTitle}>{portalLoading ? 'Opening...' : 'Manage Plan'}</Text>
+                    <Text style={s.rowSub}>
+                      {subscription.plan === 'annual' ? 'Annual' : 'Monthly'} · {subscription.status === 'trialing' ? 'Free trial' : 'Active'}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={s.chevron}>›</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+        {subscription && !subscription.active && subscription.status !== 'dev' && (
+          <>
+            <Text style={s.sectionLabel}>SUBSCRIPTION</Text>
+            <View style={s.card}>
+              <TouchableOpacity style={s.row} onPress={() => navigation.navigate('Paywall', { fromHome: true, nextScreen: 'Home' })}>
+                <View style={s.rowLeft}>
+                  <Text style={s.rowIcon}>💳</Text>
+                  <View>
+                    <Text style={s.rowTitle}>Subscribe</Text>
+                    <Text style={s.rowSub}>Your subscription is inactive</Text>
+                  </View>
+                </View>
+                <Text style={s.chevron}>›</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
 
         {/* Support */}
         <Text style={s.sectionLabel}>SUPPORT</Text>

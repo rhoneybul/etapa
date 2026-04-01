@@ -12,6 +12,7 @@ import { colors, fontFamily } from '../theme';
 import { getCurrentUser } from '../services/authService';
 import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig } from '../services/storageService';
 import { isSubscribed } from '../services/subscriptionService';
+import { useFocusEffect } from '@react-navigation/native';
 import { isStravaConnected } from '../services/stravaService';
 import { getSessionColor, getSessionLabel, getMetricLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
 import analytics from '../services/analyticsService';
@@ -47,6 +48,21 @@ export default function HomeScreen({ navigation }) {
   const [currentWeek, setCurrentWeek] = useState(1);
   const [stravaOk, setStravaOk] = useState(false);
   const [activePlanConfig, setActivePlanConfig] = useState(null);
+
+  // Block access to plans if the user hasn't subscribed
+  useFocusEffect(useCallback(() => {
+    let cancelled = false;
+    async function checkAccess() {
+      const p = await getPlans();
+      if (cancelled || p.length === 0) return; // No plans — no gate needed
+      const subscribed = await isSubscribed();
+      if (!cancelled && !subscribed) {
+        navigation.replace('Paywall', { fromHome: true, nextScreen: 'Home' });
+      }
+    }
+    checkAccess();
+    return () => { cancelled = true; };
+  }, [navigation]));
 
   const load = useCallback(async () => {
     const [user, p, g, strava] = await Promise.all([

@@ -88,6 +88,24 @@ export async function openCheckout(plan) {
 }
 
 /**
+ * Opens the Stripe Customer Portal so the user can manage/cancel their subscription.
+ */
+export async function openBillingPortal() {
+  const isWeb = Platform.OS === 'web';
+  const returnUrl = isWeb ? `${window.location.origin}` : 'etapa://settings';
+
+  const data = await authRequest('POST', '/api/stripe/create-portal-session', { returnUrl });
+  if (!data?.url) throw new Error('Could not open billing portal. Please try again.');
+
+  if (isWeb) {
+    window.location.href = data.url;
+    return;
+  }
+
+  await WebBrowser.openBrowserAsync(data.url);
+}
+
+/**
  * On web, call this on app startup to detect if the user just returned from
  * Stripe Checkout. Returns the verified session_id if successful, else null.
  *

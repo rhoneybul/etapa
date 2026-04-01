@@ -94,6 +94,39 @@ router.post('/create-checkout-session', async (req, res) => {
   }
 });
 
+// ── POST /api/stripe/create-portal-session ───────────────────────────────────
+router.post('/create-portal-session', async (req, res) => {
+  const stripe = getStripe();
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+
+  const userId = req.user.id;
+
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .select('stripe_customer_id')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data?.stripe_customer_id) {
+    return res.status(404).json({ error: 'No subscription found for this user' });
+  }
+
+  const returnUrl = req.body.returnUrl || 'etapa://settings';
+
+  try {
+    const session = await stripe.billingPortal.sessions.create({
+      customer: data.stripe_customer_id,
+      return_url: returnUrl,
+    });
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error('Stripe portal session error:', err);
+    res.status(500).json({ error: 'Failed to create billing portal session' });
+  }
+});
+
 // ── POST /api/stripe/verify-session ──────────────────────────────────────────
 // Called by the app after returning from successful Stripe Checkout
 router.post('/verify-session', async (req, res) => {

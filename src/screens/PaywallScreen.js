@@ -48,6 +48,8 @@ export default function PaywallScreen({ navigation, route }) {
   // Where to go after successful subscription (default: GoalSetup)
   const nextScreen = route?.params?.nextScreen || 'GoalSetup';
   const nextParams = route?.params?.nextParams || {};
+  // fromHome = user has plans but no subscription — don't let them dismiss
+  const fromHome = route?.params?.fromHome === true;
 
   const handleSubscribe = async () => {
     setLoading(true);
@@ -75,10 +77,12 @@ export default function PaywallScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.container}>
-      {/* Close button */}
-      <TouchableOpacity style={s.closeBtn} onPress={handleClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-        <Text style={s.closeBtnText}>✕</Text>
-      </TouchableOpacity>
+      {/* Close button — hidden when user has plans but no subscription */}
+      {!fromHome && (
+        <TouchableOpacity style={s.closeBtn} onPress={handleClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <Text style={s.closeBtnText}>✕</Text>
+        </TouchableOpacity>
+      )}
 
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
         {/* Header */}
