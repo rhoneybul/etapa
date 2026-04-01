@@ -5,7 +5,7 @@
  */
 import { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
@@ -48,6 +48,7 @@ export default function HomeScreen({ navigation }) {
   const [currentWeek, setCurrentWeek] = useState(1);
   const [stravaOk, setStravaOk] = useState(false);
   const [activePlanConfig, setActivePlanConfig] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   // Block access to plans if the user hasn't subscribed
   useFocusEffect(useCallback(() => {
@@ -65,6 +66,7 @@ export default function HomeScreen({ navigation }) {
   }, [navigation]));
 
   const load = useCallback(async () => {
+    setLoading(true);
     const [user, p, g, strava] = await Promise.all([
       getCurrentUser(), getPlans(), getGoals(), isStravaConnected(),
     ]);
@@ -89,6 +91,7 @@ export default function HomeScreen({ navigation }) {
         setActivePlanConfig(cfg);
       }
     }
+    setLoading(false);
   }, [selectedPlanIdx]);
 
   useEffect(() => { load(); }, [load]);
@@ -110,6 +113,18 @@ export default function HomeScreen({ navigation }) {
       navigation.navigate('Paywall');
     }
   };
+
+  // ── Loading state ─────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <View style={s.container}>
+        <SafeAreaView style={[s.safe, s.loadingWrap]}>
+          <Image source={require('../../assets/icon.png')} style={s.loadingLogo} />
+          <ActivityIndicator color={colors.primary} size="small" style={{ marginTop: 24 }} />
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   // ── No plan state ─────────────────────────────────────────────────────────
   if (plans.length === 0) {
@@ -561,6 +576,8 @@ const HIT = { top: 8, bottom: 8, left: 8, right: 8 };
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingLogo: { width: 64, height: 64, borderRadius: 16 },
   safe:      { flex: 1 },
 
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },

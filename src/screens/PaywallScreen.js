@@ -87,7 +87,7 @@ export default function PaywallScreen({ navigation, route }) {
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={s.header}>
-          <Text style={s.eyebrow}>ETAPA PREMIUM</Text>
+          <Text style={s.eyebrow}>ETAPA PELOTON</Text>
           <Text style={s.title}>Train smarter,{'\n'}start free.</Text>
           <Text style={s.subtitle}>1 month free trial · No charge today</Text>
         </View>
