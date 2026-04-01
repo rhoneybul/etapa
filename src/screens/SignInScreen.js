@@ -36,7 +36,7 @@ export default function SignInScreen({ navigation }) {
   const slideAnim = useRef(new Animated.Value(50)).current;
   const logoScale = useRef(new Animated.Value(0.7)).current;
   const glowAnim = useRef(new Animated.Value(0.3)).current;
-  const [loading, setLoading] = useState(false);
+  const [loadingProvider, setLoadingProvider] = useState(null);
   const [authError, setAuthError] = useState(null);
   const [appleAvailable, setAppleAvailable] = useState(false);
 
@@ -79,14 +79,14 @@ export default function SignInScreen({ navigation }) {
       return;
     }
     setAuthError(null);
-    setLoading(true);
+    setLoadingProvider('google');
     try {
       await signInWithGoogle();
     } catch (err) {
       setAuthError(err.message);
-      setLoading(false);
+      setLoadingProvider(null);
     }
-    if (Platform.OS !== 'web') setLoading(false);
+    if (Platform.OS !== 'web') setLoadingProvider(null);
   };
 
   const handleAppleAuth = async () => {
@@ -95,19 +95,19 @@ export default function SignInScreen({ navigation }) {
       return;
     }
     setAuthError(null);
-    setLoading(true);
+    setLoadingProvider('apple');
     try {
       await signInWithApple();
     } catch (err) {
       if (err.code === 'ERR_REQUEST_CANCELED') {
         // User cancelled — don't show an error
-        setLoading(false);
+        setLoadingProvider(null);
         return;
       }
       setAuthError(err.message);
-      setLoading(false);
+      setLoadingProvider(null);
     }
-    if (Platform.OS !== 'web') setLoading(false);
+    if (Platform.OS !== 'web') setLoadingProvider(null);
   };
 
   return (
@@ -119,7 +119,7 @@ export default function SignInScreen({ navigation }) {
         style={s.gradient}
       />
 
-      {/* Decorative amber glow behind logo */}
+      {/* Decorative ambient glow behind logo */}
       <Animated.View style={[s.glowOrb, { opacity: glowAnim }]} />
 
       {/* Subtle geometric accents */}
@@ -140,7 +140,7 @@ export default function SignInScreen({ navigation }) {
             />
           </View>
           <Text style={s.title}>Etapa</Text>
-          <Text style={s.tagline}>Train with purpose</Text>
+          <Text style={s.tagline}>your coach. your plan. the stage is yours.</Text>
         </Animated.View>
 
         {/* Auth section — pinned to bottom */}
@@ -152,10 +152,10 @@ export default function SignInScreen({ navigation }) {
               style={s.btnApple}
               onPress={handleAppleAuth}
               activeOpacity={0.85}
-              disabled={loading}
+              disabled={!!loadingProvider}
             >
               <View style={s.btnLogo}><AppleLogo /></View>
-              <Text style={s.btnAppleText}>{loading ? 'Signing in...' : 'Continue with Apple'}</Text>
+              <Text style={s.btnAppleText}>{loadingProvider === 'apple' ? 'Signing in...' : 'Continue with Apple'}</Text>
             </TouchableOpacity>
           )}
 
@@ -163,10 +163,10 @@ export default function SignInScreen({ navigation }) {
             style={s.btnGoogle}
             onPress={handleGoogleAuth}
             activeOpacity={0.85}
-            disabled={loading}
+            disabled={!!loadingProvider}
           >
             <View style={s.btnLogo}><GoogleLogo /></View>
-            <Text style={s.btnGoogleText}>{loading ? 'Signing in...' : 'Continue with Google'}</Text>
+            <Text style={s.btnGoogleText}>{loadingProvider === 'google' ? 'Signing in...' : 'Continue with Google'}</Text>
           </TouchableOpacity>
 
           <Text style={s.terms}>
@@ -183,13 +183,13 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0C0D10' },
   gradient: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 
-  // Amber glow orb behind logo
+  // Subtle glow orb behind logo
   glowOrb: {
     position: 'absolute',
     top: height * 0.22,
     left: width * 0.5 - 120,
     width: 240, height: 240, borderRadius: 120,
-    backgroundColor: 'rgba(217,119,6,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
   },
 
   // Subtle decorative rings and lines
@@ -224,14 +224,12 @@ const s = StyleSheet.create({
   logoContainer: {
     width: 120, height: 120, borderRadius: 30,
     overflow: 'hidden',
-    shadowColor: '#D97706',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.35,
-    shadowRadius: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
     elevation: 10,
     marginBottom: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(217,119,6,0.25)',
   },
   logoImage: { width: 120, height: 120 },
   title: {
