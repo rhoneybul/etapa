@@ -3,16 +3,15 @@
  * Shows all plans, week calendar with toggle, today's activities.
  * If no plan exists, shows "Make me a plan" CTA.
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image, ActivityIndicator,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image, Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { getCurrentUser } from '../services/authService';
 import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig } from '../services/storageService';
 import { isSubscribed } from '../services/subscriptionService';
-import { useFocusEffect } from '@react-navigation/native';
 import { isStravaConnected } from '../services/stravaService';
 import { getSessionColor, getSessionLabel, getMetricLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
 import analytics from '../services/analyticsService';
@@ -49,27 +48,34 @@ export default function HomeScreen({ navigation }) {
   const [stravaOk, setStravaOk] = useState(false);
   const [activePlanConfig, setActivePlanConfig] = useState(null);
   const [loading, setLoading] = useState(true);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // Block access to plans if the user hasn't subscribed
-  useFocusEffect(useCallback(() => {
-    let cancelled = false;
-    async function checkAccess() {
-      const p = await getPlans();
-      if (cancelled || p.length === 0) return; // No plans — no gate needed
-      const subscribed = await isSubscribed();
-      if (!cancelled && !subscribed) {
-        navigation.replace('Paywall', { fromHome: true, nextScreen: 'Home' });
-      }
-    }
-    checkAccess();
-    return () => { cancelled = true; };
-  }, [navigation]));
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.08, duration: 1000, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     const [user, p, g, strava] = await Promise.all([
       getCurrentUser(), getPlans(), getGoals(), isStravaConnected(),
     ]);
+
+    // Gate: if user has plans but no subscription, go straight to paywall.
+    // We return without clearing loading so the loading screen stays visible
+    // until the navigation completes — no flash of the plans page.
+    if (p.length > 0) {
+      const subscribed = await isSubscribed();
+      if (!subscribed) {
+        navigation.replace('Paywall', { fromHome: true, nextScreen: 'Home' });
+        return;
+      }
+    }
+
     const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || null;
     setName(displayName);
     setPlans(p);
@@ -92,7 +98,7 @@ export default function HomeScreen({ navigation }) {
       }
     }
     setLoading(false);
-  }, [selectedPlanIdx]);
+  }, [selectedPlanIdx, navigation]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -119,8 +125,9 @@ export default function HomeScreen({ navigation }) {
     return (
       <View style={s.container}>
         <SafeAreaView style={[s.safe, s.loadingWrap]}>
-          <Image source={require('../../assets/icon.png')} style={s.loadingLogo} />
-          <ActivityIndicator color={colors.primary} size="small" style={{ marginTop: 24 }} />
+          <Animated.View style={[s.loadingLogoWrap, { transform: [{ scale: pulseAnim }] }]}>
+            <Image source={require('../../assets/icon.png')} style={s.loadingLogo} />
+          </Animated.View>
         </SafeAreaView>
       </View>
     );
@@ -577,7 +584,13 @@ const HIT = { top: 8, bottom: 8, left: 8, right: 8 };
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingLogo: { width: 64, height: 64, borderRadius: 16 },
+  loadingLogoWrap: {
+    width: 80, height: 80, borderRadius: 22, overflow: 'hidden',
+    shadowColor: '#D97706', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25, shadowRadius: 20, elevation: 8,
+    borderWidth: 1, borderColor: 'rgba(217,119,6,0.2)',
+  },
+  loadingLogo: { width: 80, height: 80 },
   safe:      { flex: 1 },
 
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
