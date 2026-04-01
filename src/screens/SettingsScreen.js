@@ -8,7 +8,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { signOut } from '../services/authService';
-import { clearPlan, getPlans, deletePlan } from '../services/storageService';
+import { clearPlan, getPlans, deletePlan, clearUserData } from '../services/storageService';
 import { connectStrava, disconnectStrava, isStravaConnected, isStravaConfigured, getStravaTokens } from '../services/stravaService';
 import analytics from '../services/analyticsService';
 
@@ -64,6 +64,7 @@ export default function SettingsScreen({ navigation }) {
   const handleSignOut = async () => {
     analytics.events.signedOut();
     analytics.reset();
+    await clearUserData();
     await signOut();
     navigation.replace('SignIn');
   };

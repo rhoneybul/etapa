@@ -1,3 +1,13 @@
+import * as Sentry from '@sentry/react-native';
+
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+  enabled: !!process.env.EXPO_PUBLIC_SENTRY_DSN,
+  debug: false,
+  tracesSampleRate: 0.2,
+  environment: __DEV__ ? 'development' : 'production',
+});
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -8,6 +18,7 @@ import { useFonts, Poppins_300Light, Poppins_400Regular, Poppins_500Medium, Popp
 import * as SplashScreen from 'expo-splash-screen';
 import { getSession } from './src/services/authService';
 import { hydrateFromServer } from './src/services/storageService';
+import { checkStripeReturn } from './src/services/subscriptionService';
 import analytics from './src/services/analyticsService';
 
 import SignInScreen        from './src/screens/SignInScreen';
@@ -24,6 +35,7 @@ import PlanReadyScreen     from './src/screens/PlanReadyScreen';
 import CoachChatScreen     from './src/screens/CoachChatScreen';
 import FeedbackScreen      from './src/screens/FeedbackScreen';
 import ChangeCoachScreen   from './src/screens/ChangeCoachScreen';
+import PaywallScreen       from './src/screens/PaywallScreen';
 import WebWrapper          from './src/components/WebWrapper';
 
 const Stack = createStackNavigator();
@@ -45,7 +57,7 @@ const slide = ({ current, layouts }) => ({
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-export default function App() {
+function App() {
   const [initialRoute, setInitialRoute] = useState(null);
   const navigationRef = React.useRef(null);
   const routeNameRef = React.useRef(null);
@@ -62,8 +74,13 @@ export default function App() {
     getSession().then(async session => {
       if (session) {
         analytics.identify(session.user?.id, { email: session.user?.email });
-        // Hydrate local storage from server if empty (e.g. fresh install)
         await hydrateFromServer().catch(() => {});
+        // On web: detect return from Stripe Checkout and go straight to GoalSetup
+        const stripeSession = await checkStripeReturn().catch(() => null);
+        if (stripeSession) {
+          setInitialRoute('GoalSetup');
+          return;
+        }
       }
       setInitialRoute(session ? 'Home' : 'SignIn');
     });
@@ -118,6 +135,7 @@ export default function App() {
               <Stack.Screen name="Settings"       component={SettingsScreen} />
               <Stack.Screen name="Feedback"       component={FeedbackScreen} />
               <Stack.Screen name="ChangeCoach"    component={ChangeCoachScreen} />
+              <Stack.Screen name="Paywall"        component={PaywallScreen} />
             </Stack.Navigator>
           </NavigationContainer>
         </View>
@@ -125,3 +143,5 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
+
+export default Sentry.wrap(App);

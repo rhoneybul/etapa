@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { getCurrentUser } from '../services/authService';
 import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig } from '../services/storageService';
+import { isSubscribed } from '../services/subscriptionService';
 import { isStravaConnected } from '../services/stravaService';
 import { getSessionColor, getSessionLabel, getMetricLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
 import analytics from '../services/analyticsService';
@@ -84,6 +85,16 @@ export default function HomeScreen({ navigation }) {
   const activePlan = plans[selectedPlanIdx] || null;
   const activeGoal = activePlan ? goals.find(g => g.id === activePlan.goalId) : null;
 
+  // Check subscription before entering the plan creation flow
+  const handleMakePlan = async () => {
+    const subscribed = await isSubscribed();
+    if (subscribed) {
+      navigation.navigate('GoalSetup');
+    } else {
+      navigation.navigate('Paywall');
+    }
+  };
+
   // ── No plan state ─────────────────────────────────────────────────────────
   if (plans.length === 0) {
     return (
@@ -118,7 +129,7 @@ export default function HomeScreen({ navigation }) {
 
             <TouchableOpacity
               style={s.createBtn}
-              onPress={() => navigation.navigate('GoalSetup')}
+              onPress={handleMakePlan}
               activeOpacity={0.88}
             >
               <Text style={s.createBtnText}>Make me a plan</Text>
@@ -274,7 +285,7 @@ export default function HomeScreen({ navigation }) {
           {/* New plan button */}
           <TouchableOpacity
             style={s.newPlanBtn}
-            onPress={() => navigation.navigate('GoalSetup')}
+            onPress={handleMakePlan}
             activeOpacity={0.8}
           >
             <Text style={s.newPlanBtnPlus}>+</Text>

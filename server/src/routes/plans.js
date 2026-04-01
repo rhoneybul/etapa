@@ -20,6 +20,7 @@ router.get('/', async (req, res, next) => {
         .from('activities')
         .select('*')
         .in('plan_id', planIds)
+        .eq('user_id', req.user.id)
         .order('week', { ascending: true })
         .order('day_of_week', { ascending: true });
       if (actErr) throw actErr;

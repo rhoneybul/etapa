@@ -41,7 +41,14 @@
     "plugins": [
       "expo-web-browser",
       "expo-font",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "etapa",
+          "project": "etapa-app"
+        }
+      ]
     ],
     "extra": {
       "serverUrl": "https://etapa-production.up.railway.app",
