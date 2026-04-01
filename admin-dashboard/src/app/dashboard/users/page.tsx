@@ -1,10 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { User } from "@/types";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { StatCard } from "@/components/stat-card";
+
+interface User {
+  id: string;
+  email: string;
+  name: string | null;
+  createdAt: string;
+  lastSignInAt: string | null;
+  subscription: {
+    plan: string;
+    status: string;
+    current_period_end: string | null;
+  } | null;
+}
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -13,17 +25,14 @@ export default function UsersPage() {
   useEffect(() => {
     fetch("/api/users")
       .then((r) => r.json())
-      .then(setUsers)
+      .then((data) => setUsers(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="animate-pulse text-gray-500">Loading users...</div>;
 
-  const activeCount = users.filter((u) => u.status === "active").length;
-  const planCounts = users.reduce((acc, u) => {
-    acc[u.plan] = (acc[u.plan] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  const withSub = users.filter((u) => u.subscription);
+  const activeSubs = users.filter((u) => ["active", "trialing", "paid"].includes(u.subscription?.status || ""));
 
   return (
     <div>
@@ -31,25 +40,29 @@ export default function UsersPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <StatCard label="Total Users" value={users.length} />
-        <StatCard label="Active" value={activeCount} sub={`${Math.round((activeCount / users.length) * 100)}% of total`} />
-        <StatCard label="Enterprise" value={planCounts.enterprise || 0} />
-        <StatCard label="Pro" value={planCounts.pro || 0} />
+        <StatCard label="With Subscription" value={withSub.length} />
+        <StatCard label="Active Subscriptions" value={activeSubs.length} />
+        <StatCard label="Free / No Plan" value={users.length - withSub.length} />
       </div>
 
       <DataTable
-        searchKey="name"
-        searchPlaceholder="Search users..."
+        searchKey="email"
+        searchPlaceholder="Search by email..."
         columns={[
-          { key: "name", label: "Name", render: (u) => (
+          { key: "name", label: "User", render: (u: User) => (
             <div>
-              <p className="font-medium text-gray-900">{u.name}</p>
+              <p className="font-medium text-gray-900">{u.name || "—"}</p>
               <p className="text-xs text-gray-500">{u.email}</p>
             </div>
           )},
-          { key: "plan", label: "Plan", render: (u) => <Badge value={u.plan} /> },
-          { key: "status", label: "Status", render: (u) => <Badge value={u.status} /> },
-          { key: "createdAt", label: "Joined", render: (u) => new Date(u.createdAt).toLocaleDateString() },
-          { key: "lastLoginAt", label: "Last Login", render: (u) => new Date(u.lastLoginAt).toLocaleDateString() },
+          { key: "subscription", label: "Plan", render: (u: User) => (
+            u.subscription ? <Badge value={u.subscription.plan} /> : <span className="text-xs text-gray-400">free</span>
+          )},
+          { key: "subStatus", label: "Status", render: (u: User) => (
+            u.subscription ? <Badge value={u.subscription.status} /> : <span className="text-xs text-gray-400">—</span>
+          )},
+          { key: "createdAt", label: "Signed Up", render: (u: User) => new Date(u.createdAt).toLocaleDateString() },
+          { key: "lastSignInAt", label: "Last Sign In", render: (u: User) => u.lastSignInAt ? new Date(u.lastSignInAt).toLocaleDateString() : "—" },
         ]}
         data={users}
       />

@@ -1,13 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Payment } from "@/types";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { StatCard } from "@/components/stat-card";
 
-function formatCurrency(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
+interface Payment {
+  id: string;
+  userId: string;
+  userName: string;
+  stripeCustomerId: string;
+  plan: string;
+  status: string;
+  trialEnd: string | null;
+  currentPeriodEnd: string | null;
+  createdAt: string;
 }
 
 export default function PaymentsPage() {
@@ -17,25 +24,22 @@ export default function PaymentsPage() {
   useEffect(() => {
     fetch("/api/payments")
       .then((r) => r.json())
-      .then(setPayments)
+      .then((data) => setPayments(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="animate-pulse text-gray-500">Loading payments...</div>;
 
-  const totalRevenue = payments
-    .filter((p) => p.status === "succeeded")
-    .reduce((sum, p) => sum + p.amount, 0);
-  const failedCount = payments.filter((p) => p.status === "failed").length;
+  const activeCount = payments.filter((p) => ["active", "trialing", "paid"].includes(p.status)).length;
 
   return (
     <div>
-      <h1 className="text-lg font-semibold text-gray-900 mb-6">Payments</h1>
+      <h1 className="text-lg font-semibold text-gray-900 mb-6">Subscriptions & Payments</h1>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-        <StatCard label="Total Payments" value={payments.length} />
-        <StatCard label="Revenue" value={formatCurrency(totalRevenue, "USD")} sub="Succeeded payments only" />
-        <StatCard label="Failed" value={failedCount} />
+        <StatCard label="Total Subscriptions" value={payments.length} />
+        <StatCard label="Active / Trialing" value={activeCount} />
+        <StatCard label="Churned" value={payments.filter((p) => p.status === "canceled").length} />
       </div>
 
       <DataTable
@@ -43,12 +47,13 @@ export default function PaymentsPage() {
         searchPlaceholder="Search by user..."
         columns={[
           { key: "userName", label: "User" },
-          { key: "description", label: "Description" },
-          { key: "amount", label: "Amount", render: (p) => (
-            <span className="font-medium">{formatCurrency(p.amount, p.currency)}</span>
+          { key: "plan", label: "Plan", render: (p: Payment) => <Badge value={p.plan} /> },
+          { key: "status", label: "Status", render: (p: Payment) => <Badge value={p.status} /> },
+          { key: "currentPeriodEnd", label: "Period End", render: (p: Payment) => p.currentPeriodEnd ? new Date(p.currentPeriodEnd).toLocaleDateString() : "—" },
+          { key: "stripeCustomerId", label: "Stripe ID", render: (p: Payment) => (
+            <span className="font-mono text-xs text-gray-500">{p.stripeCustomerId}</span>
           )},
-          { key: "status", label: "Status", render: (p) => <Badge value={p.status} /> },
-          { key: "createdAt", label: "Date", render: (p) => new Date(p.createdAt).toLocaleDateString() },
+          { key: "createdAt", label: "Created", render: (p: Payment) => new Date(p.createdAt).toLocaleDateString() },
         ]}
         data={payments}
       />

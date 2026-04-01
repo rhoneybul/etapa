@@ -1,10 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plan } from "@/types";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { StatCard } from "@/components/stat-card";
+
+interface Plan {
+  id: string;
+  name: string | null;
+  status: string;
+  weeks: number;
+  startDate: string;
+  createdAt: string;
+  userId: string;
+  userName: string;
+  activityCount: number;
+}
 
 export default function PlansPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -13,14 +24,14 @@ export default function PlansPage() {
   useEffect(() => {
     fetch("/api/plans")
       .then((r) => r.json())
-      .then(setPlans)
+      .then((data) => setPlans(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="animate-pulse text-gray-500">Loading plans...</div>;
 
-  const totalProjects = plans.reduce((sum, p) => sum + p.projectCount, 0);
-  const activeCount = plans.filter((p) => p.status === "active").length;
+  const activePlans = plans.filter((p) => p.status === "active");
+  const totalActivities = plans.reduce((sum, p) => sum + p.activityCount, 0);
 
   return (
     <div>
@@ -28,24 +39,24 @@ export default function PlansPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
         <StatCard label="Total Plans" value={plans.length} />
-        <StatCard label="Active" value={activeCount} />
-        <StatCard label="Total Projects" value={totalProjects} />
+        <StatCard label="Active" value={activePlans.length} />
+        <StatCard label="Total Activities" value={totalActivities} />
       </div>
 
       <DataTable
-        searchKey="name"
-        searchPlaceholder="Search plans..."
+        searchKey="userName"
+        searchPlaceholder="Search by user..."
         columns={[
-          { key: "name", label: "Plan Name", render: (p) => (
+          { key: "name", label: "Plan Name", render: (p: Plan) => (
             <div>
-              <p className="font-medium text-gray-900">{p.name}</p>
-              <p className="text-xs text-gray-500 max-w-xs truncate">{p.description}</p>
+              <p className="font-medium text-gray-900">{p.name || "Untitled"}</p>
+              <p className="text-xs text-gray-500">{p.weeks} weeks, {p.activityCount} activities</p>
             </div>
           )},
-          { key: "createdByName", label: "Created By" },
-          { key: "projectCount", label: "Projects" },
-          { key: "status", label: "Status", render: (p) => <Badge value={p.status} /> },
-          { key: "createdAt", label: "Created", render: (p) => new Date(p.createdAt).toLocaleDateString() },
+          { key: "userName", label: "Created By" },
+          { key: "status", label: "Status", render: (p: Plan) => <Badge value={p.status} /> },
+          { key: "startDate", label: "Start", render: (p: Plan) => new Date(p.startDate).toLocaleDateString() },
+          { key: "createdAt", label: "Created", render: (p: Plan) => new Date(p.createdAt).toLocaleDateString() },
         ]}
         data={plans}
       />

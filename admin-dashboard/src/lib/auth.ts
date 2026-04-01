@@ -1,6 +1,6 @@
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import { admins } from "./seed-data";
+import { etapaFetch } from "./etapa-api";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -11,16 +11,18 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async signIn({ user }) {
-      // Only allow sign-in if email is in the admins list
-      const isAdmin = admins.some((a) => a.email === user.email);
-      return isAdmin;
+      // Check if the user has is_admin: true in Supabase via the Etapa API
+      try {
+        const result = await etapaFetch(`/api/admin/check?email=${encodeURIComponent(user.email || "")}`);
+        return result?.isAdmin === true;
+      } catch (err) {
+        console.error("Admin check failed:", err);
+        return false;
+      }
     },
     async session({ session }) {
       if (session.user?.email) {
-        const admin = admins.find((a) => a.email === session.user!.email);
-        if (admin) {
-          (session as any).isAdmin = true;
-        }
+        (session as any).isAdmin = true; // They passed signIn, so they're admin
       }
       return session;
     },

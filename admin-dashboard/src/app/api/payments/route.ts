@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api-auth";
-import { payments } from "@/lib/seed-data";
+import { etapaFetch } from "@/lib/etapa-api";
 
 export async function GET() {
   const { error } = await requireAdmin();
   if (error) return error;
-  return NextResponse.json(payments);
+
+  try {
+    const payments = await etapaFetch("/api/admin/payments");
+    return NextResponse.json(payments);
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 502 });
+  }
 }

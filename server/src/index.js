@@ -23,6 +23,7 @@ const feedbackRouter     = require('./routes/feedback');
 const supportRouter      = require('./routes/support');
 const stripeRouter       = require('./routes/stripe');
 const { webhookHandler } = require('./routes/stripe');
+const adminRouter        = require('./routes/admin');
 
 const { authMiddleware } = require('./middleware/auth');
 
@@ -54,6 +55,7 @@ app.use('/api/ai', authMiddleware, aiRouter);
 app.use('/api/stripe', authMiddleware, stripeRouter);
 app.use('/api/feedback', authMiddleware, feedbackRouter);
 app.use('/api/support', authMiddleware, supportRouter);
+app.use('/api/admin', adminRouter); // admin router has its own auth (API key or Supabase JWT)
 
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {
