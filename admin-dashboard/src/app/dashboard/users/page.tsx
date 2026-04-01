@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect, useState } from "react";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
@@ -16,6 +18,10 @@ interface User {
     status: string;
     current_period_end: string | null;
   } | null;
+  planCount: number;
+  firstPlanAt: string | null;
+  messageCount: number;
+  feedbackCount: number;
 }
 
 export default function UsersPage() {
@@ -33,6 +39,8 @@ export default function UsersPage() {
 
   const withSub = users.filter((u) => u.subscription);
   const activeSubs = users.filter((u) => ["active", "trialing", "paid"].includes(u.subscription?.status || ""));
+  const totalMessages = users.reduce((sum, u) => sum + u.messageCount, 0);
+  const totalPlans = users.reduce((sum, u) => sum + u.planCount, 0);
 
   return (
     <div>
@@ -40,9 +48,9 @@ export default function UsersPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <StatCard label="Total Users" value={users.length} />
-        <StatCard label="With Subscription" value={withSub.length} />
         <StatCard label="Active Subscriptions" value={activeSubs.length} />
-        <StatCard label="Free / No Plan" value={users.length - withSub.length} />
+        <StatCard label="Total Plans" value={totalPlans} />
+        <StatCard label="Total Messages" value={totalMessages} />
       </div>
 
       <DataTable
@@ -60,6 +68,18 @@ export default function UsersPage() {
           )},
           { key: "subStatus", label: "Status", render: (u: User) => (
             u.subscription ? <Badge value={u.subscription.status} /> : <span className="text-xs text-gray-400">—</span>
+          )},
+          { key: "planCount", label: "Plans", render: (u: User) => (
+            <div className="text-center">
+              <p className="font-medium text-gray-900">{u.planCount}</p>
+              {u.firstPlanAt && <p className="text-xs text-gray-500">since {new Date(u.firstPlanAt).toLocaleDateString()}</p>}
+            </div>
+          )},
+          { key: "messageCount", label: "Messages", render: (u: User) => (
+            <span className="text-sm text-gray-700">{u.messageCount}</span>
+          )},
+          { key: "feedbackCount", label: "Feedback", render: (u: User) => (
+            <span className="text-sm text-gray-700">{u.feedbackCount}</span>
           )},
           { key: "createdAt", label: "Signed Up", render: (u: User) => new Date(u.createdAt).toLocaleDateString() },
           { key: "lastSignInAt", label: "Last Sign In", render: (u: User) => u.lastSignInAt ? new Date(u.lastSignInAt).toLocaleDateString() : "—" },

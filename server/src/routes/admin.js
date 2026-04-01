@@ -107,14 +107,20 @@ router.post('/revoke', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── GET /api/admin/admins — list all users with is_admin: true ───────────────
+// ── GET /api/admin/admins — list all users in the admins table ───────────────
 router.get('/admins', async (req, res, next) => {
   try {
+    const { data: adminRows, error: adminError } = await supabase.from('admins').select('user_id');
+    if (adminError) throw adminError;
+
+    if (!adminRows || adminRows.length === 0) return res.json([]);
+
     const { data: { users }, error } = await supabase.auth.admin.listUsers({ perPage: 1000 });
     if (error) throw error;
 
+    const adminUserIds = new Set(adminRows.map(a => a.user_id));
     const admins = users
-      .filter(u => u.user_metadata?.is_admin === true)
+      .filter(u => adminUserIds.has(u.id))
       .map(u => ({
         id: u.id,
         email: u.email,
@@ -126,7 +132,7 @@ router.get('/admins', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── GET /api/admin/users — all users from Supabase Auth ─────────────────────
+// ── GET /api/admin/users — all users with subs, plan count, and message counts
 router.get('/users', async (req, res, next) => {
   try {
     const { data: { users }, error } = await supabase.auth.admin.listUsers({
@@ -134,6 +140,7 @@ router.get('/users', async (req, res, next) => {
     });
     if (error) throw error;
 
+    // Subscriptions (latest per user)
     const { data: subs } = await supabase
       .from('subscriptions')
       .select('user_id, plan, status, current_period_end, created_at')
@@ -144,6 +151,32 @@ router.get('/users', async (req, res, next) => {
       if (!subsByUser[sub.user_id]) subsByUser[sub.user_id] = sub;
     }
 
+    // Plan count per user
+    const { data: plans } = await supabase.from('plans').select('user_id, created_at');
+    const planCountByUser = {};
+    const firstPlanByUser = {};
+    for (const p of (plans || [])) {
+      planCountByUser[p.user_id] = (planCountByUser[p.user_id] || 0) + 1;
+      if (!firstPlanByUser[p.user_id] || p.created_at < firstPlanByUser[p.user_id]) {
+        firstPlanByUser[p.user_id] = p.created_at;
+      }
+    }
+
+    // Message count per user from chat_sessions
+    const { data: chats } = await supabase.from('chat_sessions').select('user_id, messages');
+    const msgCountByUser = {};
+    for (const c of (chats || [])) {
+      const msgs = Array.isArray(c.messages) ? c.messages.filter(m => m.role === 'user') : [];
+      msgCountByUser[c.user_id] = (msgCountByUser[c.user_id] || 0) + msgs.length;
+    }
+
+    // Feedback count per user
+    const { data: feedback } = await supabase.from('feedback').select('user_id');
+    const feedbackCountByUser = {};
+    for (const f of (feedback || [])) {
+      feedbackCountByUser[f.user_id] = (feedbackCountByUser[f.user_id] || 0) + 1;
+    }
+
     const result = users.map(u => ({
       id: u.id,
       email: u.email,
@@ -152,6 +185,10 @@ router.get('/users', async (req, res, next) => {
       createdAt: u.created_at,
       lastSignInAt: u.last_sign_in_at,
       subscription: subsByUser[u.id] || null,
+      planCount: planCountByUser[u.id] || 0,
+      firstPlanAt: firstPlanByUser[u.id] || null,
+      messageCount: msgCountByUser[u.id] || 0,
+      feedbackCount: feedbackCountByUser[u.id] || 0,
     }));
 
     res.json(result);
@@ -180,21 +217,54 @@ router.get('/plans', async (req, res, next) => {
       }
     }
 
+    // Fetch plan configs keyed by id
+    const { data: configs } = await supabase.from('plan_configs').select('*');
+    const configsById = {};
+    for (const c of (configs || [])) { configsById[c.id] = c; }
+
+    // Fetch goals keyed by id
+    const { data: goals } = await supabase.from('goals').select('*');
+    const goalsById = {};
+    for (const g of (goals || [])) { goalsById[g.id] = g; }
+
     const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
     const usersById = {};
     for (const u of (users || [])) { usersById[u.id] = u; }
 
-    const result = plans.map(p => ({
-      id: p.id,
-      name: p.name,
-      status: p.status,
-      weeks: p.weeks,
-      startDate: p.start_date,
-      createdAt: p.created_at,
-      userId: p.user_id,
-      userName: usersById[p.user_id]?.user_metadata?.full_name || usersById[p.user_id]?.email || 'Unknown',
-      activityCount: actCounts[p.id] || 0,
-    }));
+    const result = plans.map(p => {
+      const config = configsById[p.config_id] || null;
+      const goal = goalsById[p.goal_id] || null;
+
+      return {
+        id: p.id,
+        name: p.name,
+        status: p.status,
+        weeks: p.weeks,
+        startDate: p.start_date,
+        createdAt: p.created_at,
+        userId: p.user_id,
+        userName: usersById[p.user_id]?.user_metadata?.full_name || usersById[p.user_id]?.email || 'Unknown',
+        activityCount: actCounts[p.id] || 0,
+        config: config ? {
+          daysPerWeek: config.days_per_week,
+          sessionsPerWeek: config.sessions_per_week,
+          fitnessLevel: config.fitness_level,
+          indoorTrainer: config.indoor_trainer,
+          coachId: config.coach_id,
+          trainingTypes: config.training_types,
+          extraNotes: config.extra_notes,
+        } : null,
+        goal: goal ? {
+          cyclingType: goal.cycling_type,
+          goalType: goal.goal_type,
+          targetDistance: goal.target_distance,
+          targetElevation: goal.target_elevation,
+          targetTime: goal.target_time,
+          targetDate: goal.target_date,
+          eventName: goal.event_name,
+        } : null,
+      };
+    });
 
     res.json(result);
   } catch (err) { next(err); }
@@ -270,6 +340,38 @@ router.get('/tickets', async (req, res, next) => {
       labels: i.labels?.nodes?.map(l => l.name) || [],
       createdAt: i.createdAt,
       updatedAt: i.updatedAt,
+    }));
+
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
+// ── GET /api/admin/feedback — all feedback with user info and Linear links ───
+router.get('/feedback', async (req, res, next) => {
+  try {
+    const { data: feedback, error } = await supabase
+      .from('feedback')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+    const usersById = {};
+    for (const u of (users || [])) { usersById[u.id] = u; }
+
+    const result = (feedback || []).map(f => ({
+      id: f.id,
+      userId: f.user_id,
+      userName: usersById[f.user_id]?.user_metadata?.full_name || usersById[f.user_id]?.email || 'Unknown',
+      userEmail: usersById[f.user_id]?.email || null,
+      category: f.category,
+      message: f.message,
+      appVersion: f.app_version,
+      deviceInfo: f.device_info,
+      linearIssueId: f.linear_issue_id,
+      linearIssueKey: f.linear_issue_key,
+      linearIssueUrl: f.linear_issue_url,
+      createdAt: f.created_at,
     }));
 
     res.json(result);

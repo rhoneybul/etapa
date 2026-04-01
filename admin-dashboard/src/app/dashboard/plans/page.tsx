@@ -1,9 +1,31 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect, useState } from "react";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { StatCard } from "@/components/stat-card";
+
+interface PlanConfig {
+  daysPerWeek: number | null;
+  sessionsPerWeek: number | null;
+  fitnessLevel: string | null;
+  indoorTrainer: boolean | null;
+  coachId: string | null;
+  trainingTypes: string[] | null;
+  extraNotes: string | null;
+}
+
+interface PlanGoal {
+  cyclingType: string | null;
+  goalType: string | null;
+  targetDistance: number | null;
+  targetElevation: number | null;
+  targetTime: string | null;
+  targetDate: string | null;
+  eventName: string | null;
+}
 
 interface Plan {
   id: string;
@@ -15,6 +37,8 @@ interface Plan {
   userId: string;
   userName: string;
   activityCount: number;
+  config: PlanConfig | null;
+  goal: PlanGoal | null;
 }
 
 export default function PlansPage() {
@@ -54,8 +78,23 @@ export default function PlansPage() {
             </div>
           )},
           { key: "userName", label: "Created By" },
+          { key: "goal", label: "Goal", render: (p: Plan) => p.goal ? (
+            <div className="text-xs">
+              <p className="font-medium text-gray-900">{p.goal.cyclingType || "—"} · {p.goal.goalType || "—"}</p>
+              {p.goal.targetDistance && <p className="text-gray-500">{p.goal.targetDistance} km</p>}
+              {p.goal.targetElevation && <p className="text-gray-500">{p.goal.targetElevation} m elev</p>}
+              {p.goal.eventName && <p className="text-gray-500">{p.goal.eventName}</p>}
+            </div>
+          ) : <span className="text-xs text-gray-400">—</span> },
+          { key: "config", label: "Config", render: (p: Plan) => p.config ? (
+            <div className="text-xs">
+              <p className="text-gray-700">{p.config.sessionsPerWeek || p.config.daysPerWeek || "?"} sessions/wk</p>
+              {p.config.fitnessLevel && <p className="text-gray-500">{p.config.fitnessLevel}</p>}
+              {p.config.indoorTrainer && <p className="text-gray-500">Indoor trainer</p>}
+            </div>
+          ) : <span className="text-xs text-gray-400">—</span> },
           { key: "status", label: "Status", render: (p: Plan) => <Badge value={p.status} /> },
-          { key: "startDate", label: "Start", render: (p: Plan) => new Date(p.startDate).toLocaleDateString() },
+          { key: "startDate", label: "Start", render: (p: Plan) => p.startDate ? new Date(p.startDate).toLocaleDateString() : "—" },
           { key: "createdAt", label: "Created", render: (p: Plan) => new Date(p.createdAt).toLocaleDateString() },
         ]}
         data={plans}

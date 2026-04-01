@@ -1,6 +1,6 @@
 /**
  * Feedback routes — submit bug reports, feature requests, and support messages.
- * Creates a Linear issue for each submission.
+ * Creates a Linear issue for each submission AND persists to Supabase feedback table.
  *
  * Env vars:
  *   LINEAR_API_KEY   — Linear personal or OAuth API key
@@ -12,6 +12,7 @@
  *   LINEAR_SUPPORT_LABEL_ID — Linear label ID for support
  */
 const express = require('express');
+const { supabase } = require('../lib/supabase');
 const router  = express.Router();
 
 const LINEAR_API_KEY   = process.env.LINEAR_API_KEY || '';
@@ -113,7 +114,7 @@ async function createLinearIssue({ category, message, appVersion, deviceInfo, us
   throw new Error(`Linear issue creation failed: ${JSON.stringify(json.errors || json)}`);
 }
 
-// POST /api/feedback — submit feedback → create Linear issue
+// POST /api/feedback — submit feedback → create Linear issue → persist to Supabase
 router.post('/', async (req, res) => {
   try {
     const userId = req.user?.id;
@@ -138,6 +139,24 @@ router.post('/', async (req, res) => {
       deviceInfo,
       userEmail,
     });
+
+    // Persist feedback to Supabase with Linear reference
+    const feedbackId = `fb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const { error: dbError } = await supabase.from('feedback').insert({
+      id: feedbackId,
+      user_id: userId,
+      category,
+      message: message.trim(),
+      app_version: appVersion || null,
+      device_info: deviceInfo || null,
+      linear_issue_id: issue.id,
+      linear_issue_key: issue.identifier,
+      linear_issue_url: issue.url,
+    });
+
+    if (dbError) {
+      console.error('[feedback] Failed to persist to DB (Linear issue was still created):', dbError);
+    }
 
     res.status(201).json({
       success: true,
