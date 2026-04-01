@@ -9,7 +9,7 @@ export function createServerSupabaseClient() {
   const cookieStore = cookies();
   return createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
-      get(name) {
+      get(name: string) {
         return cookieStore.get(name)?.value;
       },
     },
