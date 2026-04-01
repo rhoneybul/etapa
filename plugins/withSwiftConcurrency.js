@@ -20,14 +20,18 @@ function withSwiftConcurrency(config) {
       if (typeof entry !== 'object' || !entry.buildSettings) continue;
 
       // Disable Swift 6 strict concurrency checking
-      entry.buildSettings.SWIFT_STRICT_CONCURRENCY = 'minimal';
+      // Values must be quoted — the pbxproj parser (Nanaimo) rejects bare
+      // tokens that contain special characters like '+'.
+      entry.buildSettings.SWIFT_STRICT_CONCURRENCY = '"minimal"';
 
       // Ensure C++ dialect supports coroutines (Folly requirement)
+      const cxxStd = entry.buildSettings.CLANG_CXX_LANGUAGE_STANDARD;
       if (
-        entry.buildSettings.CLANG_CXX_LANGUAGE_STANDARD === undefined ||
-        entry.buildSettings.CLANG_CXX_LANGUAGE_STANDARD === 'c++17'
+        cxxStd === undefined ||
+        cxxStd === '"c++17"' ||
+        cxxStd === 'c++17'
       ) {
-        entry.buildSettings.CLANG_CXX_LANGUAGE_STANDARD = 'c++20';
+        entry.buildSettings.CLANG_CXX_LANGUAGE_STANDARD = '"c++20"';
       }
     }
 
