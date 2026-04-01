@@ -8,14 +8,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from './api';
 
 const KEYS = {
-  GOALS:       '@etapa_goals',
-  PLAN_CONFIGS:'@etapa_plan_configs',
-  PLANS:       '@etapa_plans',
-  STRAVA:      '@etapa_strava',
+  GOALS:          '@etapa_goals',
+  PLAN_CONFIGS:   '@etapa_plan_configs',
+  PLANS:          '@etapa_plans',
+  STRAVA:         '@etapa_strava',
+  CURRENT_USER:   '@etapa_current_user_id',
   // Legacy single-item keys (for migration)
-  GOAL:        '@etapa_goal',
-  PLAN_CONFIG: '@etapa_plan_config',
-  PLAN:        '@etapa_plan',
+  GOAL:           '@etapa_goal',
+  PLAN_CONFIG:    '@etapa_plan_config',
+  PLAN:           '@etapa_plan',
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -278,20 +279,55 @@ export async function clearStravaTokens() {
   await AsyncStorage.removeItem(KEYS.STRAVA);
 }
 
-// ── Startup hydration ───────────────────────────────────────────────────────
-// On first launch after install (or after cache clear), if the user is
-// authenticated but local storage is empty, pull everything from the server.
+// ── User data isolation ──────────────────────────────────────────────────────
 
-export async function hydrateFromServer() {
+/**
+ * Clears all user-specific local data. Call on sign-out or when switching users.
+ */
+export async function clearUserData() {
+  await AsyncStorage.multiRemove([
+    KEYS.GOALS,
+    KEYS.PLANS,
+    KEYS.PLAN_CONFIGS,
+    KEYS.CURRENT_USER,
+  ]);
+  migrated = false; // Reset migration flag so next user gets a fresh start
+}
+
+/**
+ * Call on sign-in. If the userId differs from what's stored locally,
+ * clears all local data so stale data from a previous user is never shown.
+ * Returns true if data was cleared (caller should then hydrate from server).
+ */
+export async function ensureUserData(userId) {
+  const storedUserId = await AsyncStorage.getItem(KEYS.CURRENT_USER);
+  if (storedUserId && storedUserId !== userId) {
+    await clearUserData();
+    await AsyncStorage.setItem(KEYS.CURRENT_USER, userId);
+    return true; // Data was cleared — caller should hydrate
+  }
+  if (!storedUserId) {
+    await AsyncStorage.setItem(KEYS.CURRENT_USER, userId);
+  }
+  return false;
+}
+
+// ── Startup hydration ───────────────────────────────────────────────────────
+// On first launch after install, or after a user switch, pull everything
+// from the server to populate local storage.
+
+export async function hydrateFromServer({ force = false } = {}) {
   await ensureMigrated();
 
-  const localGoals  = (await getJSON(KEYS.GOALS)) || [];
-  const localPlans  = (await getJSON(KEYS.PLANS)) || [];
-  const localConfigs = (await getJSON(KEYS.PLAN_CONFIGS)) || [];
+  if (!force) {
+    const localGoals   = (await getJSON(KEYS.GOALS)) || [];
+    const localPlans   = (await getJSON(KEYS.PLANS)) || [];
+    const localConfigs = (await getJSON(KEYS.PLAN_CONFIGS)) || [];
 
-  // Only hydrate if ALL local stores are empty — avoids overwriting edits
-  if (localGoals.length > 0 || localPlans.length > 0 || localConfigs.length > 0) {
-    return { hydrated: false, reason: 'local_data_exists' };
+    // Only hydrate if ALL local stores are empty — avoids overwriting edits
+    if (localGoals.length > 0 || localPlans.length > 0 || localConfigs.length > 0) {
+      return { hydrated: false, reason: 'local_data_exists' };
+    }
   }
 
   try {
@@ -301,21 +337,12 @@ export async function hydrateFromServer() {
       api.planConfigs.list(),
     ]);
 
-    let count = 0;
-    if (serverGoals?.length > 0) {
-      await setJSON(KEYS.GOALS, serverGoals);
-      count += serverGoals.length;
-    }
-    if (serverPlans?.length > 0) {
-      await setJSON(KEYS.PLANS, serverPlans);
-      count += serverPlans.length;
-    }
-    if (serverConfigs?.length > 0) {
-      await setJSON(KEYS.PLAN_CONFIGS, serverConfigs);
-      count += serverConfigs.length;
-    }
+    await setJSON(KEYS.GOALS,       serverGoals  || []);
+    await setJSON(KEYS.PLANS,       serverPlans  || []);
+    await setJSON(KEYS.PLAN_CONFIGS, serverConfigs || []);
 
-    return { hydrated: count > 0, count };
+    const count = (serverGoals?.length || 0) + (serverPlans?.length || 0) + (serverConfigs?.length || 0);
+    return { hydrated: true, count };
   } catch (err) {
     console.warn('Hydration from server failed:', err);
     return { hydrated: false, reason: 'api_error' };

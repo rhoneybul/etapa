@@ -1,14 +1,27 @@
 require('dotenv').config();
+
+// Sentry must be initialised before anything else
+const Sentry = require('@sentry/node');
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    tracesSampleRate: 0.2,
+    environment: process.env.NODE_ENV || 'development',
+  });
+}
+
 const express = require('express');
 const cors    = require('cors');
 
-const usersRouter = require('./routes/users');
-const goalsRouter = require('./routes/goals');
-const plansRouter       = require('./routes/plans');
+const usersRouter        = require('./routes/users');
+const goalsRouter        = require('./routes/goals');
+const plansRouter        = require('./routes/plans');
 const planConfigsRouter  = require('./routes/planConfigs');
 const chatSessionsRouter = require('./routes/chatSessions');
 const aiRouter           = require('./routes/ai');
 const feedbackRouter     = require('./routes/feedback');
+const stripeRouter       = require('./routes/stripe');
+const { webhookHandler } = require('./routes/stripe');
 
 const { authMiddleware } = require('./middleware/auth');
 
@@ -18,6 +31,11 @@ const PORT = process.env.PORT || 3001;
 // ── Middleware ────────────────────────────────────────────────────────────────
 const allowedOrigins = process.env.ALLOWED_ORIGINS;
 app.use(cors({ origin: !allowedOrigins || allowedOrigins === '*' ? '*' : allowedOrigins.split(',') }));
+Sentry.setupExpressErrorHandler(app);
+
+// Stripe webhook must receive raw body — mount BEFORE express.json()
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), webhookHandler);
+
 app.use(express.json());
 
 // ── Health check (no auth needed) ────────────────────────────────────────────
@@ -31,12 +49,14 @@ app.use('/api/goals', authMiddleware, goalsRouter);
 app.use('/api/plans', authMiddleware, plansRouter);
 app.use('/api/plan-configs', authMiddleware, planConfigsRouter);
 app.use('/api/chat-sessions', authMiddleware, chatSessionsRouter);
-app.use('/api/ai', aiRouter); // AI routes (no auth required for now)
+app.use('/api/ai', authMiddleware, aiRouter);
+app.use('/api/stripe', authMiddleware, stripeRouter);
 app.use('/api/feedback', authMiddleware, feedbackRouter);
 
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {
   console.error(err);
+  if (process.env.SENTRY_DSN) Sentry.captureException(err);
   res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
 });
 

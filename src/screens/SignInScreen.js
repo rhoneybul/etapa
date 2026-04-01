@@ -8,6 +8,7 @@ import { colors, fontFamily } from '../theme';
 import {
   signInWithGoogle, signInWithApple, onAuthStateChange, getSession, isSupabaseConfigured,
 } from '../services/authService';
+import { ensureUserData, hydrateFromServer } from '../services/storageService';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import analytics from '../services/analyticsService';
 
@@ -62,11 +63,14 @@ export default function SignInScreen({ navigation }) {
       if (session) navigation.replace('Home');
     });
 
-    const unsubscribe = onAuthStateChange(user => {
+    const unsubscribe = onAuthStateChange(async user => {
       if (user) {
         const provider = user.app_metadata?.provider || 'unknown';
         analytics.events.signedIn(provider);
         analytics.identify(user.id, { email: user.email });
+        // Clear stale data from a previous user, then hydrate from server
+        const cleared = await ensureUserData(user.id);
+        await hydrateFromServer({ force: cleared });
         navigation.replace('Home');
       }
     });
@@ -140,7 +144,7 @@ export default function SignInScreen({ navigation }) {
             />
           </View>
           <Text style={s.title}>Etapa</Text>
-          <Text style={s.tagline}>Train with purpose</Text>
+          <Text style={s.tagline}>Your coach, your plan. The stage is yours.</Text>
         </Animated.View>
 
         {/* Auth section — pinned to bottom */}
