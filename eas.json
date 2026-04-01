@@ -8,19 +8,19 @@
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
-        "image": "macos-sequoia-15.3-xcode-16.2"
+        "image": "sdk-55"
       }
     },
     "preview": {
       "distribution": "store",
       "ios": {
-        "image": "macos-sequoia-15.3-xcode-16.2"
+        "image": "sdk-55"
       }
     },
     "production": {
       "autoIncrement": true,
       "ios": {
-        "image": "macos-sequoia-15.3-xcode-16.2"
+        "image": "sdk-55"
       }
     }
   },

@@ -5,6 +5,17 @@
  */
 import { generatePlan as localGeneratePlan } from './planGenerator';
 import { uid } from './storageService';
+import { getSession } from './authService';
+
+async function getAuthHeaders() {
+  try {
+    const session = await getSession();
+    const token = session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
 
 const getServerUrl = () => {
   // EXPO_PUBLIC_ env vars are inlined at build time by Expo
@@ -31,9 +42,10 @@ export async function generatePlanWithLLM(goal, config, onProgress) {
     onProgress?.('Consulting your AI coach...');
 
     try {
+      const authHeaders = await getAuthHeaders();
       const response = await fetch(`${serverUrl}/api/ai/generate-plan`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ goal, config }),
         keepalive: true,
       });
@@ -148,9 +160,10 @@ export async function editPlanWithLLM(plan, goal, instruction, scope, onProgress
   if (serverUrl) {
     onProgress?.('Consulting your AI coach...');
     try {
+      const authHeaders = await getAuthHeaders();
       const response = await fetch(`${serverUrl}/api/ai/edit-plan`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ plan, goal, instruction, scope, currentWeek, coachId }),
       });
 
@@ -245,9 +258,10 @@ export async function editActivityWithAI(activity, goal, instruction, onProgress
   if (serverUrl) {
     onProgress?.('Asking your coach...');
     try {
+      const authHeaders = await getAuthHeaders();
       const response = await fetch(`${serverUrl}/api/ai/edit-activity`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ activity, goal, instruction, coachId }),
       });
 
@@ -283,9 +297,10 @@ export async function coachChat(messages, context) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 120000); // 2 min timeout
 
+    const authHeaders = await getAuthHeaders();
     const response = await fetch(`${serverUrl}/api/ai/coach-chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       body: JSON.stringify({ messages, context }),
       keepalive: true,
       signal: controller.signal,
@@ -301,7 +316,12 @@ export async function coachChat(messages, context) {
     let errMsg = 'Could not reach your AI coach right now. Please try again.';
     try {
       const errData = await response.json();
-      if (errData?.error) errMsg = errData.error;
+      // Don't surface raw auth/server errors to the user
+      if (response.status === 401 || response.status === 403) {
+        errMsg = 'Your session has expired. Please sign in again to chat with your coach.';
+      } else if (errData?.error) {
+        errMsg = errData.error;
+      }
     } catch {}
     console.warn('Coach chat server error:', response.status, errMsg);
     return { reply: errMsg };
@@ -319,9 +339,10 @@ export async function assessPlan(plan, goal, config) {
   if (!serverUrl) return null;
 
   try {
+    const authHeaders = await getAuthHeaders();
     const response = await fetch(`${serverUrl}/api/ai/assess-plan`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       body: JSON.stringify({ plan, goal, config }),
       keepalive: true,
     });
@@ -343,9 +364,10 @@ export async function lookupRace(raceName) {
   if (!serverUrl) return null;
 
   try {
+    const authHeaders = await getAuthHeaders();
     const response = await fetch(`${serverUrl}/api/ai/race-lookup`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       body: JSON.stringify({ raceName }),
     });
 
