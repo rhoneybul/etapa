@@ -9,12 +9,11 @@ const { authMiddleware } = require('../middleware/auth');
 const router = Router();
 
 /**
- * Check if a Supabase user has the is_admin flag in their metadata.
+ * Check if a user has admin access via the public.admins table.
  */
 async function isUserAdmin(userId) {
-  const { data: { user }, error } = await supabase.auth.admin.getUserById(userId);
-  if (error || !user) return false;
-  return user.user_metadata?.is_admin === true;
+  const { data } = await supabase.from('admins').select('user_id').eq('user_id', userId).maybeSingle();
+  return !!data;
 }
 
 /**
@@ -53,15 +52,15 @@ router.get('/check', async (req, res) => {
   if (!email) return res.json({ isAdmin: false });
 
   try {
-    // Find the user by email
+    // Look up user by email to get their ID, then check admins table
     const { data: { users }, error } = await supabase.auth.admin.listUsers({ perPage: 1000 });
     if (error) throw error;
 
     const user = users.find(u => u.email?.toLowerCase() === email);
     if (!user) return res.json({ isAdmin: false });
 
-    const isAdmin = user.user_metadata?.is_admin === true;
-    return res.json({ isAdmin });
+    const { data } = await supabase.from('admins').select('user_id').eq('user_id', user.id).maybeSingle();
+    return res.json({ isAdmin: !!data });
   } catch (err) {
     console.error('Admin check failed:', err);
     return res.json({ isAdmin: false });
@@ -81,13 +80,11 @@ router.post('/grant', async (req, res, next) => {
     const user = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
     if (!user) return res.status(404).json({ error: 'User not found in Supabase' });
 
-    // Set is_admin flag in user_metadata
-    const { error: updateError } = await supabase.auth.admin.updateUserById(user.id, {
-      user_metadata: { ...user.user_metadata, is_admin: true },
-    });
-    if (updateError) throw updateError;
+    // Insert into admins table
+    const { error: insertError } = await supabase.from('admins').upsert({ user_id: user.id });
+    if (insertError) throw insertError;
 
-    res.json({ success: true, email: user.email, name: user.user_metadata?.full_name || user.user_metadata?.name || null });
+    res.json({ success: true, userId: user.id, email: user.email, name: user.user_metadata?.full_name || user.user_metadata?.name || null });
   } catch (err) { next(err); }
 });
 
@@ -103,10 +100,8 @@ router.post('/revoke', async (req, res, next) => {
     const user = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
     if (!user) return res.status(404).json({ error: 'User not found in Supabase' });
 
-    const { error: updateError } = await supabase.auth.admin.updateUserById(user.id, {
-      user_metadata: { ...user.user_metadata, is_admin: false },
-    });
-    if (updateError) throw updateError;
+    const { error: deleteError } = await supabase.from('admins').delete().eq('user_id', user.id);
+    if (deleteError) throw deleteError;
 
     res.json({ success: true, email: user.email });
   } catch (err) { next(err); }
