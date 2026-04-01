@@ -36,6 +36,7 @@ import CoachChatScreen     from './src/screens/CoachChatScreen';
 import FeedbackScreen      from './src/screens/FeedbackScreen';
 import ChangeCoachScreen   from './src/screens/ChangeCoachScreen';
 import PaywallScreen       from './src/screens/PaywallScreen';
+import BeginnerProgramScreen from './src/screens/BeginnerProgramScreen';
 import WebWrapper          from './src/components/WebWrapper';
 
 const Stack = createStackNavigator();
@@ -136,6 +137,7 @@ function App() {
               <Stack.Screen name="Feedback"       component={FeedbackScreen} />
               <Stack.Screen name="ChangeCoach"    component={ChangeCoachScreen} />
               <Stack.Screen name="Paywall"        component={PaywallScreen} />
+              <Stack.Screen name="BeginnerProgram" component={BeginnerProgramScreen} />
             </Stack.Navigator>
           </NavigationContainer>
         </View>

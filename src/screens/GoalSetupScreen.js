@@ -5,11 +5,12 @@
  *  Step 3: Goal details (plan name, target distance/elevation, date, event name)
  */
 import React, { useState, useRef } from 'react';
-import { View, Text, TextInput, StyleSheet, ScrollView, Keyboard } from 'react-native';
+import { View, Text, TextInput, StyleSheet, ScrollView, Keyboard, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { colors, fontFamily } from '../theme';
 import WizardShell, { OptionCard } from '../components/WizardShell';
 import DatePicker from '../components/DatePicker';
 import { saveGoal } from '../services/storageService';
+import { lookupRace } from '../services/llmPlanService';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
@@ -38,6 +39,27 @@ export default function GoalSetupScreen({ navigation }) {
   const [targetTime, setTargetTime] = useState('');
   const [targetDate, setTargetDate] = useState('');
   const [eventName, setEventName] = useState('');
+  const [raceLooking, setRaceLooking] = useState(false);
+  const [raceResult, setRaceResult] = useState(null);
+
+  const handleRaceLookup = async () => {
+    if (!eventName.trim()) return;
+    setRaceLooking(true);
+    setRaceResult(null);
+    try {
+      const result = await lookupRace(eventName.trim());
+      if (result?.found) {
+        setRaceResult(result);
+        if (result.distanceKm && !targetDistance) setTargetDistance(String(result.distanceKm));
+        if (result.elevationM && !targetElevation) setTargetElevation(String(result.elevationM));
+      } else {
+        setRaceResult({ found: false });
+      }
+    } catch {
+      setRaceResult({ found: false });
+    }
+    setRaceLooking(false);
+  };
 
   const canContinue = () => {
     if (step === 1) return !!cyclingType;
@@ -59,11 +81,11 @@ export default function GoalSetupScreen({ navigation }) {
       return;
     }
 
-    // Auto-generate plan name if not provided
-    const autoName = planName.trim()
-      || eventName
-      || (targetDistance ? `${targetDistance} km` : null)
-      || (goalType === 'improve' ? 'Improve my cycling' : 'My plan');
+    // For race goals, use the race name directly as the plan name
+    // For other goals, auto-generate
+    const autoName = goalType === 'race'
+      ? (eventName || planName.trim() || 'Race Plan')
+      : (planName.trim() || eventName || (targetDistance ? `${targetDistance} km` : null) || (goalType === 'improve' ? 'Improve my cycling' : 'My plan'));
 
     const goal = await saveGoal({
       cyclingType,
@@ -129,15 +151,19 @@ export default function GoalSetupScreen({ navigation }) {
     if (step === 3) {
       return (
         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {/* Plan name — always shown */}
-          <Text style={s.fieldLabel}>Plan name</Text>
-          <TextInput
-            style={s.input}
-            placeholder={eventName || (targetDistance ? `${targetDistance} km` : 'e.g. Summer build, 100km goal')}
-            placeholderTextColor={colors.textFaint}
-            value={planName}
-            onChangeText={setPlanName}
-          />
+          {/* Plan name — shown for non-race goals */}
+          {goalType !== 'race' && (
+            <>
+              <Text style={s.fieldLabel}>Plan name</Text>
+              <TextInput
+                style={s.input}
+                placeholder={eventName || (targetDistance ? `${targetDistance} km` : 'e.g. Summer build, 100km goal')}
+                placeholderTextColor={colors.textFaint}
+                value={planName}
+                onChangeText={setPlanName}
+              />
+            </>
+          )}
 
           {goalType === 'improve' && (
             <Text style={s.infoText}>
@@ -153,9 +179,48 @@ export default function GoalSetupScreen({ navigation }) {
                 placeholder="e.g. Etape du Tour, London to Brighton"
                 placeholderTextColor={colors.textFaint}
                 value={eventName}
-                onChangeText={setEventName}
+                onChangeText={(text) => { setEventName(text); setRaceResult(null); }}
               />
-              <Text style={s.fieldLabel}>Distance (km, optional)</Text>
+
+              {/* Look up button */}
+              {eventName.trim().length > 2 && (
+                <TouchableOpacity
+                  style={s.lookupBtn}
+                  onPress={handleRaceLookup}
+                  disabled={raceLooking}
+                  activeOpacity={0.8}
+                >
+                  {raceLooking ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Text style={s.lookupBtnText}>Look up distance & elevation</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+
+              {/* Lookup result */}
+              {raceResult?.found && (
+                <View style={s.lookupResult}>
+                  <Text style={s.lookupResultName}>{raceResult.name}</Text>
+                  <Text style={s.lookupResultMeta}>
+                    {[
+                      raceResult.distanceKm ? `${raceResult.distanceKm} km` : null,
+                      raceResult.elevationM ? `${raceResult.elevationM} m elevation` : null,
+                      raceResult.location,
+                    ].filter(Boolean).join(' \u00B7 ')}
+                  </Text>
+                  {raceResult.description && (
+                    <Text style={s.lookupResultDesc}>{raceResult.description}</Text>
+                  )}
+                </View>
+              )}
+              {raceResult && !raceResult.found && (
+                <Text style={s.lookupNotFound}>
+                  Couldn't find that race — enter the details manually below
+                </Text>
+              )}
+
+              <Text style={s.fieldLabel}>Distance (km{raceResult?.found ? '' : ', optional'})</Text>
               <TextInput
                 style={s.input}
                 placeholder="e.g. 100"
@@ -279,4 +344,19 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border,
   },
   infoText: { fontSize: 16, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 24, padding: 8 },
+
+  // Race lookup
+  lookupBtn: {
+    backgroundColor: 'rgba(217,119,6,0.1)', borderRadius: 12, paddingVertical: 12,
+    alignItems: 'center', marginBottom: 16, borderWidth: 1, borderColor: 'rgba(217,119,6,0.2)',
+  },
+  lookupBtnText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+  lookupResult: {
+    backgroundColor: 'rgba(34,197,94,0.06)', borderRadius: 12, padding: 14, marginBottom: 16,
+    borderWidth: 1, borderColor: 'rgba(34,197,94,0.2)',
+  },
+  lookupResultName: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
+  lookupResultMeta: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, marginBottom: 4 },
+  lookupResultDesc: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 4 },
+  lookupNotFound: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginBottom: 16, marginHorizontal: 8 },
 });

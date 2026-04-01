@@ -11,7 +11,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { getCurrentUser } from '../services/authService';
 import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig } from '../services/storageService';
-import { isSubscribed } from '../services/subscriptionService';
+import { isSubscribed, getSubscriptionStatus, upgradeStarter, openCheckout } from '../services/subscriptionService';
+import UpgradePrompt from '../components/UpgradePrompt';
 import { isStravaConnected } from '../services/stravaService';
 import { getSessionColor, getSessionLabel, getMetricLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
 import analytics from '../services/analyticsService';
@@ -48,6 +49,10 @@ export default function HomeScreen({ navigation }) {
   const [stravaOk, setStravaOk] = useState(false);
   const [activePlanConfig, setActivePlanConfig] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
+  const [subPlan, setSubPlan] = useState(null); // 'starter' | 'monthly' | 'annual' | null
+  const [unlocking, setUnlocking] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -75,6 +80,10 @@ export default function HomeScreen({ navigation }) {
         return;
       }
     }
+
+    // Fetch subscription plan type (starter, monthly, annual)
+    const subStatus = await getSubscriptionStatus();
+    setSubPlan(subStatus?.plan || null);
 
     const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || null;
     setName(displayName);
@@ -113,11 +122,69 @@ export default function HomeScreen({ navigation }) {
   // Check subscription before entering the plan creation flow
   const handleMakePlan = async () => {
     const subscribed = await isSubscribed();
-    if (subscribed) {
-      navigation.navigate('GoalSetup');
-    } else {
+    if (!subscribed) {
       navigation.navigate('Paywall');
+      return;
     }
+    // Starter users can only have the beginner plan — prompt upgrade
+    if (subPlan === 'starter') {
+      setShowUpgrade(true);
+      return;
+    }
+    navigation.navigate('GoalSetup');
+  };
+
+  const handleUpgrade = async () => {
+    setUpgrading(true);
+    try {
+      const result = await upgradeStarter();
+      if (result.success) {
+        setShowUpgrade(false);
+        setSubPlan('annual');
+        navigation.navigate('GoalSetup');
+      }
+    } catch {
+      Alert.alert('Upgrade failed', 'Something went wrong. Please try again.');
+    } finally {
+      setUpgrading(false);
+    }
+  };
+
+  /** Pay for a pending (locked) plan to unlock it */
+  const handleUnlockPlan = async (plan) => {
+    setUnlocking(true);
+    try {
+      const result = await openCheckout('starter');
+      if (result.success) {
+        plan.paymentStatus = 'paid';
+        await savePlan(plan);
+        await load();
+      }
+    } catch {
+      Alert.alert('Payment failed', 'Something went wrong. Please try again.');
+    } finally {
+      setUnlocking(false);
+    }
+  };
+
+  /** Cancel a pending (unpaid) plan */
+  const handleCancelPendingPlan = (plan) => {
+    Alert.alert(
+      'Cancel plan?',
+      'This will remove your unpaid plan. You can always set it up again later.',
+      [
+        { text: 'Keep it', style: 'cancel' },
+        {
+          text: 'Cancel plan',
+          style: 'destructive',
+          onPress: async () => {
+            await deletePlan(plan.id);
+            setSelectedPlanIdx(0);
+            await load();
+          },
+        },
+      ],
+    );
   };
 
   // ── Loading state ─────────────────────────────────────────────────────────
@@ -151,12 +218,18 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {!stravaOk && (
-            <TouchableOpacity style={s.stravaCard} onPress={() => navigation.navigate('Settings')} activeOpacity={0.85}>
-              <Text style={s.stravaTitle}>Connect Strava</Text>
-              <Text style={s.stravaSub}>Track your rides and sync automatically</Text>
-            </TouchableOpacity>
-          )}
+          {/* Beginner program card */}
+          <TouchableOpacity
+            style={s.beginnerCard}
+            onPress={() => navigation.navigate('BeginnerProgram')}
+            activeOpacity={0.85}
+          >
+            <View style={s.beginnerBadge}>
+              <Text style={s.beginnerBadgeText}>NEW</Text>
+            </View>
+            <Text style={s.beginnerTitle}>Get into Cycling</Text>
+            <Text style={s.beginnerSub}>A friendly 12-week program for complete beginners. No experience needed.</Text>
+          </TouchableOpacity>
 
           <View style={s.emptyPlanWrap}>
             <View style={s.emptyIconCircle}>
@@ -174,6 +247,12 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         </SafeAreaView>
+        <UpgradePrompt
+          visible={showUpgrade}
+          onClose={() => setShowUpgrade(false)}
+          onUpgrade={handleUpgrade}
+          upgrading={upgrading}
+        />
       </View>
     );
   }
@@ -320,6 +399,23 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
+          {/* Beginner program card — only show if no beginner plan exists */}
+          {!plans.some(p => p.name === 'Get into Cycling') && (
+            <TouchableOpacity
+              style={s.beginnerCardCompact}
+              onPress={() => navigation.navigate('BeginnerProgram')}
+              activeOpacity={0.85}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={s.beginnerCompactTitle}>Get into Cycling</Text>
+                <Text style={s.beginnerCompactSub}>12-week beginner program</Text>
+              </View>
+              <View style={s.beginnerBadge}>
+                <Text style={s.beginnerBadgeText}>NEW</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
           {/* New plan button */}
           <TouchableOpacity
             style={s.newPlanBtn}
@@ -385,8 +481,51 @@ export default function HomeScreen({ navigation }) {
             </View>
           )}
 
-          {/* Goal summary — at top */}
-          {activeGoal && (
+          {/* ── Locked plan view (payment pending) ─────────────────────── */}
+          {activePlan?.paymentStatus === 'pending' && (
+            <View style={s.lockedWrap}>
+              <View style={s.lockedCard}>
+                <View style={s.lockedBadge}>
+                  <Text style={s.lockedBadgeText}>PAYMENT REQUIRED</Text>
+                </View>
+                <Text style={s.lockedTitle}>{activePlan.name || 'Get into Cycling'}</Text>
+                <Text style={s.lockedMeta}>{activePlan.weeks} weeks {'\u00B7'} starts {new Date(activePlan.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
+
+                {/* High-level overview */}
+                <View style={s.lockedOverview}>
+                  <Text style={s.lockedOverviewTitle}>Plan overview</Text>
+                  <Text style={s.lockedOverviewText}>
+                    {activePlan.activities?.length || 0} sessions across {activePlan.weeks} weeks
+                    {activePlanConfig?.daysPerWeek ? ` \u00B7 ${activePlanConfig.daysPerWeek} days/week` : ''}
+                  </Text>
+                  <Text style={s.lockedOverviewHint}>
+                    Pay to unlock the full plan with detailed sessions, coach chat, and progress tracking.
+                  </Text>
+                </View>
+
+                {/* Actions */}
+                <TouchableOpacity
+                  style={[s.lockedPayBtn, unlocking && { opacity: 0.5 }]}
+                  onPress={() => handleUnlockPlan(activePlan)}
+                  disabled={unlocking}
+                  activeOpacity={0.85}
+                >
+                  <Text style={s.lockedPayBtnText}>{unlocking ? 'Processing...' : 'Pay $50 and unlock'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.lockedCancelBtn}
+                  onPress={() => handleCancelPendingPlan(activePlan)}
+                  disabled={unlocking}
+                  activeOpacity={0.7}
+                >
+                  <Text style={s.lockedCancelBtnText}>Cancel plan</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Goal summary — at top (only for paid plans) */}
+          {activeGoal && activePlan?.paymentStatus !== 'pending' && (
             <View style={s.goalCard}>
               <Text style={s.goalLabel}>YOUR GOAL</Text>
               <Text style={s.goalTitle}>
@@ -403,6 +542,8 @@ export default function HomeScreen({ navigation }) {
             </View>
           )}
 
+          {/* Full plan content — only shown for paid plans */}
+          {activePlan?.paymentStatus !== 'pending' && (<>
           {/* Week calendar strip with navigation */}
           <View style={s.weekStrip}>
             <View style={s.weekNav}>
@@ -565,8 +706,15 @@ export default function HomeScreen({ navigation }) {
           )}
 
           <View style={{ height: 40 }} />
+          </>)}
         </ScrollView>
       </SafeAreaView>
+      <UpgradePrompt
+        visible={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        onUpgrade={handleUpgrade}
+        upgrading={upgrading}
+      />
     </View>
   );
 }
@@ -645,6 +793,28 @@ const s = StyleSheet.create({
   },
   stravaTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
   stravaSub: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
+
+  // Beginner program card (empty state)
+  beginnerCard: {
+    marginHorizontal: 20, borderRadius: 16, padding: 20, marginBottom: 16,
+    backgroundColor: 'rgba(34,197,94,0.06)', borderWidth: 1, borderColor: 'rgba(34,197,94,0.2)',
+  },
+  beginnerBadge: {
+    alignSelf: 'flex-start', backgroundColor: 'rgba(34,197,94,0.15)',
+    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 10,
+  },
+  beginnerBadgeText: { fontSize: 10, fontWeight: '700', fontFamily: FF.semibold, color: '#22C55E', letterSpacing: 1 },
+  beginnerTitle: { fontSize: 18, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
+  beginnerSub: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 19 },
+
+  // Beginner program card (compact — when plans exist)
+  beginnerCardCompact: {
+    marginHorizontal: 20, borderRadius: 14, padding: 16, marginBottom: 12,
+    backgroundColor: 'rgba(34,197,94,0.06)', borderWidth: 1, borderColor: 'rgba(34,197,94,0.2)',
+    flexDirection: 'row', alignItems: 'center',
+  },
+  beginnerCompactTitle: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 2 },
+  beginnerCompactSub: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
 
   // Empty plan state
   emptyPlanWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingTop: 40 },
@@ -741,5 +911,33 @@ const s = StyleSheet.create({
   goalLabel: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 },
   goalTitle: { fontSize: 17, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
   goalMeta: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
+
+  // Locked plan (payment pending)
+  lockedWrap: { paddingHorizontal: 20, marginTop: 8 },
+  lockedCard: {
+    backgroundColor: colors.surface, borderRadius: 16, padding: 24,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  lockedBadge: {
+    alignSelf: 'flex-start', backgroundColor: 'rgba(217,119,6,0.12)',
+    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 14,
+  },
+  lockedBadgeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, letterSpacing: 1 },
+  lockedTitle: { fontSize: 20, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 6 },
+  lockedMeta: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginBottom: 20 },
+  lockedOverview: {
+    backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 16,
+    borderWidth: 1, borderColor: colors.border, marginBottom: 24,
+  },
+  lockedOverviewTitle: { fontSize: 12, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  lockedOverviewText: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.text, marginBottom: 8 },
+  lockedOverviewHint: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, lineHeight: 19 },
+  lockedPayBtn: {
+    backgroundColor: '#22C55E', borderRadius: 14, paddingVertical: 16,
+    alignItems: 'center', marginBottom: 10,
+  },
+  lockedPayBtnText: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
+  lockedCancelBtn: { alignItems: 'center', paddingVertical: 8 },
+  lockedCancelBtnText: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
 
 });

@@ -9,8 +9,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { signOut } from '../services/authService';
 import { clearPlan, getPlans, deletePlan, clearUserData } from '../services/storageService';
-import { openBillingPortal, getSubscriptionStatus } from '../services/subscriptionService';
+import { openBillingPortal, getSubscriptionStatus, upgradeStarter, refundStarter } from '../services/subscriptionService';
 import { connectStrava, disconnectStrava, isStravaConnected, isStravaConfigured, getStravaTokens } from '../services/stravaService';
+import UpgradePrompt from '../components/UpgradePrompt';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
@@ -21,10 +22,18 @@ export default function SettingsScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [subscription, setSubscription] = useState(null);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
+  const [starterPlan, setStarterPlan] = useState(null); // the beginner plan object, if any
 
   useEffect(() => {
     checkStrava();
     getSubscriptionStatus().then(setSubscription).catch(() => {});
+    // Find starter/beginner plan for refund eligibility
+    getPlans().then(plans => {
+      const bp = plans.find(p => p.name === 'Get into Cycling' && p.paymentStatus === 'paid');
+      setStarterPlan(bp || null);
+    }).catch(() => {});
   }, []);
 
   const checkStrava = async () => {
@@ -76,6 +85,60 @@ export default function SettingsScreen({ navigation }) {
     }
   };
 
+  const handleUpgrade = async () => {
+    setUpgrading(true);
+    try {
+      const result = await upgradeStarter();
+      if (result.success) {
+        setShowUpgrade(false);
+        // Refresh subscription status
+        getSubscriptionStatus().then(setSubscription).catch(() => {});
+        Alert.alert('Welcome!', 'You\'re now on the annual plan. Go create your next plan!');
+      }
+    } catch {
+      Alert.alert('Upgrade failed', 'Something went wrong. Please try again.');
+    } finally {
+      setUpgrading(false);
+    }
+  };
+
+  const handleRefundStarter = () => {
+    Alert.alert(
+      'Request refund?',
+      'You\'ll receive a full $50 refund and your Get into Cycling plan will be cancelled. This can\'t be undone.',
+      [
+        { text: 'Keep my plan', style: 'cancel' },
+        {
+          text: 'Refund & cancel',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await refundStarter(starterPlan?.startDate);
+              Alert.alert('Refund processed', 'Your $50 refund is on its way. It may take 5–10 business days to appear.');
+              // Refresh subscription and plans
+              getSubscriptionStatus().then(setSubscription).catch(() => {});
+              if (starterPlan) {
+                await deletePlan(starterPlan.id);
+              }
+              setStarterPlan(null);
+            } catch (err) {
+              Alert.alert('Refund failed', err.message || 'Please contact support.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // Check if starter plan is within 2-week refund window
+  const isRefundEligible = (() => {
+    if (!starterPlan?.startDate || subscription?.plan !== 'starter') return false;
+    const startDate = new Date(starterPlan.startDate);
+    const now = new Date();
+    const daysSinceStart = Math.floor((now - startDate) / (1000 * 60 * 60 * 24));
+    return daysSinceStart <= 14;
+  })();
+
   const handleSignOut = async () => {
     analytics.events.signedOut();
     analytics.reset();
@@ -126,13 +189,54 @@ export default function SettingsScreen({ navigation }) {
         </View>
 
         {/* Subscription */}
-        {subscription?.active && (
+        {subscription?.active && subscription.plan === 'starter' && (
+          <>
+            <Text style={s.sectionLabel}>SUBSCRIPTION</Text>
+            <View style={s.card}>
+              <View style={s.row}>
+                <View style={s.rowLeft}>
+                  <View>
+                    <Text style={s.rowTitle}>Starter Plan</Text>
+                    <Text style={s.rowSub}>Get into Cycling · 3 months</Text>
+                  </View>
+                </View>
+                <View style={s.starterBadge}>
+                  <Text style={s.starterBadgeText}>ACTIVE</Text>
+                </View>
+              </View>
+            </View>
+            <View style={[s.card, { marginTop: 8 }]}>
+              <TouchableOpacity style={s.row} onPress={() => setShowUpgrade(true)}>
+                <View style={s.rowLeft}>
+                  <View>
+                    <Text style={[s.rowTitle, { color: colors.primary }]}>Upgrade to Annual</Text>
+                    <Text style={s.rowSub}>50% off + pro-rata refund on starter</Text>
+                  </View>
+                </View>
+                <Text style={s.chevron}>{'\u203A'}</Text>
+              </TouchableOpacity>
+            </View>
+            {isRefundEligible && (
+              <View style={[s.card, { marginTop: 8 }]}>
+                <TouchableOpacity style={s.row} onPress={handleRefundStarter}>
+                  <View style={s.rowLeft}>
+                    <View>
+                      <Text style={[s.rowTitle, { color: '#EF4444' }]}>Request Refund</Text>
+                      <Text style={s.rowSub}>Full $50 refund · available for first 2 weeks</Text>
+                    </View>
+                  </View>
+                  <Text style={s.chevron}>{'\u203A'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </>
+        )}
+        {subscription?.active && subscription.plan !== 'starter' && (
           <>
             <Text style={s.sectionLabel}>SUBSCRIPTION</Text>
             <View style={s.card}>
               <TouchableOpacity style={s.row} onPress={handleManagePlan} disabled={portalLoading}>
                 <View style={s.rowLeft}>
-                  <Text style={s.rowIcon}>💳</Text>
                   <View>
                     <Text style={s.rowTitle}>{portalLoading ? 'Opening...' : 'Manage Plan'}</Text>
                     <Text style={s.rowSub}>
@@ -151,7 +255,6 @@ export default function SettingsScreen({ navigation }) {
             <View style={s.card}>
               <TouchableOpacity style={s.row} onPress={() => navigation.navigate('Paywall', { fromHome: true, nextScreen: 'Home' })}>
                 <View style={s.rowLeft}>
-                  <Text style={s.rowIcon}>💳</Text>
                   <View>
                     <Text style={s.rowTitle}>Subscribe</Text>
                     <Text style={s.rowSub}>Your subscription is inactive</Text>
@@ -188,6 +291,12 @@ export default function SettingsScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+      <UpgradePrompt
+        visible={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        onUpgrade={handleUpgrade}
+        upgrading={upgrading}
+      />
     </View>
   );
 }
@@ -219,4 +328,6 @@ const s = StyleSheet.create({
   disconnectText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: '#EF4444' },
   comingSoonBadge: { backgroundColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   comingSoonText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted },
+  starterBadge: { backgroundColor: 'rgba(34,197,94,0.12)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  starterBadgeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E', letterSpacing: 0.5 },
 });

@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
+  TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -222,7 +222,13 @@ export default function CoachChatScreen({ navigation, route }) {
 
     try {
       const result = await coachChat(apiMessages, context);
-      const coachMsg = { role: 'assistant', content: result.reply, ts: Date.now() };
+      const coachMsg = {
+        role: 'assistant',
+        content: result.reply,
+        ts: Date.now(),
+        blocked: result.blocked || false,
+        blockedMessage: result.blockedMessage || null,
+      };
       setLastFailedMsg(null);
       setMessages(prev => {
         const newMsgs = [...prev, coachMsg];
@@ -238,6 +244,31 @@ export default function CoachChatScreen({ navigation, route }) {
     }
 
     setSending(false);
+  };
+
+  /** Report a wrongly blocked message — sends to support/Linear */
+  const handleReportBlock = async (blockedMessage) => {
+    try {
+      const serverUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
+      const { getSession } = require('../services/authService');
+      const session = await getSession();
+      const token = session?.access_token;
+      await fetch(`${serverUrl}/api/support/report-blocked`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          message: blockedMessage,
+          planId: plan?.id || null,
+          coachId: planConfig?.coachId || null,
+        }),
+      });
+      Alert.alert('Thanks for letting us know', "We've logged this and will review it. Your message may be allowed in a future update.");
+    } catch {
+      Alert.alert('Could not send report', 'Please try again later.');
+    }
   };
 
   const handleClearChat = async () => {
@@ -432,6 +463,15 @@ export default function CoachChatScreen({ navigation, route }) {
                     : <Text style={[s.bubbleText, s.bubbleTextUser]}>{msg.content}</Text>
                   }
                 </View>
+                {msg.blocked && (
+                  <TouchableOpacity
+                    style={s.reportBtn}
+                    onPress={() => handleReportBlock(msg.blockedMessage)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={s.reportText}>Was this wrong? Let us know</Text>
+                  </TouchableOpacity>
+                )}
                 {msg.failed && i === messages.length - 1 && lastFailedMsg && (
                   <TouchableOpacity style={s.retryBtn} onPress={handleRetry} activeOpacity={0.7}>
                     <Text style={s.retryText}>Tap to retry</Text>
@@ -597,4 +637,6 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)',
   },
   retryText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: '#EF4444' },
+  reportBtn: { alignSelf: 'flex-start', marginTop: 6, marginLeft: 4, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: 'rgba(217,119,6,0.08)', borderRadius: 8 },
+  reportText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
 });

@@ -310,3 +310,50 @@ export async function coachChat(messages, context) {
     return { reply: 'Could not connect to the server. Check your internet connection and try again.' };
   }
 }
+
+/**
+ * Fetch a coach's success assessment of a plan.
+ */
+export async function assessPlan(plan, goal, config) {
+  const serverUrl = getServerUrl();
+  if (!serverUrl) return null;
+
+  try {
+    const response = await fetch(`${serverUrl}/api/ai/assess-plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan, goal, config }),
+      keepalive: true,
+    });
+
+    if (response.ok) {
+      return await response.json();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Look up a race/event by name to get distance and elevation.
+ */
+export async function lookupRace(raceName) {
+  const serverUrl = getServerUrl();
+  if (!serverUrl) return null;
+
+  try {
+    const response = await fetch(`${serverUrl}/api/ai/race-lookup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raceName }),
+    });
+
+    if (response.ok) {
+      return await response.json();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

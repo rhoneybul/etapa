@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
-import { getPlans, getGoals, getWeekActivities } from '../services/storageService';
+import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan } from '../services/storageService';
+import { assessPlan } from '../services/llmPlanService';
 
 const FF = fontFamily;
 
@@ -28,6 +29,8 @@ export default function PlanReadyScreen({ navigation, route }) {
   const planId = route.params?.planId;
   const [plan, setPlan] = useState(null);
   const [goal, setGoal] = useState(null);
+  const [assessment, setAssessment] = useState(null);
+  const assessFade = useRef(new Animated.Value(0)).current;
 
   // Animations
   const fadeIn = useRef(new Animated.Value(0)).current;
@@ -43,7 +46,21 @@ export default function PlanReadyScreen({ navigation, route }) {
       setPlan(p);
       if (p) {
         const goals = await getGoals();
-        setGoal(goals.find(g => g.id === p.goalId) || null);
+        const g = goals.find(g => g.id === p.goalId) || null;
+        setGoal(g);
+
+        // Fetch coach assessment in background
+        if (p.configId) {
+          const cfg = await getPlanConfig(p.configId);
+          const result = await assessPlan(p, g, cfg);
+          if (result && result.successChance) {
+            setAssessment(result);
+            // Persist assessment to the plan
+            p.assessment = result;
+            await savePlan(p);
+            Animated.timing(assessFade, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+          }
+        }
       }
     })();
   }, [planId]);
@@ -174,6 +191,67 @@ export default function PlanReadyScreen({ navigation, route }) {
             </View>
           </Animated.View>
 
+          {/* Coach assessment */}
+          {assessment && (
+            <Animated.View style={[s.assessCard, { opacity: assessFade }]}>
+              <Text style={s.assessTitle}>Coach's Assessment</Text>
+
+              {/* Success meter */}
+              <View style={s.assessMeter}>
+                <View style={s.assessMeterTrack}>
+                  <View style={[s.assessMeterFill, { width: `${assessment.successChance}%` }]} />
+                </View>
+                <Text style={s.assessPercent}>{assessment.successChance}%</Text>
+              </View>
+              <Text style={s.assessSummary}>{assessment.summary}</Text>
+
+              {/* Strengths */}
+              {assessment.strengths?.length > 0 && (
+                <View style={s.assessSection}>
+                  <Text style={s.assessSectionTitle}>Strengths</Text>
+                  {assessment.strengths.map((str, i) => (
+                    <View key={i} style={s.assessRow}>
+                      <Text style={s.assessTick}>{'\u2713'}</Text>
+                      <Text style={s.assessText}>{str}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Recommendations */}
+              {assessment.recommendations?.length > 0 && (
+                <View style={s.assessSection}>
+                  <Text style={s.assessSectionTitle}>Recommendations</Text>
+                  {assessment.recommendations.map((rec, i) => (
+                    <View key={i} style={s.assessRow}>
+                      <View style={[s.assessDot, {
+                        backgroundColor: rec.type === 'training' ? colors.primary
+                          : rec.type === 'nutrition' ? '#22C55E'
+                          : rec.type === 'strength' ? '#8B5CF6'
+                          : rec.type === 'mental' ? '#3B82F6'
+                          : '#64748B',
+                      }]} />
+                      <Text style={s.assessText}>{rec.text}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Risk factors */}
+              {assessment.riskFactors?.length > 0 && (
+                <View style={s.assessSection}>
+                  <Text style={s.assessSectionTitle}>Watch out for</Text>
+                  {assessment.riskFactors.map((risk, i) => (
+                    <View key={i} style={s.assessRow}>
+                      <Text style={s.assessWarn}>{'\u26A0'}</Text>
+                      <Text style={s.assessText}>{risk}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </Animated.View>
+          )}
+
           <View style={{ height: 100 }} />
         </ScrollView>
 
@@ -248,6 +326,29 @@ const s = StyleSheet.create({
   chartDateRow: { flexDirection: 'row', marginTop: 6, gap: 2 },
   chartDateCol: { flex: 1, alignItems: 'center' },
   chartDateLabel: { fontSize: 8, fontWeight: '500', fontFamily: FF.medium, color: colors.textFaint },
+
+  // Assessment
+  assessCard: {
+    backgroundColor: colors.surface, borderRadius: 14, padding: 18, marginTop: 16,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  assessTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 14 },
+  assessMeter: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
+  assessMeterTrack: {
+    flex: 1, height: 8, backgroundColor: colors.border, borderRadius: 4, overflow: 'hidden',
+  },
+  assessMeterFill: {
+    height: '100%', backgroundColor: colors.primary, borderRadius: 4,
+  },
+  assessPercent: { fontSize: 18, fontWeight: '700', fontFamily: FF.semibold, color: colors.primary, minWidth: 44 },
+  assessSummary: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 19, marginBottom: 12 },
+  assessSection: { marginTop: 8 },
+  assessSectionTitle: { fontSize: 12, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 8 },
+  assessRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 6 },
+  assessTick: { color: '#22C55E', fontSize: 13, fontWeight: '600', width: 16, marginTop: 1 },
+  assessDot: { width: 8, height: 8, borderRadius: 4, marginTop: 5 },
+  assessWarn: { fontSize: 12, width: 16, marginTop: 1 },
+  assessText: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, flex: 1, lineHeight: 19 },
 
   // CTA
   ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },

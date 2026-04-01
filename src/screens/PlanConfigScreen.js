@@ -112,16 +112,19 @@ const isCyclingType = (key) => CYCLING_KEYS.includes(key);
 
 export default function PlanConfigScreen({ navigation, route }) {
   const goal = route.params?.goal;
+  const beginnerDefaults = route.params?.beginnerDefaults || null;
 
-  const [step, setStep] = useState(1);
-  const [fitnessLevel, setFitnessLevel] = useState(null);
+  const [step, setStep] = useState(beginnerDefaults ? 3 : 1); // Skip fitness + training types for beginner
+  const [fitnessLevel, setFitnessLevel] = useState(beginnerDefaults?.fitnessLevel || null);
   const [trainingTypes, setTrainingTypes] = useState(['outdoor']);
   const [startDateChoice, setStartDateChoice] = useState('next_monday');
   const [customStartDate, setCustomStartDate] = useState('');
-  const [planWeeks, setPlanWeeks] = useState(null);
+  const [planWeeks, setPlanWeeks] = useState(beginnerDefaults?.weeks || null);
 
   // Step 3: session counts per cycling type
-  const [sessionCounts, setSessionCounts] = useState({ outdoor: 2 });
+  const [sessionCounts, setSessionCounts] = useState(
+    beginnerDefaults ? { outdoor: beginnerDefaults.daysPerWeek } : { outdoor: 2 }
+  );
 
   // Unified day activities — each day holds an array of activity keys
   // e.g. { monday: ['outdoor', 'run'], tuesday: ['indoor'], ... }
@@ -320,6 +323,7 @@ export default function PlanConfigScreen({ navigation, route }) {
       crossTrainingDays: crossTrainingDaysLegacy,
       crossTrainingDaysFull: crossTrainingDays,
       startDate: startDate.toISOString(),
+      ...(beginnerDefaults?.paymentStatus && { paymentStatus: beginnerDefaults.paymentStatus }),
     });
 
     analytics.events.configStepCompleted(5, { coachId });
@@ -589,7 +593,7 @@ export default function PlanConfigScreen({ navigation, route }) {
 
       return (
         <ScrollView showsVerticalScrollIndicator={false}>
-          {!hasTargetDate && (
+          {!hasTargetDate && !beginnerDefaults && (
             <>
               <Text style={s.durationHeading}>How long for?</Text>
               <Text style={s.durationHint}>Choose a plan duration in weeks</Text>
@@ -606,6 +610,14 @@ export default function PlanConfigScreen({ navigation, route }) {
                     </Text>
                   </TouchableOpacity>
                 ))}
+              </View>
+              <View style={s.divider} />
+            </>
+          )}
+          {beginnerDefaults && (
+            <>
+              <View style={s.beginnerDurationBadge}>
+                <Text style={s.beginnerDurationText}>12-week program</Text>
               </View>
               <View style={s.divider} />
             </>
@@ -687,7 +699,7 @@ export default function PlanConfigScreen({ navigation, route }) {
                   <Text style={[s.coachTagline, selected && s.coachTaglineSelected]}>
                     {coach.tagline}
                   </Text>
-                  <Text style={s.coachBio} numberOfLines={2}>{coach.bio}</Text>
+                  <Text style={s.coachBio} numberOfLines={selected ? undefined : 2}>{coach.bio}</Text>
                   <View style={s.coachBadgeRow}>
                     <View style={[s.coachLevelBadge, {
                       backgroundColor: coach.level === 'beginner' ? 'rgba(34,197,94,0.12)'
@@ -945,6 +957,8 @@ const s = StyleSheet.create({
   durationPillActive: { borderColor: colors.primary, backgroundColor: 'rgba(217,119,6,0.1)' },
   durationPillText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
   durationPillTextActive: { color: colors.primary, fontWeight: '600' },
+  beginnerDurationBadge: { alignSelf: 'flex-start', backgroundColor: 'rgba(34,197,94,0.12)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, marginBottom: 16 },
+  beginnerDurationText: { fontSize: 14, fontFamily: FF.semibold, color: '#22C55E' },
 
   // ── Start date ─────────────────────────────────────────────────────────────
   startDateOption: {

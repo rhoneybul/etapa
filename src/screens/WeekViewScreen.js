@@ -39,6 +39,11 @@ export default function WeekViewScreen({ navigation, route }) {
     } else {
       p = await getPlan();
     }
+    // Gate: if plan is unpaid, redirect back to Home
+    if (p?.paymentStatus === 'pending') {
+      navigation.replace('Home');
+      return;
+    }
     setPlan(p);
     if (p) {
       const goals = await getGoals();
@@ -46,7 +51,7 @@ export default function WeekViewScreen({ navigation, route }) {
       const cfg = await getPlanConfig(p.configId);
       setPlanConfig(cfg);
     }
-  }, [planId]);
+  }, [planId, navigation]);
 
   useEffect(() => { loadPlan(); }, [loadPlan]);
   useEffect(() => {
@@ -152,6 +157,21 @@ export default function WeekViewScreen({ navigation, route }) {
           <View style={s.deloadBanner}>
             <Text style={s.deloadText}>Recovery week \u2014 lighter load to let your body adapt</Text>
           </View>
+        )}
+
+        {/* Compact coach assessment */}
+        {plan.assessment && week === 1 && (
+          <TouchableOpacity
+            style={s.assessBanner}
+            onPress={() => navigation.navigate('PlanOverview', { planId: plan.id })}
+            activeOpacity={0.8}
+          >
+            <View style={s.assessBannerLeft}>
+              <Text style={s.assessBannerChance}>{plan.assessment.successChance}%</Text>
+              <Text style={s.assessBannerLabel}>success</Text>
+            </View>
+            <Text style={s.assessBannerText} numberOfLines={2}>{plan.assessment.summary}</Text>
+          </TouchableOpacity>
         )}
 
         <ScrollView style={s.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#666" />}>
@@ -318,6 +338,16 @@ const s = StyleSheet.create({
 
   deloadBanner: { backgroundColor: 'rgba(100,116,139,0.1)', marginHorizontal: 20, borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(100,116,139,0.2)' },
   deloadText: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: '#94A3B8' },
+
+  assessBanner: {
+    backgroundColor: colors.surface, marginHorizontal: 20, borderRadius: 12, padding: 14,
+    marginBottom: 12, borderWidth: 1, borderColor: colors.border,
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+  },
+  assessBannerLeft: { alignItems: 'center', minWidth: 44 },
+  assessBannerChance: { fontSize: 20, fontWeight: '700', fontFamily: FF.semibold, color: colors.primary },
+  assessBannerLabel: { fontSize: 9, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  assessBannerText: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, flex: 1, lineHeight: 17 },
 
   list: { flex: 1 },
   dayGroup: { marginBottom: 8 },

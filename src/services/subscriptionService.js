@@ -41,15 +41,17 @@ export async function getSubscriptionStatus() {
 
 /**
  * Returns true if the user has an active or trialing subscription.
+ * Set EXPO_PUBLIC_PAYWALL_DISABLED=true to bypass in development.
  */
 export async function isSubscribed() {
+  if (process.env.EXPO_PUBLIC_PAYWALL_DISABLED === 'true') return true;
   const status = await getSubscriptionStatus();
   return status.active === true;
 }
 
 /**
  * Opens Stripe Checkout in an in-app browser.
- * plan: 'monthly' | 'annual'
+ * plan: 'monthly' | 'annual' | 'starter'
  * Returns { success: true } if the user completed payment, { success: false } if they cancelled.
  */
 export async function openCheckout(plan) {
@@ -85,6 +87,50 @@ export async function openCheckout(plan) {
   }
 
   return { success: false };
+}
+
+/**
+ * Upgrades a starter plan to annual — issues pro-rata refund and opens checkout with 50% off.
+ * Returns { success, refundAmount, daysRemaining } on success, { success: false } on cancel.
+ */
+export async function upgradeStarter() {
+  const isWeb = Platform.OS === 'web';
+  const redirectBase = isWeb
+    ? `${window.location.origin}/stripe`
+    : 'etapa://stripe';
+
+  const data = await authRequest('POST', '/api/stripe/upgrade-starter', { redirectBase });
+  if (!data?.url) throw new Error('Could not start upgrade. Please try again.');
+
+  if (isWeb) {
+    window.location.href = data.url;
+    return { success: false };
+  }
+
+  const result = await WebBrowser.openAuthSessionAsync(data.url, 'etapa://stripe');
+
+  if (result.type === 'success' && result.url?.includes('stripe/success')) {
+    const params = new URLSearchParams(result.url.split('?')[1] || '');
+    const sessionId = params.get('session_id');
+    if (sessionId) {
+      await authRequest('POST', '/api/stripe/verify-session', { sessionId });
+    }
+    return { success: true, refundAmount: data.refundAmount, daysRemaining: data.daysRemaining };
+  }
+
+  return { success: false };
+}
+
+/**
+ * Requests a full refund for the starter plan.
+ * Only available within 2 weeks of the plan start date.
+ * Returns { ok, refundedAmount } on success.
+ */
+export async function refundStarter(planStartDate) {
+  const data = await authRequest('POST', '/api/stripe/refund-starter', { planStartDate });
+  if (!data) throw new Error('Could not process refund. Please try again.');
+  if (data.error) throw new Error(data.error);
+  return data;
 }
 
 /**

@@ -20,6 +20,7 @@ const planConfigsRouter  = require('./routes/planConfigs');
 const chatSessionsRouter = require('./routes/chatSessions');
 const aiRouter           = require('./routes/ai');
 const feedbackRouter     = require('./routes/feedback');
+const supportRouter      = require('./routes/support');
 const stripeRouter       = require('./routes/stripe');
 const { webhookHandler } = require('./routes/stripe');
 
@@ -52,6 +53,7 @@ app.use('/api/chat-sessions', authMiddleware, chatSessionsRouter);
 app.use('/api/ai', authMiddleware, aiRouter);
 app.use('/api/stripe', authMiddleware, stripeRouter);
 app.use('/api/feedback', authMiddleware, feedbackRouter);
+app.use('/api/support', authMiddleware, supportRouter);
 
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {

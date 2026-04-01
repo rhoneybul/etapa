@@ -38,6 +38,10 @@ export default function PlanLoadingScreen({ navigation, route }) {
     analytics.events.planGenerationStarted({ weeks: config.weeks, coachId: config.coachId });
     try {
       const plan = await generatePlanWithLLM(goal, config, setMessage);
+      // Carry payment status from config to plan (for starter deferred payment)
+      if (config.paymentStatus) {
+        plan.paymentStatus = config.paymentStatus;
+      }
       await savePlan(plan);
       const totalKm = (plan.activities || []).reduce((s, a) => s + (a.distanceKm || 0), 0);
       const totalMins = (plan.activities || []).reduce((s, a) => s + (a.durationMins || 0), 0);
