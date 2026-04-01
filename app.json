@@ -3,7 +3,7 @@
     "name": "Etapa",
     "slug": "etapa",
     "scheme": "etapa",
-    "version": "0.18.0",
+    "version": "0.19.0",
     "orientation": "portrait",
     "icon": "./assets/icons/ios/AppIcon-1024.png",
     "userInterfaceStyle": "dark",
