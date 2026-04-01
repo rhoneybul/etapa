@@ -35,6 +35,7 @@ export async function generatePlanWithLLM(goal, config, onProgress) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ goal, config }),
+        keepalive: true,
       });
 
       if (response.ok) {
@@ -279,11 +280,18 @@ export async function coachChat(messages, context) {
   }
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000); // 2 min timeout
+
     const response = await fetch(`${serverUrl}/api/ai/coach-chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages, context }),
+      keepalive: true,
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
 
     if (response.ok) {
       return await response.json();

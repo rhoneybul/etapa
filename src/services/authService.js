@@ -1,5 +1,5 @@
 /**
- * Supabase auth for the app (mobile + web) — Google-only.
+ * Supabase auth for the app (mobile + web) — Google + Apple.
  *
  * Uses EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY from .env
  * Falls back gracefully to guest mode if keys are not set.
@@ -8,6 +8,8 @@ import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 
 const SUPABASE_URL      = process.env.EXPO_PUBLIC_SUPABASE_URL  || '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -70,6 +72,44 @@ async function oAuthSignIn(provider) {
 
 export async function signInWithGoogle() {
   return oAuthSignIn('google');
+}
+
+export async function signInWithApple() {
+  if (!supabase) throw new Error('Supabase not configured');
+
+  // Check availability (native Apple auth is iOS-only)
+  const isAvailable = await AppleAuthentication.isAvailableAsync();
+  if (!isAvailable) {
+    throw new Error('Apple Sign-In is not available on this device. Please use Google Sign-In instead.');
+  }
+
+  // Generate a nonce for security
+  const rawNonce = Math.random().toString(36).substring(2, 34);
+  const hashedNonce = await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    rawNonce,
+  );
+
+  const credential = await AppleAuthentication.signInAsync({
+    requestedScopes: [
+      AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+      AppleAuthentication.AppleAuthenticationScope.EMAIL,
+    ],
+    nonce: hashedNonce,
+  });
+
+  if (!credential.identityToken) {
+    throw new Error('No identity token from Apple');
+  }
+
+  const { data, error } = await supabase.auth.signInWithIdToken({
+    provider: 'apple',
+    token: credential.identityToken,
+    nonce: rawNonce,
+  });
+
+  if (error) throw error;
+  return data;
 }
 
 export async function signOut() {

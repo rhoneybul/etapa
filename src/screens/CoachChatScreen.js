@@ -15,6 +15,7 @@ import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan } from '
 import { coachChat } from '../services/llmPlanService';
 import { api } from '../services/api';
 import { getCoach } from '../data/coaches';
+import { getCurrentUser } from '../services/authService';
 import analytics from '../services/analyticsService';
 
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -89,11 +90,20 @@ export default function CoachChatScreen({ navigation, route }) {
   const [sending, setSending] = useState(false);
   const [pendingUpdate, setPendingUpdate] = useState(null); // { activities: [], msgIndex: number }
   const [applyingUpdate, setApplyingUpdate] = useState(false);
+  const [lastFailedMsg, setLastFailedMsg] = useState(null); // last user message content that failed
+  const [userName, setUserName] = useState(null);
   const scrollRef = useRef(null);
 
-  // Load plan, goal, and chat history
+  // Load plan, goal, chat history, and user name
   useEffect(() => {
     (async () => {
+      // Fetch user name for personalised coaching
+      try {
+        const user = await getCurrentUser();
+        const name = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || null;
+        setUserName(name);
+      } catch {}
+
       const plans = await getPlans();
       const p = plans.find(pl => pl.id === planId) || plans[0];
       setPlan(p);
@@ -186,6 +196,7 @@ export default function CoachChatScreen({ navigation, route }) {
     }));
 
     const context = {
+      athleteName: userName || null,
       plan: { name: plan.name, weeks: plan.weeks, startDate: plan.startDate, currentWeek },
       goal: goal ? {
         goalType: goal.goalType,
@@ -212,6 +223,7 @@ export default function CoachChatScreen({ navigation, route }) {
     try {
       const result = await coachChat(apiMessages, context);
       const coachMsg = { role: 'assistant', content: result.reply, ts: Date.now() };
+      setLastFailedMsg(null);
       setMessages(prev => {
         const newMsgs = [...prev, coachMsg];
         // If the coach returned plan modifications, store them
@@ -221,7 +233,8 @@ export default function CoachChatScreen({ navigation, route }) {
         return newMsgs;
       });
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong. Please try again.', ts: Date.now() }]);
+      setLastFailedMsg(userMsg.content);
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong.', ts: Date.now(), failed: true }]);
     }
 
     setSending(false);
@@ -309,6 +322,21 @@ export default function CoachChatScreen({ navigation, route }) {
     }]);
   };
 
+  const handleRetry = () => {
+    if (!lastFailedMsg) return;
+    // Remove the last failed assistant message and the user message before it
+    setMessages(prev => {
+      const msgs = [...prev];
+      // Remove last failed assistant message
+      if (msgs.length > 0 && msgs[msgs.length - 1].failed) msgs.pop();
+      // Remove the user message that triggered it
+      if (msgs.length > 0 && msgs[msgs.length - 1].role === 'user') msgs.pop();
+      return msgs;
+    });
+    setInput(lastFailedMsg);
+    setLastFailedMsg(null);
+  };
+
   const scopeLabel = weekNum ? `Week ${weekNum}` : 'Your plan';
 
   return (
@@ -390,18 +418,25 @@ export default function CoachChatScreen({ navigation, route }) {
             )}
 
             {messages.map((msg, i) => (
-              <View key={i} style={[s.bubble, msg.role === 'user' ? s.bubbleUser : s.bubbleCoach]}>
-                {msg.role === 'assistant' && (
-                  <Text style={s.bubbleLabel}>{getCoach(planConfig?.coachId)?.name || 'Coach'}</Text>
+              <View key={i}>
+                <View style={[s.bubble, msg.role === 'user' ? s.bubbleUser : s.bubbleCoach]}>
+                  {msg.role === 'assistant' && (
+                    <Text style={s.bubbleLabel}>{getCoach(planConfig?.coachId)?.name || 'Coach'}</Text>
+                  )}
+                  {msg.role === 'assistant'
+                    ? renderMarkdown(msg.content, [s.bubbleText], (wk) => {
+                        if (plan && wk >= 1 && wk <= plan.weeks) {
+                          navigation.navigate('WeekView', { week: wk, planId: plan.id });
+                        }
+                      })
+                    : <Text style={[s.bubbleText, s.bubbleTextUser]}>{msg.content}</Text>
+                  }
+                </View>
+                {msg.failed && i === messages.length - 1 && lastFailedMsg && (
+                  <TouchableOpacity style={s.retryBtn} onPress={handleRetry} activeOpacity={0.7}>
+                    <Text style={s.retryText}>Tap to retry</Text>
+                  </TouchableOpacity>
                 )}
-                {msg.role === 'assistant'
-                  ? renderMarkdown(msg.content, [s.bubbleText], (wk) => {
-                      if (plan && wk >= 1 && wk <= plan.weeks) {
-                        navigation.navigate('WeekView', { week: wk, planId: plan.id });
-                      }
-                    })
-                  : <Text style={[s.bubbleText, s.bubbleTextUser]}>{msg.content}</Text>
-                }
               </View>
             ))}
 
@@ -554,4 +589,12 @@ const s = StyleSheet.create({
   },
   sendBtnDisabled: { opacity: 0.3 },
   sendBtnText: { fontSize: 20, color: '#fff', fontWeight: '700' },
+
+  retryBtn: {
+    alignSelf: 'flex-start', marginBottom: 12, marginTop: -4,
+    backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)',
+  },
+  retryText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: '#EF4444' },
 });

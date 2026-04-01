@@ -34,8 +34,10 @@
     }
     .nav-logo-icon {
       width: 36px; height: 36px; border-radius: 10px;
-      background: #D97706; display: flex; align-items: center; justify-content: center;
-      font-weight: 700; font-size: 18px; color: #000;
+      overflow: hidden;
+    }
+    .nav-logo-icon img {
+      width: 100%; height: 100%; object-fit: cover;
     }
     .nav-links { display: flex; align-items: center; gap: 32px; }
     .nav-links a {
@@ -233,8 +235,9 @@
       width: 44px; height: 44px; border-radius: 12px;
       background: rgba(217,119,6,0.1);
       display: flex; align-items: center; justify-content: center;
-      font-size: 22px; margin-bottom: 18px;
+      margin-bottom: 18px;
     }
+    .feature-icon svg { width: 22px; height: 22px; stroke: #D97706; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .feature-card h3 {
       font-size: 17px; font-weight: 600; margin-bottom: 8px;
     }
@@ -378,7 +381,7 @@
   <!-- Nav -->
   <nav>
     <a href="#" class="nav-logo">
-      <div class="nav-logo-icon">E</div>
+      <div class="nav-logo-icon"><img src="icon-72.png" alt="Etapa"></div>
       Etapa
     </a>
     <div class="nav-links">
@@ -543,32 +546,32 @@
     </div>
     <div class="features-grid">
       <div class="feature-card">
-        <div class="feature-icon">&#127919;</div>
+        <div class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></div>
         <h3>Goal-Based Plans</h3>
         <p>Tell us your event, distance, and timeline. We build a structured plan around your real life and fitness level.</p>
       </div>
       <div class="feature-card">
-        <div class="feature-icon">&#129302;</div>
+        <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
         <h3>AI Coaching Chat</h3>
         <p>Ask your coach to adjust sessions, explain the science, or rework your week. It knows your full plan.</p>
       </div>
       <div class="feature-card">
-        <div class="feature-icon">&#128197;</div>
+        <div class="feature-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
         <h3>Flexible Scheduling</h3>
         <p>Plans fit the days you can actually ride. Swap sessions, adjust intensity, or let your coach rebalance.</p>
       </div>
       <div class="feature-card">
-        <div class="feature-icon">&#128692;</div>
+        <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
         <h3>Structured Workouts</h3>
         <p>Every session has a purpose — endurance rides to VO2 intervals — with clear targets and ride tips.</p>
       </div>
       <div class="feature-card">
-        <div class="feature-icon">&#128200;</div>
+        <div class="feature-icon"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
         <h3>Periodised Training</h3>
         <p>Base, build, peak, and taper phases with recovery weeks built in. Proper training science, automated.</p>
       </div>
       <div class="feature-card">
-        <div class="feature-icon">&#128279;</div>
+        <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div>
         <h3>Strava Connected</h3>
         <p>Sync rides from Strava to automatically track completed sessions and keep everything in one place.</p>
       </div>
@@ -588,33 +591,33 @@
         </p>
         <div class="coach-list">
           <div class="coach-chip">
-            <div class="coach-avatar" style="background:#D97706;">CM</div>
+            <div class="coach-avatar" style="background:#22C55E;">CM</div>
             <span class="coach-chip-name">Clara Moreno</span>
             <span class="coach-chip-style">— Warm & encouraging</span>
           </div>
           <div class="coach-chip">
-            <div class="coach-avatar" style="background:#3B82F6;">MW</div>
-            <span class="coach-chip-name">Marcus Webb</span>
-            <span class="coach-chip-style">— No-nonsense sergeant</span>
+            <div class="coach-avatar" style="background:#EF4444;">LE</div>
+            <span class="coach-chip-name">Lars Eriksen</span>
+            <span class="coach-chip-style">— No-nonsense & direct</span>
           </div>
           <div class="coach-chip">
-            <div class="coach-avatar" style="background:#10B981;">AO</div>
-            <span class="coach-chip-name">Aisha Okonkwo</span>
+            <div class="coach-avatar" style="background:#6366F1;">SL</div>
+            <span class="coach-chip-name">Sophie Laurent</span>
             <span class="coach-chip-style">— Science-backed precision</span>
           </div>
           <div class="coach-chip">
-            <div class="coach-avatar" style="background:#8B5CF6;">KT</div>
-            <span class="coach-chip-name">Kai Tanaka</span>
+            <div class="coach-avatar" style="background:#D97706;">MR</div>
+            <span class="coach-chip-name">Matteo Rossi</span>
             <span class="coach-chip-style">— Chill but focused</span>
           </div>
           <div class="coach-chip">
-            <div class="coach-avatar" style="background:#EF4444;">EV</div>
+            <div class="coach-avatar" style="background:#DC2626;">EV</div>
             <span class="coach-chip-name">Elena Vasquez</span>
             <span class="coach-chip-style">— Race-day strategist</span>
           </div>
           <div class="coach-chip">
-            <div class="coach-avatar" style="background:#F59E0B;">JO</div>
-            <span class="coach-chip-name">James Obi</span>
+            <div class="coach-avatar" style="background:#0EA5E9;">TB</div>
+            <span class="coach-chip-name">Tom Bridges</span>
             <span class="coach-chip-style">— Casual riding buddy</span>
           </div>
         </div>
@@ -706,7 +709,7 @@
   <!-- Footer -->
   <footer>
     <div class="footer-left">
-      <div class="nav-logo-icon" style="width:28px;height:28px;font-size:14px;border-radius:8px;">E</div>
+      <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="icon-56.png" alt="Etapa"></div>
       <span>&copy; 2026 Etapa. All rights reserved.</span>
     </div>
     <div class="footer-links">

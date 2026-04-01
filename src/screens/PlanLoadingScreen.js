@@ -15,11 +15,7 @@ export default function PlanLoadingScreen({ navigation, route }) {
   const { goal, config } = route.params;
   const [message, setMessage] = useState('Preparing your plan...');
   const fadeAnim = useRef(new Animated.Value(0)).current;
-
-  // Three animated dots
-  const dot1 = useRef(new Animated.Value(0.3)).current;
-  const dot2 = useRef(new Animated.Value(0.3)).current;
-  const dot3 = useRef(new Animated.Value(0.3)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     // Fade in
@@ -27,19 +23,13 @@ export default function PlanLoadingScreen({ navigation, route }) {
       toValue: 1, duration: 500, useNativeDriver: true,
     }).start();
 
-    // Pulsing dots sequence
-    const pulseDot = (dot, delay) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(dot, { toValue: 1, duration: 400, useNativeDriver: true }),
-          Animated.timing(dot, { toValue: 0.3, duration: 400, useNativeDriver: true }),
-        ])
-      );
-
-    pulseDot(dot1, 0).start();
-    pulseDot(dot2, 200).start();
-    pulseDot(dot3, 400).start();
+    // Pulsing icon animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.08, duration: 1000, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+      ])
+    ).start();
 
     generate();
   }, []);
@@ -70,15 +60,10 @@ export default function PlanLoadingScreen({ navigation, route }) {
     <View style={s.container}>
       <SafeAreaView style={s.safe}>
         <Animated.View style={[s.center, { opacity: fadeAnim }]}>
-          {/* Logo with pulsing dots */}
-          <View style={s.logoWrap}>
+          {/* Pulsing logo */}
+          <Animated.View style={[s.logoWrap, { transform: [{ scale: pulseAnim }] }]}>
             <Image source={require('../../assets/icon.png')} style={s.logoImage} />
-          </View>
-          <View style={s.dotsRow}>
-            <Animated.View style={[s.dot, { opacity: dot1 }]} />
-            <Animated.View style={[s.dot, { opacity: dot2 }]} />
-            <Animated.View style={[s.dot, { opacity: dot3 }]} />
-          </View>
+          </Animated.View>
 
           <Text style={s.title}>Building your plan</Text>
           <Text style={s.message}>{message}</Text>
@@ -120,14 +105,12 @@ const s = StyleSheet.create({
 
   logoWrap: {
     width: 80, height: 80, borderRadius: 22,
-    overflow: 'hidden', marginBottom: 16,
+    overflow: 'hidden', marginBottom: 28,
     shadowColor: '#D97706', shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25, shadowRadius: 20, elevation: 8,
     borderWidth: 1, borderColor: 'rgba(217,119,6,0.2)',
   },
   logoImage: { width: 80, height: 80 },
-  dotsRow: { flexDirection: 'row', gap: 6, marginBottom: 24 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary },
 
   title: { fontSize: 22, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 10 },
   message: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center', lineHeight: 20, minHeight: 40 },

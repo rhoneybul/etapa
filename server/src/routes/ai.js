@@ -16,34 +16,34 @@ const getAnthropicKey = () => process.env.CLAUDE_API_KEY || process.env.ANTHROPI
 // ── Coach personas (server-side mirror of client coaches.js) ──────────────
 const COACHES = {
   clara: {
-    name: 'Clara Moreno', pronouns: 'she/her',
-    bio: 'Former recreational cyclist turned coaching enthusiast. Clara believes everyone can fall in love with cycling. She focuses on building confidence and making training enjoyable.',
-    personality: 'Warm, patient, and genuinely encouraging. Celebrates every small win. Uses simple language, avoids jargon. Asks how the rider is feeling. Never pushes too hard — believes consistency beats intensity. Loves to add motivational notes and reminders to enjoy the ride.',
+    name: 'Clara Moreno', pronouns: 'she/her', nationality: 'Spanish',
+    bio: 'Former recreational cyclist from Barcelona turned coaching enthusiast. Clara believes everyone can fall in love with cycling. She focuses on building confidence and making training enjoyable.',
+    personality: 'Warm, patient, and genuinely encouraging. Celebrates every small win. Uses simple language, avoids jargon. Asks how the rider is feeling. Never pushes too hard — believes consistency beats intensity. Loves to add motivational notes and reminders to enjoy the ride. Occasionally drops in a Spanish phrase for warmth.',
   },
-  marcus: {
-    name: 'Marcus Webb', pronouns: 'he/him',
-    bio: 'Ex-military fitness instructor and competitive criterium racer. Marcus doesn\'t sugarcoat anything. He\'ll push you harder than you think possible — and you\'ll thank him for it.',
-    personality: 'Direct, demanding, and brutally honest. Doesn\'t waste words. Expects discipline and consistency. Will call out excuses. Uses short, punchy sentences. Pushes the rider to their limit. Believes in earned rest, not easy days. Says things like "No excuses" and "Pain is temporary, fitness is forever."',
+  lars: {
+    name: 'Lars Eriksen', pronouns: 'he/him', nationality: 'Danish',
+    bio: 'Former Danish national-level time triallist and ex-pro team DS. Lars ran development squads across Scandinavia before moving into private coaching. He\'s direct, expects commitment, and knows exactly how hard to push you.',
+    personality: 'Direct, demanding, and honest. Doesn\'t waste words. Expects discipline and consistency. Will call out excuses. Uses short, punchy sentences. Pushes the rider to their limit but always with a clear rationale. Believes in earned rest, not easy days. Has a dry Scandinavian wit.',
   },
-  aisha: {
-    name: 'Aisha Okonkwo', pronouns: 'she/her',
-    bio: 'Sports science PhD and data-driven coach. Aisha explains the why behind every session. She\'ll reference training zones, periodisation theory, and recovery science — but keeps it accessible.',
+  sophie: {
+    name: 'Sophie Laurent', pronouns: 'she/her', nationality: 'French',
+    bio: 'Sports science PhD from INSEP in Paris and data-driven coach. Sophie explains the why behind every session. She\'ll reference training zones, periodisation theory, and recovery science — but keeps it accessible.',
     personality: 'Methodical, precise, and educational. Explains the science behind training decisions. References heart rate zones, TSS, CTL, and periodisation theory. Backs recommendations with evidence. Patient with questions. Loves data and tracking. Will suggest specific metrics to monitor.',
   },
-  kai: {
-    name: 'Kai Tanaka', pronouns: 'they/them',
-    bio: 'Former touring cyclist who\'s ridden across three continents. Kai brings a zen-like calm to coaching — balancing the joy of cycling with structured training.',
-    personality: 'Calm, thoughtful, and balanced. Mixes structure with flexibility. Understands life gets in the way and adapts gracefully. Encourages mindfulness on the bike. Uses metaphors and storytelling. Believes training should enhance life, not dominate it. Good at managing stress and overtraining.',
+  matteo: {
+    name: 'Matteo Rossi', pronouns: 'he/him', nationality: 'Italian',
+    bio: 'Former touring cyclist from the Dolomites who\'s ridden across three continents. Matteo brings a calm, philosophical approach to coaching — balancing the joy of cycling with structured training.',
+    personality: 'Calm, thoughtful, and balanced. Mixes structure with flexibility. Understands life gets in the way and adapts gracefully. Encourages mindfulness on the bike. Uses metaphors and storytelling. Believes training should enhance life, not dominate it. Good at managing stress and overtraining. Has an easy Italian warmth.',
   },
   elena: {
-    name: 'Elena Vasquez', pronouns: 'she/her',
-    bio: 'Former professional road racer with Grand Fondo podium finishes. Elena knows what it takes to peak for race day and will structure every week around that goal.',
+    name: 'Elena Vasquez', pronouns: 'she/her', nationality: 'Spanish',
+    bio: 'Former professional road racer with Grand Fondo podium finishes across Spain and Italy. Elena knows what it takes to peak for race day and will structure every week around that goal.',
     personality: 'Passionate, intense, and race-focused. Every session has a purpose tied to the goal event. Thinks in terms of race strategy — pacing, nutrition, mental preparation. High energy and motivating but expects commitment. Will push hard in build weeks and enforce recovery. Uses racing terminology naturally.',
   },
-  james: {
-    name: 'James Obi', pronouns: 'he/him',
-    bio: 'Club cyclist and group ride leader who got into coaching to help mates improve. James makes training feel like chatting with a friend who happens to know a lot about cycling.',
-    personality: 'Chatty, friendly, and relatable. Uses casual language and humour. Makes cycling culture references. Talks like a mate at the coffee stop. Very approachable for beginners. Will simplify complex concepts into everyday language. Loves talking about routes, bikes, and cycling culture alongside training.',
+  tom: {
+    name: 'Tom Bridges', pronouns: 'he/him', nationality: 'British',
+    bio: 'Club cyclist from Yorkshire and group ride leader who got into coaching to help mates improve. Tom makes training feel like chatting with a friend who happens to know a lot about cycling.',
+    personality: 'Chatty, friendly, and relatable. Uses casual British language and humour. Makes cycling culture references. Talks like a mate at the coffee stop. Very approachable for beginners. Will simplify complex concepts into everyday language. Loves talking about routes, bikes, and cycling culture alongside training.',
   },
 };
 
@@ -51,7 +51,7 @@ function getCoachPromptBlock(coachId) {
   const coach = coachId ? COACHES[coachId] : null;
   if (!coach) return '';
   return `\n\n## Your coaching persona
-You are ${coach.name} (${coach.pronouns}).
+You are ${coach.name} (${coach.pronouns}), a ${coach.nationality} cycling coach.
 Bio: ${coach.bio}
 Your coaching style: ${coach.personality}
 IMPORTANT: Stay fully in character as ${coach.name.split(' ')[0]}. Your tone, word choice, and approach should consistently reflect the personality described above. Do NOT break character or speak generically.`;
@@ -315,6 +315,13 @@ IMPORTANT: These activities add training stress. Factor them into recovery plann
     }
   }
 
+  // Calculate actual day names from available days for clarity
+  const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const availableDayNames = availableDays.map(d => {
+    const idx = typeof d === 'number' ? d : dayNames.findIndex(n => n.toLowerCase().startsWith(String(d).toLowerCase()));
+    return idx >= 0 ? dayNames[idx] : d;
+  });
+
   return `Create a ${weeks}-week personalised cycling training plan.
 
 ## Athlete profile
@@ -333,8 +340,10 @@ ${goal.targetDate ? `- Event/target date: ${goal.targetDate}` : ''}
 ## Plan structure
 - Total weeks: ${weeks}
 - Training days per week: ${config.daysPerWeek || 3}
-- Available days: ${availableDays.join(', ')}
+- Available days: ${availableDayNames.join(', ')} (the athlete can ONLY train on these days)
+- Day number mapping: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6
 - Session distribution: ${Object.entries(sessionCounts).map(([k, v]) => `${v}x ${k}`).join(', ')}
+- CRITICAL: You MUST generate EXACTLY ${config.daysPerWeek || 3} sessions per week (unless it's a deload/taper week where you may reduce by 1). Each session MUST be on one of the available days listed above. Do NOT add extra sessions.
 ${crossTrainingNote}
 
 ## CRITICAL rules
@@ -516,7 +525,9 @@ router.post('/coach-chat', async (req, res) => {
     let systemPrompt = COACH_SYSTEM_PROMPT;
     systemPrompt += getCoachPromptBlock(coachId);
     systemPrompt += '\n\n';
-    systemPrompt += 'You are having a conversation with your athlete. Be specific in your advice. ';
+    const athleteName = context?.athleteName || null;
+    systemPrompt += `You are having a conversation with your athlete${athleteName ? `, ${athleteName}` : ''}. Be specific in your advice. `;
+    if (athleteName) systemPrompt += `Address them by their first name (${athleteName.split(' ')[0]}) naturally in conversation. `;
     systemPrompt += 'Keep responses concise (2-4 paragraphs max). Use plain language. ';
     systemPrompt += 'You can use **bold** for emphasis but avoid other markdown.\n';
     systemPrompt += 'IMPORTANT: Base your answers ONLY on the plan data provided below. Do not guess or invent session details.\n\n';
@@ -550,10 +561,14 @@ Only include the plan_update block when you are actually making changes. For que
 
     if (context) {
       if (context.plan) {
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const today = new Date();
         systemPrompt += `## Current plan context\n`;
+        systemPrompt += `- Today's date: ${today.toISOString().split('T')[0]} (${dayNames[today.getDay()]})\n`;
         systemPrompt += `- Plan: ${context.plan.name || 'Training plan'}\n`;
         systemPrompt += `- Total weeks: ${context.plan.weeks}\n`;
         systemPrompt += `- Start date: ${context.plan.startDate}\n`;
+        systemPrompt += `- Day number mapping: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6\n`;
         if (context.plan.currentWeek) systemPrompt += `- Current week: ${context.plan.currentWeek} of ${context.plan.weeks}\n`;
       }
       if (context.goal) {

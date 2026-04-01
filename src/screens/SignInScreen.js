@@ -6,8 +6,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, fontFamily } from '../theme';
 import {
-  signInWithGoogle, onAuthStateChange, getSession, isSupabaseConfigured,
+  signInWithGoogle, signInWithApple, onAuthStateChange, getSession, isSupabaseConfigured,
 } from '../services/authService';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import analytics from '../services/analyticsService';
 
 const { width, height } = Dimensions.get('window');
@@ -24,6 +25,12 @@ const GoogleLogo = () => (
   </Svg>
 );
 
+const AppleLogo = () => (
+  <Svg width={18} height={18} viewBox="0 0 24 24" fill="#000000">
+    <Path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.51-3.23 0-1.44.64-2.2.45-3.06-.4C3.79 16.17 4.36 9.05 8.93 8.8c1.28.07 2.17.72 2.92.77.99-.2 1.94-.78 3-.84 1.28-.1 2.25.38 2.88 1.16-2.64 1.58-2.01 5.07.32 6.04-.5 1.32-.74 1.97-1.57 3.14-.76 1.08-1.83 2.13-3.43 2.21zM12.03 8.7c-.15-2.34 1.84-4.38 4.04-4.55.3 2.63-2.34 4.6-4.04 4.55z" />
+  </Svg>
+);
+
 export default function SignInScreen({ navigation }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -31,8 +38,12 @@ export default function SignInScreen({ navigation }) {
   const glowAnim = useRef(new Animated.Value(0.3)).current;
   const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const [appleAvailable, setAppleAvailable] = useState(false);
 
   useEffect(() => {
+    // Check if Apple Sign-In is available on this device
+    AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => {});
+
     Animated.parallel([
       Animated.timing(fadeAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 0, duration: 900, useNativeDriver: true }),
@@ -53,7 +64,8 @@ export default function SignInScreen({ navigation }) {
 
     const unsubscribe = onAuthStateChange(user => {
       if (user) {
-        analytics.events.signedIn('google');
+        const provider = user.app_metadata?.provider || 'unknown';
+        analytics.events.signedIn(provider);
         analytics.identify(user.id, { email: user.email });
         navigation.replace('Home');
       }
@@ -71,6 +83,27 @@ export default function SignInScreen({ navigation }) {
     try {
       await signInWithGoogle();
     } catch (err) {
+      setAuthError(err.message);
+      setLoading(false);
+    }
+    if (Platform.OS !== 'web') setLoading(false);
+  };
+
+  const handleAppleAuth = async () => {
+    if (!isSupabaseConfigured) {
+      navigation.replace('Home');
+      return;
+    }
+    setAuthError(null);
+    setLoading(true);
+    try {
+      await signInWithApple();
+    } catch (err) {
+      if (err.code === 'ERR_REQUEST_CANCELED') {
+        // User cancelled — don't show an error
+        setLoading(false);
+        return;
+      }
       setAuthError(err.message);
       setLoading(false);
     }
@@ -113,6 +146,18 @@ export default function SignInScreen({ navigation }) {
         {/* Auth section — pinned to bottom */}
         <Animated.View style={[s.bottomSection, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           {authError ? <Text style={s.errorText}>{authError}</Text> : null}
+
+          {appleAvailable && (
+            <TouchableOpacity
+              style={s.btnApple}
+              onPress={handleAppleAuth}
+              activeOpacity={0.85}
+              disabled={loading}
+            >
+              <View style={s.btnLogo}><AppleLogo /></View>
+              <Text style={s.btnAppleText}>{loading ? 'Signing in...' : 'Continue with Apple'}</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={s.btnGoogle}
@@ -201,6 +246,27 @@ const s = StyleSheet.create({
   // Bottom auth section
   bottomSection: { paddingHorizontal: 28, paddingBottom: 32 },
 
+  btnApple: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 17,
+    paddingHorizontal: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  btnAppleText: {
+    flex: 1, textAlign: 'center',
+    fontSize: 16, fontWeight: '500', fontFamily: FF.medium,
+    color: '#000',
+  },
   btnGoogle: {
     width: '100%',
     backgroundColor: '#F0F0F2',

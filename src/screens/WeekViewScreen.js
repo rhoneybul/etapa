@@ -186,14 +186,13 @@ export default function WeekViewScreen({ navigation, route }) {
                               <Text style={[s.activityTitle, activity.completed && s.activityTitleDone]}>{activity.title}</Text>
                               <Text style={s.activityMeta}>
                                 {activity.type === 'ride' && activity.distanceKm ? `${activity.distanceKm} km \u00B7 ` : ''}
-                                {activity.durationMins ? `${activity.durationMins} min` : ''}
+                                {activity.durationMins ? `~${activity.durationMins} min` : ''}
                                 {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
                               </Text>
                             </View>
                             <TouchableOpacity
                               style={[s.checkBtn, activity.completed && s.checkBtnDone]}
-                              onPress={() => !activity.completed && handleComplete(activity.id)}
-                              disabled={activity.completed}
+                              onPress={() => handleComplete(activity.id)}
                             >
                               <Text style={s.checkMark}>{activity.completed ? '\u2713' : ''}</Text>
                             </TouchableOpacity>
