@@ -1,5 +1,3 @@
-import NextAuth from "next-auth";
-import { authOptions } from "@/lib/auth";
-
-const handler = NextAuth(authOptions);
-export { handler as GET, handler as POST };
+// NextAuth has been replaced with Supabase Auth.
+// The OAuth callback is handled by /app/auth/callback/route.ts
+export {};

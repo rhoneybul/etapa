@@ -1,25 +1,28 @@
 "use client";
 
-import { signIn, useSession } from "next-auth/react";
+import { createClient } from "@/lib/supabase-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, Suspense } from "react";
 
 function LoginContent() {
-  const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
+  const supabase = createClient();
 
   useEffect(() => {
-    if (session) router.push("/dashboard/users");
-  }, [session, router]);
+    // If already signed in, go straight to dashboard
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) router.push("/dashboard/users");
+    });
+  }, []);
 
-  if (status === "loading") {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse text-gray-500">Loading...</div>
-      </div>
-    );
+  async function handleSignIn() {
+    const redirectTo = `${window.location.origin}/auth/callback`;
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo },
+    });
   }
 
   return (
@@ -37,14 +40,14 @@ function LoginContent() {
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-            {error === "AccessDenied"
-              ? "Access denied. Your email is not on the admin list."
-              : "An error occurred. Please try again."}
+            {error === "auth"
+              ? "Authentication failed. Please try again."
+              : "Access denied. Your account does not have admin permissions."}
           </div>
         )}
 
         <button
-          onClick={() => signIn("google", { callbackUrl: "/dashboard/users" })}
+          onClick={handleSignIn}
           className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 rounded-lg px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
