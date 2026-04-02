@@ -56,6 +56,7 @@
           "color": "#D97706"
         }
       ],
+      "react-native-purchases",
       "./plugins/withSwiftConcurrency",
       "@sentry/react-native"
     ],

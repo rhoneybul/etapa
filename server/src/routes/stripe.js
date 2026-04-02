@@ -14,10 +14,14 @@ const PRICES = () => ({
   monthly: process.env.STRIPE_PRICE_MONTHLY,
   annual: process.env.STRIPE_PRICE_ANNUAL,
   starter: process.env.STRIPE_PRICE_STARTER,
+  lifetime: process.env.STRIPE_PRICE_LIFETIME,
 });
 
 // Starter plan = one-time payment, 3 months access
 const STARTER_ACCESS_DAYS = 90;
+
+// Lifetime plan = one-time payment, access until 2099
+const LIFETIME_END = '2099-12-31T23:59:59.000Z';
 
 // ── GET /api/stripe/subscription-status ──────────────────────────────────────
 router.get('/subscription-status', async (req, res) => {
@@ -63,11 +67,13 @@ router.post('/create-checkout-session', async (req, res) => {
   const { plan, redirectBase } = req.body;
   const prices = PRICES();
   const priceId = prices[plan];
-  if (!priceId) return res.status(400).json({ error: 'Invalid plan. Must be "monthly", "annual", or "starter".' });
+  if (!priceId) return res.status(400).json({ error: 'Invalid plan. Must be "monthly", "annual", "starter", or "lifetime".' });
 
   const userId = req.user.id;
   const userEmail = req.user.email;
   const isStarter = plan === 'starter';
+  const isLifetime = plan === 'lifetime';
+  const isOneTime = isStarter || isLifetime;
 
   // Validate redirect base — must be the app scheme or an allowed/localhost origin
   const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -89,9 +95,14 @@ router.post('/create-checkout-session', async (req, res) => {
       metadata: { userId, plan },
     };
 
-    if (isStarter) {
-      // One-time payment for starter (Get into Cycling)
+    if (isOneTime) {
+      // One-time payment for starter or lifetime
       sessionConfig.mode = 'payment';
+      if (isLifetime) {
+        sessionConfig.payment_intent_data = {
+          description: 'Etapa Lifetime Access — One-time payment. Your coach, forever. 7-day money-back guarantee.',
+        };
+      }
     } else {
       // Recurring subscription with trial
       sessionConfig.mode = 'subscription';
@@ -164,30 +175,38 @@ router.post('/verify-session', async (req, res) => {
 
     const plan = session.metadata?.plan || 'monthly';
     const isStarter = plan === 'starter';
+    const isLifetime = plan === 'lifetime';
 
-    if (isStarter) {
-      // One-time payment — grant 3 months access
+    if (isStarter || isLifetime) {
+      // One-time payment — grant access
       const paymentIntent = session.payment_intent;
       const piId = typeof paymentIntent === 'string' ? paymentIntent : paymentIntent?.id;
       const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
 
-      const accessEnd = new Date();
-      accessEnd.setDate(accessEnd.getDate() + STARTER_ACCESS_DAYS);
+      let accessEnd;
+      if (isLifetime) {
+        accessEnd = new Date(LIFETIME_END);
+      } else {
+        accessEnd = new Date();
+        accessEnd.setDate(accessEnd.getDate() + STARTER_ACCESS_DAYS);
+      }
+
+      const recordId = `${plan}_${piId || sessionId}`;
 
       const { error } = await supabase.from('subscriptions').upsert({
-        id: `starter_${piId || sessionId}`,
+        id: recordId,
         user_id: userId,
         stripe_customer_id: customerId || null,
-        plan: 'starter',
+        plan,
         status: 'paid',
         trial_end: null,
         current_period_end: accessEnd.toISOString(),
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' });
 
-      if (error) console.error('Supabase upsert error (starter):', error);
+      if (error) console.error(`Supabase upsert error (${plan}):`, error);
 
-      res.json({ ok: true, status: 'paid', plan: 'starter', accessEnd: accessEnd.toISOString() });
+      res.json({ ok: true, status: 'paid', plan, accessEnd: accessEnd.toISOString() });
     } else {
       // Subscription flow
       const sub = session.subscription;
@@ -387,6 +406,70 @@ router.post('/refund-starter', async (req, res) => {
   }
 });
 
+// ── POST /api/stripe/refund-lifetime ────────────────────────────────────────
+// Full refund if within 7 days of purchase. Lifetime access is revoked.
+const LIFETIME_REFUND_WINDOW_DAYS = 7;
+
+router.post('/refund-lifetime', async (req, res) => {
+  const stripe = getStripe();
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+
+  const userId = req.user.id;
+
+  try {
+    // 1. Find the user's lifetime subscription record
+    const { data: lifetimeRow, error: fetchErr } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('plan', 'lifetime')
+      .eq('status', 'paid')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (fetchErr || !lifetimeRow) {
+      return res.status(404).json({ error: 'No active lifetime plan found' });
+    }
+
+    // 2. Check refund window — within 7 days of purchase
+    const purchaseDate = new Date(lifetimeRow.created_at);
+    const now = new Date();
+    const daysSincePurchase = Math.floor((now - purchaseDate) / (1000 * 60 * 60 * 24));
+
+    if (daysSincePurchase > LIFETIME_REFUND_WINDOW_DAYS) {
+      return res.status(400).json({
+        error: 'Refund window has passed',
+        daysSincePurchase,
+        maxDays: LIFETIME_REFUND_WINDOW_DAYS,
+      });
+    }
+
+    // 3. Issue full refund
+    const paymentIntentId = lifetimeRow.id.replace('lifetime_', '');
+    try {
+      await stripe.refunds.create({
+        payment_intent: paymentIntentId,
+        reason: 'requested_by_customer',
+      });
+    } catch (refundErr) {
+      console.error('Lifetime full refund error:', refundErr);
+      return res.status(500).json({ error: 'Refund failed. Please contact support.' });
+    }
+
+    // 4. Revoke access
+    await supabase.from('subscriptions').update({
+      status: 'refunded',
+      updated_at: new Date().toISOString(),
+    }).eq('id', lifetimeRow.id);
+
+    res.json({ ok: true, refundedAmount: 149, daysSincePurchase });
+  } catch (err) {
+    console.error('Stripe refund-lifetime error:', err);
+    res.status(500).json({ error: 'Failed to process refund' });
+  }
+});
+
 module.exports = router;
 
 // ── Webhook handler (exported separately — needs raw body, no auth) ───────────
@@ -441,8 +524,8 @@ async function webhookHandler(req, res) {
         const userId = session.metadata?.userId;
         const plan = session.metadata?.plan;
 
-        // Only handle one-time starter payments here — subscriptions are handled above
-        if (!userId || plan !== 'starter') break;
+        // Only handle one-time payments here — subscriptions are handled above
+        if (!userId || (plan !== 'starter' && plan !== 'lifetime')) break;
 
         const piId = typeof session.payment_intent === 'string'
           ? session.payment_intent
@@ -451,21 +534,28 @@ async function webhookHandler(req, res) {
           ? session.customer
           : session.customer?.id;
 
-        const accessEnd = new Date();
-        accessEnd.setDate(accessEnd.getDate() + STARTER_ACCESS_DAYS);
+        let accessEnd;
+        if (plan === 'lifetime') {
+          accessEnd = new Date(LIFETIME_END);
+        } else {
+          accessEnd = new Date();
+          accessEnd.setDate(accessEnd.getDate() + STARTER_ACCESS_DAYS);
+        }
+
+        const recordId = `${plan}_${piId || session.id}`;
 
         const { error } = await supabase.from('subscriptions').upsert({
-          id: `starter_${piId || session.id}`,
+          id: recordId,
           user_id: userId,
           stripe_customer_id: customerId || null,
-          plan: 'starter',
+          plan,
           status: 'paid',
           trial_end: null,
           current_period_end: accessEnd.toISOString(),
           updated_at: new Date().toISOString(),
         }, { onConflict: 'id' });
 
-        if (error) console.error('Supabase upsert error (webhook starter):', error);
+        if (error) console.error(`Supabase upsert error (webhook ${plan}):`, error);
         break;
       }
 

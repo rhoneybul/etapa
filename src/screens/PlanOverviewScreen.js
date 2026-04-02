@@ -5,12 +5,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, TextInput, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
-import { getPlans, getGoals, getWeekActivities } from '../services/storageService';
+import { getPlans, getGoals, getWeekActivities, getPlanConfig, updatePlanConfig } from '../services/storageService';
 import analytics from '../services/analyticsService';
+
+const DAY_LABELS = [
+  { key: 'monday', short: 'MON' }, { key: 'tuesday', short: 'TUE' },
+  { key: 'wednesday', short: 'WED' }, { key: 'thursday', short: 'THU' },
+  { key: 'friday', short: 'FRI' }, { key: 'saturday', short: 'SAT' },
+  { key: 'sunday', short: 'SUN' },
+];
 
 const FF = fontFamily;
 
@@ -120,6 +127,10 @@ export default function PlanOverviewScreen({ navigation, route }) {
   const planId = route.params?.planId;
   const [plan, setPlan] = useState(null);
   const [goal, setGoal] = useState(null);
+  const [planConfig, setPlanConfig] = useState(null);
+  const [recurringRides, setRecurringRides] = useState([]);
+  const [showAddRecurring, setShowAddRecurring] = useState(false);
+  const [recurringForm, setRecurringForm] = useState({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' });
 
   const load = useCallback(async () => {
     const plans = await getPlans();
@@ -128,9 +139,38 @@ export default function PlanOverviewScreen({ navigation, route }) {
     if (p) {
       const goals = await getGoals();
       setGoal(goals.find(g => g.id === p.goalId) || null);
+      if (p.configId) {
+        const cfg = await getPlanConfig(p.configId);
+        setPlanConfig(cfg);
+        setRecurringRides(cfg?.recurringRides || []);
+      }
       analytics.events.planOverviewViewed(p.id, p.weeks);
     }
   }, [planId]);
+
+  const addRecurringRide = async () => {
+    if (!recurringForm.day) { Alert.alert('Select a day'); return; }
+    if (!recurringForm.durationMins && !recurringForm.distanceKm) { Alert.alert('Add details', 'Enter at least a duration or distance.'); return; }
+    const ride = {
+      id: Date.now().toString(36),
+      day: recurringForm.day,
+      durationMins: recurringForm.durationMins ? parseInt(recurringForm.durationMins, 10) : null,
+      distanceKm: recurringForm.distanceKm ? parseFloat(recurringForm.distanceKm) : null,
+      elevationM: recurringForm.elevationM ? parseInt(recurringForm.elevationM, 10) : null,
+      notes: recurringForm.notes || '',
+    };
+    const updated = [...recurringRides, ride];
+    setRecurringRides(updated);
+    if (planConfig) await updatePlanConfig(planConfig.id, { recurringRides: updated });
+    setRecurringForm({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' });
+    setShowAddRecurring(false);
+  };
+
+  const removeRecurringRide = async (id) => {
+    const updated = recurringRides.filter(r => r.id !== id);
+    setRecurringRides(updated);
+    if (planConfig) await updatePlanConfig(planConfig.id, { recurringRides: updated });
+  };
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -331,6 +371,83 @@ export default function PlanOverviewScreen({ navigation, route }) {
                 </TouchableOpacity>
               );
             })}
+            {/* ── Recurring rides section ── */}
+            <View style={s.recurringSection}>
+              <Text style={s.recurringSectionTitle}>Recurring rides</Text>
+              <Text style={s.recurringSectionHint}>
+                These rides repeat every week. Your plan is built around them.
+              </Text>
+
+              {recurringRides.map(ride => (
+                <View key={ride.id} style={s.recurringCard}>
+                  <View style={s.recurringCardRow}>
+                    <View style={[s.recurringDayBadge, { backgroundColor: colors.primary + '18' }]}>
+                      <Text style={s.recurringDayBadgeText}>{DAY_LABELS.find(d => d.key === ride.day)?.short || ride.day}</Text>
+                    </View>
+                    <View style={s.recurringDetails}>
+                      {ride.durationMins && <Text style={s.recurringDetail}>{ride.durationMins} min</Text>}
+                      {ride.distanceKm && <Text style={s.recurringDetail}>{ride.distanceKm} km</Text>}
+                      {ride.elevationM && <Text style={s.recurringDetail}>{ride.elevationM}m elev</Text>}
+                    </View>
+                    <TouchableOpacity onPress={() => removeRecurringRide(ride.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={s.recurringRemove}>{'\u00D7'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {ride.notes ? <Text style={s.recurringNotes}>{ride.notes}</Text> : null}
+                </View>
+              ))}
+
+              {recurringRides.length === 0 && !showAddRecurring && (
+                <Text style={s.recurringEmpty}>No recurring rides set up yet.</Text>
+              )}
+
+              {showAddRecurring ? (
+                <View style={s.recurringForm}>
+                  <Text style={s.recurringFormLabel}>Which day?</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.recurringDayScroll}>
+                    {DAY_LABELS.map(d => (
+                      <TouchableOpacity
+                        key={d.key}
+                        style={[s.recurringDayPill, recurringForm.day === d.key && s.recurringDayPillSel]}
+                        onPress={() => setRecurringForm(f => ({ ...f, day: d.key }))}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[s.recurringDayPillText, recurringForm.day === d.key && s.recurringDayPillTextSel]}>{d.short}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  <View style={s.recurringInputRow}>
+                    <View style={s.recurringInputGroup}>
+                      <Text style={s.recurringInputLabel}>Duration</Text>
+                      <TextInput style={s.recurringInput} placeholder="mins" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={recurringForm.durationMins} onChangeText={v => setRecurringForm(f => ({ ...f, durationMins: v }))} />
+                    </View>
+                    <View style={s.recurringInputGroup}>
+                      <Text style={s.recurringInputLabel}>Distance</Text>
+                      <TextInput style={s.recurringInput} placeholder="km" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={recurringForm.distanceKm} onChangeText={v => setRecurringForm(f => ({ ...f, distanceKm: v }))} />
+                    </View>
+                    <View style={s.recurringInputGroup}>
+                      <Text style={s.recurringInputLabel}>Elevation</Text>
+                      <TextInput style={s.recurringInput} placeholder="m" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={recurringForm.elevationM} onChangeText={v => setRecurringForm(f => ({ ...f, elevationM: v }))} />
+                    </View>
+                  </View>
+                  <TextInput style={s.recurringNotesInput} placeholder="Notes (e.g. 'Friday club ride')" placeholderTextColor={colors.textFaint} value={recurringForm.notes} onChangeText={v => setRecurringForm(f => ({ ...f, notes: v }))} />
+                  <View style={s.recurringFormActions}>
+                    <TouchableOpacity style={s.recurringCancelBtn} onPress={() => { setShowAddRecurring(false); setRecurringForm({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' }); }}>
+                      <Text style={s.recurringCancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.recurringAddBtn} onPress={addRecurringRide}>
+                      <Text style={s.recurringAddBtnText}>Add ride</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity style={s.recurringAddTrigger} onPress={() => setShowAddRecurring(true)} activeOpacity={0.7}>
+                  <Text style={s.recurringAddTriggerPlus}>+</Text>
+                  <Text style={s.recurringAddTriggerText}>Add a recurring ride</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
             <View style={{ height: 100 }} />
           </ScrollView>
 
@@ -424,4 +541,58 @@ const s = StyleSheet.create({
   coachBtnLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
   coachBtnHint: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 1 },
   coachBtnArrow: { fontSize: 22, color: colors.textFaint, fontWeight: '300' },
+
+  // ── Recurring rides ────────────────────────────────────────────────────
+  recurringSection: { marginHorizontal: 16, marginTop: 12, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.border },
+  recurringSectionTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
+  recurringSectionHint: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginBottom: 12, lineHeight: 19 },
+  recurringCard: {
+    backgroundColor: colors.surface, borderRadius: 12, padding: 14, marginBottom: 8,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  recurringCardRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  recurringDayBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  recurringDayBadgeText: { fontSize: 12, fontWeight: '700', fontFamily: FF.semibold, color: colors.primary },
+  recurringDetails: { flex: 1, flexDirection: 'row', gap: 10 },
+  recurringDetail: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
+  recurringRemove: { fontSize: 20, color: colors.textMuted, paddingHorizontal: 4 },
+  recurringNotes: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 6 },
+  recurringEmpty: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginBottom: 8 },
+  recurringForm: {
+    backgroundColor: colors.surface, borderRadius: 12, padding: 14, marginTop: 4,
+    borderWidth: 1, borderColor: colors.primary + '44',
+  },
+  recurringFormLabel: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 8 },
+  recurringDayScroll: { marginBottom: 12 },
+  recurringDayPill: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, marginRight: 6,
+    backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border,
+  },
+  recurringDayPillSel: { borderColor: colors.primary, backgroundColor: colors.primary + '14' },
+  recurringDayPillText: { fontSize: 12, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMid },
+  recurringDayPillTextSel: { color: colors.primary },
+  recurringInputRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  recurringInputGroup: { flex: 1 },
+  recurringInputLabel: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, marginBottom: 4 },
+  recurringInput: {
+    backgroundColor: colors.bg, borderRadius: 8, borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, fontFamily: FF.regular, color: colors.text,
+  },
+  recurringNotesInput: {
+    backgroundColor: colors.bg, borderRadius: 8, borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, fontFamily: FF.regular, color: colors.text,
+    marginBottom: 12,
+  },
+  recurringFormActions: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end' },
+  recurringCancelBtn: { paddingHorizontal: 16, paddingVertical: 10 },
+  recurringCancelText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
+  recurringAddBtn: { backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
+  recurringAddBtnText: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
+  recurringAddTrigger: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: colors.surface, borderRadius: 12, padding: 14, marginTop: 4,
+    borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed',
+  },
+  recurringAddTriggerPlus: { fontSize: 20, color: colors.primary, fontWeight: '600' },
+  recurringAddTriggerText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
 });

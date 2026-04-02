@@ -152,6 +152,8 @@ export function generatePlan(goal, config) {
     trainingTypes = ['outdoor'],
     availableDays = ['monday', 'wednesday', 'saturday'],
     fitnessLevel = 'beginner',
+    recurringRides = [],
+    longRideDay = null,
   } = config;
 
   const base = BASE_PARAMS[fitnessLevel] || BASE_PARAMS.beginner;
@@ -224,9 +226,57 @@ export function generatePlan(goal, config) {
     // Build the ride plan for this week
     const weekRides = buildWeekRides(rideDaysPerWeek, isDeload, isTaper, isLastTaperWeek, isPeak, goal);
 
-    // Assign rides to days
+    // Assign rides to days — respect longRideDay preference
     const rideDaySlots = dayIndices.slice(0, rideDaysPerWeek);
     const strengthDaySlots = dayIndices.slice(rideDaysPerWeek, rideDaysPerWeek + strengthDaysPerWeek);
+
+    // If longRideDay is set, ensure the Long Ride template lands on that day
+    const longRideDayIdx = longRideDay ? DAY_NAMES.indexOf(longRideDay) : -1;
+    if (longRideDayIdx >= 0 && rideDaySlots.includes(longRideDayIdx)) {
+      const longIdx = weekRides.findIndex(r => r.title === 'Long Ride');
+      if (longIdx >= 0) {
+        const targetSlotPos = rideDaySlots.indexOf(longRideDayIdx);
+        if (targetSlotPos >= 0 && targetSlotPos !== longIdx) {
+          // Swap rides so the long ride lands on the preferred day
+          [weekRides[longIdx], weekRides[targetSlotPos]] = [weekRides[targetSlotPos], weekRides[longIdx]];
+        }
+      }
+    }
+
+    // Add recurring rides as fixed activities for this week
+    recurringRides.forEach(rr => {
+      const rrDayIdx = DAY_NAMES.indexOf(rr.day);
+      if (rrDayIdx < 0) return;
+      const rrDuration = rr.durationMins || 60;
+      const rrDistance = rr.distanceKm || null;
+      const rrElevation = rr.elevationM || null;
+
+      // Scale recurring ride slightly with progression (but never reduce below base)
+      const scaledDuration = Math.round(rrDuration * Math.min(progressMultiplier, 1.0)); // keep original or less in deload
+      const scaledDistance = rrDistance ? Math.round(rrDistance * Math.min(progressMultiplier, 1.0) * 10) / 10 : null;
+
+      activities.push({
+        id: uid(),
+        planId: null,
+        week,
+        dayOfWeek: rrDayIdx,
+        type: 'ride',
+        subType: 'recurring',
+        title: rr.notes ? `Recurring: ${rr.notes}` : 'Recurring Ride',
+        description: rr.notes || 'Your regular weekly ride. The plan is built around this.',
+        notes: rrElevation ? `${rrElevation}m elevation` : null,
+        durationMins: isDeload ? Math.round(scaledDuration * 0.7) : scaledDuration,
+        distanceKm: isDeload && scaledDistance ? Math.round(scaledDistance * 0.7 * 10) / 10 : scaledDistance,
+        elevationM: rrElevation,
+        effort: isDeload ? 'easy' : 'moderate',
+        completed: false,
+        completedAt: null,
+        isRecurring: true,
+        recurringRideId: rr.id,
+        stravaActivityId: null,
+        stravaData: null,
+      });
+    });
 
     weekRides.forEach((template, i) => {
       const dayIdx = rideDaySlots[i] ?? rideDaySlots[0];

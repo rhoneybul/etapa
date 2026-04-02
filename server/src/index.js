@@ -27,6 +27,7 @@ const appConfigRouter     = require('./routes/appConfig');
 const coachCheckinRouter  = require('./routes/coachCheckin');
 const stripeRouter        = require('./routes/stripe');
 const { webhookHandler }  = require('./routes/stripe');
+const { revenueCatWebhookHandler } = require('./routes/revenueCatWebhook');
 const adminRouter         = require('./routes/admin');
 
 const { authMiddleware } = require('./middleware/auth');
@@ -41,6 +42,9 @@ Sentry.setupExpressErrorHandler(app);
 
 // Stripe webhook must receive raw body — mount BEFORE express.json()
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), webhookHandler);
+
+// RevenueCat webhook — receives JSON, no auth middleware (uses its own Bearer token)
+app.post('/api/revenuecat/webhook', express.json(), revenueCatWebhookHandler);
 
 app.use(express.json());
 

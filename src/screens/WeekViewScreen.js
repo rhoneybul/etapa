@@ -5,12 +5,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, RefreshControl,
-  TextInput, ActivityIndicator,
+  TextInput, ActivityIndicator, Alert, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
-import { getPlan, getPlans, getWeekActivities, getWeekProgress, markActivityComplete, getWeekMonthLabel, getGoals, getPlanConfig, updateActivity } from '../services/storageService';
-import { editActivityWithAI } from '../services/llmPlanService';
+import { getPlan, getPlans, getWeekActivities, getWeekProgress, markActivityComplete, getWeekMonthLabel, getGoals, getPlanConfig, updateActivity, savePlan } from '../services/storageService';
+import { editActivityWithAI, adjustWeekForOrganisedRide } from '../services/llmPlanService';
+import { uid } from '../services/storageService';
 import { getSessionColor, getSessionLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
 import analytics from '../services/analyticsService';
 
@@ -20,6 +21,7 @@ const DAY_LABELS_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday',
 export default function WeekViewScreen({ navigation, route }) {
   const initialWeek = route.params?.week || 1;
   const planId = route.params?.planId || null;
+  const openOrgRideDay = route.params?.openOrgRide ?? null;
   const [plan, setPlan] = useState(null);
   const [goal, setGoal] = useState(null);
   const [planConfig, setPlanConfig] = useState(null);
@@ -30,6 +32,12 @@ export default function WeekViewScreen({ navigation, route }) {
   const [actEditText, setActEditText] = useState('');
   const [actEditing, setActEditing] = useState(false);
   const [actEditStatus, setActEditStatus] = useState('');
+
+  // Organised ride modal
+  const [showOrgRide, setShowOrgRide] = useState(false);
+  const [orgRideDay, setOrgRideDay] = useState(null);
+  const [orgRideForm, setOrgRideForm] = useState({ description: '', durationMins: '', distanceKm: '', elevationM: '' });
+  const [orgRideProcessing, setOrgRideProcessing] = useState(false);
 
   const loadPlan = useCallback(async () => {
     let p;
@@ -62,6 +70,14 @@ export default function WeekViewScreen({ navigation, route }) {
     if (plan) analytics.events.weekViewed(week, plan.id);
   }, [week, plan?.id]);
 
+  // Auto-open organised ride modal if navigated with openOrgRide param
+  useEffect(() => {
+    if (openOrgRideDay !== null && plan) {
+      setOrgRideDay(openOrgRideDay);
+      setShowOrgRide(true);
+    }
+  }, [openOrgRideDay, plan]);
+
   const onRefresh = async () => { setRefreshing(true); await loadPlan(); setRefreshing(false); };
 
   if (!plan) return null;
@@ -85,6 +101,66 @@ export default function WeekViewScreen({ navigation, route }) {
     }
     await markActivityComplete(id);
     await loadPlan();
+  };
+
+  // Add organised ride to current week
+  const handleAddOrganisedRide = async () => {
+    if (!orgRideForm.description.trim()) {
+      Alert.alert('Describe the ride', 'Enter a description for the organised ride.');
+      return;
+    }
+    setOrgRideProcessing(true);
+    try {
+      // Create the organised ride activity
+      const orgRide = {
+        id: uid(),
+        planId: plan.id,
+        week,
+        dayOfWeek: orgRideDay,
+        type: 'ride',
+        subType: 'organised',
+        title: orgRideForm.description.trim(),
+        description: 'Organised ride added to this week.',
+        notes: [
+          orgRideForm.durationMins ? `${orgRideForm.durationMins} min` : null,
+          orgRideForm.distanceKm ? `${orgRideForm.distanceKm} km` : null,
+          orgRideForm.elevationM ? `${orgRideForm.elevationM}m elevation` : null,
+        ].filter(Boolean).join(' · ') || null,
+        durationMins: orgRideForm.durationMins ? parseInt(orgRideForm.durationMins, 10) : null,
+        distanceKm: orgRideForm.distanceKm ? parseFloat(orgRideForm.distanceKm) : null,
+        elevationM: orgRideForm.elevationM ? parseInt(orgRideForm.elevationM, 10) : null,
+        effort: 'moderate',
+        completed: false,
+        completedAt: null,
+        isOrganised: true,
+        stravaActivityId: null,
+        stravaData: null,
+      };
+
+      // Add the ride to the plan
+      const updatedPlan = { ...plan };
+      updatedPlan.activities = [...(updatedPlan.activities || []), orgRide];
+
+      // Ask AI to adjust this week's other activities to account for the extra ride
+      try {
+        const adjusted = await adjustWeekForOrganisedRide(updatedPlan, week, orgRide, goal);
+        if (adjusted?.activities) {
+          updatedPlan.activities = adjusted.activities;
+        }
+      } catch {
+        // If AI adjustment fails, just keep the ride added without adjustments
+      }
+
+      await savePlan(updatedPlan);
+      await loadPlan();
+
+      setShowOrgRide(false);
+      setOrgRideForm({ description: '', durationMins: '', distanceKm: '', elevationM: '' });
+      setOrgRideDay(null);
+    } catch (err) {
+      Alert.alert('Error', 'Failed to add organised ride.');
+    }
+    setOrgRideProcessing(false);
   };
 
   // Inline activity edit via AI
@@ -268,12 +344,48 @@ export default function WeekViewScreen({ navigation, route }) {
                     </View>
                   </View>
                 ))}
+                {/* Add organised ride */}
+                <TouchableOpacity
+                  style={s.addOrgRideBtn}
+                  onPress={() => { setOrgRideDay(dayIdx); setShowOrgRide(true); }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={s.addOrgRidePlus}>+</Text>
+                  <Text style={s.addOrgRideText}>Add organised ride</Text>
+                </TouchableOpacity>
               </View>
             );
+          })}
+          {/* Days with no scheduled activities — still allow adding organised rides */}
+          {DAY_LABELS_FULL.map((dayLabel, dayIdx) => {
+            const dayActivitiesForDay = byDay[dayIdx] || [];
+            const ctItems = getCrossTrainingForDay(crossTraining, dayIdx);
+            if (dayActivitiesForDay.length > 0 || ctItems.length > 0) return null; // already rendered above
+            return null; // rest days stay clean
           })}
           {activities.length === 0 && Object.keys(crossTraining).length === 0 && (
             <View style={s.emptyWeek}><Text style={s.emptyText}>No activities this week</Text></View>
           )}
+
+          {/* Floating add organised ride for rest days */}
+          <TouchableOpacity
+            style={s.addOrgRideFloating}
+            onPress={() => {
+              // Show picker for which day
+              const dayOptions = DAY_LABELS_FULL.map((label, idx) => ({
+                text: label,
+                onPress: () => { setOrgRideDay(idx); setShowOrgRide(true); },
+              }));
+              Alert.alert('Add organised ride', 'Which day?', [
+                ...dayOptions,
+                { text: 'Cancel', style: 'cancel' },
+              ]);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={s.addOrgRideFloatingText}>+ Add organised ride this week</Text>
+          </TouchableOpacity>
+
           <View style={{ height: 80 }} />
         </ScrollView>
 
@@ -292,6 +404,81 @@ export default function WeekViewScreen({ navigation, route }) {
             <Text style={s.coachBtnArrow}>{'\u203A'}</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Organised ride modal */}
+        <Modal visible={showOrgRide} transparent animationType="slide" onRequestClose={() => setShowOrgRide(false)}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.orgModalOverlay}>
+            <TouchableOpacity style={s.orgModalBg} onPress={() => setShowOrgRide(false)} activeOpacity={1} />
+            <View style={s.orgModalSheet}>
+              <View style={s.orgModalHandle} />
+              <Text style={s.orgModalTitle}>Add organised ride</Text>
+              <Text style={s.orgModalSub}>
+                {orgRideDay !== null ? `${DAY_LABELS_FULL[orgRideDay]}, Week ${week}` : `Week ${week}`}
+              </Text>
+
+              <Text style={s.orgModalLabel}>Describe the ride</Text>
+              <TextInput
+                style={s.orgModalInput}
+                placeholder="e.g. Saturday morning group ride, hilly route"
+                placeholderTextColor={colors.textFaint}
+                value={orgRideForm.description}
+                onChangeText={v => setOrgRideForm(f => ({ ...f, description: v }))}
+                multiline
+              />
+
+              <View style={s.orgModalInputRow}>
+                <View style={s.orgModalInputGroup}>
+                  <Text style={s.orgModalInputLabel}>Duration</Text>
+                  <TextInput
+                    style={s.orgModalSmallInput}
+                    placeholder="mins"
+                    placeholderTextColor={colors.textFaint}
+                    keyboardType="numeric"
+                    value={orgRideForm.durationMins}
+                    onChangeText={v => setOrgRideForm(f => ({ ...f, durationMins: v }))}
+                  />
+                </View>
+                <View style={s.orgModalInputGroup}>
+                  <Text style={s.orgModalInputLabel}>Distance</Text>
+                  <TextInput
+                    style={s.orgModalSmallInput}
+                    placeholder="km"
+                    placeholderTextColor={colors.textFaint}
+                    keyboardType="numeric"
+                    value={orgRideForm.distanceKm}
+                    onChangeText={v => setOrgRideForm(f => ({ ...f, distanceKm: v }))}
+                  />
+                </View>
+                <View style={s.orgModalInputGroup}>
+                  <Text style={s.orgModalInputLabel}>Elevation</Text>
+                  <TextInput
+                    style={s.orgModalSmallInput}
+                    placeholder="m"
+                    placeholderTextColor={colors.textFaint}
+                    keyboardType="numeric"
+                    value={orgRideForm.elevationM}
+                    onChangeText={v => setOrgRideForm(f => ({ ...f, elevationM: v }))}
+                  />
+                </View>
+              </View>
+
+              <Text style={s.orgModalNote}>Your coach will adjust this week's plan to account for the extra ride.</Text>
+
+              <TouchableOpacity
+                style={[s.orgModalAddBtn, orgRideProcessing && { opacity: 0.6 }]}
+                onPress={handleAddOrganisedRide}
+                disabled={orgRideProcessing}
+                activeOpacity={0.85}
+              >
+                {orgRideProcessing ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={s.orgModalAddText}>Add to plan</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
       </SafeAreaView>
     </View>
   );
@@ -412,4 +599,49 @@ const s = StyleSheet.create({
   coachBtnLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
   coachBtnHint: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 1 },
   coachBtnArrow: { fontSize: 22, color: colors.textFaint, fontWeight: '300' },
+
+  // ── Add organised ride ──────────────────────────────────────────────────
+  addOrgRideBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 8, paddingHorizontal: 12, marginTop: 4,
+  },
+  addOrgRidePlus: { fontSize: 16, color: colors.primary, fontWeight: '600' },
+  addOrgRideText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
+  addOrgRideFloating: {
+    alignItems: 'center', paddingVertical: 14, marginHorizontal: 16, marginTop: 8,
+    borderRadius: 12, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed',
+  },
+  addOrgRideFloatingText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+
+  // ── Organised ride modal ────────────────────────────────────────────────
+  orgModalOverlay: { flex: 1, justifyContent: 'flex-end' },
+  orgModalBg: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  orgModalSheet: {
+    backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 24, paddingBottom: 40,
+  },
+  orgModalHandle: {
+    width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border,
+    alignSelf: 'center', marginBottom: 16,
+  },
+  orgModalTitle: { fontSize: 18, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
+  orgModalSub: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, marginBottom: 16 },
+  orgModalLabel: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 6 },
+  orgModalInput: {
+    backgroundColor: colors.bg, borderRadius: 10, borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, fontFamily: FF.regular, color: colors.text,
+    minHeight: 56, textAlignVertical: 'top', marginBottom: 14,
+  },
+  orgModalInputRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  orgModalInputGroup: { flex: 1 },
+  orgModalInputLabel: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, marginBottom: 4 },
+  orgModalSmallInput: {
+    backgroundColor: colors.bg, borderRadius: 8, borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, fontFamily: FF.regular, color: colors.text,
+  },
+  orgModalNote: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginBottom: 16, lineHeight: 17 },
+  orgModalAddBtn: {
+    backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: 'center',
+  },
+  orgModalAddText: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
 });

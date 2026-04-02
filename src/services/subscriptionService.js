@@ -1,10 +1,22 @@
 /**
- * Subscription service — checks Stripe subscription status and opens checkout.
- * Uses Stripe Checkout (hosted) via expo-web-browser, same pattern as OAuth.
+ * Subscription service — unified interface for RevenueCat (native) and Stripe (web).
+ *
+ * On iOS/Android: RevenueCat handles purchases and entitlement checks via App Store / Play Store.
+ * On web: Stripe Checkout handles purchases, server checks entitlements via Supabase.
+ *
+ * RevenueCat is configured as a wrapper over Stripe, so both native IAP and Stripe
+ * web purchases are tracked in RevenueCat's dashboard.
  */
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 import { getSession } from './authService';
+import {
+  isRevenueCatAvailable,
+  checkEntitlement,
+  getOfferings,
+  purchasePackage,
+  restorePurchases as rcRestore,
+} from './revenueCatService';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -30,13 +42,36 @@ async function authRequest(method, path, body) {
   }
 }
 
+// ── Subscription status ─────────────────────────────────────────────────────────
+
 /**
- * Returns subscription status from the server.
- * Returns { active: true } in dev mode when Stripe is not configured.
+ * Returns subscription status.
+ * Native: checks RevenueCat entitlements first, falls back to server.
+ * Web: checks server (Stripe via Supabase).
  */
 export async function getSubscriptionStatus() {
+  // On native, try RevenueCat first
+  if (isRevenueCatAvailable()) {
+    try {
+      const rc = await checkEntitlement();
+      if (rc.active) {
+        return {
+          active: true,
+          status: rc.isLifetime ? 'paid' : 'active',
+          plan: rc.plan,
+          currentPeriodEnd: rc.expirationDate,
+          store: rc.store,
+          source: 'revenuecat',
+        };
+      }
+    } catch {
+      // Fall through to server check
+    }
+  }
+
+  // Fall back to server (Stripe/Supabase)
   const data = await authRequest('GET', '/api/stripe/subscription-status');
-  return data || { active: false };
+  return data ? { ...data, source: 'stripe' } : { active: false };
 }
 
 /**
@@ -49,16 +84,37 @@ export async function isSubscribed() {
   return status.active === true;
 }
 
-/**
- * Opens Stripe Checkout in an in-app browser.
- * plan: 'monthly' | 'annual' | 'starter'
- * Returns { success: true } if the user completed payment, { success: false } if they cancelled.
- */
-export async function openCheckout(plan) {
-  const isWeb = Platform.OS === 'web';
+// ── Purchases ───────────────────────────────────────────────────────────────────
 
-  // On web, redirect back to the current origin so the browser can handle it.
-  // On native, use the app deep-link scheme.
+/**
+ * Get available subscription offerings.
+ * Native: returns RevenueCat offerings (real App Store / Play Store prices).
+ * Web: returns null (web uses hardcoded prices in PaywallScreen).
+ */
+export async function getSubscriptionOfferings() {
+  if (!isRevenueCatAvailable()) return null;
+  return getOfferings();
+}
+
+/**
+ * Purchase a subscription or lifetime access.
+ *
+ * On native (iOS/Android): uses RevenueCat to trigger native IAP.
+ * On web: opens Stripe Checkout in a browser.
+ *
+ * @param {string} plan - 'monthly' | 'annual' | 'lifetime' | 'starter'
+ * @param {object|null} rcPackage - RevenueCat package object (native only, from getSubscriptionOfferings)
+ * @returns {{ success: boolean, cancelled?: boolean, error?: string }}
+ */
+export async function openCheckout(plan, rcPackage = null) {
+  // ── Native: use RevenueCat ────────────────────────────────────────────────
+  if (isRevenueCatAvailable() && rcPackage) {
+    const result = await purchasePackage(rcPackage);
+    return result;
+  }
+
+  // ── Web / fallback: use Stripe Checkout ───────────────────────────────────
+  const isWeb = Platform.OS === 'web';
   const redirectBase = isWeb
     ? `${window.location.origin}/stripe`
     : 'etapa://stripe';
@@ -67,14 +123,11 @@ export async function openCheckout(plan) {
   if (!data?.url) throw new Error('Could not create checkout session. Please try again.');
 
   if (isWeb) {
-    // On web, navigate the tab directly to Stripe Checkout.
-    // The success URL will bring the user back to /stripe/success?session_id=xxx
-    // which is handled by checkStripeReturn() below.
     window.location.href = data.url;
     return { success: false }; // App will detect return via checkStripeReturn()
   }
 
-  // On native, open in-app browser and watch for the deep-link redirect
+  // Native fallback (no RevenueCat package) — open Stripe in browser
   const result = await WebBrowser.openAuthSessionAsync(data.url, 'etapa://stripe');
 
   if (result.type === 'success' && result.url?.includes('stripe/success')) {
@@ -88,6 +141,19 @@ export async function openCheckout(plan) {
 
   return { success: false };
 }
+
+/**
+ * Restore purchases (native only — triggers RevenueCat restore).
+ * On web, this is a no-op.
+ */
+export async function restorePurchases() {
+  if (!isRevenueCatAvailable()) {
+    return { success: false, error: 'Not available on web' };
+  }
+  return rcRestore();
+}
+
+// ── Starter plan flows ──────────────────────────────────────────────────────────
 
 /**
  * Upgrades a starter plan to annual — issues pro-rata refund and opens checkout with 50% off.
@@ -134,7 +200,23 @@ export async function refundStarter(planStartDate) {
 }
 
 /**
+ * Requests a full refund for the lifetime plan.
+ * Only available within 7 days of purchase.
+ * Returns { ok, refundedAmount } on success.
+ */
+export async function refundLifetime() {
+  const data = await authRequest('POST', '/api/stripe/refund-lifetime');
+  if (!data) throw new Error('Could not process refund. Please try again.');
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
+// ── Billing portal ──────────────────────────────────────────────────────────────
+
+/**
  * Opens the Stripe Customer Portal so the user can manage/cancel their subscription.
+ * On native with RevenueCat, users manage subscriptions through the App Store / Play Store
+ * settings instead — the app should direct them there.
  */
 export async function openBillingPortal() {
   const isWeb = Platform.OS === 'web';
@@ -151,13 +233,11 @@ export async function openBillingPortal() {
   await WebBrowser.openBrowserAsync(data.url);
 }
 
+// ── Web return handler ──────────────────────────────────────────────────────────
+
 /**
  * On web, call this on app startup to detect if the user just returned from
  * Stripe Checkout. Returns the verified session_id if successful, else null.
- *
- * Usage in App.js (web only):
- *   const sessionId = await checkStripeReturn();
- *   if (sessionId) { ... navigate to GoalSetup ... }
  */
 export async function checkStripeReturn() {
   if (Platform.OS !== 'web') return null;

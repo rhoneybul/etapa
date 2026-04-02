@@ -478,6 +478,18 @@ export default function ActivityDetailScreen({ navigation, route }) {
             </View>
           )}
 
+          {/* Add organised ride link */}
+          {!isEditing && activity && (
+            <TouchableOpacity
+              style={s.addOrgRideLink}
+              onPress={() => navigation.replace('WeekView', { planId: plan.id, week: activity.week, openOrgRide: activity.dayOfWeek })}
+              activeOpacity={0.7}
+            >
+              <Text style={s.addOrgRideLinkPlus}>+</Text>
+              <Text style={s.addOrgRideLinkText}>Add an organised ride this week</Text>
+            </TouchableOpacity>
+          )}
+
           <View style={{ height: 80 }} />
         </ScrollView>
 
@@ -655,4 +667,13 @@ const s = StyleSheet.create({
   bottomBar: { paddingHorizontal: 20, paddingBottom: 12, paddingTop: 8 },
   completeBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center', shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 4 },
   completeBtnText: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
+
+  // Add organised ride
+  addOrgRideLink: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 14, marginHorizontal: 20, marginTop: 8,
+    borderRadius: 12, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed',
+  },
+  addOrgRideLinkPlus: { fontSize: 16, color: colors.primary, fontWeight: '600' },
+  addOrgRideLinkText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
 });

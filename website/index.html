@@ -245,6 +245,41 @@
       font-size: 14px; color: #777; line-height: 1.6; font-weight: 300;
     }
 
+    /* ── AI Transparency ── */
+    .ai-transparency {
+      padding: 120px 48px;
+      border-top: 1px solid #111;
+    }
+    .ai-transparency-header {
+      text-align: center; margin-bottom: 80px;
+    }
+    .ai-transparency-header .section-sub { margin: 0 auto; }
+    .ai-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .ai-card {
+      background: #0a0a0a;
+      border: 1px solid #161616;
+      border-radius: 20px;
+      padding: 32px;
+      transition: border-color 0.3s;
+    }
+    .ai-card:hover { border-color: #2a2a2a; }
+    .ai-card-icon {
+      font-size: 28px; margin-bottom: 16px;
+    }
+    .ai-card h3 {
+      font-size: 17px; font-weight: 600; margin-bottom: 8px;
+    }
+    .ai-card p {
+      font-size: 14px; color: #777; line-height: 1.6; font-weight: 300;
+    }
+    .ai-card em { font-style: italic; color: #999; }
+
     /* ── Coaches ── */
     .coaches {
       padding: 120px 48px;
@@ -301,6 +336,100 @@
       flex-shrink: 0;
     }
 
+    /* ── Pricing ── */
+    .pricing {
+      padding: 120px 48px;
+      border-top: 1px solid #111;
+    }
+    .pricing-header {
+      text-align: center; margin-bottom: 80px;
+    }
+    .pricing-header .section-sub { margin: 0 auto; }
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    .pricing-card {
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 20px;
+      padding: 36px 28px;
+      display: flex; flex-direction: column;
+      transition: border-color 0.3s, transform 0.3s;
+      position: relative;
+    }
+    .pricing-card:hover { border-color: #333; transform: translateY(-4px); }
+    .pricing-card.featured {
+      border-color: #7C3AED;
+      background: linear-gradient(180deg, rgba(124,58,237,0.08) 0%, #0a0a0a 60%);
+    }
+    .pricing-card.featured:hover { border-color: #9b5de5; }
+    .pricing-badge {
+      position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+      background: #7C3AED; color: #fff;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.8px;
+      padding: 5px 14px; border-radius: 100px;
+      white-space: nowrap;
+    }
+    .pricing-badge-popular {
+      background: #D97706;
+    }
+    .pricing-plan-name {
+      font-size: 18px; font-weight: 600; margin-bottom: 8px;
+    }
+    .pricing-price {
+      display: flex; align-items: flex-end; gap: 4px; margin-bottom: 4px;
+    }
+    .pricing-price-amount {
+      font-size: 40px; font-weight: 700; line-height: 1;
+    }
+    .pricing-price-per {
+      font-size: 16px; color: #777; font-weight: 300; margin-bottom: 6px;
+    }
+    .pricing-price-original {
+      font-size: 18px; color: #555; text-decoration: line-through;
+      margin-bottom: 4px;
+    }
+    .pricing-sub {
+      font-size: 14px; color: #666; font-weight: 300; margin-bottom: 24px;
+    }
+    .pricing-features {
+      list-style: none; display: flex; flex-direction: column; gap: 12px;
+      flex: 1; margin-bottom: 28px;
+    }
+    .pricing-features li {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 14px; color: #999; font-weight: 300;
+    }
+    .pricing-features li::before {
+      content: '✓'; color: #D97706; font-weight: 600; font-size: 14px;
+    }
+    .pricing-btn {
+      display: block; text-align: center; text-decoration: none;
+      padding: 14px 24px; border-radius: 100px; font-size: 15px;
+      font-weight: 600; font-family: 'Poppins', sans-serif;
+      transition: all 0.2s; cursor: pointer;
+    }
+    .pricing-btn-default {
+      background: #1a1a1a; color: #fff; border: 1px solid #333;
+    }
+    .pricing-btn-default:hover { background: #222; border-color: #444; }
+    .pricing-btn-primary {
+      background: #D97706; color: #000; border: none;
+    }
+    .pricing-btn-primary:hover { background: #f59e0b; }
+    .pricing-btn-featured {
+      background: #7C3AED; color: #fff; border: none;
+    }
+    .pricing-btn-featured:hover { background: #9b5de5; }
+    .pricing-trial-note {
+      text-align: center; margin-top: 32px;
+      font-size: 13px; color: #555; font-weight: 300;
+    }
+
     /* ── CTA ── */
     .cta {
       padding: 120px 48px;
@@ -353,6 +482,9 @@
       .features { padding: 80px 24px; }
       .features-grid { grid-template-columns: 1fr; max-width: 400px; margin: 0 auto; }
 
+      .ai-transparency { padding: 80px 24px; }
+      .ai-grid { grid-template-columns: 1fr; max-width: 400px; margin: 0 auto; }
+
       .coaches { padding: 80px 24px; }
       .coaches-inner { flex-direction: column; gap: 48px; text-align: center; }
       .coach-list { align-items: center; }
@@ -360,6 +492,10 @@
 
       .showcase { padding: 80px 0; }
       .showcase-scroll { padding: 0 24px; }
+
+      .pricing { padding: 80px 24px; }
+      .pricing-grid { grid-template-columns: 1fr; max-width: 380px; margin: 0 auto; }
+      .pricing-card.featured { order: -1; }
 
       .cta { padding: 80px 24px; }
 
@@ -387,7 +523,9 @@
     <div class="nav-links">
       <a href="#how-it-works">How It Works</a>
       <a href="#features">Features</a>
+      <a href="#ai">AI & Science</a>
       <a href="#coaches">Coaches</a>
+      <a href="#pricing">Pricing</a>
       <a href="#" class="nav-cta">Coming Soon</a>
     </div>
   </nav>
@@ -411,6 +549,9 @@
           <span class="btn-primary-badge">Coming Soon</span>
         </a>
         <a href="#how-it-works" class="btn-secondary">Learn More</a>
+      </div>
+      <div style="margin-top:24px;display:inline-flex;align-items:center;gap:8px;background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.25);border-radius:100px;padding:8px 18px;">
+        <span style="font-size:14px;color:#9b5de5;font-weight:500;">🚀 Launch special — <a href="#pricing" style="color:#9b5de5;text-decoration:underline;">Lifetime access from $149</a> · 7-day money-back guarantee</span>
       </div>
     </div>
     <div class="hero-phones">
@@ -578,6 +719,48 @@
     </div>
   </section>
 
+  <!-- AI Transparency -->
+  <section class="ai-transparency" id="ai">
+    <div class="ai-transparency-header">
+      <div class="section-label">Transparent by Design</div>
+      <h2>Built Entirely with <span style="color:#D97706">AI</span></h2>
+      <p class="section-sub">Every plan, every coaching conversation, every check-in — powered by AI and grounded in real cycling science.</p>
+    </div>
+
+    <div class="ai-grid">
+      <div class="ai-card">
+        <div class="ai-card-icon">&#x2728;</div>
+        <h3>AI-Generated Plans</h3>
+        <p>Training plans are created by Anthropic's Claude AI, instructed with established cycling coaching principles. No human coach reviews individual plans — the AI handles everything from periodisation to session design.</p>
+      </div>
+      <div class="ai-card">
+        <div class="ai-card-icon">&#x1F4DA;</div>
+        <h3>Grounded in Science</h3>
+        <p>Our AI draws on Joe Friel's <em>Cyclist's Training Bible</em>, Chris Carmichael's <em>Time-Crunched Cyclist</em>, Dr. Stephen Seiler's polarised training research, British Cycling pathways, and current sports science on progressive overload and recovery.</p>
+      </div>
+      <div class="ai-card">
+        <div class="ai-card-icon">&#x2699;&#xFE0F;</div>
+        <h3>Evidence-Based Principles</h3>
+        <p>Every plan follows: progressive overload (max 10% weekly increase), 80/20 polarised intensity, periodised phases (base → build → peak → taper), scheduled deload weeks, and injury-prevention through load management.</p>
+      </div>
+      <div class="ai-card">
+        <div class="ai-card-icon">&#x1F4AC;</div>
+        <h3>AI Coaching Chat</h3>
+        <p>When you chat with your coach, you're talking to an AI persona. Six distinct coaching personalities — from warm encouragement to data-driven precision — all powered by the same underlying AI.</p>
+      </div>
+      <div class="ai-card">
+        <div class="ai-card-icon">&#x26A0;&#xFE0F;</div>
+        <h3>Know the Limits</h3>
+        <p>AI cannot assess your physical condition, injury history, or biomechanics. Plans are guidance, not prescriptions. If something doesn't feel right, modify or skip the session. Use your own judgement.</p>
+      </div>
+      <div class="ai-card">
+        <div class="ai-card-icon">&#x1F3E5;</div>
+        <h3>Not Medical Advice</h3>
+        <p>Etapa is a training tool, not a medical service. Always consult your doctor before starting any new exercise programme, especially if you have pre-existing conditions or have been inactive.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- Coaches -->
   <section class="coaches" id="coaches">
     <div class="coaches-inner">
@@ -694,12 +877,86 @@
     </div>
   </section>
 
+  <!-- Pricing -->
+  <section class="pricing" id="pricing">
+    <div class="pricing-header">
+      <div class="section-label">Pricing</div>
+      <h2>Simple, Transparent Plans</h2>
+      <p class="section-sub">Start with a free trial. Upgrade when you're ready — or lock in lifetime access at our launch price.</p>
+    </div>
+
+    <div class="pricing-grid">
+      <!-- Monthly -->
+      <div class="pricing-card">
+        <div class="pricing-plan-name">Monthly</div>
+        <div class="pricing-price">
+          <span class="pricing-price-amount">$9.99</span>
+          <span class="pricing-price-per">/mo</span>
+        </div>
+        <div class="pricing-sub">Billed monthly · Cancel anytime</div>
+        <ul class="pricing-features">
+          <li>AI-generated training plans</li>
+          <li>Coach chat & real-time edits</li>
+          <li>Progress tracking & calendar</li>
+          <li>Multiple coaches to choose from</li>
+          <li>1 week free trial</li>
+        </ul>
+        <a href="#" class="pricing-btn pricing-btn-default" onclick="event.preventDefault()">Start Free Trial</a>
+      </div>
+
+      <!-- Lifetime (featured) -->
+      <div class="pricing-card featured">
+        <div class="pricing-badge">LAUNCH SPECIAL — 40% OFF</div>
+        <div class="pricing-plan-name">Lifetime</div>
+        <div class="pricing-price-original">$249</div>
+        <div class="pricing-price">
+          <span class="pricing-price-amount">$149</span>
+        </div>
+        <div class="pricing-sub">One-time payment · Yours forever</div>
+        <ul class="pricing-features">
+          <li>Everything in Monthly & Annual</li>
+          <li>No recurring charges — ever</li>
+          <li>Lock in access before prices rise</li>
+          <li>All future features included</li>
+          <li>Support an indie app</li>
+          <li>7-day money-back guarantee</li>
+        </ul>
+        <a href="#" class="pricing-btn pricing-btn-featured" onclick="event.preventDefault()">Get Lifetime Access</a>
+        <div style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:12px;">
+          <span style="font-size:14px;">&#x1F6E1;&#xFE0F;</span>
+          <span style="font-size:12px;color:#86efac;font-weight:400;">Full refund within 7 days, no questions asked</span>
+        </div>
+      </div>
+
+      <!-- Annual -->
+      <div class="pricing-card">
+        <div class="pricing-badge pricing-badge-popular">MOST POPULAR</div>
+        <div class="pricing-plan-name">Annual</div>
+        <div class="pricing-price">
+          <span class="pricing-price-amount">$8.25</span>
+          <span class="pricing-price-per">/mo</span>
+        </div>
+        <div class="pricing-sub">Billed $99/year · Save 17%</div>
+        <ul class="pricing-features">
+          <li>AI-generated training plans</li>
+          <li>Coach chat & real-time edits</li>
+          <li>Progress tracking & calendar</li>
+          <li>Multiple coaches to choose from</li>
+          <li>1 week free trial</li>
+        </ul>
+        <a href="#" class="pricing-btn pricing-btn-primary" onclick="event.preventDefault()">Start Free Trial</a>
+      </div>
+    </div>
+
+    <p class="pricing-trial-note">All subscription plans include a 1-week free trial. Cancel anytime before it ends and you won't be charged. Lifetime access includes a 7-day money-back guarantee. Prices in USD.</p>
+  </section>
+
   <!-- CTA -->
   <section class="cta">
     <div class="cta-glow"></div>
     <div class="section-label">Get Started</div>
     <h2>Ready to Ride?</h2>
-    <p class="section-sub">Etapa is launching soon on the App Store. AI-powered cycling coaching for everyone.</p>
+    <p class="section-sub">Etapa is launching soon on the App Store. AI-powered cycling coaching for everyone — transparent, science-backed, and built to help you ride further.</p>
     <a href="#" class="btn-primary" onclick="event.preventDefault()">
       <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
       App Store — Coming Soon
@@ -713,10 +970,17 @@
       <span>&copy; 2026 Etapa. All rights reserved.</span>
     </div>
     <div class="footer-links">
+      <a href="#pricing">Pricing</a>
+      <a href="#ai">AI Transparency</a>
       <a href="privacy.html">Privacy Policy</a>
       <a href="terms.html">Terms of Use</a>
     </div>
   </footer>
+  <div style="text-align:center;padding:16px 48px 32px;border-top:1px solid #111;">
+    <p style="font-size:11px;color:#444;line-height:1.7;max-width:640px;margin:0 auto;font-weight:300;">
+      All training plans, coaching conversations, session adjustments, and check-in messages are generated by artificial intelligence (Anthropic Claude). Etapa is not a medical service and does not provide medical advice. Always consult a healthcare professional before beginning any exercise programme. You train at your own risk.
+    </p>
+  </div>
 
 </body>
 </html>

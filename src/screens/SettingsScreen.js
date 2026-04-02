@@ -9,7 +9,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { signOut } from '../services/authService';
 import { clearPlan, getPlans, deletePlan, clearUserData } from '../services/storageService';
-import { openBillingPortal, getSubscriptionStatus, upgradeStarter, refundStarter } from '../services/subscriptionService';
+import { openBillingPortal, getSubscriptionStatus, upgradeStarter, refundStarter, refundLifetime, restorePurchases } from '../services/subscriptionService';
+import { logoutRevenueCat, isRevenueCatAvailable } from '../services/revenueCatService';
 import { connectStrava, disconnectStrava, isStravaConnected, isStravaConfigured, getStravaTokens } from '../services/stravaService';
 import UpgradePrompt from '../components/UpgradePrompt';
 import analytics from '../services/analyticsService';
@@ -135,6 +136,40 @@ export default function SettingsScreen({ navigation }) {
     );
   };
 
+  const handleRefundLifetime = () => {
+    Alert.alert(
+      'Request lifetime refund?',
+      'You\'ll receive a full $149 refund and your lifetime access will be revoked. This can\'t be undone.',
+      [
+        { text: 'Keep lifetime access', style: 'cancel' },
+        {
+          text: 'Refund & revoke',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await refundLifetime();
+              Alert.alert('Refund processed', 'Your $149 refund is on its way. It may take 5–10 business days to appear.');
+              getSubscriptionStatus().then(setSubscription).catch(() => {});
+            } catch (err) {
+              Alert.alert('Refund failed', err.message || 'Please contact support.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // Check if lifetime purchase is within 7-day refund window
+  const isWithinLifetimeRefundWindow = () => {
+    if (subscription?.plan !== 'lifetime') return false;
+    // Use currentPeriodEnd existence as a proxy — if they have lifetime, check created
+    // We'll check server-side too, but hide the button after ~7 days client-side
+    const purchaseDate = subscription.createdAt ? new Date(subscription.createdAt) : null;
+    if (!purchaseDate) return true; // Show by default, server will enforce the real window
+    const daysSince = Math.floor((new Date() - purchaseDate) / (1000 * 60 * 60 * 24));
+    return daysSince <= 7;
+  };
+
   // Check if starter plan is within 2-week refund window
   const isRefundEligible = (() => {
     if (!starterPlan?.startDate || subscription?.plan !== 'starter') return false;
@@ -147,6 +182,7 @@ export default function SettingsScreen({ navigation }) {
   const handleSignOut = async () => {
     analytics.events.signedOut();
     analytics.reset();
+    await logoutRevenueCat().catch(() => {});
     await clearUserData();
     await signOut();
     navigation.replace('SignIn');
@@ -248,7 +284,35 @@ export default function SettingsScreen({ navigation }) {
             </View>
           </>
         )}
-        {subscription?.active && subscription.plan !== 'starter' && (
+        {subscription?.active && subscription.plan === 'lifetime' && (
+          <>
+            <Text style={s.sectionLabel}>SUBSCRIPTION</Text>
+            <View style={s.card}>
+              <View style={s.row}>
+                <View style={s.rowLeft}>
+                  <View>
+                    <Text style={s.rowTitle}>Lifetime Access</Text>
+                    <Text style={s.rowSub}>You have lifetime access to Etapa — thank you for your support!</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+            {isWithinLifetimeRefundWindow() && (
+              <View style={[s.card, { marginTop: 8 }]}>
+                <TouchableOpacity style={s.row} onPress={handleRefundLifetime}>
+                  <View style={s.rowLeft}>
+                    <View>
+                      <Text style={[s.rowTitle, { color: '#EF4444' }]}>Request Refund</Text>
+                      <Text style={s.rowSub}>7-day money-back guarantee</Text>
+                    </View>
+                  </View>
+                  <Text style={s.chevron}>›</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </>
+        )}
+        {subscription?.active && subscription.plan !== 'starter' && subscription.plan !== 'lifetime' && (
           <>
             <Text style={s.sectionLabel}>SUBSCRIPTION</Text>
             <View style={s.card}>
@@ -368,6 +432,18 @@ export default function SettingsScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
+        {/* About & Legal */}
+        <Text style={s.sectionLabel}>ABOUT</Text>
+        <View style={s.card}>
+          <TouchableOpacity style={s.row} onPress={() => navigation.navigate('About')}>
+            <View style={s.rowLeft}>
+              <Text style={s.rowTitle}>About Etapa</Text>
+              <Text style={s.rowSub}>AI transparency, sources & disclaimers</Text>
+            </View>
+            <Text style={s.chevron}>{'\u203A'}</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Account */}
         <Text style={s.sectionLabel}>ACCOUNT</Text>
         <View style={s.card}>
@@ -377,6 +453,13 @@ export default function SettingsScreen({ navigation }) {
             </View>
             <Text style={s.chevron}>{'\u203A'}</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* AI footer disclaimer */}
+        <View style={s.aiFooter}>
+          <Text style={s.aiFooterText}>
+            All training plans and coaching in Etapa are generated by AI (Anthropic Claude). Plans are based on established cycling training science but are not medical advice. Consult a doctor before starting any exercise programme.
+          </Text>
         </View>
         </ScrollView>
       </SafeAreaView>
@@ -422,4 +505,6 @@ const s = StyleSheet.create({
   unreadBadge: { backgroundColor: colors.primary, borderRadius: 10, minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6 },
   unreadBadgeText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
   toggleText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+  aiFooter: { paddingVertical: 20, paddingHorizontal: 4 },
+  aiFooterText: { fontSize: 11, fontWeight: '300', fontFamily: FF.light || FF.regular, color: colors.textFaint, lineHeight: 17, textAlign: 'center' },
 });

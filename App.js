@@ -19,6 +19,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { getSession } from './src/services/authService';
 import { hydrateFromServer } from './src/services/storageService';
 import { checkStripeReturn } from './src/services/subscriptionService';
+import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from './src/services/revenueCatService';
 import analytics from './src/services/analyticsService';
 
 import SignInScreen        from './src/screens/SignInScreen';
@@ -38,6 +39,7 @@ import ChangeCoachScreen   from './src/screens/ChangeCoachScreen';
 import PaywallScreen       from './src/screens/PaywallScreen';
 import BeginnerProgramScreen from './src/screens/BeginnerProgramScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
+import AboutScreen         from './src/screens/AboutScreen';
 import MaintenanceScreen   from './src/screens/MaintenanceScreen';
 import WebWrapper          from './src/components/WebWrapper';
 import { registerForPushNotifications, addNotificationResponseListener } from './src/services/notificationService';
@@ -87,9 +89,17 @@ function App() {
     }).catch(() => setMaintenanceMode(false));
 
     analytics.init();
+
+    // Initialise RevenueCat early (before auth — it works with anonymous users too)
+    configureRevenueCat(null).catch(() => {});
+
     getSession().then(async session => {
       if (session) {
         analytics.identify(session.user?.id, { email: session.user?.email });
+
+        // Link RevenueCat to the authenticated user
+        loginRevenueCat(session.user?.id).catch(() => {});
+
         await hydrateFromServer().catch(() => {});
 
         // Register for push notifications
@@ -187,6 +197,7 @@ function App() {
               <Stack.Screen name="Paywall"        component={PaywallScreen} />
               <Stack.Screen name="BeginnerProgram" component={BeginnerProgramScreen} />
               <Stack.Screen name="Notifications"  component={NotificationsScreen} />
+              <Stack.Screen name="About"          component={AboutScreen} />
             </Stack.Navigator>
           </NavigationContainer>
         </View>

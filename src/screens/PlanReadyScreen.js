@@ -15,6 +15,30 @@ import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan } from '
 import { assessPlan } from '../services/llmPlanService';
 import { isSubscribed } from '../services/subscriptionService';
 
+const ADJUSTMENT_SUGGESTIONS = [
+  {
+    key: 'more_strength',
+    icon: '🏋️',
+    title: 'More strength',
+    description: 'Add extra gym sessions for power & injury prevention',
+    adjustments: { addStrength: 1 },
+  },
+  {
+    key: 'more_volume',
+    icon: '📈',
+    title: 'More volume',
+    description: 'Increase weekly ride time for deeper endurance',
+    adjustments: { volumeMultiplier: 1.15 },
+  },
+  {
+    key: 'higher_mileage',
+    icon: '🚴',
+    title: 'Higher mileage',
+    description: 'Push longer distances on your key rides',
+    adjustments: { mileageMultiplier: 1.2 },
+  },
+];
+
 const FF = fontFamily;
 
 function getWeekVolume(plan, weekNum) {
@@ -114,6 +138,9 @@ export default function PlanReadyScreen({ navigation, route }) {
               {plan.weeks} weeks of structured training{'\n'}
               {formatShort(start)} {'\u2013'} {formatShort(endDate)}
             </Text>
+            <View style={s.aiBadge}>
+              <Text style={s.aiBadgeText}>{'\u2728'} AI-generated plan</Text>
+            </View>
           </Animated.View>
 
           {/* Stats grid */}
@@ -253,25 +280,67 @@ export default function PlanReadyScreen({ navigation, route }) {
             </Animated.View>
           )}
 
+          {/* Plan adjustment suggestions */}
+          {assessment && (
+            <Animated.View style={[s.suggestionsCard, { opacity: assessFade }]}>
+              <Text style={s.suggestionsTitle}>Want to adjust?</Text>
+              <Text style={s.suggestionsSubtitle}>Tweak your plan before you start</Text>
+              {ADJUSTMENT_SUGGESTIONS.map((sug) => (
+                <TouchableOpacity
+                  key={sug.key}
+                  style={s.suggestionRow}
+                  activeOpacity={0.7}
+                  onPress={async () => {
+                    // Navigate to PlanConfig with adjustment context to reassign days
+                    const cfg = plan.configId ? await getPlanConfig(plan.configId) : null;
+                    navigation.navigate('PlanConfig', {
+                      goal,
+                      adjustment: sug.key,
+                      adjustmentData: sug.adjustments,
+                      existingConfig: cfg,
+                      planId: plan.id,
+                    });
+                  }}
+                >
+                  <Text style={s.suggestionIcon}>{sug.icon}</Text>
+                  <View style={s.suggestionContent}>
+                    <Text style={s.suggestionName}>{sug.title}</Text>
+                    <Text style={s.suggestionDesc}>{sug.description}</Text>
+                  </View>
+                  <Text style={s.suggestionArrow}>›</Text>
+                </TouchableOpacity>
+              ))}
+            </Animated.View>
+          )}
+
           <View style={{ height: 100 }} />
         </ScrollView>
 
         {/* CTA */}
         <Animated.View style={[s.ctaWrap, { opacity: ctaFade }]}>
-          <TouchableOpacity
-            style={s.ctaBtn}
-            onPress={async () => {
-              const subscribed = await isSubscribed();
-              if (!subscribed) {
-                navigation.replace('Paywall', { nextScreen: 'Home' });
-              } else {
-                navigation.replace('Home');
-              }
-            }}
-            activeOpacity={0.8}
-          >
-            <Text style={s.ctaText}>Start training</Text>
-          </TouchableOpacity>
+          <View style={s.ctaBtnRow}>
+            <TouchableOpacity
+              style={s.backBtn}
+              onPress={() => navigation.goBack()}
+              activeOpacity={0.8}
+            >
+              <Text style={s.backBtnText}>Back</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.ctaBtn, { flex: 1 }]}
+              onPress={async () => {
+                const subscribed = await isSubscribed();
+                if (!subscribed) {
+                  navigation.replace('Paywall', { nextScreen: 'Home' });
+                } else {
+                  navigation.replace('Home');
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={s.ctaText}>Start training</Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity
             style={s.detailLink}
             onPress={async () => {
@@ -308,6 +377,11 @@ const s = StyleSheet.create({
   checkMark: { fontSize: 28, color: '#22C55E', fontWeight: '700' },
   heroTitle: { fontSize: 26, fontWeight: '700', fontFamily: FF.semibold, color: colors.text, marginBottom: 8 },
   heroSub: { fontSize: 15, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, textAlign: 'center', lineHeight: 22 },
+  aiBadge: {
+    marginTop: 12, backgroundColor: 'rgba(217,119,6,0.1)', borderRadius: 100,
+    paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: 'rgba(217,119,6,0.2)',
+  },
+  aiBadgeText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
 
   // Stats
   statsGrid: { flexDirection: 'row', gap: 8, marginBottom: 16 },
@@ -365,8 +439,32 @@ const s = StyleSheet.create({
   assessWarn: { fontSize: 12, width: 16, marginTop: 1 },
   assessText: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, flex: 1, lineHeight: 19 },
 
+  // Suggestions
+  suggestionsCard: {
+    backgroundColor: colors.surface, borderRadius: 14, padding: 18, marginTop: 16,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  suggestionsTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
+  suggestionsSubtitle: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginBottom: 14 },
+  suggestionRow: {
+    flexDirection: 'row', alignItems: 'center', paddingVertical: 14,
+    borderTopWidth: 1, borderTopColor: colors.border,
+  },
+  suggestionIcon: { fontSize: 22, width: 36 },
+  suggestionContent: { flex: 1 },
+  suggestionName: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 2 },
+  suggestionDesc: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
+  suggestionArrow: { fontSize: 22, color: colors.textMid, marginLeft: 8 },
+
   // CTA
   ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },
+  ctaBtnRow: { flexDirection: 'row', gap: 10, marginBottom: 0 },
+  backBtn: {
+    backgroundColor: colors.surface, borderRadius: 14, paddingVertical: 16, paddingHorizontal: 24,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.border,
+  },
+  backBtnText: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMid },
   ctaBtn: {
     backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 16,
     alignItems: 'center', justifyContent: 'center',

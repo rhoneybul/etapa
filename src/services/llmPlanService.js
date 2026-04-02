@@ -284,6 +284,61 @@ export async function editActivityWithAI(activity, goal, instruction, onProgress
 }
 
 /**
+ * Adjust a week's existing activities when an organised ride is added.
+ * Calls the server AI to decide what to reduce/shift; falls back to
+ * a simple local heuristic (reduce the easiest ride's volume by ~20%).
+ */
+export async function adjustWeekForOrganisedRide(plan, weekNum, organisedRide, goal) {
+  const serverUrl = getServerUrl();
+
+  if (serverUrl) {
+    try {
+      const authHeaders = await getAuthHeaders();
+      const weekActivities = (plan.activities || []).filter(a => a.week === weekNum);
+      const response = await fetch(`${serverUrl}/api/ai/adjust-week`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ weekActivities, organisedRide, goal, weekNum }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.adjustedActivities) {
+          // Merge the adjusted week activities back into the full plan
+          const otherActivities = plan.activities.filter(a => a.week !== weekNum);
+          return { activities: [...otherActivities, ...data.adjustedActivities] };
+        }
+      }
+    } catch (err) {
+      console.warn('Server week adjust failed, using local fallback:', err);
+    }
+  }
+
+  // Local fallback: reduce the easiest non-organised ride in the week by ~20%
+  const weekActivities = (plan.activities || []).filter(a => a.week === weekNum && a.type === 'ride' && !a.isOrganised && !a.isRecurring);
+  const effortOrder = ['recovery', 'easy', 'moderate', 'hard', 'max'];
+  const sorted = [...weekActivities].sort((a, b) => effortOrder.indexOf(a.effort || 'moderate') - effortOrder.indexOf(b.effort || 'moderate'));
+
+  if (sorted.length > 0) {
+    const target = sorted[0];
+    const updated = plan.activities.map(a => {
+      if (a.id === target.id) {
+        return {
+          ...a,
+          durationMins: a.durationMins ? Math.round(a.durationMins * 0.8) : a.durationMins,
+          distanceKm: a.distanceKm ? Math.round(a.distanceKm * 0.8 * 10) / 10 : a.distanceKm,
+          notes: (a.notes || '') + '\nReduced to accommodate your organised ride this week.',
+        };
+      }
+      return a;
+    });
+    return { activities: updated };
+  }
+
+  return null; // No adjustment needed
+}
+
+/**
  * Coach chat — multi-turn conversation with the AI coach.
  * Returns the coach's reply string.
  */
