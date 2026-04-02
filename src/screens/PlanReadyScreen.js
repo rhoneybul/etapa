@@ -11,38 +11,23 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
-import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan } from '../services/storageService';
-import { assessPlan } from '../services/llmPlanService';
+import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan, getUserPrefs } from '../services/storageService';
+import { assessPlan, editPlanWithLLM } from '../services/llmPlanService';
 import { isSubscribed } from '../services/subscriptionService';
-
-const ADJUSTMENT_SUGGESTIONS = [
-  {
-    key: 'more_strength',
-    icon: null,
-    color: '#8B5CF6',
-    title: 'More strength',
-    description: 'Add extra gym sessions for power & injury prevention',
-    adjustments: { addStrength: 1 },
-  },
-  {
-    key: 'more_volume',
-    icon: null,
-    color: '#D97706',
-    title: 'More volume',
-    description: 'Increase weekly ride time for deeper endurance',
-    adjustments: { volumeMultiplier: 1.15 },
-  },
-  {
-    key: 'higher_mileage',
-    icon: null,
-    color: '#22C55E',
-    title: 'Higher mileage',
-    description: 'Push longer distances on your key rides',
-    adjustments: { mileageMultiplier: 1.2 },
-  },
-];
+import { convertDistance, distanceLabel } from '../utils/units';
 
 const FF = fontFamily;
+
+const SUGGEST_COLORS = {
+  training: '#D97706',
+  nutrition: '#22C55E',
+  strength: '#8B5CF6',
+  cross_training: '#06B6D4',
+  mental: '#3B82F6',
+  recovery: '#64748B',
+};
+
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function getWeekVolume(plan, weekNum) {
   const acts = getWeekActivities(plan, weekNum);
@@ -60,6 +45,10 @@ export default function PlanReadyScreen({ navigation, route }) {
   const [goal, setGoal] = useState(null);
   const [assessment, setAssessment] = useState(null);
   const [loadingAssessment, setLoadingAssessment] = useState(false);
+  const [units, setUnits] = useState('km');
+  const [applyingSuggestion, setApplyingSuggestion] = useState(null); // index of suggestion being applied
+  const [dayPickerVisible, setDayPickerVisible] = useState(false);
+  const [pendingSuggestion, setPendingSuggestion] = useState(null);
   const assessFade = useRef(new Animated.Value(0)).current;
 
   // Animations
@@ -68,6 +57,10 @@ export default function PlanReadyScreen({ navigation, route }) {
   const statsFade = useRef(new Animated.Value(0)).current;
   const chartFade = useRef(new Animated.Value(0)).current;
   const ctaFade = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    getUserPrefs().then(prefs => setUnits(prefs.units || 'km')).catch(() => {});
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -111,6 +104,33 @@ export default function PlanReadyScreen({ navigation, route }) {
     ]).start();
   }, [plan]);
 
+  const applySuggestion = async (sug, index, dayOfWeek) => {
+    setApplyingSuggestion(index);
+    try {
+      const instruction = dayOfWeek !== undefined
+        ? `${sug.title}: ${sug.text}. Add the new session on day ${dayOfWeek} (0=Mon, 6=Sun).`
+        : `${sug.title}: ${sug.text}`;
+      const cfg = plan.configId ? await getPlanConfig(plan.configId) : null;
+      const coachId = cfg?.coachId || null;
+      const updated = await editPlanWithLLM(plan, goal, instruction, 'plan', () => {}, coachId);
+      if (updated) {
+        // Save the pre-change plan for undo
+        const previousPlan = { ...plan };
+        await savePlan(updated);
+        setPlan(updated);
+        // Navigate to changes screen
+        navigation.navigate('PlanChanges', {
+          planId: updated.id,
+          previousPlan,
+          suggestionTitle: sug.title,
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to apply suggestion:', err);
+    }
+    setApplyingSuggestion(null);
+  };
+
   if (!plan) return <View style={s.container} />;
 
   const weekVolumes = Array.from({ length: plan.weeks }, (_, i) => getWeekVolume(plan, i + 1));
@@ -153,8 +173,8 @@ export default function PlanReadyScreen({ navigation, route }) {
           {/* Stats grid */}
           <Animated.View style={[s.statsGrid, { opacity: statsFade }]}>
             <View style={s.statCard}>
-              <Text style={s.statValue}>{Math.round(totalKm)}</Text>
-              <Text style={s.statLabel}>Total km</Text>
+              <Text style={s.statValue}>{convertDistance(totalKm, units)}</Text>
+              <Text style={s.statLabel}>Total {distanceLabel(units)}</Text>
             </View>
             <View style={s.statCard}>
               <Text style={s.statValue}>{totalSessions}</Text>
@@ -249,6 +269,9 @@ export default function PlanReadyScreen({ navigation, route }) {
                 </View>
                 <Text style={s.assessPercent}>{assessment.successChance}%</Text>
               </View>
+              <Text style={s.assessReadinessExplain}>
+                Readiness score — how well this plan matches your fitness level, available time, and goal. Based on training load progression, recovery balance, and periodisation.
+              </Text>
               <Text style={s.assessSummary}>{assessment.summary}</Text>
 
               {/* Strengths */}
@@ -264,63 +287,74 @@ export default function PlanReadyScreen({ navigation, route }) {
                 </View>
               )}
 
-              {/* Suggestions — concrete ways to improve */}
+              {/* Suggestions — concrete ways to improve, now tappable */}
               {(assessment.suggestions || assessment.recommendations)?.length > 0 && (
                 <View style={s.assessSection}>
                   <Text style={s.assessSectionTitle}>Ways to level up</Text>
-                  {(assessment.suggestions || assessment.recommendations).map((sug, i) => (
-                    <View key={i} style={s.suggestCard}>
-                      <View style={s.suggestHeader}>
-                        <View style={[s.assessDot, {
-                          backgroundColor: sug.type === 'training' ? colors.primary
-                            : sug.type === 'nutrition' ? '#22C55E'
-                            : sug.type === 'strength' ? '#8B5CF6'
-                            : sug.type === 'cross_training' ? '#06B6D4'
-                            : sug.type === 'mental' ? '#3B82F6'
-                            : sug.type === 'recovery' ? '#64748B'
-                            : '#64748B',
-                        }]} />
-                        <Text style={s.suggestTitle}>{sug.title || sug.type}</Text>
-                      </View>
-                      <Text style={s.assessText}>{sug.text}</Text>
-                    </View>
-                  ))}
+                  <Text style={s.assessSectionHint}>Tap a suggestion to apply it to your plan</Text>
+                  {(assessment.suggestions || assessment.recommendations).map((sug, i) => {
+                    const sugColor = SUGGEST_COLORS[sug.type] || '#64748B';
+                    const isApplying = applyingSuggestion === i;
+                    const needsDay = sug.type === 'strength' || sug.type === 'cross_training';
+                    return (
+                      <TouchableOpacity
+                        key={i}
+                        style={[s.suggestCard, isApplying && s.suggestCardApplying]}
+                        activeOpacity={0.7}
+                        disabled={applyingSuggestion !== null}
+                        onPress={() => {
+                          if (needsDay) {
+                            setPendingSuggestion({ ...sug, index: i });
+                            setDayPickerVisible(true);
+                          } else {
+                            applySuggestion(sug, i);
+                          }
+                        }}
+                      >
+                        <View style={s.suggestHeader}>
+                          <View style={[s.assessDot, { backgroundColor: sugColor }]} />
+                          <Text style={s.suggestTitle}>{sug.title || sug.type}</Text>
+                          {isApplying ? (
+                            <ActivityIndicator color={colors.primary} size="small" style={{ marginLeft: 'auto' }} />
+                          ) : (
+                            <Text style={s.suggestApplyArrow}>{'\u203A'}</Text>
+                          )}
+                        </View>
+                        <Text style={s.assessText}>{sug.text}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               )}
             </Animated.View>
           )}
 
-          {/* Plan adjustment suggestions */}
-          {assessment && (
-            <Animated.View style={[s.suggestionsCard, { opacity: assessFade }]}>
-              <Text style={s.suggestionsTitle}>Want to adjust?</Text>
-              <Text style={s.suggestionsSubtitle}>Tweak your plan before you start</Text>
-              {ADJUSTMENT_SUGGESTIONS.map((sug) => (
-                <TouchableOpacity
-                  key={sug.key}
-                  style={s.suggestionRow}
-                  activeOpacity={0.7}
-                  onPress={async () => {
-                    // Navigate to PlanConfig with adjustment context to reassign days
-                    const cfg = plan.configId ? await getPlanConfig(plan.configId) : null;
-                    navigation.navigate('PlanConfig', {
-                      goal,
-                      adjustment: sug.key,
-                      adjustmentData: sug.adjustments,
-                      existingConfig: cfg,
-                      planId: plan.id,
-                    });
-                  }}
-                >
-                  <View style={[s.suggestionDot, { backgroundColor: sug.color || colors.primary }]} />
-                  <View style={s.suggestionContent}>
-                    <Text style={s.suggestionName}>{sug.title}</Text>
-                    <Text style={s.suggestionDesc}>{sug.description}</Text>
-                  </View>
-                  <Text style={s.suggestionArrow}>›</Text>
+          {/* Day picker modal for suggestions that need a day */}
+          {dayPickerVisible && pendingSuggestion && (
+            <View style={s.dayPickerOverlay}>
+              <View style={s.dayPickerCard}>
+                <Text style={s.dayPickerTitle}>Which day?</Text>
+                <Text style={s.dayPickerSub}>Choose a day to add this session</Text>
+                <View style={s.dayPickerGrid}>
+                  {DAY_NAMES.map((name, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      style={s.dayPickerBtn}
+                      onPress={() => {
+                        setDayPickerVisible(false);
+                        applySuggestion(pendingSuggestion, pendingSuggestion.index, idx);
+                        setPendingSuggestion(null);
+                      }}
+                    >
+                      <Text style={s.dayPickerBtnText}>{name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity style={s.dayPickerCancel} onPress={() => { setDayPickerVisible(false); setPendingSuggestion(null); }}>
+                  <Text style={s.dayPickerCancelText}>Cancel</Text>
                 </TouchableOpacity>
-              ))}
-            </Animated.View>
+              </View>
+            </View>
           )}
 
           <View style={{ height: 100 }} />
@@ -458,26 +492,29 @@ const s = StyleSheet.create({
   assessText: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, flex: 1, lineHeight: 19 },
   assessLoading: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   assessLoadingText: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
+  assessReadinessExplain: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, lineHeight: 16, marginBottom: 10 },
+  assessSectionHint: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginBottom: 10 },
   suggestCard: { backgroundColor: 'rgba(217,119,6,0.04)', borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(217,119,6,0.08)' },
+  suggestCardApplying: { opacity: 0.5 },
   suggestHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  suggestTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  suggestTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, flex: 1 },
+  suggestApplyArrow: { fontSize: 22, color: colors.textMid },
 
-  // Suggestions
-  suggestionsCard: {
-    backgroundColor: colors.surface, borderRadius: 14, padding: 18, marginTop: 16,
-    borderWidth: 1, borderColor: colors.border,
+  // Day picker
+  dayPickerOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: 14, padding: 20, marginTop: 16,
   },
-  suggestionsTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
-  suggestionsSubtitle: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginBottom: 14 },
-  suggestionRow: {
-    flexDirection: 'row', alignItems: 'center', paddingVertical: 14,
-    borderTopWidth: 1, borderTopColor: colors.border,
+  dayPickerCard: { alignItems: 'center' },
+  dayPickerTitle: { fontSize: 18, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
+  dayPickerSub: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginBottom: 16 },
+  dayPickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
+  dayPickerBtn: {
+    backgroundColor: colors.surface, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16,
+    borderWidth: 1, borderColor: colors.border, minWidth: 60, alignItems: 'center',
   },
-  suggestionDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
-  suggestionContent: { flex: 1 },
-  suggestionName: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 2 },
-  suggestionDesc: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
-  suggestionArrow: { fontSize: 22, color: colors.textMid, marginLeft: 8 },
+  dayPickerBtnText: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  dayPickerCancel: { marginTop: 16, paddingVertical: 10 },
+  dayPickerCancelText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
 
   // CTA
   ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },

@@ -17,10 +17,10 @@ import analytics from '../services/analyticsService';
 const FF = fontFamily;
 
 const CATEGORIES = [
-  { id: 'bug',     label: 'Bug Report',      desc: 'Something isn\u2019t working right' },
-  { id: 'feature', label: 'Feature Request',  desc: 'I\u2019d love to see\u2026' },
-  { id: 'support', label: 'Support',          desc: 'I need help with something' },
-  { id: 'general', label: 'General Feedback',  desc: 'Thoughts, ideas, or praise' },
+  { id: 'bug',     label: 'Bug Report' },
+  { id: 'feature', label: 'Feature Request' },
+  { id: 'support', label: 'Support' },
+  { id: 'general', label: 'General Feedback' },
 ];
 
 const CATEGORY_LABELS = {
@@ -55,6 +55,7 @@ export default function FeedbackScreen({ navigation }) {
   const [category, setCategory] = useState(null);
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   const appVersion = Constants.expoConfig?.version || '0.0.0';
   const deviceInfo = `${Platform.OS} ${Platform.Version}`;
@@ -89,7 +90,7 @@ export default function FeedbackScreen({ navigation }) {
 
     setSubmitting(true);
     try {
-      const result = await api.feedback.submit({
+      await api.feedback.submit({
         category,
         message: message.trim(),
         appVersion,
@@ -97,21 +98,17 @@ export default function FeedbackScreen({ navigation }) {
       });
       analytics.events.feedbackSubmitted(category);
 
-      // Get the feedback ID from the response — we need it to open the chat
-      // The server returns { success, issue } but we need the feedback DB id.
-      // Refetch the list to find the newly created item.
-      const items = await api.feedback.list();
-      const newest = Array.isArray(items) && items.length > 0 ? items[0] : null;
-
-      // Reset form
+      // Reset form and show thanks
       setCategory(null);
       setMessage('');
+      setSubmitted(true);
+
+      // Refresh the list in background
+      const items = await api.feedback.list();
       setExistingFeedback(Array.isArray(items) ? items : []);
 
-      // Navigate to the chat for the new feedback
-      if (newest?.id) {
-        navigation.navigate('SupportChat', { feedbackId: newest.id, isNew: true });
-      }
+      // Auto-dismiss thanks after 3 seconds
+      setTimeout(() => setSubmitted(false), 3000);
     } catch (err) {
       Alert.alert('Error', 'Failed to submit feedback. Please try again.');
     }
@@ -187,37 +184,45 @@ export default function FeedbackScreen({ navigation }) {
               </View>
             )}
 
-            {/* New feedback form */}
-            <Text style={s.sectionLabel}>
-              {existingFeedback.length > 0 ? 'SEND NEW FEEDBACK' : "WHAT'S THIS ABOUT?"}
-            </Text>
-            <Text style={s.subtitle}>
-              Help us improve Etapa. Your feedback goes directly to the team.
-            </Text>
+            {/* Thanks confirmation */}
+            {submitted && (
+              <View style={s.thanksCard}>
+                <Text style={s.thanksCheck}>{'\u2713'}</Text>
+                <Text style={s.thanksText}>Thanks for the feedback!</Text>
+              </View>
+            )}
 
-            <View style={s.categories}>
-              {CATEGORIES.map((cat) => (
-                <TouchableOpacity
-                  key={cat.id}
-                  style={[s.catCard, category === cat.id && s.catCardActive]}
-                  onPress={() => setCategory(cat.id)}
-                  activeOpacity={0.7}
-                >
-                  <View style={s.catText}>
-                    <Text style={[s.catLabel, category === cat.id && s.catLabelActive]}>
-                      {cat.label}
-                    </Text>
-                    <Text style={s.catDesc}>{cat.desc}</Text>
-                  </View>
-                  {category === cat.id && (
-                    <Text style={s.catCheck}>{'\u2713'}</Text>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
+            {/* New feedback form */}
+            {!submitted && (
+              <>
+                <Text style={s.sectionLabel}>
+                  {existingFeedback.length > 0 ? 'SEND NEW FEEDBACK' : "WHAT'S THIS ABOUT?"}
+                </Text>
+
+                <View style={s.categories}>
+                  {CATEGORIES.map((cat) => (
+                    <TouchableOpacity
+                      key={cat.id}
+                      style={[s.catCard, category === cat.id && s.catCardActive]}
+                      onPress={() => setCategory(cat.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={s.catText}>
+                        <Text style={[s.catLabel, category === cat.id && s.catLabelActive]}>
+                          {cat.label}
+                        </Text>
+                      </View>
+                      {category === cat.id && (
+                        <Text style={s.catCheck}>{'\u2713'}</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
 
             {/* Message input */}
-            {category && (
+            {!submitted && category && (
               <>
                 <Text style={s.sectionLabel}>DETAILS</Text>
                 <TextInput
@@ -236,7 +241,7 @@ export default function FeedbackScreen({ navigation }) {
             )}
 
             {/* Submit */}
-            {category && (
+            {!submitted && category && (
               <TouchableOpacity
                 style={[s.submitBtn, (!message.trim() || submitting) && s.submitBtnDisabled]}
                 onPress={handleSubmit}
@@ -333,6 +338,14 @@ const s = StyleSheet.create({
   },
   submitBtnDisabled: { opacity: 0.4 },
   submitBtnText: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
+
+  thanksCard: {
+    marginHorizontal: 16, marginTop: 20, backgroundColor: 'rgba(34,197,94,0.1)',
+    borderRadius: 14, padding: 24, alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(34,197,94,0.2)',
+  },
+  thanksCheck: { fontSize: 32, color: '#22C55E', fontWeight: '700', marginBottom: 8 },
+  thanksText: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E' },
 
   versionText: { fontSize: 11, fontFamily: FF.regular, color: colors.textFaint, textAlign: 'center', marginTop: 20 },
 });

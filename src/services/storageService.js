@@ -13,6 +13,7 @@ const KEYS = {
   PLANS:          '@etapa_plans',
   STRAVA:         '@etapa_strava',
   CURRENT_USER:   '@etapa_current_user_id',
+  USER_PREFS:     '@etapa_user_prefs',
   // Legacy single-item keys (for migration)
   GOAL:           '@etapa_goal',
   PLAN_CONFIG:    '@etapa_plan_config',
@@ -411,6 +412,19 @@ export function getWeekMonthLabel(planStartDate, week) {
     return `${startMonth} ${weekStart.getFullYear()}`;
   }
   return `${startMonth} / ${endMonth} ${weekEnd.getFullYear()}`;
+}
+
+// ── User Preferences (local — units, display name, etc.) ───────────────────
+
+export async function getUserPrefs() {
+  return (await getJSON(KEYS.USER_PREFS)) || { units: 'km', displayName: '' };
+}
+
+export async function setUserPrefs(prefs) {
+  const current = await getUserPrefs();
+  const updated = { ...current, ...prefs };
+  await setJSON(KEYS.USER_PREFS, updated);
+  return updated;
 }
 
 export { uid };

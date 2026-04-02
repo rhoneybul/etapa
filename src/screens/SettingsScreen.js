@@ -3,13 +3,13 @@
  */
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Switch, Linking,
+  View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Switch, Linking, TextInput,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { signOut } from '../services/authService';
-import { clearPlan, getPlans, deletePlan, clearUserData } from '../services/storageService';
+import { clearPlan, getPlans, deletePlan, clearUserData, getUserPrefs, setUserPrefs } from '../services/storageService';
 import { openBillingPortal, getSubscriptionStatus, upgradeStarter, refundStarter, refundLifetime, restorePurchases } from '../services/subscriptionService';
 import { logoutRevenueCat, isRevenueCatAvailable } from '../services/revenueCatService';
 import { connectStrava, disconnectStrava, isStravaConnected, isStravaConfigured, getStravaTokens } from '../services/stravaService';
@@ -32,12 +32,16 @@ export default function SettingsScreen({ navigation }) {
   const [preferences, setPreferences] = useState(null);
   const [notifPermission, setNotifPermission] = useState(null); // 'granted' | 'denied' | 'undetermined'
   const [togglingNotif, setTogglingNotif] = useState(false);
+  const [userPrefs, setUserPrefsState] = useState({ units: 'km', displayName: '' });
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
 
   useEffect(() => {
     checkStrava();
     getSubscriptionStatus().then(setSubscription).catch(() => {});
     api.notifications.unreadCount().then(d => setUnreadCount(d?.count || 0)).catch(() => {});
     api.preferences.get().then(setPreferences).catch(() => {});
+    getUserPrefs().then(p => { setUserPrefsState(p); setNameInput(p.displayName || ''); }).catch(() => {});
     Notifications.getPermissionsAsync().then(({ status }) => setNotifPermission(status)).catch(() => {});
     // Find starter/beginner plan for refund eligibility
     getPlans().then(plans => {
@@ -239,6 +243,75 @@ export default function SettingsScreen({ navigation }) {
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+        {/* Profile */}
+        <Text style={s.sectionLabel}>PROFILE</Text>
+        <View style={s.card}>
+          <View style={s.row}>
+            <View style={s.rowLeft}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.rowTitle}>Display Name</Text>
+                {editingName ? (
+                  <TextInput
+                    style={s.nameInput}
+                    value={nameInput}
+                    onChangeText={setNameInput}
+                    placeholder="Enter your name"
+                    placeholderTextColor={colors.textFaint}
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={async () => {
+                      const updated = await setUserPrefs({ displayName: nameInput.trim() });
+                      setUserPrefsState(updated);
+                      setEditingName(false);
+                    }}
+                    onBlur={async () => {
+                      const updated = await setUserPrefs({ displayName: nameInput.trim() });
+                      setUserPrefsState(updated);
+                      setEditingName(false);
+                    }}
+                  />
+                ) : (
+                  <Text style={s.rowSub}>{userPrefs.displayName || 'Not set'}</Text>
+                )}
+              </View>
+            </View>
+            {!editingName && (
+              <TouchableOpacity onPress={() => { setNameInput(userPrefs.displayName || ''); setEditingName(true); }}>
+                <Text style={s.editText}>Edit</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={s.divider} />
+          <View style={s.row}>
+            <View style={s.rowLeft}>
+              <View>
+                <Text style={s.rowTitle}>Distance Units</Text>
+                <Text style={s.rowSub}>{userPrefs.units === 'miles' ? 'Miles' : 'Kilometres'}</Text>
+              </View>
+            </View>
+            <View style={s.unitToggle}>
+              <TouchableOpacity
+                style={[s.unitBtn, userPrefs.units === 'km' && s.unitBtnActive]}
+                onPress={async () => {
+                  const updated = await setUserPrefs({ units: 'km' });
+                  setUserPrefsState(updated);
+                }}
+              >
+                <Text style={[s.unitBtnText, userPrefs.units === 'km' && s.unitBtnTextActive]}>km</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.unitBtn, userPrefs.units === 'miles' && s.unitBtnActive]}
+                onPress={async () => {
+                  const updated = await setUserPrefs({ units: 'miles' });
+                  setUserPrefsState(updated);
+                }}
+              >
+                <Text style={[s.unitBtnText, userPrefs.units === 'miles' && s.unitBtnTextActive]}>mi</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
         {/* Strava */}
         <Text style={s.sectionLabel}>CONNECTIONS</Text>
         <View style={s.card}>
@@ -507,10 +580,7 @@ export default function SettingsScreen({ navigation }) {
         <View style={s.card}>
           <TouchableOpacity style={s.row} onPress={() => navigation.navigate('Feedback')}>
             <View style={s.rowLeft}>
-              <View>
-                <Text style={s.rowTitle}>Send Feedback</Text>
-                <Text style={s.rowSub}>Bug reports, feature requests & support</Text>
-              </View>
+              <Text style={s.rowTitle}>Send Feedback</Text>
             </View>
             <Text style={s.chevron}>{'\u203A'}</Text>
           </TouchableOpacity>
@@ -590,6 +660,13 @@ const s = StyleSheet.create({
   unreadBadgeText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
   toggleText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
   openSettingsText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+  nameInput: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.text, marginTop: 4, padding: 0, borderBottomWidth: 1, borderBottomColor: colors.primary, paddingBottom: 2 },
+  editText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+  unitToggle: { flexDirection: 'row', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
+  unitBtn: { paddingHorizontal: 14, paddingVertical: 7, backgroundColor: 'transparent' },
+  unitBtnActive: { backgroundColor: colors.primary },
+  unitBtnText: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted },
+  unitBtnTextActive: { color: '#fff' },
   divider: { height: 1, backgroundColor: colors.border, marginHorizontal: 16 },
   aiFooter: { paddingVertical: 20, paddingHorizontal: 4 },
   aiFooterText: { fontSize: 11, fontWeight: '300', fontFamily: FF.light || FF.regular, color: colors.textFaint, lineHeight: 17, textAlign: 'center' },
