@@ -49,7 +49,8 @@
           "project": "etapa-app"
         }
       ],
-      "./plugins/withSwiftConcurrency"
+      "./plugins/withSwiftConcurrency",
+      "@sentry/react-native"
     ],
     "extra": {
       "serverUrl": "https://etapa-production.up.railway.app",
