@@ -119,13 +119,8 @@ export default function HomeScreen({ navigation }) {
   const activePlan = plans[selectedPlanIdx] || null;
   const activeGoal = activePlan ? goals.find(g => g.id === activePlan.goalId) : null;
 
-  // Check subscription before entering the plan creation flow
+  // Enter the plan creation flow — paywall is shown after the plan is generated
   const handleMakePlan = async () => {
-    const subscribed = await isSubscribed();
-    if (!subscribed) {
-      navigation.navigate('Paywall');
-      return;
-    }
     // Starter users can only have the beginner plan — prompt upgrade
     if (subPlan === 'starter') {
       setShowUpgrade(true);

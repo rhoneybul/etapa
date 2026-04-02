@@ -45,8 +45,8 @@ export default function PaywallScreen({ navigation, route }) {
   const [selected, setSelected] = useState('annual');
   const [loading, setLoading] = useState(false);
 
-  // Where to go after successful subscription (default: GoalSetup)
-  const nextScreen = route?.params?.nextScreen || 'GoalSetup';
+  // Where to go after successful subscription (default: Home)
+  const nextScreen = route?.params?.nextScreen || 'Home';
   const nextParams = route?.params?.nextParams || {};
   // fromHome = user has plans but no subscription
   const fromHome = route?.params?.fromHome === true;

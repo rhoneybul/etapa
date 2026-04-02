@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan } from '../services/storageService';
 import { assessPlan } from '../services/llmPlanService';
+import { isSubscribed } from '../services/subscriptionService';
 
 const FF = fontFamily;
 
@@ -259,14 +260,28 @@ export default function PlanReadyScreen({ navigation, route }) {
         <Animated.View style={[s.ctaWrap, { opacity: ctaFade }]}>
           <TouchableOpacity
             style={s.ctaBtn}
-            onPress={() => navigation.replace('Home')}
+            onPress={async () => {
+              const subscribed = await isSubscribed();
+              if (!subscribed) {
+                navigation.replace('Paywall', { nextScreen: 'Home' });
+              } else {
+                navigation.replace('Home');
+              }
+            }}
             activeOpacity={0.8}
           >
             <Text style={s.ctaText}>Start training</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={s.detailLink}
-            onPress={() => navigation.replace('PlanOverview', { planId: plan.id })}
+            onPress={async () => {
+              const subscribed = await isSubscribed();
+              if (!subscribed) {
+                navigation.replace('Paywall', { nextScreen: 'PlanOverview', nextParams: { planId: plan.id } });
+              } else {
+                navigation.replace('PlanOverview', { planId: plan.id });
+              }
+            }}
             activeOpacity={0.7}
           >
             <Text style={s.detailLinkText}>View full plan details</Text>
