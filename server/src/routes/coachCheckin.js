@@ -169,11 +169,42 @@ router.post('/run', async (req, res) => {
         const isWeekly = pref.coach_checkin === 'weekly';
         const body = await generateCheckinMessage(coachId, activity, isWeekly);
 
+        // Insert the check-in message into the plan-level coach chat session
+        // so it appears in the global coach chat next time the user opens it.
+        const planId = activity.plan_id;
+        const sessionId = `${planId}_w0`; // weekNum=0 means full plan scope
+
+        const { data: existingSession } = await supabase
+          .from('chat_sessions')
+          .select('messages')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+        const existingMessages = existingSession?.messages || [];
+        const checkinMessage = {
+          role: 'assistant',
+          content: body,
+          ts: Date.now(),
+          checkin: true, // flag so the UI can style it differently if needed
+        };
+
+        await supabase
+          .from('chat_sessions')
+          .upsert({
+            id: sessionId,
+            user_id: pref.user_id,
+            plan_id: planId,
+            week_num: null,
+            messages: [...existingMessages, checkinMessage],
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'id' });
+
+        // Also send a push notification so the user knows about it
         await sendPushToUser(pref.user_id, {
           title: `${coachInfo.name} checked in`,
           body,
           type: 'coach_checkin',
-          data: { coachId, activityId: activity.id },
+          data: { coachId, activityId: activity.id, planId },
         });
 
         sentCount++;

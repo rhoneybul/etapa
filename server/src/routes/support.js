@@ -67,7 +67,7 @@ router.post('/report-blocked', async (req, res) => {
     const truncated = message.length > 200 ? message.slice(0, 200) + '...' : message;
 
     const issue = await createLinearIssue({
-      title: `\u{1F6A8} [Topic Guard] Wrongly blocked: "${truncated}"`,
+      title: `[Topic Guard] Wrongly blocked: "${truncated}"`,
       description: [
         '## Wrongly Blocked Coach Chat Message',
         '',

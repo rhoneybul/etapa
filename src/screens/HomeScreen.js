@@ -15,6 +15,7 @@ import { isSubscribed, getSubscriptionStatus, upgradeStarter, openCheckout } fro
 import UpgradePrompt from '../components/UpgradePrompt';
 import { isStravaConnected } from '../services/stravaService';
 import { getSessionColor, getSessionLabel, getMetricLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
+import { getCoach } from '../data/coaches';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
@@ -637,6 +638,35 @@ export default function HomeScreen({ navigation }) {
             </View>
           )}
 
+          {/* Coach chat — prominent card */}
+          {activePlan && (() => {
+            const coach = getCoach(activePlanConfig?.coachId);
+            const coachName = coach?.name || 'Your coach';
+            const coachColor = coach?.avatarColor || colors.primary;
+            const coachInitials = coach?.avatarInitials || '?';
+            return (
+              <TouchableOpacity
+                style={s.coachCard}
+                onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
+                activeOpacity={0.8}
+              >
+                <View style={s.coachCardTop}>
+                  <View style={[s.coachAvatar, { backgroundColor: coachColor }]}>
+                    <Text style={s.coachAvatarText}>{coachInitials}</Text>
+                  </View>
+                  <View style={s.coachCardTextWrap}>
+                    <Text style={s.coachCardName}>{coachName}</Text>
+                    <Text style={s.coachCardHint}>Chat with your coach</Text>
+                  </View>
+                  <View style={s.coachCardArrowWrap}>
+                    <Text style={s.coachCardArrow}>{'\u203A'}</Text>
+                  </View>
+                </View>
+                <Text style={s.coachCardSub}>Get advice, tweak your plan, ask anything about your training</Text>
+              </TouchableOpacity>
+            );
+          })()}
+
           {/* Week progress */}
           <View style={s.section}>
             <View style={s.sectionRow}>
@@ -667,22 +697,6 @@ export default function HomeScreen({ navigation }) {
               <Text style={s.viewBtnArrow}>{'\u203A'}</Text>
             </TouchableOpacity>
           </View>
-
-          {/* Ask coach */}
-          {activePlan && (
-            <TouchableOpacity
-              style={s.coachBtn}
-              onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
-              activeOpacity={0.7}
-            >
-              <View style={[s.coachDot, { backgroundColor: colors.primary }]} />
-              <View style={s.coachBtnTextWrap}>
-                <Text style={s.coachBtnLabel}>Ask your coach</Text>
-                <Text style={s.coachBtnHint}>Get advice, tweak your plan, or change your schedule</Text>
-              </View>
-              <Text style={s.coachBtnArrow}>{'\u203A'}</Text>
-            </TouchableOpacity>
-          )}
 
           {/* Manage plan — bottom of screen */}
           {activePlan && (
@@ -885,18 +899,31 @@ const s = StyleSheet.create({
   viewBtnText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
   viewBtnArrow: { fontSize: 20, color: colors.primary, fontWeight: '300' },
 
-  // Coach button
-  coachBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    marginHorizontal: 20, marginBottom: 16,
-    paddingHorizontal: 16, paddingVertical: 14, borderRadius: 14,
-    backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border,
+  // Coach chat card — prominent
+  coachCard: {
+    marginHorizontal: 20, marginBottom: 20, borderRadius: 16,
+    backgroundColor: colors.surface, borderWidth: 1.5, borderColor: 'rgba(217,119,6,0.3)',
+    padding: 16, shadowColor: '#D97706', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1, shadowRadius: 12, elevation: 4,
   },
-  coachDot: { width: 10, height: 10, borderRadius: 5 },
-  coachBtnTextWrap: { flex: 1 },
-  coachBtnLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
-  coachBtnHint: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 1 },
-  coachBtnArrow: { fontSize: 22, color: colors.textFaint, fontWeight: '300' },
+  coachCardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  coachAvatar: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  coachAvatarText: { fontSize: 14, fontWeight: '700', color: '#fff', fontFamily: FF.semibold },
+  coachCardTextWrap: { flex: 1 },
+  coachCardName: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  coachCardHint: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary, marginTop: 1 },
+  coachCardArrowWrap: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: 'rgba(217,119,6,0.12)', alignItems: 'center', justifyContent: 'center',
+  },
+  coachCardArrow: { fontSize: 20, color: colors.primary, fontWeight: '600' },
+  coachCardSub: {
+    fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted,
+    marginTop: 10, lineHeight: 17,
+  },
 
   // Goal card
   goalCard: {

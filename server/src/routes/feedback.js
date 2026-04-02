@@ -34,13 +34,6 @@ const PRIORITY_MAP = {
   general: 0,
 };
 
-const CATEGORY_EMOJI = {
-  bug:     '\uD83D\uDC1B',
-  feature: '\uD83D\uDCA1',
-  support: '\uD83C\uDD98',
-  general: '\uD83D\uDCAC',
-};
-
 /**
  * Create a Linear issue via the GraphQL API.
  */
@@ -49,9 +42,8 @@ async function createLinearIssue({ category, message, appVersion, deviceInfo, us
     throw new Error('Linear not configured — set LINEAR_API_KEY and LINEAR_TEAM_ID');
   }
 
-  const emoji = CATEGORY_EMOJI[category] || '';
   const categoryLabel = category.charAt(0).toUpperCase() + category.slice(1);
-  const title = `${emoji} [${categoryLabel}] ${message.slice(0, 80)}${message.length > 80 ? '...' : ''}`;
+  const title = `[${categoryLabel}] ${message.slice(0, 80)}${message.length > 80 ? '...' : ''}`;
 
   const description = [
     `## User Feedback — ${categoryLabel}`,
@@ -169,6 +161,129 @@ router.post('/', async (req, res) => {
   } catch (err) {
     console.error('Feedback submit error:', err);
     res.status(500).json({ error: 'Failed to submit feedback' });
+  }
+});
+
+// GET /api/feedback — list all feedback submitted by the current user
+router.get('/', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { data: items, error } = await supabase
+      .from('feedback')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json((items || []).map(f => ({
+      id: f.id,
+      category: f.category,
+      message: f.message,
+      status: f.status || 'open',
+      adminResponse: f.admin_response || null,
+      createdAt: f.created_at,
+    })));
+  } catch (err) {
+    console.error('Feedback list error:', err);
+    res.status(500).json({ error: 'Failed to fetch feedback' });
+  }
+});
+
+// GET /api/feedback/:id/messages — list all messages in a thread (user-facing)
+router.get('/:id/messages', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { id } = req.params;
+
+    // Verify the feedback belongs to the user
+    const { data: feedback, error: fbErr } = await supabase
+      .from('feedback')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (fbErr || !feedback) {
+      return res.status(404).json({ error: 'Feedback not found' });
+    }
+
+    const { data: messages, error: msgErr } = await supabase
+      .from('support_messages')
+      .select('*')
+      .eq('feedback_id', id)
+      .order('created_at', { ascending: true });
+
+    if (msgErr) throw msgErr;
+
+    res.json({
+      feedback: {
+        id: feedback.id,
+        category: feedback.category,
+        message: feedback.message,
+        status: feedback.status || 'open',
+        createdAt: feedback.created_at,
+      },
+      messages: (messages || []).map(m => ({
+        id: m.id,
+        senderRole: m.sender_role,
+        message: m.message,
+        createdAt: m.created_at,
+      })),
+    });
+  } catch (err) {
+    console.error('Feedback messages error:', err);
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+// POST /api/feedback/:id/messages — user replies to a support thread
+router.post('/:id/messages', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { id } = req.params;
+    const { message } = req.body;
+
+    if (!message?.trim()) {
+      return res.status(400).json({ error: 'message is required' });
+    }
+
+    // Verify the feedback belongs to the user
+    const { data: feedback, error: fbErr } = await supabase
+      .from('feedback')
+      .select('id, user_id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (fbErr || !feedback) {
+      return res.status(404).json({ error: 'Feedback not found' });
+    }
+
+    const msgId = `sm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const { error: insertErr } = await supabase.from('support_messages').insert({
+      id: msgId,
+      feedback_id: id,
+      sender_role: 'user',
+      sender_id: userId,
+      message: message.trim(),
+    });
+
+    if (insertErr) throw insertErr;
+
+    // Re-open the thread if it was resolved/closed
+    await supabase.from('feedback').update({ status: 'open' }).eq('id', id);
+
+    res.json({ ok: true, messageId: msgId });
+  } catch (err) {
+    console.error('Feedback reply error:', err);
+    res.status(500).json({ error: 'Failed to send reply' });
   }
 });
 

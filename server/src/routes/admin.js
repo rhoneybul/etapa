@@ -432,6 +432,133 @@ router.post('/feedback/:id/respond', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── GET /api/admin/feedback/:id/messages — list all messages in a thread ────
+router.get('/feedback/:id/messages', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Verify feedback exists
+    const { data: feedback, error: fbErr } = await supabase
+      .from('feedback')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (fbErr || !feedback) return res.status(404).json({ error: 'Feedback not found' });
+
+    // Get user info
+    const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+    const usersById = {};
+    for (const u of (users || [])) { usersById[u.id] = u; }
+
+    // Get all messages for this thread
+    const { data: messages, error: msgErr } = await supabase
+      .from('support_messages')
+      .select('*')
+      .eq('feedback_id', id)
+      .order('created_at', { ascending: true });
+
+    if (msgErr) throw msgErr;
+
+    const user = usersById[feedback.user_id];
+    const result = {
+      feedback: {
+        id: feedback.id,
+        userId: feedback.user_id,
+        userName: user?.user_metadata?.full_name || user?.email || 'Unknown',
+        userEmail: user?.email || null,
+        category: feedback.category,
+        message: feedback.message,
+        status: feedback.status || 'open',
+        createdAt: feedback.created_at,
+      },
+      messages: (messages || []).map(m => ({
+        id: m.id,
+        senderRole: m.sender_role,
+        senderName: m.sender_role === 'user'
+          ? (usersById[m.sender_id]?.user_metadata?.full_name || usersById[m.sender_id]?.email || 'User')
+          : (usersById[m.sender_id]?.user_metadata?.full_name || 'Admin'),
+        message: m.message,
+        createdAt: m.created_at,
+      })),
+    };
+
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/admin/feedback/:id/messages — add a message to a thread ───────
+router.post('/feedback/:id/messages', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+
+    if (!message?.trim()) {
+      return res.status(400).json({ error: 'message is required' });
+    }
+
+    // Get feedback item
+    const { data: feedback, error: fbErr } = await supabase
+      .from('feedback')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (fbErr || !feedback) return res.status(404).json({ error: 'Feedback not found' });
+
+    // Determine admin sender ID from auth header (JWT path)
+    let adminId = null;
+    if (req.user?.id) adminId = req.user.id;
+
+    // Insert the message
+    const msgId = `sm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const { error: insertErr } = await supabase.from('support_messages').insert({
+      id: msgId,
+      feedback_id: id,
+      sender_role: 'admin',
+      sender_id: adminId,
+      message: message.trim(),
+    });
+    if (insertErr) throw insertErr;
+
+    // Also update the legacy admin_response field for backwards compatibility
+    await supabase.from('feedback').update({
+      admin_response: message.trim(),
+      admin_responded_at: new Date().toISOString(),
+      admin_responder_id: adminId,
+    }).eq('id', id);
+
+    // Send push notification to the user
+    const categoryLabel = feedback.category.charAt(0).toUpperCase() + feedback.category.slice(1);
+    await sendPushToUser(feedback.user_id, {
+      title: `Re: Your ${categoryLabel} Feedback`,
+      body: message.trim().slice(0, 200),
+      type: 'support_reply',
+      data: { feedbackId: id, category: feedback.category },
+    });
+
+    res.json({ ok: true, messageId: msgId });
+  } catch (err) { next(err); }
+});
+
+// ── PATCH /api/admin/feedback/:id/status — update thread status ─────────────
+router.patch('/feedback/:id/status', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['open', 'resolved', 'closed'].includes(status)) {
+      return res.status(400).json({ error: 'status must be open, resolved, or closed' });
+    }
+
+    const { error } = await supabase
+      .from('feedback')
+      .update({ status })
+      .eq('id', id);
+
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 // ── PUT /api/admin/app-config/:key — update a remote config value ───────────
 router.put('/app-config/:key', async (req, res, next) => {
   try {

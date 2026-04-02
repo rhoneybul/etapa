@@ -14,9 +14,10 @@ import { api } from '../services/api';
 const FF = fontFamily;
 
 const TYPE_CONFIG = {
-  admin_reply:    { icon: '\u{1F4AC}', label: 'Team Response' },
-  coach_checkin:  { icon: '\u{1F6B4}', label: 'Coach Check-in' },
-  system:         { icon: '\u{1F514}', label: 'Notification' },
+  admin_reply:    { icon: null, label: 'Team Response' },
+  support_reply:  { icon: null, label: 'Support' },
+  coach_checkin:  { icon: null, label: 'Coach Check-in' },
+  system:         { icon: null, label: 'Notification' },
 };
 
 function timeAgo(dateStr) {
@@ -41,7 +42,7 @@ function NotificationItem({ item, onPress }) {
       activeOpacity={0.7}
     >
       <View style={s.notifIcon}>
-        <Text style={s.notifIconText}>{config.icon}</Text>
+        <Text style={s.notifIconText}>{config.label.charAt(0)}</Text>
       </View>
       <View style={s.notifContent}>
         <View style={s.notifHeader}>
@@ -129,7 +130,7 @@ export default function NotificationsScreen({ navigation }) {
 
         {notifications.length === 0 ? (
           <View style={s.emptyContainer}>
-            <Text style={s.emptyIcon}>{'\u{1F514}'}</Text>
+            <View style={s.emptyIconCircle}><Text style={s.emptyIconLetter}>N</Text></View>
             <Text style={s.emptyTitle}>No messages yet</Text>
             <Text style={s.emptyMessage}>
               You'll see responses to your feedback and coach check-ins here.
@@ -198,6 +199,8 @@ const s = StyleSheet.create({
 
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
   emptyIcon: { fontSize: 48, marginBottom: 16 },
+  emptyIconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyIconLetter: { fontSize: 20, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted },
   emptyTitle: { fontSize: 18, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 8 },
   emptyMessage: { fontSize: 14, fontFamily: FF.regular, color: colors.textMid, textAlign: 'center', lineHeight: 20 },
 });
