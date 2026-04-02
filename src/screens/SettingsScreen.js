@@ -3,7 +3,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Alert,
+  View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
@@ -13,6 +13,7 @@ import { openBillingPortal, getSubscriptionStatus, upgradeStarter, refundStarter
 import { connectStrava, disconnectStrava, isStravaConnected, isStravaConfigured, getStravaTokens } from '../services/stravaService';
 import UpgradePrompt from '../components/UpgradePrompt';
 import analytics from '../services/analyticsService';
+import { api } from '../services/api';
 
 const FF = fontFamily;
 
@@ -25,10 +26,14 @@ export default function SettingsScreen({ navigation }) {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [starterPlan, setStarterPlan] = useState(null); // the beginner plan object, if any
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [preferences, setPreferences] = useState(null);
 
   useEffect(() => {
     checkStrava();
     getSubscriptionStatus().then(setSubscription).catch(() => {});
+    api.notifications.unreadCount().then(d => setUnreadCount(d?.count || 0)).catch(() => {});
+    api.preferences.get().then(setPreferences).catch(() => {});
     // Find starter/beginner plan for refund eligibility
     getPlans().then(plans => {
       const bp = plans.find(p => p.name === 'Get into Cycling' && p.paymentStatus === 'paid');
@@ -158,6 +163,7 @@ export default function SettingsScreen({ navigation }) {
           <View style={{ width: 32 }} />
         </View>
 
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         {/* Strava */}
         <Text style={s.sectionLabel}>CONNECTIONS</Text>
         <View style={s.card}>
@@ -229,6 +235,17 @@ export default function SettingsScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
             )}
+            <View style={[s.card, { marginTop: 8 }]}>
+              <TouchableOpacity style={s.row} onPress={handleManagePlan} disabled={portalLoading}>
+                <View style={s.rowLeft}>
+                  <View>
+                    <Text style={[s.rowTitle, { color: '#EF4444' }]}>{portalLoading ? 'Opening...' : 'Cancel Subscription'}</Text>
+                    <Text style={s.rowSub}>Cancel your plan via Stripe</Text>
+                  </View>
+                </View>
+                <Text style={s.chevron}>{'\u203A'}</Text>
+              </TouchableOpacity>
+            </View>
           </>
         )}
         {subscription?.active && subscription.plan !== 'starter' && (
@@ -242,6 +259,17 @@ export default function SettingsScreen({ navigation }) {
                     <Text style={s.rowSub}>
                       {subscription.plan === 'annual' ? 'Annual' : 'Monthly'} · {subscription.status === 'trialing' ? 'Free trial' : 'Active'}
                     </Text>
+                  </View>
+                </View>
+                <Text style={s.chevron}>›</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={[s.card, { marginTop: 8 }]}>
+              <TouchableOpacity style={s.row} onPress={handleManagePlan} disabled={portalLoading}>
+                <View style={s.rowLeft}>
+                  <View>
+                    <Text style={[s.rowTitle, { color: '#EF4444' }]}>{portalLoading ? 'Opening...' : 'Cancel Subscription'}</Text>
+                    <Text style={s.rowSub}>Cancel your plan via Stripe</Text>
                   </View>
                 </View>
                 <Text style={s.chevron}>›</Text>
@@ -265,6 +293,66 @@ export default function SettingsScreen({ navigation }) {
             </View>
           </>
         )}
+
+        {/* Messages */}
+        <Text style={s.sectionLabel}>MESSAGES</Text>
+        <View style={s.card}>
+          <TouchableOpacity style={s.row} onPress={() => { setUnreadCount(0); navigation.navigate('Notifications'); }}>
+            <View style={s.rowLeft}>
+              <View>
+                <Text style={s.rowTitle}>Messages</Text>
+                <Text style={s.rowSub}>Responses from the team & coach check-ins</Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {unreadCount > 0 && (
+                <View style={s.unreadBadge}>
+                  <Text style={s.unreadBadgeText}>{unreadCount}</Text>
+                </View>
+              )}
+              <Text style={s.chevron}>{'\u203A'}</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Notifications */}
+        <Text style={s.sectionLabel}>NOTIFICATIONS</Text>
+        <View style={s.card}>
+          <TouchableOpacity
+            style={s.row}
+            onPress={() => {
+              const current = preferences?.coach_checkin || 'weekly';
+              Alert.alert('Coach Check-ins', 'How often would you like check-ins from your coach?', [
+                {
+                  text: 'Weekly',
+                  onPress: async () => {
+                    setPreferences(prev => ({ ...prev, coach_checkin: 'weekly' }));
+                    await api.preferences.update({ coach_checkin: 'weekly' });
+                  },
+                },
+                {
+                  text: 'Off',
+                  onPress: async () => {
+                    setPreferences(prev => ({ ...prev, coach_checkin: 'none' }));
+                    await api.preferences.update({ coach_checkin: 'none' });
+                  },
+                  style: current === 'none' ? 'default' : 'destructive',
+                },
+                { text: 'Cancel', style: 'cancel' },
+              ]);
+            }}
+          >
+            <View style={s.rowLeft}>
+              <View>
+                <Text style={s.rowTitle}>Coach Check-ins</Text>
+                <Text style={s.rowSub}>
+                  {preferences?.coach_checkin === 'none' ? 'Off' : 'Weekly'}
+                </Text>
+              </View>
+            </View>
+            <Text style={s.chevron}>{'\u203A'}</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Support */}
         <Text style={s.sectionLabel}>SUPPORT</Text>
@@ -290,6 +378,7 @@ export default function SettingsScreen({ navigation }) {
             <Text style={s.chevron}>{'\u203A'}</Text>
           </TouchableOpacity>
         </View>
+        </ScrollView>
       </SafeAreaView>
       <UpgradePrompt
         visible={showUpgrade}
@@ -330,4 +419,7 @@ const s = StyleSheet.create({
   comingSoonText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted },
   starterBadge: { backgroundColor: 'rgba(34,197,94,0.12)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   starterBadgeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E', letterSpacing: 0.5 },
+  unreadBadge: { backgroundColor: colors.primary, borderRadius: 10, minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6 },
+  unreadBadgeText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
+  toggleText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
 });

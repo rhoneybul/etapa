@@ -11,7 +11,6 @@ function LoginContent() {
   const supabase = createClient();
 
   useEffect(() => {
-    // If already signed in, go straight to dashboard
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) router.push("/dashboard/users");
     });
@@ -26,20 +25,20 @@ function LoginContent() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-sm text-center">
+    <div className="min-h-screen flex items-center justify-center bg-black font-poppins">
+      <div className="bg-etapa-surface border border-etapa-border rounded-xl p-8 w-full max-w-sm text-center">
         <div className="mb-6">
-          <div className="w-12 h-12 bg-indigo-600 rounded-lg mx-auto mb-4 flex items-center justify-center">
+          <div className="w-12 h-12 bg-etapa-primary rounded-lg mx-auto mb-4 flex items-center justify-center">
             <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
-          <h1 className="text-xl font-semibold text-gray-900">Admin Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-1">Sign in with your Google account</p>
+          <h1 className="text-xl font-semibold text-white">Etapa Admin</h1>
+          <p className="text-sm text-etapa-textMuted mt-1">Sign in with your Google account</p>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          <div className="mb-4 p-3 bg-red-900/20 border border-red-900/40 rounded-lg text-sm text-red-400">
             {error === "auth"
               ? "Authentication failed. Please try again."
               : "Access denied. Your account does not have admin permissions."}
@@ -48,7 +47,7 @@ function LoginContent() {
 
         <button
           onClick={handleSignIn}
-          className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 rounded-lg px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          className="w-full flex items-center justify-center gap-3 bg-etapa-surfaceLight border border-etapa-border rounded-lg px-4 py-3 text-sm font-medium text-white hover:bg-etapa-border transition-colors"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
@@ -65,7 +64,7 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-black"><div className="animate-pulse text-etapa-textMuted font-poppins">Loading...</div></div>}>
       <LoginContent />
     </Suspense>
   );

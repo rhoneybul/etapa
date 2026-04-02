@@ -37,7 +37,11 @@ import FeedbackScreen      from './src/screens/FeedbackScreen';
 import ChangeCoachScreen   from './src/screens/ChangeCoachScreen';
 import PaywallScreen       from './src/screens/PaywallScreen';
 import BeginnerProgramScreen from './src/screens/BeginnerProgramScreen';
+import NotificationsScreen from './src/screens/NotificationsScreen';
+import MaintenanceScreen   from './src/screens/MaintenanceScreen';
 import WebWrapper          from './src/components/WebWrapper';
+import { registerForPushNotifications, addNotificationResponseListener } from './src/services/notificationService';
+import { api } from './src/services/api';
 
 const Stack = createStackNavigator();
 
@@ -60,6 +64,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function App() {
   const [initialRoute, setInitialRoute] = useState(null);
+  const [maintenanceMode, setMaintenanceMode] = useState(null); // null = loading, false = ok, object = maintenance
   const navigationRef = React.useRef(null);
   const routeNameRef = React.useRef(null);
 
@@ -71,11 +76,25 @@ function App() {
   });
 
   useEffect(() => {
+    // Check remote config for maintenance mode (before auth)
+    api.appConfig.get().then(config => {
+      const maint = config?.maintenance_mode;
+      if (maint?.enabled) {
+        setMaintenanceMode(maint);
+      } else {
+        setMaintenanceMode(false);
+      }
+    }).catch(() => setMaintenanceMode(false));
+
     analytics.init();
     getSession().then(async session => {
       if (session) {
         analytics.identify(session.user?.id, { email: session.user?.email });
         await hydrateFromServer().catch(() => {});
+
+        // Register for push notifications
+        registerForPushNotifications().catch(() => {});
+
         // On web: detect return from Stripe Checkout and go straight to GoalSetup
         const stripeSession = await checkStripeReturn().catch(() => null);
         if (stripeSession) {
@@ -85,6 +104,16 @@ function App() {
       }
       setInitialRoute(session ? 'Home' : 'SignIn');
     });
+
+    // Handle notification taps — navigate to Notifications screen
+    const responseListener = addNotificationResponseListener(response => {
+      const nav = navigationRef.current;
+      if (nav) {
+        nav.navigate('Notifications');
+      }
+    });
+
+    return () => responseListener?.remove();
   }, []);
 
   const onLayoutRootView = useCallback(async () => {
@@ -93,7 +122,26 @@ function App() {
     }
   }, [fontsLoaded, initialRoute]);
 
-  if (!fontsLoaded || !initialRoute) return null;
+  if (!fontsLoaded || !initialRoute || maintenanceMode === null) return null;
+
+  // Show maintenance screen if enabled
+  if (maintenanceMode) {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style="light" />
+        <MaintenanceScreen
+          title={maintenanceMode.title}
+          message={maintenanceMode.message}
+          onRetry={() => {
+            api.appConfig.get().then(config => {
+              const maint = config?.maintenance_mode;
+              if (!maint?.enabled) setMaintenanceMode(false);
+            }).catch(() => {});
+          }}
+        />
+      </SafeAreaProvider>
+    );
+  }
 
   return (
     <SafeAreaProvider>
@@ -138,6 +186,7 @@ function App() {
               <Stack.Screen name="ChangeCoach"    component={ChangeCoachScreen} />
               <Stack.Screen name="Paywall"        component={PaywallScreen} />
               <Stack.Screen name="BeginnerProgram" component={BeginnerProgramScreen} />
+              <Stack.Screen name="Notifications"  component={NotificationsScreen} />
             </Stack.Navigator>
           </NavigationContainer>
         </View>

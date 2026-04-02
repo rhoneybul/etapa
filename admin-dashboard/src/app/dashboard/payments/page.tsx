@@ -30,13 +30,13 @@ export default function PaymentsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="animate-pulse text-gray-500">Loading payments...</div>;
+  if (loading) return <div className="animate-pulse text-etapa-textMuted">Loading payments...</div>;
 
   const activeCount = payments.filter((p) => ["active", "trialing", "paid"].includes(p.status)).length;
 
   return (
     <div>
-      <h1 className="text-lg font-semibold text-gray-900 mb-6">Subscriptions & Payments</h1>
+      <h1 className="text-lg font-semibold text-white mb-6">Subscriptions & Payments</h1>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
         <StatCard label="Total Subscriptions" value={payments.length} />
@@ -51,11 +51,15 @@ export default function PaymentsPage() {
           { key: "userName", label: "User" },
           { key: "plan", label: "Plan", render: (p: Payment) => <Badge value={p.plan} /> },
           { key: "status", label: "Status", render: (p: Payment) => <Badge value={p.status} /> },
-          { key: "currentPeriodEnd", label: "Period End", render: (p: Payment) => p.currentPeriodEnd ? new Date(p.currentPeriodEnd).toLocaleDateString() : "—" },
-          { key: "stripeCustomerId", label: "Stripe ID", render: (p: Payment) => (
-            <span className="font-mono text-xs text-gray-500">{p.stripeCustomerId}</span>
+          { key: "currentPeriodEnd", label: "Period End", render: (p: Payment) => (
+            <span className="text-xs text-etapa-textMid">{p.currentPeriodEnd ? new Date(p.currentPeriodEnd).toLocaleDateString() : "\u2014"}</span>
           )},
-          { key: "createdAt", label: "Created", render: (p: Payment) => new Date(p.createdAt).toLocaleDateString() },
+          { key: "stripeCustomerId", label: "Stripe ID", render: (p: Payment) => (
+            <span className="font-mono text-xs text-etapa-textMuted">{p.stripeCustomerId}</span>
+          )},
+          { key: "createdAt", label: "Created", render: (p: Payment) => (
+            <span className="text-xs text-etapa-textMid">{new Date(p.createdAt).toLocaleDateString()}</span>
+          )},
         ]}
         data={payments}
       />

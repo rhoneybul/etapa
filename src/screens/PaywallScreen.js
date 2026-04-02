@@ -1,6 +1,6 @@
 /**
  * Paywall screen — shown before plan generation.
- * Monthly: $9.99/mo · Annual: $99/yr (= $8.25/mo) · 1 month free trial.
+ * Monthly: $9.99/mo · Annual: $99/yr (= $8.25/mo) · 1 week free trial.
  */
 import React, { useState } from 'react';
 import {
@@ -89,7 +89,7 @@ export default function PaywallScreen({ navigation, route }) {
         <View style={s.header}>
           <Text style={s.eyebrow}>ETAPA PELOTON</Text>
           <Text style={s.title}>Train smarter,{'\n'}start free.</Text>
-          <Text style={s.subtitle}>1 month free trial · No charge today</Text>
+          <Text style={s.subtitle}>1 week free trial · No charge today</Text>
         </View>
 
         {/* Plan cards */}
@@ -156,7 +156,7 @@ export default function PaywallScreen({ navigation, route }) {
             <ActivityIndicator color="#fff" />
           ) : (
             <>
-              <Text style={s.ctaText}>Try free for 1 month</Text>
+              <Text style={s.ctaText}>Try free for 1 week</Text>
               <Text style={s.ctaSub}>{plan.trialLine}</Text>
             </>
           )}

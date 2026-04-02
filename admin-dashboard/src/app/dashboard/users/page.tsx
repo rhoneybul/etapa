@@ -27,24 +27,57 @@ interface User {
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchUsers = () => {
+    setLoading(true);
     fetch("/api/users")
       .then((r) => r.json())
       .then((data) => setUsers(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchUsers();
   }, []);
 
-  if (loading) return <div className="animate-pulse text-gray-500">Loading users...</div>;
+  const handleDelete = async (user: User) => {
+    const confirmed = window.confirm(
+      `Permanently delete ${user.name || user.email} and ALL their data?\n\nThis will remove their plans, activities, subscriptions, messages, feedback, and auth account.\n\nThis cannot be undone.`
+    );
+    if (!confirmed) return;
 
-  const withSub = users.filter((u) => u.subscription);
+    const doubleConfirm = window.confirm(
+      `Are you absolutely sure? Type OK to confirm deletion of ${user.email}.`
+    );
+    if (!doubleConfirm) return;
+
+    setDeleting(user.id);
+    try {
+      const res = await fetch(`/api/users/${user.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok) {
+        setUsers((prev) => prev.filter((u) => u.id !== user.id));
+      } else {
+        alert(`Failed to delete user: ${data.error || "Unknown error"}`);
+      }
+    } catch (err) {
+      alert("Failed to delete user. Check the console for details.");
+      console.error(err);
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  if (loading) return <div className="animate-pulse text-etapa-textMuted">Loading users...</div>;
+
   const activeSubs = users.filter((u) => ["active", "trialing", "paid"].includes(u.subscription?.status || ""));
   const totalMessages = users.reduce((sum, u) => sum + u.messageCount, 0);
   const totalPlans = users.reduce((sum, u) => sum + u.planCount, 0);
 
   return (
     <div>
-      <h1 className="text-lg font-semibold text-gray-900 mb-6">Users</h1>
+      <h1 className="text-lg font-semibold text-white mb-6">Users</h1>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <StatCard label="Total Users" value={users.length} />
@@ -59,30 +92,43 @@ export default function UsersPage() {
         columns={[
           { key: "name", label: "User", render: (u: User) => (
             <div>
-              <p className="font-medium text-gray-900">{u.name || "—"}</p>
-              <p className="text-xs text-gray-500">{u.email}</p>
+              <p className="font-medium text-white">{u.name || "\u2014"}</p>
+              <p className="text-xs text-etapa-textMuted">{u.email}</p>
             </div>
           )},
           { key: "subscription", label: "Plan", render: (u: User) => (
-            u.subscription ? <Badge value={u.subscription.plan} /> : <span className="text-xs text-gray-400">free</span>
+            u.subscription ? <Badge value={u.subscription.plan} /> : <span className="text-xs text-etapa-textFaint">free</span>
           )},
           { key: "subStatus", label: "Status", render: (u: User) => (
-            u.subscription ? <Badge value={u.subscription.status} /> : <span className="text-xs text-gray-400">—</span>
+            u.subscription ? <Badge value={u.subscription.status} /> : <span className="text-xs text-etapa-textFaint">\u2014</span>
           )},
           { key: "planCount", label: "Plans", render: (u: User) => (
             <div className="text-center">
-              <p className="font-medium text-gray-900">{u.planCount}</p>
-              {u.firstPlanAt && <p className="text-xs text-gray-500">since {new Date(u.firstPlanAt).toLocaleDateString()}</p>}
+              <p className="font-medium text-white">{u.planCount}</p>
+              {u.firstPlanAt && <p className="text-xs text-etapa-textMuted">since {new Date(u.firstPlanAt).toLocaleDateString()}</p>}
             </div>
           )},
           { key: "messageCount", label: "Messages", render: (u: User) => (
-            <span className="text-sm text-gray-700">{u.messageCount}</span>
+            <span className="text-sm text-etapa-textMid">{u.messageCount}</span>
           )},
           { key: "feedbackCount", label: "Feedback", render: (u: User) => (
-            <span className="text-sm text-gray-700">{u.feedbackCount}</span>
+            <span className="text-sm text-etapa-textMid">{u.feedbackCount}</span>
           )},
-          { key: "createdAt", label: "Signed Up", render: (u: User) => new Date(u.createdAt).toLocaleDateString() },
-          { key: "lastSignInAt", label: "Last Sign In", render: (u: User) => u.lastSignInAt ? new Date(u.lastSignInAt).toLocaleDateString() : "—" },
+          { key: "createdAt", label: "Signed Up", render: (u: User) => (
+            <span className="text-xs text-etapa-textMid">{new Date(u.createdAt).toLocaleDateString()}</span>
+          )},
+          { key: "lastSignInAt", label: "Last Sign In", render: (u: User) => (
+            <span className="text-xs text-etapa-textMid">{u.lastSignInAt ? new Date(u.lastSignInAt).toLocaleDateString() : "\u2014"}</span>
+          )},
+          { key: "actions", label: "", render: (u: User) => (
+            <button
+              onClick={() => handleDelete(u)}
+              disabled={deleting === u.id}
+              className="text-xs text-red-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {deleting === u.id ? "Deleting..." : "Delete"}
+            </button>
+          )},
         ]}
         data={users}
       />

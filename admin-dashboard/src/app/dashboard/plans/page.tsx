@@ -52,14 +52,14 @@ export default function PlansPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="animate-pulse text-gray-500">Loading plans...</div>;
+  if (loading) return <div className="animate-pulse text-etapa-textMuted">Loading plans...</div>;
 
   const activePlans = plans.filter((p) => p.status === "active");
   const totalActivities = plans.reduce((sum, p) => sum + p.activityCount, 0);
 
   return (
     <div>
-      <h1 className="text-lg font-semibold text-gray-900 mb-6">Plans</h1>
+      <h1 className="text-lg font-semibold text-white mb-6">Plans</h1>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
         <StatCard label="Total Plans" value={plans.length} />
@@ -73,29 +73,33 @@ export default function PlansPage() {
         columns={[
           { key: "name", label: "Plan Name", render: (p: Plan) => (
             <div>
-              <p className="font-medium text-gray-900">{p.name || "Untitled"}</p>
-              <p className="text-xs text-gray-500">{p.weeks} weeks, {p.activityCount} activities</p>
+              <p className="font-medium text-white">{p.name || "Untitled"}</p>
+              <p className="text-xs text-etapa-textMuted">{p.weeks} weeks, {p.activityCount} activities</p>
             </div>
           )},
           { key: "userName", label: "Created By" },
           { key: "goal", label: "Goal", render: (p: Plan) => p.goal ? (
             <div className="text-xs">
-              <p className="font-medium text-gray-900">{p.goal.cyclingType || "—"} · {p.goal.goalType || "—"}</p>
-              {p.goal.targetDistance && <p className="text-gray-500">{p.goal.targetDistance} km</p>}
-              {p.goal.targetElevation && <p className="text-gray-500">{p.goal.targetElevation} m elev</p>}
-              {p.goal.eventName && <p className="text-gray-500">{p.goal.eventName}</p>}
+              <p className="font-medium text-white">{p.goal.cyclingType || "\u2014"} &middot; {p.goal.goalType || "\u2014"}</p>
+              {p.goal.targetDistance && <p className="text-etapa-textMuted">{p.goal.targetDistance} km</p>}
+              {p.goal.targetElevation && <p className="text-etapa-textMuted">{p.goal.targetElevation} m elev</p>}
+              {p.goal.eventName && <p className="text-etapa-textMuted">{p.goal.eventName}</p>}
             </div>
-          ) : <span className="text-xs text-gray-400">—</span> },
+          ) : <span className="text-xs text-etapa-textFaint">&mdash;</span> },
           { key: "config", label: "Config", render: (p: Plan) => p.config ? (
             <div className="text-xs">
-              <p className="text-gray-700">{p.config.sessionsPerWeek || p.config.daysPerWeek || "?"} sessions/wk</p>
-              {p.config.fitnessLevel && <p className="text-gray-500">{p.config.fitnessLevel}</p>}
-              {p.config.indoorTrainer && <p className="text-gray-500">Indoor trainer</p>}
+              <p className="text-etapa-textMid">{p.config.sessionsPerWeek || p.config.daysPerWeek || "?"} sessions/wk</p>
+              {p.config.fitnessLevel && <p className="text-etapa-textMuted">{p.config.fitnessLevel}</p>}
+              {p.config.indoorTrainer && <p className="text-etapa-textMuted">Indoor trainer</p>}
             </div>
-          ) : <span className="text-xs text-gray-400">—</span> },
+          ) : <span className="text-xs text-etapa-textFaint">&mdash;</span> },
           { key: "status", label: "Status", render: (p: Plan) => <Badge value={p.status} /> },
-          { key: "startDate", label: "Start", render: (p: Plan) => p.startDate ? new Date(p.startDate).toLocaleDateString() : "—" },
-          { key: "createdAt", label: "Created", render: (p: Plan) => new Date(p.createdAt).toLocaleDateString() },
+          { key: "startDate", label: "Start", render: (p: Plan) => (
+            <span className="text-xs text-etapa-textMid">{p.startDate ? new Date(p.startDate).toLocaleDateString() : "\u2014"}</span>
+          )},
+          { key: "createdAt", label: "Created", render: (p: Plan) => (
+            <span className="text-xs text-etapa-textMid">{new Date(p.createdAt).toLocaleDateString()}</span>
+          )},
         ]}
         data={plans}
       />

@@ -29,14 +29,14 @@ export default function TicketsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="animate-pulse text-gray-500">Loading tickets...</div>;
+  if (loading) return <div className="animate-pulse text-etapa-textMuted">Loading tickets...</div>;
 
   const openCount = tickets.filter((t) => !["closed", "resolved", "done", "cancelled"].includes(t.status)).length;
 
   return (
     <div>
-      <h1 className="text-lg font-semibold text-gray-900 mb-6">Support Tickets</h1>
-      <p className="text-sm text-gray-500 mb-6">Fetched from Linear. Shows issues matching "support" in the title.</p>
+      <h1 className="text-lg font-semibold text-white mb-1">Support Tickets</h1>
+      <p className="text-sm text-etapa-textMuted mb-6">Fetched from Linear. Shows issues matching "support" in the title.</p>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
         <StatCard label="Total Tickets" value={tickets.length} />
@@ -49,14 +49,23 @@ export default function TicketsPage() {
         searchPlaceholder="Search tickets..."
         columns={[
           { key: "linearId", label: "ID", render: (t: Ticket) => (
-            <span className="font-mono text-xs text-indigo-600">{t.linearId}</span>
+            <a
+              href={`https://linear.app/issue/${t.linearId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-xs text-etapa-primary hover:text-amber-400 hover:underline"
+            >
+              {t.linearId}
+            </a>
           )},
           { key: "title", label: "Title", render: (t: Ticket) => (
-            <p className="font-medium text-gray-900 max-w-md truncate">{t.title}</p>
+            <p className="font-medium text-white max-w-md truncate">{t.title}</p>
           )},
           { key: "priority", label: "Priority", render: (t: Ticket) => <Badge value={t.priority} /> },
           { key: "status", label: "Status", render: (t: Ticket) => <Badge value={t.status} /> },
-          { key: "createdAt", label: "Created", render: (t: Ticket) => new Date(t.createdAt).toLocaleDateString() },
+          { key: "createdAt", label: "Created", render: (t: Ticket) => (
+            <span className="text-xs text-etapa-textMid">{new Date(t.createdAt).toLocaleDateString()}</span>
+          )},
         ]}
         data={tickets}
       />

@@ -19,11 +19,15 @@ const plansRouter        = require('./routes/plans');
 const planConfigsRouter  = require('./routes/planConfigs');
 const chatSessionsRouter = require('./routes/chatSessions');
 const aiRouter           = require('./routes/ai');
-const feedbackRouter     = require('./routes/feedback');
-const supportRouter      = require('./routes/support');
-const stripeRouter       = require('./routes/stripe');
-const { webhookHandler } = require('./routes/stripe');
-const adminRouter        = require('./routes/admin');
+const feedbackRouter      = require('./routes/feedback');
+const supportRouter       = require('./routes/support');
+const notificationsRouter = require('./routes/notifications');
+const preferencesRouter   = require('./routes/preferences');
+const appConfigRouter     = require('./routes/appConfig');
+const coachCheckinRouter  = require('./routes/coachCheckin');
+const stripeRouter        = require('./routes/stripe');
+const { webhookHandler }  = require('./routes/stripe');
+const adminRouter         = require('./routes/admin');
 
 const { authMiddleware } = require('./middleware/auth');
 
@@ -55,6 +59,10 @@ app.use('/api/ai', authMiddleware, aiRouter);
 app.use('/api/stripe', authMiddleware, stripeRouter);
 app.use('/api/feedback', authMiddleware, feedbackRouter);
 app.use('/api/support', authMiddleware, supportRouter);
+app.use('/api/notifications', authMiddleware, notificationsRouter);
+app.use('/api/preferences', authMiddleware, preferencesRouter);
+app.use('/api/app-config', appConfigRouter); // no auth — app checks before login
+app.use('/api/coach-checkin', coachCheckinRouter); // auth via CRON_SECRET or ADMIN_API_KEY
 app.use('/api/admin', adminRouter); // admin router has its own auth (API key or Supabase JWT)
 
 // ── Error handler ─────────────────────────────────────────────────────────────

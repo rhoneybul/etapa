@@ -83,6 +83,23 @@ export const api = {
   feedback: {
     submit: (feedback) => request('POST', '/api/feedback', feedback),
   },
+
+  notifications: {
+    registerToken: (data) => request('POST', '/api/notifications/register-token', data),
+    list:          ()     => request('GET', '/api/notifications'),
+    markRead:      (id)   => request('PATCH', `/api/notifications/${id}/read`),
+    markAllRead:   ()     => request('PATCH', '/api/notifications/read-all'),
+    unreadCount:   ()     => request('GET', '/api/notifications/unread-count'),
+  },
+
+  preferences: {
+    get:    ()     => request('GET', '/api/preferences'),
+    update: (data) => request('PUT', '/api/preferences', data),
+  },
+
+  appConfig: {
+    get: () => request('GET', '/api/app-config'),
+  },
 };
 
 export default api;

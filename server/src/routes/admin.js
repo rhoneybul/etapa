@@ -5,6 +5,7 @@
 const { Router } = require('express');
 const { supabase } = require('../lib/supabase');
 const { authMiddleware } = require('../middleware/auth');
+const { sendPushToUser } = require('../lib/pushService');
 
 const router = Router();
 
@@ -371,10 +372,80 @@ router.get('/feedback', async (req, res, next) => {
       linearIssueId: f.linear_issue_id,
       linearIssueKey: f.linear_issue_key,
       linearIssueUrl: f.linear_issue_url,
+      adminResponse: f.admin_response || null,
+      adminRespondedAt: f.admin_responded_at || null,
       createdAt: f.created_at,
     }));
 
     res.json(result);
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/admin/feedback/:id/respond — respond to feedback & notify user ─
+router.post('/feedback/:id/respond', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+
+    if (!message?.trim()) {
+      return res.status(400).json({ error: 'message is required' });
+    }
+
+    // Get the feedback item
+    const { data: feedback, error: fetchError } = await supabase
+      .from('feedback')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !feedback) {
+      return res.status(404).json({ error: 'Feedback not found' });
+    }
+
+    // Update with admin response
+    const { error: updateError } = await supabase
+      .from('feedback')
+      .update({
+        admin_response: message.trim(),
+        admin_responded_at: new Date().toISOString(),
+      })
+      .eq('id', id);
+
+    if (updateError) throw updateError;
+
+    // Send push notification to the user
+    const categoryLabel = feedback.category.charAt(0).toUpperCase() + feedback.category.slice(1);
+    await sendPushToUser(feedback.user_id, {
+      title: `Re: Your ${categoryLabel} Feedback`,
+      body: message.trim().slice(0, 200),
+      type: 'admin_reply',
+      data: { feedbackId: id, category: feedback.category },
+    });
+
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ── PUT /api/admin/app-config/:key — update a remote config value ───────────
+router.put('/app-config/:key', async (req, res, next) => {
+  try {
+    const { key } = req.params;
+    const { value } = req.body;
+
+    if (value === undefined) {
+      return res.status(400).json({ error: 'value is required' });
+    }
+
+    const { error } = await supabase
+      .from('app_config')
+      .upsert({
+        key,
+        value: typeof value === 'object' ? value : { value },
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'key' });
+
+    if (error) throw error;
+    res.json({ ok: true });
   } catch (err) { next(err); }
 });
 
@@ -395,6 +466,57 @@ router.get('/stats', async (req, res, next) => {
       totalActivities: activityCount || 0,
       activeSubscriptions: activeSubs?.length || 0,
     });
+  } catch (err) { next(err); }
+});
+
+// ── DELETE /api/admin/users/:id — hard-delete a user and all their data ──────
+router.delete('/users/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: 'User ID is required' });
+
+    // Verify the user exists
+    const { data: { user }, error: userError } = await supabase.auth.admin.getUserById(id);
+    if (userError || !user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Delete all user data from every table (order matters for foreign keys)
+    const tables = [
+      'notifications',
+      'push_tokens',
+      'chat_sessions',
+      'feedback',
+      'activities',
+      'plans',
+      'plan_configs',
+      'goals',
+      'subscriptions',
+      'user_preferences',
+      'admins',
+    ];
+
+    const deletionResults = {};
+    for (const table of tables) {
+      const { error, count } = await supabase
+        .from(table)
+        .delete({ count: 'exact' })
+        .eq('user_id', id);
+      deletionResults[table] = error ? `error: ${error.message}` : (count || 0);
+    }
+
+    // Finally, delete the auth user from Supabase
+    const { error: authDeleteError } = await supabase.auth.admin.deleteUser(id);
+    if (authDeleteError) {
+      return res.status(500).json({
+        error: 'Data deleted but failed to remove auth user',
+        details: authDeleteError.message,
+        deletionResults,
+      });
+    }
+
+    console.log(`[admin] Hard-deleted user ${id} (${user.email}):`, deletionResults);
+    res.json({ ok: true, email: user.email, deletionResults });
   } catch (err) { next(err); }
 });
 

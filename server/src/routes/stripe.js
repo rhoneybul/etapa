@@ -95,7 +95,7 @@ router.post('/create-checkout-session', async (req, res) => {
       // Recurring subscription with trial
       sessionConfig.mode = 'subscription';
       sessionConfig.subscription_data = {
-        trial_period_days: 30,
+        trial_period_days: 7,
         metadata: { userId, plan },
       };
     }

@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
-  title: "Admin Dashboard",
-  description: "Internal admin dashboard",
+  title: "Etapa Admin",
+  description: "Etapa admin dashboard",
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
@@ -17,8 +17,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="bg-gray-50 text-gray-900 min-h-screen">
+    <html lang="en" className="dark">
+      <body className="bg-black text-white min-h-screen">
         <Providers>{children}</Providers>
       </body>
     </html>
