@@ -43,6 +43,25 @@ export async function generatePlanWithLLM(goal, config, onProgress) {
 
     try {
       const authHeaders = await getAuthHeaders();
+
+      // Fire off timed progress messages so the bar keeps moving
+      // while the AI request is in-flight.
+      let cancelled = false;
+      const progressSteps = [
+        { msg: 'Building your training framework...', delay: 3000 },
+        { msg: 'Calculating progressive overload...', delay: 5000 },
+        { msg: 'Adding periodisation and taper...', delay: 4000 },
+        { msg: 'Scheduling your sessions...', delay: 4000 },
+      ];
+      const progressTimers = [];
+      let elapsed = 0;
+      for (const step of progressSteps) {
+        elapsed += step.delay;
+        progressTimers.push(setTimeout(() => {
+          if (!cancelled) onProgress?.(step.msg);
+        }, elapsed));
+      }
+
       const response = await fetch(`${serverUrl}/api/ai/generate-plan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
@@ -50,9 +69,13 @@ export async function generatePlanWithLLM(goal, config, onProgress) {
         keepalive: true,
       });
 
+      // Cancel any pending timed messages
+      cancelled = true;
+      progressTimers.forEach(t => clearTimeout(t));
+
       if (response.ok) {
         onProgress?.('Building your personalised plan...');
-        await delay(500);
+        await delay(400);
 
         const data = await response.json();
 

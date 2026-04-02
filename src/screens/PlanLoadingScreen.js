@@ -1,7 +1,9 @@
 /**
  * Plan loading screen — minimalist animated progress while the plan generates.
+ * Progress bar is driven by actual generation progress, not a fixed timer,
+ * so it doesn't stall at the end.
  */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Animated, Easing, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
@@ -11,11 +13,70 @@ import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
 
+// Progress stages — each message maps to a target bar percentage.
+// The bar smoothly animates between stages instead of using a fixed timer.
+const PROGRESS_STAGES = {
+  'Preparing your plan...':               0.05,
+  'Consulting your AI coach...':          0.15,
+  'Building your training framework...':  0.25,
+  'Calculating progressive overload...':  0.40,
+  'Adding periodisation and taper...':    0.55,
+  'Scheduling your sessions...':          0.65,
+  'Building your personalised plan...':   0.75,
+  'Finalising your plan...':              0.88,
+  'Plan ready!':                          1.0,
+};
+
 export default function PlanLoadingScreen({ navigation, route }) {
   const { goal, config, requirePaywall } = route.params;
   const [message, setMessage] = useState('Preparing your plan...');
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const progressAnim = useRef(new Animated.Value(0.02)).current;
+
+  // Slow creep — while waiting for the AI response, the bar drifts
+  // slowly forward so it never looks completely frozen.
+  const creepRef = useRef(null);
+  const currentTarget = useRef(0.05);
+
+  const startCreep = useCallback((from, ceiling) => {
+    // Gradually move from `from` towards `ceiling` over ~30s
+    if (creepRef.current) creepRef.current.stop();
+    creepRef.current = Animated.timing(progressAnim, {
+      toValue: ceiling,
+      duration: 30000,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    });
+    creepRef.current.start();
+  }, [progressAnim]);
+
+  const jumpTo = useCallback((target) => {
+    if (creepRef.current) creepRef.current.stop();
+    currentTarget.current = target;
+
+    const duration = target >= 1.0 ? 300 : 600;
+    Animated.timing(progressAnim, {
+      toValue: target,
+      duration,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: false,
+    }).start(() => {
+      // After reaching this stage, start creeping towards a bit more
+      // so the bar never looks stuck between messages.
+      if (target < 0.88) {
+        startCreep(target, Math.min(target + 0.08, 0.92));
+      }
+    });
+  }, [progressAnim, startCreep]);
+
+  const handleProgress = useCallback((msg) => {
+    setMessage(msg);
+    const target = PROGRESS_STAGES[msg];
+    if (target !== undefined) {
+      jumpTo(target);
+    }
+  }, [jumpTo]);
 
   useEffect(() => {
     // Fade in
@@ -31,13 +92,16 @@ export default function PlanLoadingScreen({ navigation, route }) {
       ])
     ).start();
 
+    // Start the initial creep right away so the bar moves immediately
+    startCreep(0.02, 0.12);
+
     generate();
   }, []);
 
   const generate = async () => {
     analytics.events.planGenerationStarted({ weeks: config.weeks, coachId: config.coachId });
     try {
-      const plan = await generatePlanWithLLM(goal, config, setMessage);
+      const plan = await generatePlanWithLLM(goal, config, handleProgress);
       // Carry payment status from config to plan (for starter deferred payment)
       if (config.paymentStatus) {
         plan.paymentStatus = config.paymentStatus;
@@ -64,6 +128,11 @@ export default function PlanLoadingScreen({ navigation, route }) {
     }
   };
 
+  const barWidth = progressAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
+
   return (
     <View style={s.container}>
       <SafeAreaView style={s.safe}>
@@ -76,32 +145,13 @@ export default function PlanLoadingScreen({ navigation, route }) {
           <Text style={s.title}>Building your plan</Text>
           <Text style={s.message}>{message}</Text>
 
-          <ProgressBar />
+          <View style={s.progressTrack}>
+            <Animated.View style={[s.progressFill, { width: barWidth }]} />
+          </View>
         </Animated.View>
 
         <Text style={s.powered}>Powered by AI</Text>
       </SafeAreaView>
-    </View>
-  );
-}
-
-function ProgressBar() {
-  const width = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(width, {
-      toValue: 1, duration: 4500, easing: Easing.out(Easing.quad), useNativeDriver: false,
-    }).start();
-  }, []);
-
-  const w = width.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0%', '95%'],
-  });
-
-  return (
-    <View style={s.progressTrack}>
-      <Animated.View style={[s.progressFill, { width: w }]} />
     </View>
   );
 }
