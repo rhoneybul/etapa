@@ -7,7 +7,7 @@ export async function GET() {
   if (error) return error;
 
   try {
-    const payments = await etapaFetch("/api/admin/payments", token!);
+    const payments = await etapaFetch("/api/admin/payments/details", token!);
     return NextResponse.json(payments);
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 502 });

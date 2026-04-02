@@ -48,8 +48,9 @@ export default function PaywallScreen({ navigation, route }) {
   // Where to go after successful subscription (default: GoalSetup)
   const nextScreen = route?.params?.nextScreen || 'GoalSetup';
   const nextParams = route?.params?.nextParams || {};
-  // fromHome = user has plans but no subscription — don't let them dismiss
+  // fromHome = user has plans but no subscription
   const fromHome = route?.params?.fromHome === true;
+  const [showHolding, setShowHolding] = useState(false);
 
   const handleSubscribe = async () => {
     setLoading(true);
@@ -70,19 +71,55 @@ export default function PaywallScreen({ navigation, route }) {
   };
 
   const handleClose = () => {
-    navigation.goBack();
+    if (fromHome) {
+      setShowHolding(true);
+    } else {
+      navigation.goBack();
+    }
   };
 
   const plan = PLANS[selected];
 
+  // Holding screen — shown when user dismisses the paywall but has no subscription
+  if (showHolding) {
+    return (
+      <SafeAreaView style={s.container}>
+        <View style={s.holdingContainer}>
+          <Text style={s.holdingTitle}>Subscription Required</Text>
+          <Text style={s.holdingSubtitle}>
+            You need an active subscription to access your training plans.
+          </Text>
+          <TouchableOpacity
+            style={s.holdingUpgradeBtn}
+            onPress={() => setShowHolding(false)}
+            activeOpacity={0.85}
+          >
+            <Text style={s.holdingUpgradeBtnText}>View Plans</Text>
+          </TouchableOpacity>
+          <View style={s.holdingDivider} />
+          <TouchableOpacity
+            style={s.holdingLink}
+            onPress={() => navigation.navigate('Feedback')}
+          >
+            <Text style={s.holdingLinkText}>Send Feedback</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={s.holdingLink}
+            onPress={() => navigation.navigate('Settings')}
+          >
+            <Text style={s.holdingLinkText}>Settings</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={s.container}>
-      {/* Close button — hidden when user has plans but no subscription */}
-      {!fromHome && (
-        <TouchableOpacity style={s.closeBtn} onPress={handleClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Text style={s.closeBtnText}>✕</Text>
-        </TouchableOpacity>
-      )}
+      {/* Close button — always visible */}
+      <TouchableOpacity style={s.closeBtn} onPress={handleClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <Text style={s.closeBtnText}>✕</Text>
+      </TouchableOpacity>
 
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
         {/* Header */}
@@ -367,5 +404,54 @@ const s = StyleSheet.create({
     fontFamily: FF.light,
     color: colors.textMuted,
     lineHeight: 17,
+  },
+
+  // Holding screen
+  holdingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  holdingTitle: {
+    fontSize: 22,
+    fontFamily: FF.semibold,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  holdingSubtitle: {
+    fontSize: 15,
+    fontFamily: FF.light,
+    color: colors.textMid,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 32,
+  },
+  holdingUpgradeBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 48,
+    marginBottom: 32,
+  },
+  holdingUpgradeBtnText: {
+    fontSize: 16,
+    fontFamily: FF.semibold,
+    color: '#fff',
+  },
+  holdingDivider: {
+    width: 60,
+    height: 1,
+    backgroundColor: colors.border,
+    marginBottom: 24,
+  },
+  holdingLink: {
+    paddingVertical: 12,
+  },
+  holdingLinkText: {
+    fontSize: 15,
+    fontFamily: FF.medium,
+    color: colors.textMid,
   },
 });

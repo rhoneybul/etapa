@@ -7,6 +7,12 @@ const { supabase } = require('../lib/supabase');
 const { authMiddleware } = require('../middleware/auth');
 const { sendPushToUser } = require('../lib/pushService');
 
+function getStripe() {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) return null;
+  return require('stripe')(key);
+}
+
 const router = Router();
 
 /**
@@ -467,6 +473,216 @@ router.get('/stats', async (req, res, next) => {
       activeSubscriptions: activeSubs?.length || 0,
     });
   } catch (err) { next(err); }
+});
+
+// ── GET /api/admin/payments/details — enriched payment data from Stripe ──────
+router.get('/payments/details', async (req, res, next) => {
+  try {
+    const stripe = getStripe();
+
+    // Get all subscriptions from DB
+    const { data: subs, error } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    // Get users for name lookup
+    const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+    const usersById = {};
+    for (const u of (users || [])) { usersById[u.id] = u; }
+
+    const result = [];
+
+    for (const sub of (subs || [])) {
+      const user = usersById[sub.user_id];
+      const entry = {
+        id: sub.id,
+        userId: sub.user_id,
+        userName: user?.user_metadata?.full_name || user?.email || 'Unknown',
+        userEmail: user?.email || null,
+        stripeCustomerId: sub.stripe_customer_id,
+        plan: sub.plan,
+        status: sub.status,
+        trialEnd: sub.trial_end,
+        currentPeriodEnd: sub.current_period_end,
+        createdAt: sub.created_at,
+        // Stripe-enriched fields
+        totalPaid: 0,
+        currency: 'usd',
+        payments: [],
+        upcomingInvoice: null,
+      };
+
+      // Fetch real payment data from Stripe if available
+      if (stripe && sub.stripe_customer_id) {
+        try {
+          // Get all invoices for this customer
+          const invoices = await stripe.invoices.list({
+            customer: sub.stripe_customer_id,
+            limit: 50,
+          });
+
+          entry.payments = invoices.data.map(inv => ({
+            id: inv.id,
+            amount: inv.amount_paid / 100,
+            currency: inv.currency,
+            status: inv.status,
+            paid: inv.paid,
+            created: inv.created ? new Date(inv.created * 1000).toISOString() : null,
+            periodStart: inv.period_start ? new Date(inv.period_start * 1000).toISOString() : null,
+            periodEnd: inv.period_end ? new Date(inv.period_end * 1000).toISOString() : null,
+            hostedUrl: inv.hosted_invoice_url,
+            amountRefunded: (inv.charge && typeof inv.charge === 'object' ? inv.charge.amount_refunded : 0) / 100,
+          }));
+
+          entry.totalPaid = invoices.data
+            .filter(inv => inv.paid)
+            .reduce((sum, inv) => sum + inv.amount_paid, 0) / 100;
+
+          entry.currency = invoices.data[0]?.currency || 'usd';
+
+          // Get upcoming invoice (next scheduled payment)
+          try {
+            const upcoming = await stripe.invoices.retrieveUpcoming({
+              customer: sub.stripe_customer_id,
+            });
+            entry.upcomingInvoice = {
+              amount: upcoming.amount_due / 100,
+              currency: upcoming.currency,
+              dueDate: upcoming.next_payment_attempt
+                ? new Date(upcoming.next_payment_attempt * 1000).toISOString()
+                : null,
+            };
+          } catch {
+            // No upcoming invoice (cancelled, one-time, etc.)
+          }
+        } catch (stripeErr) {
+          console.error(`[admin] Stripe fetch error for ${sub.stripe_customer_id}:`, stripeErr.message);
+        }
+      }
+
+      // For starter (one-time) payments without invoices, use known price
+      if (sub.plan === 'starter' && entry.payments.length === 0 && sub.status === 'paid') {
+        entry.totalPaid = 50;
+        entry.payments = [{
+          id: sub.id,
+          amount: 50,
+          currency: 'usd',
+          status: 'paid',
+          paid: true,
+          created: sub.created_at,
+          periodStart: sub.created_at,
+          periodEnd: sub.current_period_end,
+          hostedUrl: null,
+          amountRefunded: 0,
+        }];
+      }
+
+      result.push(entry);
+    }
+
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/admin/refund — issue a refund for a subscription ──────────────
+router.post('/refund', async (req, res, next) => {
+  try {
+    const stripe = getStripe();
+    if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+
+    const { subscriptionId, amountCents } = req.body;
+    if (!subscriptionId) return res.status(400).json({ error: 'subscriptionId is required' });
+    if (!amountCents || amountCents <= 0) return res.status(400).json({ error: 'amountCents must be positive' });
+
+    // Get subscription record
+    const { data: sub, error: subErr } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('id', subscriptionId)
+      .single();
+
+    if (subErr || !sub) return res.status(404).json({ error: 'Subscription not found' });
+
+    if (!sub.stripe_customer_id) {
+      return res.status(400).json({ error: 'No Stripe customer linked to this subscription' });
+    }
+
+    // For starter plans, refund the payment intent directly
+    if (sub.plan === 'starter') {
+      const piId = sub.id.replace('starter_', '');
+      const refund = await stripe.refunds.create({
+        payment_intent: piId,
+        amount: amountCents,
+        reason: 'requested_by_customer',
+      });
+
+      // Update subscription status
+      await supabase.from('subscriptions').update({
+        status: 'refunded',
+        updated_at: new Date().toISOString(),
+      }).eq('id', sub.id);
+
+      return res.json({
+        ok: true,
+        refundId: refund.id,
+        amount: refund.amount / 100,
+        currency: refund.currency,
+      });
+    }
+
+    // For recurring subscriptions, find the latest paid invoice and refund it
+    const invoices = await stripe.invoices.list({
+      customer: sub.stripe_customer_id,
+      subscription: sub.id,
+      status: 'paid',
+      limit: 1,
+    });
+
+    if (!invoices.data.length) {
+      return res.status(400).json({ error: 'No paid invoices found for this subscription' });
+    }
+
+    const latestInvoice = invoices.data[0];
+    const chargeId = typeof latestInvoice.charge === 'string'
+      ? latestInvoice.charge
+      : latestInvoice.charge?.id;
+
+    if (!chargeId) {
+      return res.status(400).json({ error: 'No charge found on the latest invoice' });
+    }
+
+    const refund = await stripe.refunds.create({
+      charge: chargeId,
+      amount: amountCents,
+      reason: 'requested_by_customer',
+    });
+
+    // Cancel the subscription after refund
+    try {
+      await stripe.subscriptions.cancel(sub.id);
+      await supabase.from('subscriptions').update({
+        status: 'refunded',
+        updated_at: new Date().toISOString(),
+      }).eq('id', sub.id);
+    } catch (cancelErr) {
+      console.error('[admin] Subscription cancel after refund failed:', cancelErr.message);
+    }
+
+    res.json({
+      ok: true,
+      refundId: refund.id,
+      amount: refund.amount / 100,
+      currency: refund.currency,
+    });
+  } catch (err) {
+    console.error('[admin] Refund error:', err);
+    if (err.type === 'StripeInvalidRequestError') {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
 });
 
 // ── DELETE /api/admin/users/:id — hard-delete a user and all their data ──────
