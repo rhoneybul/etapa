@@ -51,7 +51,6 @@ export default function AboutScreen({ navigation }) {
           {/* AI Transparency */}
           <View style={s.card}>
             <View style={s.cardHeader}>
-              <Text style={s.cardIcon}>{'\u2728'}</Text>
               <Text style={s.cardTitle}>Built with AI</Text>
             </View>
             <Text style={s.cardBody}>
@@ -65,7 +64,6 @@ export default function AboutScreen({ navigation }) {
           {/* Health Disclaimer */}
           <View style={[s.card, s.cardWarning]}>
             <View style={s.cardHeader}>
-              <Text style={s.cardIcon}>{'\u26A0\uFE0F'}</Text>
               <Text style={s.cardTitle}>Health Disclaimer</Text>
             </View>
             <Text style={s.cardBody}>
@@ -82,7 +80,6 @@ export default function AboutScreen({ navigation }) {
           {/* Training Sources */}
           <View style={s.card}>
             <View style={s.cardHeader}>
-              <Text style={s.cardIcon}>{'\uD83D\uDCDA'}</Text>
               <Text style={s.cardTitle}>Training Science Sources</Text>
             </View>
             <Text style={s.cardBody}>
@@ -104,7 +101,6 @@ export default function AboutScreen({ navigation }) {
           {/* Key Principles */}
           <View style={s.card}>
             <View style={s.cardHeader}>
-              <Text style={s.cardIcon}>{'\u2699\uFE0F'}</Text>
               <Text style={s.cardTitle}>How Plans Are Built</Text>
             </View>
             <Text style={s.cardBody}>
@@ -121,7 +117,6 @@ export default function AboutScreen({ navigation }) {
           {/* AI Limitations */}
           <View style={s.card}>
             <View style={s.cardHeader}>
-              <Text style={s.cardIcon}>{'\u2139\uFE0F'}</Text>
               <Text style={s.cardTitle}>AI Limitations</Text>
             </View>
             <Text style={s.cardBody}>
@@ -142,7 +137,6 @@ export default function AboutScreen({ navigation }) {
           {/* Legal Links */}
           <View style={s.card}>
             <View style={s.cardHeader}>
-              <Text style={s.cardIcon}>{'\uD83D\uDCC4'}</Text>
               <Text style={s.cardTitle}>Legal</Text>
             </View>
             <TouchableOpacity style={s.legalRow} onPress={() => Linking.openURL('https://getetapa.com/terms.html')}>

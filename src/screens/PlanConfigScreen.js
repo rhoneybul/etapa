@@ -117,6 +117,7 @@ export default function PlanConfigScreen({ navigation, route }) {
   const adjustmentData = route.params?.adjustmentData || null;
   const existingConfig = route.params?.existingConfig || null;
   const adjustPlanId = route.params?.planId || null;
+  const requirePaywall = route.params?.requirePaywall || false;
 
   // If coming from a plan adjustment, pre-fill from existing config and jump to step 3
   const adjustmentDefaults = adjustment && existingConfig ? {
@@ -415,7 +416,7 @@ export default function PlanConfigScreen({ navigation, route }) {
       daysPerWeek: availableDays.length,
     });
 
-    navigation.replace('PlanLoading', { goal, config });
+    navigation.replace('PlanLoading', { goal, config, requirePaywall });
   };
 
   const handleBack = () => {

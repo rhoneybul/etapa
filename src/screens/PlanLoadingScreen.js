@@ -12,7 +12,7 @@ import analytics from '../services/analyticsService';
 const FF = fontFamily;
 
 export default function PlanLoadingScreen({ navigation, route }) {
-  const { goal, config } = route.params;
+  const { goal, config, requirePaywall } = route.params;
   const [message, setMessage] = useState('Preparing your plan...');
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -52,7 +52,11 @@ export default function PlanLoadingScreen({ navigation, route }) {
         totalHours: Math.round(totalMins / 60),
         coachId: config.coachId,
       });
-      navigation.replace('PlanReady', { planId: plan.id });
+      if (requirePaywall) {
+        navigation.replace('Paywall', { nextScreen: 'PlanReady', nextParams: { planId: plan.id } });
+      } else {
+        navigation.replace('PlanReady', { planId: plan.id });
+      }
     } catch (err) {
       analytics.events.planGenerationFailed(err.message);
       setMessage('Something went wrong. Retrying...');

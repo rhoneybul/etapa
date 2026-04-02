@@ -3,8 +3,9 @@
  */
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView,
+  View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Switch, Linking,
 } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { signOut } from '../services/authService';
@@ -29,12 +30,15 @@ export default function SettingsScreen({ navigation }) {
   const [starterPlan, setStarterPlan] = useState(null); // the beginner plan object, if any
   const [unreadCount, setUnreadCount] = useState(0);
   const [preferences, setPreferences] = useState(null);
+  const [notifPermission, setNotifPermission] = useState(null); // 'granted' | 'denied' | 'undetermined'
+  const [togglingNotif, setTogglingNotif] = useState(false);
 
   useEffect(() => {
     checkStrava();
     getSubscriptionStatus().then(setSubscription).catch(() => {});
     api.notifications.unreadCount().then(d => setUnreadCount(d?.count || 0)).catch(() => {});
     api.preferences.get().then(setPreferences).catch(() => {});
+    Notifications.getPermissionsAsync().then(({ status }) => setNotifPermission(status)).catch(() => {});
     // Find starter/beginner plan for refund eligibility
     getPlans().then(plans => {
       const bp = plans.find(p => p.name === 'Get into Cycling' && p.paymentStatus === 'paid');
@@ -179,6 +183,41 @@ export default function SettingsScreen({ navigation }) {
     return daysSinceStart <= 14;
   })();
 
+  const handleTogglePushNotifications = async (value) => {
+    if (notifPermission === 'denied') {
+      // Can't grant permission programmatically — send user to OS settings
+      Alert.alert(
+        'Notifications blocked',
+        'Push notifications are blocked in your device settings. Tap Open Settings to enable them.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ],
+      );
+      return;
+    }
+    setTogglingNotif(true);
+    try {
+      if (value && notifPermission !== 'granted') {
+        // Not yet asked — request permission now
+        const { status } = await Notifications.requestPermissionsAsync();
+        setNotifPermission(status);
+        if (status !== 'granted') {
+          setTogglingNotif(false);
+          return;
+        }
+      }
+      const updated = { push_notifications: value ? 'enabled' : 'disabled' };
+      setPreferences(prev => ({ ...prev, ...updated }));
+      await api.preferences.update(updated);
+    } catch {
+      // Revert optimistic update on failure
+      setPreferences(prev => ({ ...prev, push_notifications: value ? 'disabled' : 'enabled' }));
+    } finally {
+      setTogglingNotif(false);
+    }
+  };
+
   const handleSignOut = async () => {
     analytics.events.signedOut();
     analytics.reset();
@@ -219,7 +258,13 @@ export default function SettingsScreen({ navigation }) {
         {/* Coaching */}
         <Text style={s.sectionLabel}>COACHING</Text>
         <View style={s.card}>
-          <TouchableOpacity style={s.row} onPress={() => navigation.navigate('ChangeCoach')}>
+          <TouchableOpacity style={s.row} onPress={() => {
+            if (!subscription?.active) {
+              navigation.navigate('Paywall', { fromHome: true, nextScreen: 'Home' });
+              return;
+            }
+            navigation.navigate('ChangeCoach');
+          }}>
             <View style={s.rowLeft}>
               <View>
                 <Text style={s.rowTitle}>Change Coach</Text>
@@ -361,7 +406,14 @@ export default function SettingsScreen({ navigation }) {
         {/* Messages */}
         <Text style={s.sectionLabel}>MESSAGES</Text>
         <View style={s.card}>
-          <TouchableOpacity style={s.row} onPress={() => { setUnreadCount(0); navigation.navigate('Notifications'); }}>
+          <TouchableOpacity style={s.row} onPress={() => {
+            if (!subscription?.active) {
+              navigation.navigate('Paywall', { fromHome: true, nextScreen: 'Home' });
+              return;
+            }
+            setUnreadCount(0);
+            navigation.navigate('Notifications');
+          }}>
             <View style={s.rowLeft}>
               <View>
                 <Text style={s.rowTitle}>Messages</Text>
@@ -382,9 +434,41 @@ export default function SettingsScreen({ navigation }) {
         {/* Notifications */}
         <Text style={s.sectionLabel}>NOTIFICATIONS</Text>
         <View style={s.card}>
+          <View style={s.row}>
+            <View style={s.rowLeft}>
+              <View>
+                <Text style={s.rowTitle}>Push Notifications</Text>
+                <Text style={s.rowSub}>
+                  {notifPermission === 'denied'
+                    ? 'Blocked — tap to open Settings'
+                    : preferences?.push_notifications === 'disabled'
+                      ? 'Off'
+                      : 'On'}
+                </Text>
+              </View>
+            </View>
+            {notifPermission === 'denied' ? (
+              <TouchableOpacity onPress={() => Linking.openSettings()}>
+                <Text style={s.openSettingsText}>Open Settings</Text>
+              </TouchableOpacity>
+            ) : (
+              <Switch
+                value={preferences?.push_notifications !== 'disabled'}
+                onValueChange={handleTogglePushNotifications}
+                disabled={togglingNotif}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#fff"
+              />
+            )}
+          </View>
+          <View style={s.divider} />
           <TouchableOpacity
             style={s.row}
             onPress={() => {
+              if (!subscription?.active) {
+                navigation.navigate('Paywall', { fromHome: true, nextScreen: 'Home' });
+                return;
+              }
               const current = preferences?.coach_checkin || 'weekly';
               Alert.alert('Coach Check-ins', 'How often would you like check-ins from your coach?', [
                 {
@@ -505,6 +589,8 @@ const s = StyleSheet.create({
   unreadBadge: { backgroundColor: colors.primary, borderRadius: 10, minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6 },
   unreadBadgeText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
   toggleText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+  openSettingsText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+  divider: { height: 1, backgroundColor: colors.border, marginHorizontal: 16 },
   aiFooter: { paddingVertical: 20, paddingHorizontal: 4 },
   aiFooterText: { fontSize: 11, fontWeight: '300', fontFamily: FF.light || FF.regular, color: colors.textFaint, lineHeight: 17, textAlign: 'center' },
 });

@@ -29,7 +29,8 @@ const GOAL_TYPES = [
   { key: 'improve', label: 'Just want to improve', description: 'Get fitter and stronger on the bike' },
 ];
 
-export default function GoalSetupScreen({ navigation }) {
+export default function GoalSetupScreen({ navigation, route }) {
+  const requirePaywall = route?.params?.requirePaywall || false;
   const [step, setStep] = useState(1);
   const [cyclingType, setCyclingType] = useState(null);
   const [goalType, setGoalType] = useState(null);
@@ -107,7 +108,7 @@ export default function GoalSetupScreen({ navigation }) {
       eventName: eventName || null,
     });
 
-    navigation.replace('PlanConfig', { goal });
+    navigation.replace('PlanConfig', { goal, requirePaywall });
   };
 
   const handleBack = () => {

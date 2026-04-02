@@ -10,6 +10,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, ScrollView, Image, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { colors, fontFamily } from '../theme';
 import { openCheckout, getSubscriptionOfferings, restorePurchases } from '../services/subscriptionService';
 import { isRevenueCatAvailable } from '../services/revenueCatService';
@@ -48,6 +49,17 @@ const PLANS = {
     trialLine: 'then $9.99/month',
   },
 };
+
+// Dummy plan data for the holding screen background
+const DUMMY_PLAN = [
+  { day: 'MON', type: 'Easy Ride',   duration: '1h 00m', color: '#22C55E', barWidth: '60%' },
+  { day: 'TUE', type: 'Threshold',   duration: '1h 30m', color: '#F59E0B', barWidth: '78%' },
+  { day: 'WED', type: 'Rest',        duration: '',       color: '#6B7280', barWidth: '20%' },
+  { day: 'THU', type: 'Intervals',   duration: '1h 15m', color: '#EF4444', barWidth: '70%' },
+  { day: 'FRI', type: 'Easy Ride',   duration: '45 min', color: '#22C55E', barWidth: '48%' },
+  { day: 'SAT', type: 'Long Ride',   duration: '2h 30m', color: '#D97706', barWidth: '88%' },
+  { day: 'SUN', type: 'Rest',        duration: '',       color: '#6B7280', barWidth: '18%' },
+];
 
 const FEATURES = [
   'AI-generated training plans',
@@ -155,22 +167,36 @@ export default function PaywallScreen({ navigation, route }) {
   if (showHolding) {
     return (
       <View style={s.container}>
-        {/* Blurred plan background */}
+        {/* Dummy training plan background */}
         <View style={s.holdingBg}>
-          {/* Fake plan rows to simulate a blurred-out training plan */}
-          {Array.from({ length: 8 }).map((_, i) => (
+          {/* Week header */}
+          <View style={s.holdingWeekHeader}>
+            <View style={s.holdingWeekHeaderDot} />
+            <View style={s.holdingWeekHeaderBar} />
+            <View style={s.holdingWeekHeaderBadge} />
+          </View>
+          {/* Session rows */}
+          {DUMMY_PLAN.map((session, i) => (
             <View key={i} style={s.holdingBgRow}>
-              <View style={[s.holdingBgDot, { width: 8, height: 8, borderRadius: 4, backgroundColor: i % 3 === 0 ? colors.primary : i % 3 === 1 ? '#8B5CF6' : '#3B82F6', opacity: 0.25 }]} />
-              <View style={[s.holdingBgBar, { width: `${50 + (i * 7) % 35}%`, backgroundColor: colors.border, opacity: 0.35 }]} />
-              <View style={[s.holdingBgBarSmall, { width: 48, backgroundColor: colors.border, opacity: 0.25 }]} />
+              <View style={s.holdingDayLabel} />
+              <View style={[s.holdingSessionPill, { backgroundColor: session.color + '55' }]} />
+              <View style={s.holdingBarGroup}>
+                <View style={[s.holdingBar, { width: session.barWidth, backgroundColor: session.color + '55' }]} />
+                {session.duration ? <View style={s.holdingBarSub} /> : null}
+              </View>
+              {session.duration ? <View style={s.holdingDurationTag} /> : null}
             </View>
           ))}
         </View>
-        {/* Gradient overlay */}
-        <View style={s.holdingOverlay} />
+
+        {/* Gradient overlay — lighter at top so plan peeks through, dark at bottom */}
+        <LinearGradient
+          colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.93)', 'rgba(0,0,0,0.98)']}
+          locations={[0, 0.3, 0.6, 1]}
+          style={StyleSheet.absoluteFill}
+        />
 
         <SafeAreaView style={s.holdingContent}>
-          {/* Logo */}
           <Image
             source={require('../../assets/icon.png')}
             style={s.holdingLogo}
@@ -182,33 +208,62 @@ export default function PaywallScreen({ navigation, route }) {
             Unlock AI-powered training plans, coach chat,{'\n'}and progress tracking.
           </Text>
 
-          {/* Lifetime callout */}
-          <View style={s.holdingLifetimeBadge}>
-            <Text style={s.holdingLifetimeText}>🚀 Lifetime access from $149 · 7-day money-back guarantee</Text>
+          {/* Plan pricing summary */}
+          <View style={s.holdingPlansRow}>
+            <View style={s.holdingPlanPill}>
+              <Text style={s.holdingPlanPillLabel}>Monthly</Text>
+              <Text style={s.holdingPlanPillPrice}>$9.99<Text style={s.holdingPlanPillPer}>/mo</Text></Text>
+            </View>
+            <View style={[s.holdingPlanPill, s.holdingPlanPillHighlight]}>
+              <Text style={[s.holdingPlanPillLabel, { color: colors.primary }]}>Annual</Text>
+              <Text style={[s.holdingPlanPillPrice, { color: colors.primary }]}>$8.25<Text style={s.holdingPlanPillPer}>/mo</Text></Text>
+              <View style={s.holdingPlanPillBadge}><Text style={s.holdingPlanPillBadgeText}>POPULAR</Text></View>
+            </View>
+            <View style={s.holdingPlanPill}>
+              <Text style={s.holdingPlanPillLabel}>Lifetime</Text>
+              <Text style={s.holdingPlanPillPrice}>$149</Text>
+            </View>
+          </View>
+          <Text style={s.holdingTrialNote}>1 week free trial on all subscription plans</Text>
+
+          {/* Lifetime savings callout — informational, not a button */}
+          <View style={s.holdingSavingsRow}>
+            <Text style={s.holdingSavingsText}>Lifetime access · $149 one-time</Text>
+            <View style={s.holdingSavingsBadge}>
+              <Text style={s.holdingSavingsBadgeText}>SAVE $100</Text>
+            </View>
           </View>
 
           {/* Primary CTA */}
           <TouchableOpacity
             style={s.holdingPrimaryBtn}
-            onPress={() => setShowHolding(false)}
+            onPress={() => {
+              setShowHolding(false);
+              navigation.navigate('GoalSetup', { requirePaywall: true });
+            }}
             activeOpacity={0.85}
           >
-            <Text style={s.holdingPrimaryBtnText}>Join the Peloton</Text>
+            <Text style={s.holdingPrimaryBtnText}>Create your plan</Text>
             <Text style={s.holdingPrimaryBtnSub}>Start your free trial</Text>
           </TouchableOpacity>
 
-          {/* Secondary CTA */}
+          {/* New to cycling — prominent warm card */}
           <TouchableOpacity
-            style={s.holdingSecondaryBtn}
+            style={s.holdingNewCyclistBtn}
             onPress={() => {
               setShowHolding(false);
-              // Navigate to plan creation for newcomers
-              navigation.navigate('GoalSetup');
+              navigation.navigate('BeginnerProgram');
             }}
             activeOpacity={0.8}
           >
-            <Text style={s.holdingSecondaryBtnText}>New to cycling?</Text>
-            <Text style={s.holdingSecondaryBtnSub}>Create your first training plan</Text>
+            <View style={s.holdingNewCyclistInner}>
+              <View style={s.holdingNewCyclistAccent} />
+              <View style={s.holdingNewCyclistText}>
+                <Text style={s.holdingNewCyclistTitle}>New to cycling?</Text>
+                <Text style={s.holdingNewCyclistSub}>We'll build your first plan from scratch</Text>
+              </View>
+              <Text style={s.holdingNewCyclistArrow}>{'\u2192'}</Text>
+            </View>
           </TouchableOpacity>
 
           {/* Footer links */}
@@ -228,7 +283,11 @@ export default function PaywallScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.container}>
-      {/* Close button — always visible */}
+      {/* Back button */}
+      <TouchableOpacity style={s.backBtn} onPress={handleClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <Text style={s.backBtnText}>{'\u2190'}</Text>
+      </TouchableOpacity>
+      {/* Close button */}
       <TouchableOpacity style={s.closeBtn} onPress={handleClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
         <Text style={s.closeBtnText}>✕</Text>
       </TouchableOpacity>
@@ -322,9 +381,8 @@ export default function PaywallScreen({ navigation, route }) {
 
         {plan.isLifetime && (
           <View style={s.guaranteeBadge}>
-            <Text style={s.guaranteeIcon}>{'\u{1F6E1}\uFE0F'}</Text>
             <View style={s.guaranteeTextWrap}>
-              <Text style={s.guaranteeTitle}>30-Day Money-Back Guarantee</Text>
+              <Text style={s.guaranteeTitle}>7-Day Money-Back Guarantee</Text>
               <Text style={s.guaranteeSub}>Not for you? Get a full refund within 7 days, no questions asked.</Text>
             </View>
           </View>
@@ -357,6 +415,18 @@ const s = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  backBtn: {
+    position: 'absolute',
+    top: 56,
+    left: 20,
+    zIndex: 10,
+    padding: 8,
+  },
+  backBtnText: {
+    color: colors.textMid,
+    fontSize: 22,
+    fontFamily: FF.regular,
   },
   closeBtn: {
     position: 'absolute',
@@ -614,68 +684,102 @@ const s = StyleSheet.create({
 
   // Holding screen
   holdingBg: {
-    position: 'absolute', top: 120, left: 24, right: 24,
-    gap: 18, opacity: 0.6,
+    position: 'absolute', top: 80, left: 20, right: 20, gap: 14,
+  },
+  holdingWeekHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6,
+  },
+  holdingWeekHeaderDot: {
+    width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary, opacity: 0.5,
+  },
+  holdingWeekHeaderBar: {
+    height: 10, width: '45%', borderRadius: 5, backgroundColor: colors.primary, opacity: 0.25,
+  },
+  holdingWeekHeaderBadge: {
+    height: 10, width: 56, borderRadius: 5, backgroundColor: colors.border, opacity: 0.35,
   },
   holdingBgRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
   },
-  holdingBgDot: {},
-  holdingBgBar: { height: 10, borderRadius: 5 },
-  holdingBgBarSmall: { height: 10, borderRadius: 5 },
-  holdingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.75)',
+  holdingDayLabel: {
+    width: 32, height: 9, borderRadius: 4, backgroundColor: colors.border, opacity: 0.4,
+  },
+  holdingSessionPill: {
+    height: 22, width: 72, borderRadius: 6,
+  },
+  holdingBarGroup: {
+    flex: 1, gap: 5,
+  },
+  holdingBar: {
+    height: 9, borderRadius: 5,
+  },
+  holdingBarSub: {
+    height: 7, width: '55%', borderRadius: 4, backgroundColor: colors.border, opacity: 0.3,
+  },
+  holdingDurationTag: {
+    width: 44, height: 22, borderRadius: 6, backgroundColor: colors.border, opacity: 0.3,
   },
   holdingContent: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    paddingHorizontal: 32,
+    paddingHorizontal: 28,
+    paddingBottom: 32,
   },
   holdingLogo: {
-    width: 72, height: 72, borderRadius: 16, marginBottom: 24,
+    width: 64, height: 64, borderRadius: 14, marginBottom: 20,
   },
   holdingTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontFamily: FF.semibold,
-    color: colors.text,
+    color: '#fff',
     textAlign: 'center',
     marginBottom: 10,
   },
   holdingSubtitle: {
     fontSize: 15,
     fontFamily: FF.regular,
-    color: colors.textMid,
+    color: 'rgba(255,255,255,0.65)',
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: 36,
-  },
-  holdingLifetimeBadge: {
-    backgroundColor: 'rgba(124,58,237,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(124,58,237,0.3)',
-    borderRadius: 100,
-    paddingHorizontal: 18,
-    paddingVertical: 8,
     marginBottom: 28,
   },
-  holdingLifetimeText: {
+  // Lifetime savings callout — informational, not a button
+  holdingSavingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 24,
+  },
+  holdingSavingsText: {
     fontSize: 13,
     fontFamily: FF.medium,
-    color: '#9b5de5',
+    color: 'rgba(255,255,255,0.7)',
+  },
+  holdingSavingsBadge: {
+    backgroundColor: 'rgba(34,197,94,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.45)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  holdingSavingsBadgeText: {
+    fontSize: 10,
+    fontFamily: FF.semibold,
+    color: '#4ade80',
+    letterSpacing: 0.8,
   },
   holdingPrimaryBtn: {
     backgroundColor: colors.primary,
     borderRadius: 14,
     paddingVertical: 18,
-    paddingHorizontal: 48,
     alignItems: 'center',
     width: '100%',
-    marginBottom: 14,
+    marginBottom: 12,
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.4,
     shadowRadius: 14,
     elevation: 6,
   },
@@ -690,39 +794,121 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.65)',
     marginTop: 3,
   },
-  holdingSecondaryBtn: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 16,
-    paddingHorizontal: 48,
-    alignItems: 'center',
+  // New to cycling — warm amber card
+  holdingNewCyclistBtn: {
     width: '100%',
-    marginBottom: 40,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(217,119,6,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(217,119,6,0.35)',
+    marginBottom: 32,
   },
-  holdingSecondaryBtnText: {
+  holdingNewCyclistInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 0,
+  },
+  holdingNewCyclistAccent: {
+    width: 4,
+    height: '100%',
+    minHeight: 40,
+    borderRadius: 2,
+    backgroundColor: colors.primary,
+    marginRight: 14,
+  },
+  holdingNewCyclistText: {
+    flex: 1,
+  },
+  holdingNewCyclistTitle: {
     fontSize: 16,
     fontFamily: FF.semibold,
-    color: colors.text,
+    color: colors.primary,
+    marginBottom: 2,
   },
-  holdingSecondaryBtnSub: {
+  holdingNewCyclistSub: {
     fontSize: 12,
-    fontFamily: FF.light,
-    color: colors.textMid,
-    marginTop: 3,
+    fontFamily: FF.regular,
+    color: 'rgba(255,255,255,0.55)',
+  },
+  holdingNewCyclistArrow: {
+    fontSize: 20,
+    color: colors.primary,
+    marginLeft: 8,
   },
   holdingFooter: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   holdingFooterLink: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: FF.medium,
-    color: colors.textMid,
+    color: 'rgba(255,255,255,0.4)',
   },
   holdingFooterDot: {
-    fontSize: 14,
-    color: colors.textMuted,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.25)',
+  },
+
+  // Plan pricing summary pills
+  holdingPlansRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+    width: '100%',
+    justifyContent: 'center',
+  },
+  holdingPlanPill: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    gap: 2,
+  },
+  holdingPlanPillHighlight: {
+    backgroundColor: 'rgba(217,119,6,0.1)',
+    borderColor: 'rgba(217,119,6,0.3)',
+  },
+  holdingPlanPillLabel: {
+    fontSize: 10,
+    fontFamily: FF.semibold,
+    color: 'rgba(255,255,255,0.5)',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  holdingPlanPillPrice: {
+    fontSize: 15,
+    fontFamily: FF.semibold,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  holdingPlanPillPer: {
+    fontSize: 11,
+    fontFamily: FF.regular,
+    color: 'rgba(255,255,255,0.45)',
+  },
+  holdingPlanPillBadge: {
+    backgroundColor: 'rgba(217,119,6,0.25)',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    marginTop: 2,
+  },
+  holdingPlanPillBadgeText: {
+    fontSize: 8,
+    fontFamily: FF.semibold,
+    color: colors.primary,
+    letterSpacing: 0.5,
+  },
+  holdingTrialNote: {
+    fontSize: 11,
+    fontFamily: FF.regular,
+    color: 'rgba(255,255,255,0.35)',
+    marginBottom: 20,
+    textAlign: 'center',
   },
 });

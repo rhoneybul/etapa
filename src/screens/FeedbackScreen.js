@@ -16,10 +16,10 @@ import analytics from '../services/analyticsService';
 const FF = fontFamily;
 
 const CATEGORIES = [
-  { id: 'bug',     label: 'Bug Report',      icon: '\uD83D\uDC1B', desc: 'Something isn\u2019t working right' },
-  { id: 'feature', label: 'Feature Request',  icon: '\uD83D\uDCA1', desc: 'I\u2019d love to see\u2026' },
-  { id: 'support', label: 'Support',          icon: '\uD83C\uDD98', desc: 'I need help with something' },
-  { id: 'general', label: 'General Feedback',  icon: '\uD83D\uDCAC', desc: 'Thoughts, ideas, or praise' },
+  { id: 'bug',     label: 'Bug Report',      desc: 'Something isn\u2019t working right' },
+  { id: 'feature', label: 'Feature Request',  desc: 'I\u2019d love to see\u2026' },
+  { id: 'support', label: 'Support',          desc: 'I need help with something' },
+  { id: 'general', label: 'General Feedback',  desc: 'Thoughts, ideas, or praise' },
 ];
 
 const PLACEHOLDERS = {
@@ -69,7 +69,6 @@ export default function FeedbackScreen({ navigation }) {
       <View style={s.container}>
         <SafeAreaView style={s.safe}>
           <View style={s.successContainer}>
-            <Text style={s.successIcon}>{'\u2705'}</Text>
             <Text style={s.successTitle}>Thank you!</Text>
             <Text style={s.successMessage}>
               Your feedback has been submitted. We read every message and appreciate you helping make Etapa better.
@@ -124,7 +123,6 @@ export default function FeedbackScreen({ navigation }) {
                   onPress={() => setCategory(cat.id)}
                   activeOpacity={0.7}
                 >
-                  <Text style={s.catIcon}>{cat.icon}</Text>
                   <View style={s.catText}>
                     <Text style={[s.catLabel, category === cat.id && s.catLabelActive]}>
                       {cat.label}
