@@ -311,11 +311,54 @@ export default function PlanConfigScreen({ navigation, route }) {
       notes: recurringForm.notes || '',
     };
     setRecurringRides(prev => [...prev, ride]);
+
+    // Auto-place on the day grid as an outdoor ride
+    const rideDay = recurringForm.day;
+    setDayActivities(prev => {
+      const next = { ...prev };
+      const current = next[rideDay] || [];
+      if (!current.includes('outdoor')) {
+        next[rideDay] = [...current, 'outdoor'];
+      }
+      return next;
+    });
+    // Ensure outdoor count is at least enough for this placement
+    setSessionCounts(prev => {
+      let placedOutdoor = 0;
+      Object.values(dayActivities).forEach(acts => { placedOutdoor += acts.filter(a => a === 'outdoor').length; });
+      // +1 for the one we just placed
+      const newPlaced = placedOutdoor + 1;
+      if ((prev.outdoor || 0) < newPlaced) {
+        return { ...prev, outdoor: newPlaced };
+      }
+      return prev;
+    });
+
     setRecurringForm({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' });
     setShowAddRecurring(false);
   };
 
   const removeRecurringRide = (id) => {
+    // Find the ride's day before removing, to clean up auto-placed activity
+    const ride = recurringRides.find(r => r.id === id);
+    if (ride) {
+      // Only remove the auto-placed outdoor if no other recurring ride is on the same day
+      const otherOnSameDay = recurringRides.filter(r => r.id !== id && r.day === ride.day);
+      if (otherOnSameDay.length === 0) {
+        setDayActivities(prev => {
+          const next = { ...prev };
+          const current = next[ride.day] || [];
+          const idx = current.indexOf('outdoor');
+          if (idx !== -1) {
+            const updated = [...current];
+            updated.splice(idx, 1);
+            if (updated.length === 0) delete next[ride.day];
+            else next[ride.day] = updated;
+          }
+          return next;
+        });
+      }
+    }
     setRecurringRides(prev => prev.filter(r => r.id !== id));
   };
 
@@ -497,45 +540,12 @@ export default function PlanConfigScreen({ navigation, route }) {
         return CT_COLOR;
       };
 
+      // Count how many outdoor rides come from organised rides
+      const organisedOutdoorCount = recurringRides.length;
+
       return (
         <ScrollView showsVerticalScrollIndicator={false}>
-          {/* ── Cycling session counters ── */}
-          {activeTypes.map(tt => {
-            const count = sessionCounts[tt.key] || 0;
-            const placed = placedByType[tt.key] || 0;
-            return (
-              <View key={tt.key} style={s.counterRow}>
-                <View style={[s.typeIndicator, { backgroundColor: TYPE_COLORS[tt.key] || colors.primary }]} />
-                <View style={s.counterLabelWrap}>
-                  <Text style={s.counterLabel}>{tt.label}</Text>
-                  {count > 0 && placed < count && (
-                    <Text style={s.counterHint}>{count - placed} to place</Text>
-                  )}
-                  {count > 0 && placed >= count && (
-                    <Text style={s.counterHintDone}>{'\u2713'} All placed</Text>
-                  )}
-                </View>
-                <View style={s.counterControls}>
-                  <TouchableOpacity
-                    style={[s.counterBtn, count <= 0 && s.counterBtnDisabled]}
-                    onPress={() => adjustCount(tt.key, -1)}
-                    disabled={count <= 0}
-                  >
-                    <Text style={[s.counterBtnText, count <= 0 && s.counterBtnTextDisabled]}>{'\u2212'}</Text>
-                  </TouchableOpacity>
-                  <Text style={s.counterValue}>{count}</Text>
-                  <TouchableOpacity
-                    style={s.counterBtn}
-                    onPress={() => adjustCount(tt.key, 1)}
-                  >
-                    <Text style={s.counterBtnText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })}
-
-          {/* ── Organised rides ── */}
+          {/* ── Organised rides (shown first) ── */}
           <View style={s.organisedSection}>
             <View style={s.organisedHeader}>
               <Text style={s.organisedHeading}>Organised rides</Text>
@@ -640,6 +650,53 @@ export default function PlanConfigScreen({ navigation, route }) {
               </TouchableOpacity>
             )}
           </View>
+
+          {/* ── Session counters (how many can you do?) ── */}
+          <View style={s.divider} />
+          <Text style={s.counterSectionTitle}>How many sessions per week?</Text>
+          {organisedOutdoorCount > 0 && (
+            <Text style={s.counterSectionHint}>
+              {organisedOutdoorCount} outdoor ride{organisedOutdoorCount !== 1 ? 's' : ''} already added from your organised rides
+            </Text>
+          )}
+          {activeTypes.map(tt => {
+            const count = sessionCounts[tt.key] || 0;
+            const placed = placedByType[tt.key] || 0;
+            const fromOrganised = tt.key === 'outdoor' ? organisedOutdoorCount : 0;
+            return (
+              <View key={tt.key} style={s.counterRow}>
+                <View style={[s.typeIndicator, { backgroundColor: TYPE_COLORS[tt.key] || colors.primary }]} />
+                <View style={s.counterLabelWrap}>
+                  <Text style={s.counterLabel}>{tt.label}</Text>
+                  {fromOrganised > 0 && (
+                    <Text style={s.counterOrganisedNote}>{fromOrganised} from organised rides</Text>
+                  )}
+                  {count > 0 && placed < count && (
+                    <Text style={s.counterHint}>{count - placed} to place</Text>
+                  )}
+                  {count > 0 && placed >= count && (
+                    <Text style={s.counterHintDone}>{'\u2713'} All placed</Text>
+                  )}
+                </View>
+                <View style={s.counterControls}>
+                  <TouchableOpacity
+                    style={[s.counterBtn, count <= 0 && s.counterBtnDisabled]}
+                    onPress={() => adjustCount(tt.key, -1)}
+                    disabled={count <= 0}
+                  >
+                    <Text style={[s.counterBtnText, count <= 0 && s.counterBtnTextDisabled]}>{'\u2212'}</Text>
+                  </TouchableOpacity>
+                  <Text style={s.counterValue}>{count}</Text>
+                  <TouchableOpacity
+                    style={s.counterBtn}
+                    onPress={() => adjustCount(tt.key, 1)}
+                  >
+                    <Text style={s.counterBtnText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })}
 
           {/* ── Activity palette ── */}
           <View style={s.divider} />
@@ -1034,7 +1091,7 @@ export default function PlanConfigScreen({ navigation, route }) {
   const titles = {
     1: 'What\'s your current level?',
     2: 'What types of training?',
-    3: 'Build your week',
+    3: 'Plan your week',
     4: goal.targetDate ? 'When should it start?' : 'Duration & start date',
     5: 'Choose your coach',
   };
@@ -1042,7 +1099,7 @@ export default function PlanConfigScreen({ navigation, route }) {
   const subtitles = {
     1: 'Be honest \u2014 this helps us set realistic targets',
     2: 'Choose as many as you like',
-    3: 'Set session counts, place them on days, and add any other training',
+    3: 'Add any fixed rides, set session counts, and place them on days',
     4: goal.targetDate ? 'Pick a start date for your training plan' : 'How long and when to begin',
     5: 'Pick a coaching personality that fits your style',
   };
@@ -1084,6 +1141,9 @@ const s = StyleSheet.create({
   radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.primary },
 
   // ── Counters ──────────────────────────────────────────────────────────────
+  counterSectionTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
+  counterSectionHint: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.primary, marginBottom: 10, lineHeight: 18 },
+  counterOrganisedNote: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: '#06B6D4', marginTop: 1 },
   counterRow: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.surface, borderRadius: 14, padding: 14, marginBottom: 8,

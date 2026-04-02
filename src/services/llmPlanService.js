@@ -39,6 +39,8 @@ export async function generatePlanWithLLM(goal, config, onProgress) {
 
   // Try server-based LLM generation first
   if (serverUrl) {
+    onProgress?.('Analysing your readiness...');
+    await delay(800);
     onProgress?.('Consulting your AI coach...');
 
     try {

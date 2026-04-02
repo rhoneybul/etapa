@@ -16,7 +16,7 @@ const FF = fontFamily;
 // Progress stages — each message maps to a target bar percentage.
 // The bar smoothly animates between stages instead of using a fixed timer.
 const PROGRESS_STAGES = {
-  'Preparing your plan...':               0.05,
+  'Analysing your readiness...':          0.05,
   'Consulting your AI coach...':          0.15,
   'Building your training framework...':  0.25,
   'Calculating progressive overload...':  0.40,
@@ -29,7 +29,7 @@ const PROGRESS_STAGES = {
 
 export default function PlanLoadingScreen({ navigation, route }) {
   const { goal, config, requirePaywall } = route.params;
-  const [message, setMessage] = useState('Preparing your plan...');
+  const [message, setMessage] = useState('Analysing your readiness...');
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const progressAnim = useRef(new Animated.Value(0.02)).current;
@@ -116,11 +116,9 @@ export default function PlanLoadingScreen({ navigation, route }) {
         totalHours: Math.round(totalMins / 60),
         coachId: config.coachId,
       });
-      if (requirePaywall) {
-        navigation.replace('Paywall', { nextScreen: 'PlanReady', nextParams: { planId: plan.id } });
-      } else {
-        navigation.replace('PlanReady', { planId: plan.id });
-      }
+      // Always show PlanReady first so the user can preview their plan.
+      // The paywall is shown when they try to start training or view full details.
+      navigation.replace('PlanReady', { planId: plan.id, requirePaywall: !!requirePaywall });
     } catch (err) {
       analytics.events.planGenerationFailed(err.message);
       setMessage('Something went wrong. Retrying...');
@@ -142,7 +140,7 @@ export default function PlanLoadingScreen({ navigation, route }) {
             <Image source={require('../../assets/icon.png')} style={s.logoImage} />
           </Animated.View>
 
-          <Text style={s.title}>Building your plan</Text>
+          <Text style={s.title}>Analysing your readiness</Text>
           <Text style={s.message}>{message}</Text>
 
           <View style={s.progressTrack}>

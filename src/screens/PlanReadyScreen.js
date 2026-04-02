@@ -18,21 +18,24 @@ import { isSubscribed } from '../services/subscriptionService';
 const ADJUSTMENT_SUGGESTIONS = [
   {
     key: 'more_strength',
-    icon: '🏋️',
+    icon: null,
+    color: '#8B5CF6',
     title: 'More strength',
     description: 'Add extra gym sessions for power & injury prevention',
     adjustments: { addStrength: 1 },
   },
   {
     key: 'more_volume',
-    icon: '📈',
+    icon: null,
+    color: '#D97706',
     title: 'More volume',
     description: 'Increase weekly ride time for deeper endurance',
     adjustments: { volumeMultiplier: 1.15 },
   },
   {
     key: 'higher_mileage',
-    icon: '🚴',
+    icon: null,
+    color: '#22C55E',
     title: 'Higher mileage',
     description: 'Push longer distances on your key rides',
     adjustments: { mileageMultiplier: 1.2 },
@@ -52,6 +55,7 @@ function getWeekVolume(plan, weekNum) {
 
 export default function PlanReadyScreen({ navigation, route }) {
   const planId = route.params?.planId;
+  const requirePaywall = route.params?.requirePaywall || false;
   const [plan, setPlan] = useState(null);
   const [goal, setGoal] = useState(null);
   const [assessment, setAssessment] = useState(null);
@@ -142,7 +146,7 @@ export default function PlanReadyScreen({ navigation, route }) {
               {formatShort(start)} {'\u2013'} {formatShort(endDate)}
             </Text>
             <View style={s.aiBadge}>
-              <Text style={s.aiBadgeText}>{'\u2728'} AI-generated plan</Text>
+              <Text style={s.aiBadgeText}>AI-generated plan</Text>
             </View>
           </Animated.View>
 
@@ -308,7 +312,7 @@ export default function PlanReadyScreen({ navigation, route }) {
                     });
                   }}
                 >
-                  <Text style={s.suggestionIcon}>{sug.icon}</Text>
+                  <View style={[s.suggestionDot, { backgroundColor: sug.color || colors.primary }]} />
                   <View style={s.suggestionContent}>
                     <Text style={s.suggestionName}>{sug.title}</Text>
                     <Text style={s.suggestionDesc}>{sug.description}</Text>
@@ -335,26 +339,34 @@ export default function PlanReadyScreen({ navigation, route }) {
             <TouchableOpacity
               style={[s.ctaBtn, { flex: 1 }]}
               onPress={async () => {
-                const subscribed = await isSubscribed();
-                if (!subscribed) {
+                if (requirePaywall) {
                   navigation.replace('Paywall', { nextScreen: 'Home' });
                 } else {
-                  navigation.replace('Home');
+                  const subscribed = await isSubscribed();
+                  if (!subscribed) {
+                    navigation.replace('Paywall', { nextScreen: 'Home' });
+                  } else {
+                    navigation.replace('Home');
+                  }
                 }
               }}
               activeOpacity={0.8}
             >
-              <Text style={s.ctaText}>Start training</Text>
+              <Text style={s.ctaText}>{requirePaywall ? 'Subscribe to start' : 'Start training'}</Text>
             </TouchableOpacity>
           </View>
           <TouchableOpacity
             style={s.detailLink}
             onPress={async () => {
-              const subscribed = await isSubscribed();
-              if (!subscribed) {
+              if (requirePaywall) {
                 navigation.replace('Paywall', { nextScreen: 'PlanOverview', nextParams: { planId: plan.id } });
               } else {
-                navigation.replace('PlanOverview', { planId: plan.id });
+                const subscribed = await isSubscribed();
+                if (!subscribed) {
+                  navigation.replace('Paywall', { nextScreen: 'PlanOverview', nextParams: { planId: plan.id } });
+                } else {
+                  navigation.replace('PlanOverview', { planId: plan.id });
+                }
               }
             }}
             activeOpacity={0.7}
@@ -461,7 +473,7 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', paddingVertical: 14,
     borderTopWidth: 1, borderTopColor: colors.border,
   },
-  suggestionIcon: { fontSize: 22, width: 36 },
+  suggestionDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
   suggestionContent: { flex: 1 },
   suggestionName: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 2 },
   suggestionDesc: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
