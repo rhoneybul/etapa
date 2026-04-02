@@ -35,6 +35,7 @@ import PlanOverviewScreen  from './src/screens/PlanOverviewScreen';
 import PlanReadyScreen     from './src/screens/PlanReadyScreen';
 import CoachChatScreen     from './src/screens/CoachChatScreen';
 import FeedbackScreen      from './src/screens/FeedbackScreen';
+import SupportChatScreen   from './src/screens/SupportChatScreen';
 import ChangeCoachScreen   from './src/screens/ChangeCoachScreen';
 import PaywallScreen       from './src/screens/PaywallScreen';
 import BeginnerProgramScreen from './src/screens/BeginnerProgramScreen';
@@ -115,10 +116,20 @@ function App() {
       setInitialRoute(session ? 'Home' : 'SignIn');
     });
 
-    // Handle notification taps — navigate to Notifications screen
+    // Handle notification taps — route to the appropriate screen
     const responseListener = addNotificationResponseListener(response => {
       const nav = navigationRef.current;
-      if (nav) {
+      if (!nav) return;
+
+      const data = response?.notification?.request?.content?.data;
+      const type = data?.type;
+
+      // Support / admin reply notifications → open the support chat thread
+      if ((type === 'support_reply' || type === 'admin_reply') && data?.feedbackId) {
+        nav.navigate('SupportChat', { feedbackId: data.feedbackId, isNew: false });
+      } else if (type === 'coach_checkin' && data?.planId) {
+        nav.navigate('CoachChat', { planId: data.planId });
+      } else {
         nav.navigate('Notifications');
       }
     });
@@ -213,6 +224,7 @@ function App() {
               <Stack.Screen name="ActivityDetail" component={ActivityDetailScreen} />
               <Stack.Screen name="Settings"       component={SettingsScreen} />
               <Stack.Screen name="Feedback"       component={FeedbackScreen} />
+              <Stack.Screen name="SupportChat"    component={SupportChatScreen} />
               <Stack.Screen name="ChangeCoach"    component={ChangeCoachScreen} />
               <Stack.Screen name="Paywall"        component={PaywallScreen} />
               <Stack.Screen name="BeginnerProgram" component={BeginnerProgramScreen} />

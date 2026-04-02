@@ -287,10 +287,38 @@ function buildPlanPrompt(goal, config) {
     fitnessLevel = 'beginner',
     crossTrainingDays = {},
     crossTrainingDaysFull = null,
+    longRideDay = null,
+    recurringRides = [],
   } = config;
   const weeks = config.weeks || 8;
   const hasTargetDate = !!goal.targetDate;
   const benchmark = RIDER_BENCHMARKS[fitnessLevel] || RIDER_BENCHMARKS.beginner;
+
+  // Recurring/organised rides description
+  const dayNamesLower = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  const dayNamesProper = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  let recurringRidesNote = '';
+  if (recurringRides && recurringRides.length > 0) {
+    const rideDescs = recurringRides.map(r => {
+      const dayIdx = dayNamesLower.indexOf(r.day);
+      const dayLabel = dayIdx >= 0 ? dayNamesProper[dayIdx] : r.day;
+      const parts = [dayLabel];
+      if (r.durationMins) parts.push(`${r.durationMins} min`);
+      if (r.distanceKm) parts.push(`${r.distanceKm} km`);
+      if (r.elevationM) parts.push(`${r.elevationM}m elevation`);
+      if (r.notes) parts.push(`"${r.notes}"`);
+      return `- ${parts.join(', ')}`;
+    });
+    recurringRidesNote = `
+## Organised/recurring rides (the athlete has FIXED weekly rides)
+${rideDescs.join('\n')}
+CRITICAL: These are real rides the athlete does EVERY week (e.g. club rides, group rides, commutes).
+- You MUST include these rides in the plan on their specified days.
+- Build the rest of the plan AROUND these fixed rides — don't schedule other hard sessions on the same day or adjacent days.
+- Use the distance/duration/elevation provided to set appropriate values for these sessions.
+- Mark these in the plan with their notes if provided (e.g. "Club Ride" or "Group Ride").
+- Factor their training load into the weekly total — they count towards the athlete's weekly volume.`;
+  }
 
   // Cross-training load description — supports both legacy (single per day) and full (array per day)
   let crossTrainingNote = '';
@@ -343,8 +371,10 @@ ${goal.targetDate ? `- Event/target date: ${goal.targetDate}` : ''}
 - Available days: ${availableDayNames.join(', ')} (the athlete can ONLY train on these days)
 - Day number mapping: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6
 - Session distribution: ${Object.entries(sessionCounts).map(([k, v]) => `${v}x ${k}`).join(', ')}
+${longRideDay ? `- Long ride day: ${dayNames[typeof longRideDay === 'number' ? longRideDay : dayNames.findIndex(n => n.toLowerCase().startsWith(String(longRideDay).toLowerCase()))] || longRideDay}. The athlete's longest/endurance ride each week MUST be scheduled on this day. This is their preferred day for long rides.` : ''}
 - CRITICAL: You MUST generate EXACTLY ${config.daysPerWeek || 3} sessions per week (unless it's a deload/taper week where you may reduce by 1). Each session MUST be on one of the available days listed above. Do NOT add extra sessions.
 ${crossTrainingNote}
+${recurringRidesNote}
 
 ## CRITICAL rules
 
@@ -556,7 +586,7 @@ router.post('/assess-plan', async (req, res) => {
       weekSummaries.push(`Week ${w}: ${acts.length} sessions, ${Math.round(totalKm)} km, longest ${Math.round(longestKm)} km, ${Math.round(totalMins)} min total`);
     }
 
-    const prompt = `Assess this training plan and provide a success rating with recommendations.
+    const prompt = `Review this training plan and provide an encouraging assessment with CONCRETE, ACTIONABLE suggestions for how the athlete could build on it further.
 
 ## Athlete profile
 - Fitness level: ${config?.fitnessLevel || 'beginner'} (${benchmark.description})
@@ -571,27 +601,46 @@ ${goal.targetDate ? `- Target date: ${goal.targetDate}` : ''}
 - Sessions per week: ${config?.daysPerWeek || 3}
 ${weekSummaries.join('\n')}
 
-## Instructions
+## CRITICAL INSTRUCTIONS — READ CAREFULLY
+
+Your role is to be ENCOURAGING and CONSTRUCTIVE. You are reviewing the plan you just created for this athlete.
+
+1. Do NOT critique the plan. Do NOT point out weaknesses, risks, or things "to watch out for".
+2. Instead, provide CONCRETE SUGGESTIONS for how the athlete could ADD more training to improve further.
+3. Every suggestion MUST be a specific, actionable addition — for example:
+   - "Add one more easy ride per week (30-40 min recovery spin) to boost aerobic base"
+   - "Add a 20-minute core strength session twice a week to improve power transfer"
+   - "Include a weekly yoga or stretching session (15-20 min) to improve flexibility and prevent injury"
+   - "Add a cross-training session like swimming or running once a week for overall fitness"
+   - "Try adding a short brick session: 20-min easy spin followed by a 10-min jog"
+4. NEVER say something negative without immediately providing a concrete way to improve it.
+5. Suggest cross-training activities (running, swimming, yoga, strength work) as ways to complement the cycling plan.
+6. Be specific with durations, frequencies, and intensity levels in every suggestion.
+
 Provide a JSON response with this EXACT structure:
 {
   "successChance": 75,
-  "summary": "One sentence overall assessment",
+  "summary": "One encouraging sentence about the plan and the athlete's readiness",
   "strengths": ["strength 1", "strength 2"],
-  "recommendations": [
-    {"type": "training", "text": "specific recommendation"},
-    {"type": "nutrition", "text": "specific recommendation"},
-    {"type": "recovery", "text": "specific recommendation"}
-  ],
-  "riskFactors": ["risk 1 if any"]
+  "suggestions": [
+    {"type": "training", "title": "Add an extra easy ride", "text": "Adding a 30-40 minute recovery spin on [day] would boost your weekly volume and build aerobic fitness faster."},
+    {"type": "strength", "title": "Include core work", "text": "Two 20-minute core sessions per week (planks, bridges, leg raises) will improve your power transfer on the bike and reduce injury risk."},
+    {"type": "cross_training", "title": "Try yoga for recovery", "text": "A weekly 20-minute yoga session focused on hip flexors and hamstrings will improve your flexibility and help with recovery."},
+    {"type": "nutrition", "title": "Fuel your long rides", "text": "On rides over 90 minutes, aim for 60g of carbs per hour — energy gels, bananas, or rice cakes work well."}
+  ]
 }
 
 Rules:
-- successChance: integer 1-100 representing likelihood of achieving the goal if the plan is followed consistently
-- Be realistic but encouraging — this is meant to motivate, not discourage
-- strengths: 2-3 things the plan does well
-- recommendations: 2-4 specific, actionable suggestions (type: "training", "nutrition", "recovery", "strength", or "mental")
-- riskFactors: 0-2 things to watch out for (empty array if none)
-- Keep all text concise — max 1-2 sentences each
+- successChance: integer 1-100 representing likelihood of achieving the goal. Be optimistic — this plan was built to succeed.
+- summary: ONE encouraging sentence. No caveats, no "but", no warnings.
+- strengths: 2-3 things the plan does well (specific to this plan)
+- suggestions: 3-5 CONCRETE additions the athlete could make. Each MUST have:
+  - type: "training", "strength", "cross_training", "nutrition", "recovery", or "mental"
+  - title: Short action phrase (e.g. "Add an extra easy ride", "Include core work")
+  - text: 1-2 sentences explaining the suggestion with specific details (duration, frequency, intensity)
+- At least one suggestion should be about cross-training (running, swimming, yoga, etc.)
+- At least one suggestion should be about strength/core work
+- NEVER include a "riskFactors" or "watch out for" section — keep it entirely positive and forward-looking
 - Stay in character as the coach
 
 Return ONLY the JSON object, no other text.`;

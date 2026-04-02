@@ -81,7 +81,10 @@ export const api = {
   },
 
   feedback: {
-    submit: (feedback) => request('POST', '/api/feedback', feedback),
+    submit:   (feedback)    => request('POST', '/api/feedback', feedback),
+    list:     ()            => request('GET', '/api/feedback'),
+    messages: (feedbackId)  => request('GET', `/api/feedback/${feedbackId}/messages`),
+    reply:    (feedbackId, message) => request('POST', `/api/feedback/${feedbackId}/messages`, { message }),
   },
 
   notifications: {

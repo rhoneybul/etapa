@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  Animated, Image,
+  Animated, Image, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
@@ -55,6 +55,7 @@ export default function PlanReadyScreen({ navigation, route }) {
   const [plan, setPlan] = useState(null);
   const [goal, setGoal] = useState(null);
   const [assessment, setAssessment] = useState(null);
+  const [loadingAssessment, setLoadingAssessment] = useState(false);
   const assessFade = useRef(new Animated.Value(0)).current;
 
   // Animations
@@ -76,8 +77,10 @@ export default function PlanReadyScreen({ navigation, route }) {
 
         // Fetch coach assessment in background
         if (p.configId) {
+          setLoadingAssessment(true);
           const cfg = await getPlanConfig(p.configId);
           const result = await assessPlan(p, g, cfg);
+          setLoadingAssessment(false);
           if (result && result.successChance) {
             setAssessment(result);
             // Persist assessment to the plan
@@ -219,7 +222,18 @@ export default function PlanReadyScreen({ navigation, route }) {
             </View>
           </Animated.View>
 
-          {/* Coach assessment */}
+          {/* Coach assessment — loading state */}
+          {loadingAssessment && !assessment && (
+            <View style={s.assessCard}>
+              <Text style={s.assessTitle}>Coach's Assessment</Text>
+              <View style={s.assessLoading}>
+                <ActivityIndicator color={colors.primary} size="small" />
+                <Text style={s.assessLoadingText}>Your coach is reviewing the plan...</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Coach assessment — loaded */}
           {assessment && (
             <Animated.View style={[s.assessCard, { opacity: assessFade }]}>
               <Text style={s.assessTitle}>Coach's Assessment</Text>
@@ -246,33 +260,25 @@ export default function PlanReadyScreen({ navigation, route }) {
                 </View>
               )}
 
-              {/* Recommendations */}
-              {assessment.recommendations?.length > 0 && (
+              {/* Suggestions — concrete ways to improve */}
+              {(assessment.suggestions || assessment.recommendations)?.length > 0 && (
                 <View style={s.assessSection}>
-                  <Text style={s.assessSectionTitle}>Recommendations</Text>
-                  {assessment.recommendations.map((rec, i) => (
-                    <View key={i} style={s.assessRow}>
-                      <View style={[s.assessDot, {
-                        backgroundColor: rec.type === 'training' ? colors.primary
-                          : rec.type === 'nutrition' ? '#22C55E'
-                          : rec.type === 'strength' ? '#8B5CF6'
-                          : rec.type === 'mental' ? '#3B82F6'
-                          : '#64748B',
-                      }]} />
-                      <Text style={s.assessText}>{rec.text}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* Risk factors */}
-              {assessment.riskFactors?.length > 0 && (
-                <View style={s.assessSection}>
-                  <Text style={s.assessSectionTitle}>Watch out for</Text>
-                  {assessment.riskFactors.map((risk, i) => (
-                    <View key={i} style={s.assessRow}>
-                      <Text style={s.assessWarn}>{'\u26A0'}</Text>
-                      <Text style={s.assessText}>{risk}</Text>
+                  <Text style={s.assessSectionTitle}>Ways to level up</Text>
+                  {(assessment.suggestions || assessment.recommendations).map((sug, i) => (
+                    <View key={i} style={s.suggestCard}>
+                      <View style={s.suggestHeader}>
+                        <View style={[s.assessDot, {
+                          backgroundColor: sug.type === 'training' ? colors.primary
+                            : sug.type === 'nutrition' ? '#22C55E'
+                            : sug.type === 'strength' ? '#8B5CF6'
+                            : sug.type === 'cross_training' ? '#06B6D4'
+                            : sug.type === 'mental' ? '#3B82F6'
+                            : sug.type === 'recovery' ? '#64748B'
+                            : '#64748B',
+                        }]} />
+                        <Text style={s.suggestTitle}>{sug.title || sug.type}</Text>
+                      </View>
+                      <Text style={s.assessText}>{sug.text}</Text>
                     </View>
                   ))}
                 </View>
@@ -438,6 +444,11 @@ const s = StyleSheet.create({
   assessDot: { width: 8, height: 8, borderRadius: 4, marginTop: 5 },
   assessWarn: { fontSize: 12, width: 16, marginTop: 1 },
   assessText: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, flex: 1, lineHeight: 19 },
+  assessLoading: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  assessLoadingText: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
+  suggestCard: { backgroundColor: 'rgba(217,119,6,0.04)', borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(217,119,6,0.08)' },
+  suggestHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  suggestTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
 
   // Suggestions
   suggestionsCard: {

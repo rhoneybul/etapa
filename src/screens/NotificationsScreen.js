@@ -90,6 +90,14 @@ export default function NotificationsScreen({ navigation }) {
         prev.map(n => n.id === notif.id ? { ...n, read: true } : n)
       );
     }
+
+    // Navigate to the appropriate screen based on notification type
+    const data = notif.data || {};
+    if ((notif.type === 'support_reply' || notif.type === 'admin_reply') && data.feedbackId) {
+      navigation.navigate('SupportChat', { feedbackId: data.feedbackId, isNew: false });
+    } else if (notif.type === 'coach_checkin' && data.planId) {
+      navigation.navigate('CoachChat', { planId: data.planId });
+    }
   };
 
   const handleMarkAllRead = async () => {
