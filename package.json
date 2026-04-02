@@ -11,7 +11,8 @@
     "setup": "npm install && npm --prefix server install && cp -n server/.env.example server/.env 2>/dev/null; cp -n .env.example .env 2>/dev/null; echo '\\n✅ Setup done. Fill in server/.env and .env with your API keys.'",
     "release": "bash scripts/release.sh",
     "release:minor": "bash scripts/release.sh minor",
-    "release:major": "bash scripts/release.sh major"
+    "release:major": "bash scripts/release.sh major",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@expo-google-fonts/poppins": "^0.4.1",
