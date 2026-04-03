@@ -103,6 +103,9 @@ export default function WeekViewScreen({ navigation, route }) {
     await loadPlan();
   };
 
+  // Track background adjustments
+  const [adjustingInBackground, setAdjustingInBackground] = useState(false);
+
   // Add organised ride to current week
   const handleAddOrganisedRide = async () => {
     if (!orgRideForm.description.trim()) {
@@ -137,30 +140,35 @@ export default function WeekViewScreen({ navigation, route }) {
         stravaData: null,
       };
 
-      // Add the ride to the plan
+      // Add the ride immediately so the user sees it
       const updatedPlan = { ...plan };
       updatedPlan.activities = [...(updatedPlan.activities || []), orgRide];
-
-      // Ask AI to adjust this week's other activities to account for the extra ride
-      try {
-        const adjusted = await adjustWeekForOrganisedRide(updatedPlan, week, orgRide, goal);
-        if (adjusted?.activities) {
-          updatedPlan.activities = adjusted.activities;
-        }
-      } catch {
-        // If AI adjustment fails, just keep the ride added without adjustments
-      }
-
       await savePlan(updatedPlan);
       await loadPlan();
 
+      // Close the modal immediately
       setShowOrgRide(false);
       setOrgRideForm({ description: '', durationMins: '', distanceKm: '', elevationM: '' });
       setOrgRideDay(null);
+      setOrgRideProcessing(false);
+
+      // Ask AI to adjust this week's other activities in the background
+      setAdjustingInBackground(true);
+      try {
+        const adjusted = await adjustWeekForOrganisedRide(updatedPlan, week, orgRide, goal);
+        if (adjusted?.activities) {
+          const bgUpdated = { ...updatedPlan, activities: adjusted.activities };
+          await savePlan(bgUpdated);
+          await loadPlan();
+        }
+      } catch {
+        // If AI adjustment fails, the ride is still added — no user-facing error
+      }
+      setAdjustingInBackground(false);
     } catch (err) {
       Alert.alert('Error', 'Failed to add organised ride.');
+      setOrgRideProcessing(false);
     }
-    setOrgRideProcessing(false);
   };
 
   // Inline activity edit via AI
@@ -248,6 +256,14 @@ export default function WeekViewScreen({ navigation, route }) {
             </View>
             <Text style={s.assessBannerText} numberOfLines={2}>{plan.assessment.summary}</Text>
           </TouchableOpacity>
+        )}
+
+        {/* Background adjusting banner */}
+        {adjustingInBackground && (
+          <View style={s.adjustBanner}>
+            <ActivityIndicator color={colors.primary} size="small" />
+            <Text style={s.adjustBannerText}>Your coach is adjusting the week...</Text>
+          </View>
         )}
 
         <ScrollView style={s.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#666" />}>
@@ -344,15 +360,6 @@ export default function WeekViewScreen({ navigation, route }) {
                     </View>
                   </View>
                 ))}
-                {/* Add organised ride */}
-                <TouchableOpacity
-                  style={s.addOrgRideBtn}
-                  onPress={() => { setOrgRideDay(dayIdx); setShowOrgRide(true); }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={s.addOrgRidePlus}>+</Text>
-                  <Text style={s.addOrgRideText}>Add organised ride</Text>
-                </TouchableOpacity>
               </View>
             );
           })}
@@ -535,6 +542,14 @@ const s = StyleSheet.create({
   assessBannerChance: { fontSize: 20, fontWeight: '700', fontFamily: FF.semibold, color: colors.primary },
   assessBannerLabel: { fontSize: 9, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
   assessBannerText: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, flex: 1, lineHeight: 17 },
+
+  adjustBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginHorizontal: 16, marginBottom: 8, paddingHorizontal: 14, paddingVertical: 10,
+    backgroundColor: 'rgba(217,119,6,0.08)', borderRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(217,119,6,0.2)',
+  },
+  adjustBannerText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
 
   list: { flex: 1 },
   dayGroup: { marginBottom: 8 },

@@ -278,12 +278,15 @@ export default function PlanReadyScreen({ navigation, route }) {
                   <Text style={s.assessSectionHint}>Tap a suggestion to apply it to your plan</Text>
                   {(assessment.suggestions || assessment.recommendations).map((sug, i) => {
                     const sugColor = SUGGEST_COLORS[sug.type] || '#64748B';
+                    const appliedKey = sug.title || sug.text || '';
+                    const isApplied = (plan.appliedSuggestions || []).includes(appliedKey);
                     return (
                       <TouchableOpacity
                         key={i}
-                        style={s.suggestCard}
-                        activeOpacity={0.7}
+                        style={[s.suggestCard, isApplied && s.suggestCardApplied]}
+                        activeOpacity={isApplied ? 1 : 0.7}
                         onPress={() => {
+                          if (isApplied) return;
                           navigation.navigate('ApplySuggestion', {
                             planId: plan.id,
                             goalId: goal?.id,
@@ -292,11 +295,14 @@ export default function PlanReadyScreen({ navigation, route }) {
                         }}
                       >
                         <View style={s.suggestHeader}>
-                          <View style={[s.assessDot, { backgroundColor: sugColor }]} />
-                          <Text style={s.suggestTitle}>{sug.title || sug.type}</Text>
-                          <Text style={s.suggestApplyArrow}>{'\u203A'}</Text>
+                          <View style={[s.assessDot, { backgroundColor: isApplied ? '#64748B' : sugColor }]} />
+                          <Text style={[s.suggestTitle, isApplied && s.suggestTitleApplied]}>{sug.title || sug.type}</Text>
+                          {isApplied
+                            ? <Text style={s.suggestAppliedLabel}>{'\u2713'} Applied</Text>
+                            : <Text style={s.suggestApplyArrow}>{'\u203A'}</Text>
+                          }
                         </View>
-                        <Text style={s.assessText}>{sug.text}</Text>
+                        <Text style={[s.assessText, isApplied && s.suggestTextApplied]}>{sug.text}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -446,7 +452,10 @@ const s = StyleSheet.create({
   assessReadinessExplain: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, lineHeight: 16, marginBottom: 10 },
   assessSectionHint: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginBottom: 10 },
   suggestCard: { backgroundColor: 'rgba(217,119,6,0.04)', borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(217,119,6,0.08)' },
-  suggestCardApplying: { opacity: 0.5 },
+  suggestCardApplied: { opacity: 0.45, backgroundColor: 'rgba(100,116,139,0.04)', borderColor: 'rgba(100,116,139,0.08)' },
+  suggestTitleApplied: { color: colors.textMuted },
+  suggestTextApplied: { color: colors.textFaint },
+  suggestAppliedLabel: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: '#64748B' },
   suggestHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   suggestTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, flex: 1 },
   suggestApplyArrow: { fontSize: 22, color: colors.textMid },

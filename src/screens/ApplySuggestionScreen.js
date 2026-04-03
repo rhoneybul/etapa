@@ -46,8 +46,19 @@ export default function ApplySuggestionScreen({ navigation, route }) {
 
   const handleApply = async (dayOfWeek) => {
     if (!plan) return;
-    setStep('applying');
     setPreviousPlan({ ...plan, activities: [...(plan.activities || [])] });
+
+    // Mark this suggestion as applied on the plan immediately
+    const appliedKey = suggestion?.title || suggestion?.text || '';
+    if (appliedKey) {
+      const applied = new Set(plan.appliedSuggestions || []);
+      applied.add(appliedKey);
+      plan.appliedSuggestions = [...applied];
+      await savePlan(plan);
+    }
+
+    // Navigate back immediately — the edit runs in the background
+    navigation.goBack();
 
     try {
       const instruction = dayOfWeek !== undefined && dayOfWeek !== null
@@ -58,15 +69,11 @@ export default function ApplySuggestionScreen({ navigation, route }) {
       const updated = await editPlanWithLLM(plan, goal, instruction, 'plan', () => {}, coachId);
       if (updated) {
         await savePlan(updated);
-        computeChanges(plan, updated);
-        setPlan(updated);
-        setStep('done');
-      } else {
-        setStep('preview');
       }
     } catch (err) {
       console.warn('Failed to apply suggestion:', err);
-      setStep('preview');
+      // Restore the original plan if the update failed
+      if (previousPlan) await savePlan(previousPlan);
     }
   };
 

@@ -76,6 +76,7 @@ export default function PlanDetailPage() {
   const [editForm, setEditForm] = useState<Partial<Activity>>({});
   const [saving, setSaving] = useState(false);
   const [expandedWeeks, setExpandedWeeks] = useState<Set<number>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   const fetchPlan = () => {
     setLoading(true);
@@ -153,6 +154,28 @@ export default function PlanDetailPage() {
     }
   };
 
+  const deletePlan = async () => {
+    if (!plan) return;
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${plan.name || "Untitled Plan"}" for ${plan.userName}? This will permanently remove the plan and all ${plan.activities.length} activities.`
+    );
+    if (!confirmed) return;
+    const doubleConfirm = window.confirm(
+      "This action cannot be undone. Are you absolutely sure?"
+    );
+    if (!doubleConfirm) return;
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/plans/${planId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete plan");
+      router.push("/dashboard/plans");
+    } catch (err) {
+      alert("Failed to delete plan. Please try again.");
+      setDeleting(false);
+    }
+  };
+
   if (loading) return <div className="animate-pulse text-etapa-textMuted">Loading plan...</div>;
   if (error) return <div className="text-red-400">{error}</div>;
   if (!plan) return <div className="text-etapa-textMuted">Plan not found</div>;
@@ -199,6 +222,13 @@ export default function PlanDetailPage() {
           </p>
         </div>
         <Badge value={plan.status} />
+        <button
+          onClick={deletePlan}
+          disabled={deleting}
+          className="ml-2 px-3 py-1.5 bg-red-900/30 text-red-400 border border-red-800 text-xs font-medium rounded-lg hover:bg-red-900/50 disabled:opacity-50 transition-colors"
+        >
+          {deleting ? "Deleting..." : "Delete Plan"}
+        </button>
       </div>
 
       {/* Plan info cards */}

@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { getPlans, getGoals, getWeekActivities, getPlanConfig, updatePlanConfig } from '../services/storageService';
+import { getCrossTrainingLabel } from '../utils/sessionLabels';
 import analytics from '../services/analyticsService';
 
 const DAY_LABELS = [
@@ -365,6 +366,19 @@ export default function PlanOverviewScreen({ navigation, route }) {
                       {v.rideCount > 0 && v.strengthCount > 0 ? ' \u00B7 ' : ''}
                       {v.strengthCount > 0 ? `${v.strengthCount} strength` : ''}
                       {v.totalKm > 0 ? ` \u00B7 ${Math.round(v.totalKm)} km` : ''}
+                      {(() => {
+                        // Show cross-training from config
+                        const ctDays = planConfig?.crossTrainingDaysFull;
+                        if (!ctDays) return '';
+                        const allCt = new Set();
+                        Object.values(ctDays).forEach(arr => {
+                          if (Array.isArray(arr)) arr.forEach(k => allCt.add(k));
+                        });
+                        if (allCt.size === 0) return '';
+                        const prefix = (v.rideCount > 0 || v.strengthCount > 0 || v.totalKm > 0) ? ' \u00B7 ' : '';
+                        const labels = Array.from(allCt).map(k => getCrossTrainingLabel(k));
+                        return prefix + labels.join(', ');
+                      })()}
                     </Text>
                   </View>
                   <Text style={s.weekArrow}>{'\u203A'}</Text>

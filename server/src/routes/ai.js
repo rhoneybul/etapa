@@ -11,7 +11,24 @@ const _fetch = typeof globalThis.fetch === 'function'
   ? globalThis.fetch
   : (() => { const f = require('node-fetch'); return f.default || f; })();
 
+const { supabase } = require('../lib/supabase');
+const { sendPushToUser } = require('../lib/pushService');
+const crypto = require('crypto');
+
 const getAnthropicKey = () => process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY || null;
+
+// ── In-memory job store for async plan generation ───────────────────────────
+// Jobs are short-lived (~30s) so in-memory is fine. Cleaned up after 10 min.
+const planJobs = new Map();
+const JOB_TTL = 10 * 60 * 1000; // 10 minutes
+
+function cleanOldJobs() {
+  const now = Date.now();
+  for (const [id, job] of planJobs) {
+    if (now - job.createdAt > JOB_TTL) planJobs.delete(id);
+  }
+}
+setInterval(cleanOldJobs, 60000);
 
 // ── Coach personas (server-side mirror of client coaches.js) ──────────────
 const COACHES = {
@@ -292,6 +309,7 @@ function buildPlanPrompt(goal, config) {
     crossTrainingDaysFull = null,
     longRideDay = null,
     recurringRides = [],
+    oneOffRides = [],
   } = config;
   const weeks = config.weeks || 8;
   const hasTargetDate = !!goal.targetDate;
@@ -321,6 +339,28 @@ CRITICAL: These are real rides the athlete does EVERY week (e.g. club rides, gro
 - Use the distance/duration/elevation provided to set appropriate values for these sessions.
 - Mark these in the plan with their notes if provided (e.g. "Club Ride" or "Group Ride").
 - Factor their training load into the weekly total — they count towards the athlete's weekly volume.`;
+  }
+
+  // One-off planned rides
+  let oneOffRidesNote = '';
+  if (oneOffRides && oneOffRides.length > 0) {
+    const rideDescs = oneOffRides.map(r => {
+      const parts = [r.date];
+      if (r.durationMins) parts.push(`${r.durationMins} min`);
+      if (r.distanceKm) parts.push(`${r.distanceKm} km`);
+      if (r.elevationM) parts.push(`${r.elevationM}m elevation`);
+      if (r.notes) parts.push(`"${r.notes}"`);
+      return `- ${parts.join(', ')}`;
+    });
+    oneOffRidesNote = `
+## Planned one-off rides (specific dates)
+${rideDescs.join('\n')}
+CRITICAL: These are specific rides on exact dates that the athlete has committed to.
+- Calculate which week number and day these fall on based on the plan start date.
+- Include these rides in the plan on their exact date.
+- Build the surrounding days to prepare for and recover from these rides (especially if they are long/hard).
+- Taper training load in the days before big planned rides.
+- Reduce training load on the day after to allow recovery.`;
   }
 
   // Cross-training load description — supports both legacy (single per day) and full (array per day)
@@ -378,6 +418,7 @@ ${longRideDay ? `- Long ride day: ${dayNames[typeof longRideDay === 'number' ? l
 - CRITICAL: You MUST generate EXACTLY ${config.daysPerWeek || 3} sessions per week (unless it's a deload/taper week where you may reduce by 1). Each session MUST be on one of the available days listed above. Do NOT add extra sessions.
 ${crossTrainingNote}
 ${recurringRidesNote}
+${oneOffRidesNote}
 
 ## CRITICAL rules
 
@@ -985,5 +1026,278 @@ Only include the plan_update block when you are actually making changes. For que
     res.status(500).json({ error: 'Failed to get coach response', detail: err.message });
   }
 });
+
+// ── Async plan generation ────────────────────────────────────────────────────
+// POST /api/ai/generate-plan-async — kick off generation, return jobId immediately
+router.post('/generate-plan-async', (req, res) => {
+  const apiKey = getAnthropicKey();
+  if (!apiKey) {
+    return res.status(503).json({ error: 'AI plan generation not configured.' });
+  }
+
+  const { goal, config } = req.body;
+  if (!goal || !config) {
+    return res.status(400).json({ error: 'Missing goal or config.' });
+  }
+
+  const userId = req.user?.id;
+  const jobId = `pj_${crypto.randomBytes(8).toString('hex')}`;
+
+  const job = {
+    id: jobId,
+    userId,
+    status: 'generating',       // generating | completed | failed | cancelled
+    progress: 'Building your plan...',
+    activities: [],             // partial results streamed in
+    plan: null,                 // final plan object
+    error: null,
+    createdAt: Date.now(),
+    goal,
+    config,
+  };
+  planJobs.set(jobId, job);
+
+  // Fire and forget — run generation in background
+  runAsyncGeneration(jobId, apiKey, goal, config, userId).catch(err => {
+    console.error(`[async-gen] Job ${jobId} failed:`, err);
+  });
+
+  res.json({ jobId });
+});
+
+// GET /api/ai/plan-job/:jobId — poll for status
+router.get('/plan-job/:jobId', (req, res) => {
+  const job = planJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  // Only let the owner check their job
+  if (job.userId && req.user?.id && job.userId !== req.user.id) {
+    return res.status(403).json({ error: 'Not your job' });
+  }
+
+  res.json({
+    jobId: job.id,
+    status: job.status,
+    progress: job.progress,
+    activitiesCount: job.activities.length,
+    activities: job.activities,   // send partial activities so client can preview
+    plan: job.plan,
+    error: job.error,
+  });
+});
+
+// DELETE /api/ai/plan-job/:jobId — cancel a running job
+router.delete('/plan-job/:jobId', (req, res) => {
+  const job = planJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  if (job.userId && req.user?.id && job.userId !== req.user.id) {
+    return res.status(403).json({ error: 'Not your job' });
+  }
+
+  job.status = 'cancelled';
+  job.progress = 'Cancelled';
+  // If a plan was already saved, delete it
+  if (job.plan?.id) {
+    supabase.from('activities').delete().eq('plan_id', job.plan.id).then(() =>
+      supabase.from('plans').delete().eq('id', job.plan.id)
+    ).catch(() => {});
+  }
+
+  res.json({ success: true });
+});
+
+/**
+ * Run plan generation in the background.
+ * Updates the job object in-memory as it progresses.
+ * When done, saves the plan to Supabase and sends a push notification.
+ */
+async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
+  const job = planJobs.get(jobId);
+  if (!job) return;
+
+  const progressSteps = [
+    'Consulting your AI coach...',
+    'Building your training framework...',
+    'Calculating progressive overload...',
+    'Adding periodisation and taper...',
+    'Scheduling your sessions...',
+    'Building your personalised plan...',
+  ];
+
+  // Timed progress updates
+  let stepIdx = 0;
+  const progressInterval = setInterval(() => {
+    if (job.status === 'cancelled') { clearInterval(progressInterval); return; }
+    if (stepIdx < progressSteps.length) {
+      job.progress = progressSteps[stepIdx++];
+    }
+  }, 3500);
+
+  try {
+    const prompt = buildPlanPrompt(goal, config);
+    const systemWithCoach = COACH_SYSTEM_PROMPT + getCoachPromptBlock(config.coachId);
+
+    const response = await _fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 8192,
+        system: systemWithCoach,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    clearInterval(progressInterval);
+
+    if (job.status === 'cancelled') return;
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error(`[async-gen] Job ${jobId} API error:`, response.status, errBody);
+      job.status = 'failed';
+      job.error = 'AI service error';
+      job.progress = 'Something went wrong';
+      return;
+    }
+
+    const data = await response.json();
+    const text = data?.content?.[0]?.text || '[]';
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+
+    if (!jsonMatch) {
+      job.status = 'failed';
+      job.error = 'Could not parse AI response';
+      job.progress = 'Something went wrong';
+      return;
+    }
+
+    if (job.status === 'cancelled') return;
+
+    const rawActivities = JSON.parse(jsonMatch[0]);
+    job.progress = 'Finalising your plan...';
+
+    // Build the full plan object (mirrors client-side buildPlanFromActivities)
+    let startDate;
+    if (config.startDate) {
+      startDate = new Date(config.startDate);
+    } else {
+      const now = new Date();
+      const dow = now.getDay();
+      const daysUntilMon = dow === 0 ? 1 : dow === 1 ? 0 : 8 - dow;
+      startDate = new Date(now);
+      startDate.setDate(startDate.getDate() + daysUntilMon);
+    }
+    startDate.setHours(0, 0, 0, 0);
+
+    const planId = `plan_${crypto.randomBytes(8).toString('hex')}`;
+    const activities = rawActivities.map((a, i) => ({
+      id: `act_${crypto.randomBytes(6).toString('hex')}_${i}`,
+      planId,
+      week: a.week,
+      dayOfWeek: a.dayOfWeek,
+      type: a.type || 'ride',
+      subType: a.subType || (a.type === 'strength' ? null : 'endurance'),
+      title: a.title || 'Session',
+      description: a.description || '',
+      notes: a.notes || null,
+      durationMins: a.durationMins || 45,
+      distanceKm: a.type === 'strength' ? null : (a.distanceKm || null),
+      effort: a.effort || 'moderate',
+      completed: false,
+      completedAt: null,
+      stravaActivityId: null,
+      stravaData: null,
+    }));
+
+    const plan = {
+      id: planId,
+      goalId: goal.id,
+      configId: config.id,
+      name: goal.planName || null,
+      status: 'active',
+      startDate: startDate.toISOString(),
+      weeks: config.weeks || 8,
+      currentWeek: 1,
+      activities,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (config.paymentStatus) plan.paymentStatus = config.paymentStatus;
+
+    job.activities = activities;
+    job.plan = plan;
+
+    if (job.status === 'cancelled') return;
+
+    // Save to Supabase
+    if (userId) {
+      try {
+        const planRow = {
+          id: plan.id,
+          user_id: userId,
+          goal_id: plan.goalId || null,
+          config_id: plan.configId || null,
+          name: plan.name || null,
+          status: plan.status,
+          start_date: plan.startDate,
+          weeks: plan.weeks,
+          current_week: plan.currentWeek || 1,
+          created_at: plan.createdAt,
+        };
+        await supabase.from('plans').insert(planRow);
+
+        const actRows = activities.map(a => ({
+          id: a.id,
+          user_id: userId,
+          plan_id: planId,
+          week: a.week,
+          day_of_week: a.dayOfWeek ?? null,
+          type: a.type,
+          sub_type: a.subType || null,
+          title: a.title,
+          description: a.description || null,
+          notes: a.notes || null,
+          duration_mins: a.durationMins || null,
+          distance_km: a.distanceKm || null,
+          effort: a.effort || 'moderate',
+          completed: false,
+          completed_at: null,
+        }));
+        await supabase.from('activities').insert(actRows);
+      } catch (dbErr) {
+        console.error(`[async-gen] Job ${jobId} DB save error:`, dbErr);
+        // Plan is still in memory for client to pick up
+      }
+    }
+
+    job.status = 'completed';
+    job.progress = 'Plan ready!';
+
+    // Send push notification
+    if (userId) {
+      sendPushToUser(userId, {
+        title: 'Your plan is ready!',
+        body: `${plan.name || 'Your training plan'} has been built — ${activities.length} sessions over ${plan.weeks} weeks.`,
+        data: { screen: 'PlanReady', planId: plan.id },
+        type: 'plan_ready',
+      }).catch(err => console.error(`[async-gen] Push notification error:`, err));
+    }
+  } catch (err) {
+    clearInterval(progressInterval);
+    console.error(`[async-gen] Job ${jobId} error:`, err);
+    const job = planJobs.get(jobId);
+    if (job && job.status !== 'cancelled') {
+      job.status = 'failed';
+      job.error = err.message;
+      job.progress = 'Something went wrong';
+    }
+  }
+}
 
 module.exports = router;

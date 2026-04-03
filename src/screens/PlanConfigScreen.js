@@ -171,6 +171,14 @@ export default function PlanConfigScreen({ navigation, route }) {
   const [showAddRecurring, setShowAddRecurring] = useState(false);
   const [recurringForm, setRecurringForm] = useState({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' });
 
+  // One-off planned rides (specific date, not recurring)
+  // Each: { id, date (ISO string), durationMins, distanceKm, elevationM, notes }
+  const [oneOffRides, setOneOffRides] = useState(
+    existingConfig?.oneOffRides || []
+  );
+  const [showAddOneOff, setShowAddOneOff] = useState(false);
+  const [oneOffForm, setOneOffForm] = useState({ date: '', durationMins: '', distanceKm: '', elevationM: '', notes: '' });
+
   // Long ride day — auto-detected from weekend assignments, user can override
   const [longRideDayOverride, setLongRideDayOverride] = useState(
     existingConfig?.longRideDay || null
@@ -365,6 +373,33 @@ export default function PlanConfigScreen({ navigation, route }) {
     setRecurringRides(prev => prev.filter(r => r.id !== id));
   };
 
+  // ── One-off ride helpers ──
+  const addOneOffRide = () => {
+    if (!oneOffForm.date || !/^\d{4}-\d{2}-\d{2}$/.test(oneOffForm.date)) {
+      Alert.alert('Enter a date', 'Use YYYY-MM-DD format (e.g. 2026-04-09).');
+      return;
+    }
+    if (!oneOffForm.durationMins && !oneOffForm.distanceKm) {
+      Alert.alert('Add details', 'Enter at least a duration or distance.');
+      return;
+    }
+    const ride = {
+      id: Date.now().toString(36) + '_oo',
+      date: oneOffForm.date,
+      durationMins: oneOffForm.durationMins ? parseInt(oneOffForm.durationMins, 10) : null,
+      distanceKm: oneOffForm.distanceKm ? parseFloat(oneOffForm.distanceKm) : null,
+      elevationM: oneOffForm.elevationM ? parseInt(oneOffForm.elevationM, 10) : null,
+      notes: oneOffForm.notes || '',
+    };
+    setOneOffRides(prev => [...prev, ride]);
+    setOneOffForm({ date: '', durationMins: '', distanceKm: '', elevationM: '', notes: '' });
+    setShowAddOneOff(false);
+  };
+
+  const removeOneOffRide = (id) => {
+    setOneOffRides(prev => prev.filter(r => r.id !== id));
+  };
+
   // ── Long ride day auto-detection ──
   // Prefer Saturday or Sunday if assigned as a ride day; user can override
   const autoLongRideDay = (() => {
@@ -446,6 +481,7 @@ export default function PlanConfigScreen({ navigation, route }) {
       crossTrainingDaysFull: crossTrainingDays,
       startDate: startDate.toISOString(),
       recurringRides,
+      oneOffRides,
       longRideDay: effectiveLongRideDay,
       ...(beginnerDefaults?.paymentStatus && { paymentStatus: beginnerDefaults.paymentStatus }),
       ...(adjustment && { adjustment, adjustmentData }),
@@ -654,6 +690,115 @@ export default function PlanConfigScreen({ navigation, route }) {
             )}
           </View>
 
+          {/* ── One-off planned rides ── */}
+          <View style={s.organisedSection}>
+            <View style={s.organisedHeader}>
+              <Text style={s.organisedHeading}>Planned rides</Text>
+              <Text style={s.organisedOptional}>optional</Text>
+            </View>
+            <Text style={s.organisedHint}>
+              Got a specific ride on a set date? (e.g. sportive, big day out, charity ride). Add it and your coach will plan around it.
+            </Text>
+
+            {oneOffRides.map(ride => (
+              <View key={ride.id} style={s.organisedCard}>
+                <View style={s.organisedCardRow}>
+                  <View style={[s.organisedDayBadge, { backgroundColor: '#22C55E18' }]}>
+                    <Text style={[s.organisedDayBadgeText, { color: '#22C55E' }]}>
+                      {(() => {
+                        const [y, m, d] = ride.date.split('-').map(Number);
+                        const dt = new Date(y, m - 1, d);
+                        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                        return `${d} ${months[m - 1]}`;
+                      })()}
+                    </Text>
+                  </View>
+                  <View style={s.organisedCardDetails}>
+                    {ride.durationMins ? <Text style={s.organisedDetail}>{ride.durationMins} min</Text> : null}
+                    {ride.distanceKm ? <Text style={s.organisedDetail}>{ride.distanceKm} km</Text> : null}
+                    {ride.elevationM ? <Text style={s.organisedDetail}>{ride.elevationM}m elev</Text> : null}
+                  </View>
+                  <TouchableOpacity onPress={() => removeOneOffRide(ride.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={s.organisedRemove}>{'\u00D7'}</Text>
+                  </TouchableOpacity>
+                </View>
+                {ride.notes ? <Text style={s.organisedNotes}>{ride.notes}</Text> : null}
+              </View>
+            ))}
+
+            {showAddOneOff ? (
+              <View style={s.organisedForm}>
+                <Text style={s.organisedFormLabel}>Date (YYYY-MM-DD)</Text>
+                <TextInput
+                  style={s.organisedFormInput}
+                  placeholder="e.g. 2026-04-09"
+                  placeholderTextColor={colors.textFaint}
+                  keyboardType="default"
+                  value={oneOffForm.date}
+                  onChangeText={v => setOneOffForm(f => ({ ...f, date: v }))}
+                />
+
+                <View style={s.organisedFormInputRow}>
+                  <View style={s.organisedFormInputGroup}>
+                    <Text style={s.organisedFormInputLabel}>Duration</Text>
+                    <TextInput
+                      style={s.organisedFormInput}
+                      placeholder="mins"
+                      placeholderTextColor={colors.textFaint}
+                      keyboardType="numeric"
+                      value={oneOffForm.durationMins}
+                      onChangeText={v => setOneOffForm(f => ({ ...f, durationMins: v }))}
+                    />
+                  </View>
+                  <View style={s.organisedFormInputGroup}>
+                    <Text style={s.organisedFormInputLabel}>Distance</Text>
+                    <TextInput
+                      style={s.organisedFormInput}
+                      placeholder="km"
+                      placeholderTextColor={colors.textFaint}
+                      keyboardType="numeric"
+                      value={oneOffForm.distanceKm}
+                      onChangeText={v => setOneOffForm(f => ({ ...f, distanceKm: v }))}
+                    />
+                  </View>
+                  <View style={s.organisedFormInputGroup}>
+                    <Text style={s.organisedFormInputLabel}>Elevation</Text>
+                    <TextInput
+                      style={s.organisedFormInput}
+                      placeholder="m"
+                      placeholderTextColor={colors.textFaint}
+                      keyboardType="numeric"
+                      value={oneOffForm.elevationM}
+                      onChangeText={v => setOneOffForm(f => ({ ...f, elevationM: v }))}
+                    />
+                  </View>
+                </View>
+
+                <TextInput
+                  style={s.organisedFormNotesInput}
+                  placeholder="Describe the ride (e.g. '200km sportive in the hills')"
+                  placeholderTextColor={colors.textFaint}
+                  value={oneOffForm.notes}
+                  onChangeText={v => setOneOffForm(f => ({ ...f, notes: v }))}
+                />
+
+                <View style={s.organisedFormActions}>
+                  <TouchableOpacity style={s.organisedFormCancelBtn} onPress={() => { setShowAddOneOff(false); setOneOffForm({ date: '', durationMins: '', distanceKm: '', elevationM: '', notes: '' }); }}>
+                    <Text style={s.organisedFormCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={s.organisedFormAddBtn} onPress={addOneOffRide}>
+                    <Text style={s.organisedFormAddText}>Add ride</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity style={s.organisedAddTrigger} onPress={() => setShowAddOneOff(true)} activeOpacity={0.7}>
+                <Text style={s.organisedAddTriggerPlus}>+</Text>
+                <Text style={s.organisedAddTriggerText}>Add a planned ride</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
           {/* ── Session counters (how many can you do?) ── */}
           <View style={s.divider} />
           <Text style={s.counterSectionTitle}>How many sessions per week?</Text>
@@ -711,6 +856,18 @@ export default function PlanConfigScreen({ navigation, route }) {
             {totalCyclingPlaced}/{totalSessions} cycling sessions placed
           </Text>
 
+          {/* Search box for activities — above the palette */}
+          <View style={s.activitySearchWrap}>
+            <TextInput
+              style={s.activitySearchInput}
+              placeholder="Search activities (e.g. row, swim, yoga)"
+              placeholderTextColor={colors.textFaint}
+              value={activitySearch}
+              onChangeText={setActivitySearch}
+              returnKeyType="search"
+            />
+          </View>
+
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.paletteScroll} contentContainerStyle={s.paletteContent}>
             {/* Cycling types */}
             {cyclingPalette.map(cp => {
@@ -758,18 +915,6 @@ export default function PlanConfigScreen({ navigation, route }) {
               );
             })}
           </ScrollView>
-
-          {/* Search box for activities */}
-          <View style={s.activitySearchWrap}>
-            <TextInput
-              style={s.activitySearchInput}
-              placeholder="Search activities (e.g. row, swim, yoga)"
-              placeholderTextColor={colors.textFaint}
-              value={activitySearch}
-              onChangeText={setActivitySearch}
-              returnKeyType="search"
-            />
-          </View>
 
           {/* Selected activity indicator */}
           {selectedActivity && (
@@ -1212,7 +1357,7 @@ const s = StyleSheet.create({
   paletteSectionText: { fontSize: 9, fontWeight: '600', fontFamily: FF.semibold, color: colors.textFaint, textTransform: 'uppercase', letterSpacing: 0.5 },
 
   // ── Activity search ────────────────────────────────────────────────────
-  activitySearchWrap: { paddingHorizontal: 16, marginTop: 8 },
+  activitySearchWrap: { paddingHorizontal: 0, marginTop: 8, marginBottom: 12, alignSelf: 'stretch' },
   activitySearchInput: {
     backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: colors.border,
     paddingHorizontal: 14, paddingVertical: 10, fontSize: 13, fontFamily: FF.regular, color: colors.text,

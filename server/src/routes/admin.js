@@ -478,6 +478,29 @@ router.patch('/plans/:planId/activities/:activityId', async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
+// ── DELETE /api/admin/plans/:id — delete a plan and its activities (admin) ──
+router.delete('/plans/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Delete activities first (in case there's no FK cascade)
+    const { error: actErr } = await supabase
+      .from('activities')
+      .delete()
+      .eq('plan_id', id);
+    if (actErr) throw actErr;
+
+    // Delete the plan itself
+    const { error: planErr } = await supabase
+      .from('plans')
+      .delete()
+      .eq('id', id);
+    if (planErr) throw planErr;
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 // ── GET /api/admin/payments — all subscriptions / payments ───────────────────
 router.get('/payments', async (req, res, next) => {
   try {

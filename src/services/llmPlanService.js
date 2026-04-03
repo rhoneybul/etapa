@@ -34,12 +34,71 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// ── Async plan generation (background-safe) ─────────────────────────────────
+
+/**
+ * Kick off async plan generation on the server. Returns a jobId immediately.
+ */
+export async function startAsyncPlanGeneration(goal, config) {
+  const serverUrl = getServerUrl();
+  if (!serverUrl) throw new Error('Server not configured');
+
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch(`${serverUrl}/api/ai/generate-plan-async`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    body: JSON.stringify({ goal, config }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to start plan generation');
+  }
+
+  const { jobId } = await res.json();
+  return jobId;
+}
+
+/**
+ * Poll the status of an async plan generation job.
+ */
+export async function pollPlanJob(jobId) {
+  const serverUrl = getServerUrl();
+  if (!serverUrl) throw new Error('Server not configured');
+
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch(`${serverUrl}/api/ai/plan-job/${jobId}`, {
+    headers: { ...authHeaders },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to check job status');
+  }
+
+  return res.json();
+}
+
+/**
+ * Cancel an async plan generation job.
+ */
+export async function cancelPlanJob(jobId) {
+  const serverUrl = getServerUrl();
+  if (!serverUrl) return;
+
+  const authHeaders = await getAuthHeaders();
+  await fetch(`${serverUrl}/api/ai/plan-job/${jobId}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders },
+  }).catch(() => {});
+}
+
 export async function generatePlanWithLLM(goal, config, onProgress) {
   const serverUrl = getServerUrl();
 
   // Try server-based LLM generation first
   if (serverUrl) {
-    onProgress?.('Analysing your readiness...');
+    onProgress?.('Building your plan...');
     await delay(800);
     onProgress?.('Consulting your AI coach...');
 
@@ -235,7 +294,7 @@ export async function editPlanWithLLM(plan, goal, instruction, scope, onProgress
   }
 
   // Local fallback: simple adjustments
-  onProgress?.('Analysing your request...');
+  onProgress?.('Building your plan...');
   await delay(800);
   onProgress?.('Adjusting plan...');
   await delay(600);
