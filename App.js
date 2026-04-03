@@ -13,7 +13,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { View } from 'react-native';
 import { useFonts, Poppins_300Light, Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold } from '@expo-google-fonts/poppins';
 import * as SplashScreen from 'expo-splash-screen';
 import { getSession } from './src/services/authService';
@@ -139,33 +139,20 @@ function App() {
     return () => responseListener?.remove();
   }, []);
 
-  // Hide native splash as soon as fonts are loaded — we show our own branded screen
+  // Keep native splash visible until the app is fully ready (fonts + route determined).
+  // This avoids a jarring "two splash screens" effect.
   useEffect(() => {
-    if (fontsLoaded) {
+    if (fontsLoaded && initialRoute && maintenanceMode !== null) {
       SplashScreen.hideAsync().catch(() => {});
     }
-  }, [fontsLoaded]);
+  }, [fontsLoaded, initialRoute, maintenanceMode]);
 
   const onLayoutRootView = useCallback(async () => {
-    // No-op now — splash is hidden via useEffect above
+    // No-op — splash is hidden via useEffect above
   }, []);
 
-  // Before fonts load, show nothing (native splash is still visible)
-  if (!fontsLoaded) return null;
-
-  // Fonts loaded but still determining route / maintenance — show branded loading
-  if (!initialRoute || maintenanceMode === null) {
-    return (
-      <SafeAreaProvider>
-        <StatusBar style="light" />
-        <View style={loadingStyles.container}>
-          <Image source={require('./assets/icon.png')} style={loadingStyles.logo} />
-          <Text style={loadingStyles.title}>ETAPA</Text>
-          <Text style={loadingStyles.tagline}>train with purpose</Text>
-        </View>
-      </SafeAreaProvider>
-    );
-  }
+  // Before everything is ready, show nothing (native splash stays visible)
+  if (!fontsLoaded || !initialRoute || maintenanceMode === null) return null;
 
   // Show maintenance screen if enabled
   if (maintenanceMode) {
@@ -241,24 +228,5 @@ function App() {
     </SafeAreaProvider>
   );
 }
-
-const loadingStyles = StyleSheet.create({
-  container: {
-    flex: 1, backgroundColor: '#000000',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  logo: {
-    width: 80, height: 80, borderRadius: 22, marginBottom: 20,
-    borderWidth: 1, borderColor: 'rgba(217,119,6,0.2)',
-  },
-  title: {
-    fontSize: 28, fontWeight: '600', fontFamily: 'Poppins_600SemiBold',
-    color: '#FFFFFF', letterSpacing: 3, textTransform: 'uppercase',
-  },
-  tagline: {
-    fontSize: 14, fontWeight: '300', fontFamily: 'Poppins_300Light',
-    color: '#606068', marginTop: 4, letterSpacing: 0.5,
-  },
-});
 
 export default Sentry.wrap(App);

@@ -45,3 +45,5 @@ server/.env
 # misc
 logs/
 coverage/
+
+etapa-**.json
