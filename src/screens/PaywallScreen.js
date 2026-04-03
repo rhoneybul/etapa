@@ -282,8 +282,7 @@ export default function PaywallScreen({ navigation, route }) {
           <TouchableOpacity
             style={s.holdingPrimaryBtn}
             onPress={() => {
-              setShowHolding(false);
-              navigation.navigate('GoalSetup', { requirePaywall: true });
+              navigation.replace('GoalSetup', { requirePaywall: true });
             }}
             activeOpacity={0.85}
           >
@@ -295,8 +294,7 @@ export default function PaywallScreen({ navigation, route }) {
           <TouchableOpacity
             style={s.holdingNewCyclistBtn}
             onPress={() => {
-              setShowHolding(false);
-              navigation.navigate('BeginnerProgram');
+              navigation.replace('BeginnerProgram');
             }}
             activeOpacity={0.8}
           >

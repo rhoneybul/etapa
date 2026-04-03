@@ -1,7 +1,7 @@
 /**
  * Settings screen — Strava connect/disconnect, reset plan, sign out.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Switch, Linking, TextInput,
 } from 'react-native';
@@ -34,6 +34,15 @@ export default function SettingsScreen({ navigation }) {
   const [togglingNotif, setTogglingNotif] = useState(false);
   const [userPrefs, setUserPrefsState] = useState({ units: 'km', displayName: '' });
   const [editingName, setEditingName] = useState(false);
+
+  // Guard against double-tap paywall navigation
+  const navigatingRef = useRef(false);
+  const goPaywall = useCallback((params) => {
+    if (navigatingRef.current) return;
+    navigatingRef.current = true;
+    navigation.navigate('Paywall', params);
+    setTimeout(() => { navigatingRef.current = false; }, 1000);
+  }, [navigation]);
   const [nameInput, setNameInput] = useState('');
   const [starterPriceLabel, setStarterPriceLabel] = useState(null);
 
@@ -335,7 +344,7 @@ export default function SettingsScreen({ navigation }) {
         <View style={s.card}>
           <TouchableOpacity style={s.row} onPress={() => {
             if (!subscription?.active) {
-              navigation.navigate('Paywall', { fromHome: true, nextScreen: 'Home' });
+              goPaywall({ fromHome: true, nextScreen: 'Home' });
               return;
             }
             navigation.navigate('ChangeCoach');
@@ -465,7 +474,7 @@ export default function SettingsScreen({ navigation }) {
           <>
             <Text style={s.sectionLabel}>SUBSCRIPTION</Text>
             <View style={s.card}>
-              <TouchableOpacity style={s.row} onPress={() => navigation.navigate('Paywall', { fromHome: true, nextScreen: 'Home' })}>
+              <TouchableOpacity style={s.row} onPress={() => goPaywall({ fromHome: true, nextScreen: 'Home' })}>
                 <View style={s.rowLeft}>
                   <View>
                     <Text style={s.rowTitle}>Subscribe</Text>
@@ -483,7 +492,7 @@ export default function SettingsScreen({ navigation }) {
         <View style={s.card}>
           <TouchableOpacity style={s.row} onPress={() => {
             if (!subscription?.active) {
-              navigation.navigate('Paywall', { fromHome: true, nextScreen: 'Home' });
+              goPaywall({ fromHome: true, nextScreen: 'Home' });
               return;
             }
             setUnreadCount(0);
@@ -541,7 +550,7 @@ export default function SettingsScreen({ navigation }) {
             style={s.row}
             onPress={() => {
               if (!subscription?.active) {
-                navigation.navigate('Paywall', { fromHome: true, nextScreen: 'Home' });
+                goPaywall({ fromHome: true, nextScreen: 'Home' });
                 return;
               }
               const current = preferences?.coach_checkin || 'weekly';

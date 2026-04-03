@@ -4,7 +4,7 @@
  * they start training. Shows key stats, a mini volume chart,
  * and a prominent CTA to begin.
  */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
   Animated, Image, ActivityIndicator,
@@ -47,6 +47,9 @@ export default function PlanReadyScreen({ navigation, route }) {
   const [loadingAssessment, setLoadingAssessment] = useState(false);
   const [units, setUnits] = useState('km');
   const assessFade = useRef(new Animated.Value(0)).current;
+
+  // Guard against double-tap navigation
+  const navigatingRef = useRef(false);
 
   // Animations
   const fadeIn = useRef(new Animated.Value(0)).current;
@@ -329,15 +332,22 @@ export default function PlanReadyScreen({ navigation, route }) {
             <TouchableOpacity
               style={[s.ctaBtn, { flex: 1 }]}
               onPress={async () => {
-                if (requirePaywall) {
-                  navigation.navigate('Paywall', { nextScreen: 'Home' });
-                } else {
-                  const subscribed = await isSubscribed();
-                  if (!subscribed) {
+                if (navigatingRef.current) return;
+                navigatingRef.current = true;
+                try {
+                  if (requirePaywall) {
                     navigation.navigate('Paywall', { nextScreen: 'Home' });
                   } else {
-                    navigation.replace('Home');
+                    const subscribed = await isSubscribed();
+                    if (!subscribed) {
+                      navigation.navigate('Paywall', { nextScreen: 'Home' });
+                    } else {
+                      navigation.replace('Home');
+                    }
                   }
+                } finally {
+                  // Reset after a short delay so the guard clears when coming back
+                  setTimeout(() => { navigatingRef.current = false; }, 1000);
                 }
               }}
               activeOpacity={0.8}

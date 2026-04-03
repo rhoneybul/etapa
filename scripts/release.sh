@@ -51,7 +51,7 @@ echo ""
 npx eas build --platform ios --profile production --auto-submit
 
 echo ""
-echo "Building + submitting to play store
+echo "Building + submitting to play store"
 echo ""
 
 # Build and auto-submit to TestFlight
