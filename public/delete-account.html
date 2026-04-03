@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delete Account — Etapa</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #000;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 16px;
+      padding: 40px;
+      max-width: 480px;
+      width: 100%;
+    }
+    .logo {
+      width: 48px; height: 48px;
+      background: #D97706;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 24px;
+    }
+    .logo svg { width: 28px; height: 28px; color: #fff; }
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: #94a3b8;
+      line-height: 1.5;
+      margin-bottom: 28px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    input, textarea, select {
+      width: 100%;
+      padding: 12px 14px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 10px;
+      color: #fff;
+      font-family: inherit;
+      font-size: 14px;
+      margin-bottom: 18px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus, textarea:focus, select:focus {
+      border-color: #D97706;
+    }
+    input::placeholder, textarea::placeholder {
+      color: #555;
+    }
+    select {
+      appearance: none;
+      cursor: pointer;
+    }
+    textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+    .required { color: #D97706; }
+    .btn {
+      width: 100%;
+      padding: 14px;
+      background: #dc2626;
+      color: #fff;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s, opacity 0.2s;
+    }
+    .btn:hover { background: #b91c1c; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .info {
+      margin-top: 20px;
+      padding: 14px;
+      background: rgba(217, 119, 6, 0.08);
+      border: 1px solid rgba(217, 119, 6, 0.2);
+      border-radius: 10px;
+      font-size: 12px;
+      color: #D97706;
+      line-height: 1.5;
+    }
+    .success {
+      text-align: center;
+      padding: 20px 0;
+    }
+    .success-icon {
+      width: 56px; height: 56px;
+      background: rgba(34, 197, 94, 0.12);
+      border: 2px solid #22c55e;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px;
+      font-size: 24px;
+      color: #22c55e;
+    }
+    .success h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .success p {
+      font-size: 14px;
+      color: #94a3b8;
+      line-height: 1.5;
+    }
+    .error-msg {
+      padding: 12px;
+      background: rgba(220, 38, 38, 0.1);
+      border: 1px solid rgba(220, 38, 38, 0.3);
+      border-radius: 10px;
+      font-size: 13px;
+      color: #f87171;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .back-link {
+      display: block;
+      text-align: center;
+      margin-top: 20px;
+      font-size: 13px;
+      color: #64748b;
+      text-decoration: none;
+    }
+    .back-link:hover { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+      </svg>
+    </div>
+
+    <div id="form-view">
+      <h1>Request Account Deletion</h1>
+      <p class="subtitle">
+        We're sorry to see you go. Submit this form and we'll permanently delete your account and all associated data within 30 days.
+      </p>
+
+      <div id="error-box" class="error-msg"></div>
+
+      <form id="deletion-form" onsubmit="handleSubmit(event)">
+        <label for="email">Email address <span class="required">*</span></label>
+        <input type="email" id="email" name="email" placeholder="The email you signed up with" required>
+
+        <label for="reason">Reason for leaving</label>
+        <select id="reason" name="reason">
+          <option value="">Select a reason (optional)</option>
+          <option value="no_longer_needed">I no longer need the app</option>
+          <option value="too_expensive">Too expensive</option>
+          <option value="not_useful">The app wasn't useful for me</option>
+          <option value="privacy">Privacy concerns</option>
+          <option value="switched">Switched to another app</option>
+          <option value="other">Other</option>
+        </select>
+
+        <label for="additional">Anything else you'd like us to know?</label>
+        <textarea id="additional" name="additional" placeholder="Optional — help us improve"></textarea>
+
+        <button type="submit" class="btn" id="submit-btn">Request Deletion</button>
+      </form>
+
+      <div class="info">
+        <strong>What gets deleted:</strong> Your account, training plans, activities, coach chat history, subscription data, and all personal information. This action is irreversible.
+      </div>
+    </div>
+
+    <div id="success-view" style="display:none">
+      <div class="success">
+        <div class="success-icon">&#10003;</div>
+        <h2>Request Submitted</h2>
+        <p>
+          We've received your account deletion request. Your data will be permanently removed within 30 days and we'll send a confirmation to your email address.
+        </p>
+      </div>
+    </div>
+
+    <a href="https://etapa.cc" class="back-link">Back to Etapa</a>
+  </div>
+
+  <script>
+    // Use the API URL — in production this would be your server domain
+    const API_URL = window.location.hostname === 'localhost'
+      ? 'http://localhost:3001'
+      : (window.ETAPA_API_URL || window.location.origin);
+
+    async function handleSubmit(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submit-btn');
+      const errorBox = document.getElementById('error-box');
+      errorBox.style.display = 'none';
+
+      const email = document.getElementById('email').value.trim();
+      const reason = document.getElementById('reason').value;
+      const additionalInfo = document.getElementById('additional').value.trim();
+
+      if (!email) {
+        errorBox.textContent = 'Please enter your email address.';
+        errorBox.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Submitting...';
+
+      try {
+        const res = await fetch(`${API_URL}/api/account-deletion`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, reason, additionalInfo }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Something went wrong');
+        }
+
+        document.getElementById('form-view').style.display = 'none';
+        document.getElementById('success-view').style.display = 'block';
+      } catch (err) {
+        errorBox.textContent = err.message || 'Failed to submit. Please try again or email support@etapa.cc directly.';
+        errorBox.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Request Deletion';
+      }
+    }
+  </script>
+</body>
+</html>

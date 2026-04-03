@@ -12,6 +12,7 @@ if (process.env.SENTRY_DSN) {
 
 const express = require('express');
 const cors    = require('cors');
+const path    = require('path');
 
 const usersRouter        = require('./routes/users');
 const goalsRouter        = require('./routes/goals');
@@ -48,9 +49,82 @@ app.post('/api/revenuecat/webhook', express.json(), revenueCatWebhookHandler);
 
 app.use(express.json());
 
+// Serve static pages (account deletion form, etc.)
+app.use(express.static(path.join(__dirname, '../../public')));
+
 // ── Health check (no auth needed) ────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({ ok: true, ts: new Date().toISOString() });
+});
+
+// ── Public routes (no auth) ──────────────────────────────────────────────────
+// Account deletion request — must be public (user may not be able to log in)
+app.post('/api/account-deletion', async (req, res) => {
+  const { email, reason, additionalInfo } = req.body;
+  if (!email?.trim()) {
+    return res.status(400).json({ error: 'Email address is required' });
+  }
+
+  try {
+    // 1. Persist to feedback table as a deletion request
+    const { supabase } = require('./lib/supabase');
+    const feedbackId = `del_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await supabase.from('feedback').insert({
+      id: feedbackId,
+      user_id: null,
+      category: 'support',
+      message: `[ACCOUNT DELETION REQUEST]\n\nEmail: ${email.trim()}\nReason: ${reason || 'Not provided'}\nAdditional info: ${additionalInfo || 'None'}`,
+      status: 'open',
+    }).catch(() => {});
+
+    // 2. Create a Linear issue so it shows up in the support queue
+    const LINEAR_API_KEY = process.env.LINEAR_API_KEY || '';
+    const LINEAR_TEAM_ID = process.env.LINEAR_TEAM_ID || '';
+    const LINEAR_SUPPORT_LABEL_ID = process.env.LINEAR_SUPPORT_LABEL_ID || null;
+
+    if (LINEAR_API_KEY && LINEAR_TEAM_ID) {
+      const mutation = `
+        mutation CreateIssue($input: IssueCreateInput!) {
+          issueCreate(input: $input) { success issue { id identifier url } }
+        }
+      `;
+      const description = [
+        '## Account Deletion Request',
+        '',
+        `**Email:** ${email.trim()}`,
+        `**Reason:** ${reason || 'Not provided'}`,
+        `**Additional info:** ${additionalInfo || 'None'}`,
+        '',
+        '---',
+        '',
+        `Submitted: ${new Date().toISOString()}`,
+        '',
+        '> Please verify the account exists, delete all user data, and confirm deletion to the user via email.',
+      ].join('\n');
+
+      await fetch('https://api.linear.app/graphql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: LINEAR_API_KEY },
+        body: JSON.stringify({
+          query: mutation,
+          variables: {
+            input: {
+              teamId: LINEAR_TEAM_ID,
+              title: `[Account Deletion] ${email.trim()}`,
+              description,
+              priority: 2,
+              ...(LINEAR_SUPPORT_LABEL_ID ? { labelIds: [LINEAR_SUPPORT_LABEL_ID] } : {}),
+            },
+          },
+        }),
+      }).catch(err => console.error('[account-deletion] Linear error:', err.message));
+    }
+
+    res.json({ success: true, message: 'Your account deletion request has been submitted. We will process it within 30 days and confirm via email.' });
+  } catch (err) {
+    console.error('[account-deletion] Error:', err);
+    res.status(500).json({ error: 'Failed to submit request. Please email support directly.' });
+  }
 });
 
 // ── Protected routes ──────────────────────────────────────────────────────────

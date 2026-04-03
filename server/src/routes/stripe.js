@@ -3,6 +3,25 @@ const { supabase } = require('../lib/supabase');
 
 const router = Router();
 
+// ── Slack notification helper ─────────────────────────────────────────────────
+const SLACK_WEBHOOK_URL = process.env.SLACK_SUBSCRIPTIONS_WEBHOOK_URL;
+
+async function notifySlack(text, blocks) {
+  if (!SLACK_WEBHOOK_URL) return;
+  try {
+    const _fetch = typeof globalThis.fetch === 'function'
+      ? globalThis.fetch
+      : (() => { const f = require('node-fetch'); return f.default || f; })();
+    await _fetch(SLACK_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(blocks ? { text, blocks } : { text }),
+    });
+  } catch (err) {
+    console.error('[slack] Failed to send notification:', err.message);
+  }
+}
+
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) return null;
@@ -670,6 +689,17 @@ async function webhookHandler(req, res) {
         }, { onConflict: 'id' });
 
         if (error) console.error('Supabase upsert error (webhook):', error);
+
+        // Notify Slack on cancellations and trial endings
+        if (sub.status === 'canceled' || event.type === 'customer.subscription.deleted') {
+          const email = sub.customer_email || sub.metadata?.email || userId;
+          notifySlack(`🚫 *Subscription cancelled* — ${email} (${plan})`);
+        } else if (sub.status === 'active' && sub.trial_end) {
+          // Trial converted to paid
+          const email = sub.customer_email || sub.metadata?.email || userId;
+          const amount = sub.plan?.amount ? `$${(sub.plan.amount / 100).toFixed(2)}` : plan;
+          notifySlack(`✅ *Trial converted* — ${email} is now paying (${amount}/${sub.plan?.interval || plan})`);
+        }
         break;
       }
 
@@ -677,8 +707,24 @@ async function webhookHandler(req, res) {
         const session = event.data.object;
         const userId = session.metadata?.userId;
         const plan = session.metadata?.plan;
+        const email = session.customer_email || session.customer_details?.email || userId;
+        const amountTotal = session.amount_total ? `$${(session.amount_total / 100).toFixed(2)}` : null;
 
-        // Only handle one-time payments here — subscriptions are handled above
+        // Notify Slack for ALL successful checkouts
+        const planLabel = {
+          monthly: 'Monthly',
+          annual: 'Annual',
+          lifetime: 'Lifetime',
+          starter: 'Starter',
+        }[plan] || plan || 'Unknown';
+
+        if (session.mode === 'subscription') {
+          notifySlack(`💰 *New subscription* — ${email} subscribed to ${planLabel}${amountTotal ? ` (${amountTotal})` : ''} with 7-day free trial`);
+        } else {
+          notifySlack(`💰 *New purchase* — ${email} bought ${planLabel}${amountTotal ? ` (${amountTotal})` : ''}`);
+        }
+
+        // Only handle one-time payments in DB here — subscriptions are handled above
         if (!userId || (plan !== 'starter' && plan !== 'lifetime')) break;
 
         const piId = typeof session.payment_intent === 'string'
