@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, Animated, Easing, Image,
-  TouchableOpacity, ScrollView, Alert, AppState,
+  TouchableOpacity, ScrollView, Alert, AppState, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
@@ -26,7 +26,7 @@ const POLL_INTERVAL = 2000; // 2 seconds
 
 // Marketing / tips shown while the plan generates
 const MARKETING_TIPS = [
-  { icon: '🎯', title: 'Personalised to you', body: 'Your AI coach analyses your fitness level, goals, and schedule to build a plan that fits your life.' },
+  { icon: '', title: 'Personalised to you', body: 'Your AI coach analyses your fitness level, goals, and schedule to build a plan that fits your life.' },
   { icon: '📈', title: 'Progressive overload', body: 'Each week builds on the last — volume and intensity increase gradually so your body adapts safely.' },
   { icon: '🔄', title: 'Built-in recovery', body: 'Deload weeks and rest days are scheduled automatically to prevent burnout and overtraining.' },
   { icon: '✏️', title: 'Fully editable', body: 'Need to move a session or skip a week? Chat with your coach to adjust the plan anytime.' },
@@ -312,7 +312,7 @@ export default function PlanLoadingScreen({ navigation, route }) {
 
           {/* Marketing tip card */}
           <Animated.View style={[s.tipCard, { opacity: tipFade }]}>
-            <Text style={s.tipIcon}>{tip.icon}</Text>
+            {tip.icon ? <Text style={s.tipIcon}>{tip.icon}</Text> : null}
             <Text style={s.tipTitle}>{tip.title}</Text>
             <Text style={s.tipBody}>{tip.body}</Text>
           </Animated.View>
@@ -381,7 +381,7 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(217,119,6,0.06)', borderRadius: 16, borderWidth: 1,
     borderColor: 'rgba(217,119,6,0.15)', padding: 20, marginBottom: 20, alignItems: 'center',
   },
-  tipIcon: { fontSize: 28, marginBottom: 10 },
+  tipIcon: { fontSize: 28, marginBottom: 10, fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif' },
   tipTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 6, textAlign: 'center' },
   tipBody: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center', lineHeight: 19 },
 

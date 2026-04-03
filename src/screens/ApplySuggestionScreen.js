@@ -35,7 +35,8 @@ export default function ApplySuggestionScreen({ navigation, route }) {
   const [units, setUnits] = useState('km');
   const [changes, setChanges] = useState({ added: [], modified: [], removed: [] });
 
-  const needsDay = suggestion?.type === 'strength' || suggestion?.type === 'cross_training';
+  // All suggestion types benefit from day selection so the coach knows where to add/adjust sessions
+  const needsDay = true;
   const sugColor = SUGGEST_COLORS[suggestion?.type] || '#64748B';
 
   useEffect(() => {
@@ -46,9 +47,13 @@ export default function ApplySuggestionScreen({ navigation, route }) {
 
   const handleApply = async (dayOfWeek) => {
     if (!plan) return;
-    setPreviousPlan({ ...plan, activities: [...(plan.activities || [])] });
+    const before = { ...plan, activities: [...(plan.activities || [])] };
+    setPreviousPlan(before);
 
-    // Mark this suggestion as applied on the plan immediately
+    // Show loading state immediately
+    setStep('applying');
+
+    // Mark this suggestion as applied on the plan
     const appliedKey = suggestion?.title || suggestion?.text || '';
     if (appliedKey) {
       const applied = new Set(plan.appliedSuggestions || []);
@@ -56,9 +61,6 @@ export default function ApplySuggestionScreen({ navigation, route }) {
       plan.appliedSuggestions = [...applied];
       await savePlan(plan);
     }
-
-    // Navigate back immediately — the edit runs in the background
-    navigation.goBack();
 
     try {
       const instruction = dayOfWeek !== undefined && dayOfWeek !== null
@@ -69,12 +71,16 @@ export default function ApplySuggestionScreen({ navigation, route }) {
       const updated = await editPlanWithLLM(plan, goal, instruction, 'plan', () => {}, coachId);
       if (updated) {
         await savePlan(updated);
+        computeChanges(before, updated);
       }
     } catch (err) {
       console.warn('Failed to apply suggestion:', err);
       // Restore the original plan if the update failed
-      if (previousPlan) await savePlan(previousPlan);
+      await savePlan(before);
     }
+
+    // Show done state
+    setStep('done');
   };
 
   const computeChanges = (before, after) => {
@@ -136,22 +142,21 @@ export default function ApplySuggestionScreen({ navigation, route }) {
               Applying this will update your training plan. Your coach will adjust the volume and scheduling to fit.
             </Text>
 
-            {needsDay && (
-              <View style={s.daySection}>
-                <Text style={s.daySectionTitle}>Which day should this go on?</Text>
-                <View style={s.dayGrid}>
-                  {DAY_NAMES.map((name, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      style={[s.dayBtn, selectedDay === idx && s.dayBtnSelected]}
-                      onPress={() => setSelectedDay(idx)}
-                    >
-                      <Text style={[s.dayBtnText, selectedDay === idx && s.dayBtnTextSelected]}>{name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+            <View style={s.daySection}>
+              <Text style={s.daySectionTitle}>Which day should this apply to?</Text>
+              <Text style={s.daySectionHint}>Optional — your coach will decide if you skip this</Text>
+              <View style={s.dayGrid}>
+                {DAY_NAMES.map((name, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[s.dayBtn, selectedDay === idx && s.dayBtnSelected]}
+                    onPress={() => setSelectedDay(selectedDay === idx ? null : idx)}
+                  >
+                    <Text style={[s.dayBtnText, selectedDay === idx && s.dayBtnTextSelected]}>{name}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-            )}
+            </View>
           </ScrollView>
 
           <View style={s.ctaWrap}>
@@ -160,9 +165,8 @@ export default function ApplySuggestionScreen({ navigation, route }) {
                 <Text style={s.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[s.applyBtn, needsDay && selectedDay === null && s.applyBtnDisabled]}
-                onPress={() => handleApply(needsDay ? selectedDay : undefined)}
-                disabled={needsDay && selectedDay === null}
+                style={s.applyBtn}
+                onPress={() => handleApply(selectedDay !== null ? selectedDay : undefined)}
                 activeOpacity={0.8}
               >
                 <Text style={s.applyBtnText}>Apply to plan</Text>
@@ -273,7 +277,8 @@ const s = StyleSheet.create({
 
   // Day picker
   daySection: { marginTop: 24 },
-  daySectionTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 12, textAlign: 'center' },
+  daySectionTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4, textAlign: 'center' },
+  daySectionHint: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginBottom: 12, textAlign: 'center' },
   dayGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
   dayBtn: {
     backgroundColor: colors.surface, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16,

@@ -37,6 +37,16 @@ export default function WeekViewScreen({ navigation, route }) {
   const [showOrgRide, setShowOrgRide] = useState(false);
   const [orgRideDay, setOrgRideDay] = useState(null);
   const [orgRideForm, setOrgRideForm] = useState({ description: '', durationMins: '', distanceKm: '', elevationM: '' });
+
+  // Compute the actual date for a given day index in the current week
+  const getWeekDayInfo = (dayIdx) => {
+    if (!plan?.startDate) return { label: DAY_LABELS_FULL[dayIdx], dateStr: '' };
+    const start = new Date(plan.startDate);
+    const d = new Date(start);
+    d.setDate(d.getDate() + (week - 1) * 7 + dayIdx);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return { label: DAY_LABELS_FULL[dayIdx].slice(0, 3), dateStr: `${d.getDate()} ${months[d.getMonth()]}` };
+  };
   const [orgRideProcessing, setOrgRideProcessing] = useState(false);
 
   const loadPlan = useCallback(async () => {
@@ -108,6 +118,10 @@ export default function WeekViewScreen({ navigation, route }) {
 
   // Add organised ride to current week
   const handleAddOrganisedRide = async () => {
+    if (orgRideDay === null) {
+      Alert.alert('Pick a day', 'Select which day this organised ride is on.');
+      return;
+    }
     if (!orgRideForm.description.trim()) {
       Alert.alert('Describe the ride', 'Enter a description for the organised ride.');
       return;
@@ -377,17 +391,7 @@ export default function WeekViewScreen({ navigation, route }) {
           {/* Floating add organised ride for rest days */}
           <TouchableOpacity
             style={s.addOrgRideFloating}
-            onPress={() => {
-              // Show picker for which day
-              const dayOptions = DAY_LABELS_FULL.map((label, idx) => ({
-                text: label,
-                onPress: () => { setOrgRideDay(idx); setShowOrgRide(true); },
-              }));
-              Alert.alert('Add organised ride', 'Which day?', [
-                ...dayOptions,
-                { text: 'Cancel', style: 'cancel' },
-              ]);
-            }}
+            onPress={() => { setOrgRideDay(null); setShowOrgRide(true); }}
             activeOpacity={0.7}
           >
             <Text style={s.addOrgRideFloatingText}>+ Add organised ride this week</Text>
@@ -419,9 +423,26 @@ export default function WeekViewScreen({ navigation, route }) {
             <View style={s.orgModalSheet}>
               <View style={s.orgModalHandle} />
               <Text style={s.orgModalTitle}>Add organised ride</Text>
-              <Text style={s.orgModalSub}>
-                {orgRideDay !== null ? `${DAY_LABELS_FULL[orgRideDay]}, Week ${week}` : `Week ${week}`}
-              </Text>
+
+              {/* Day / date picker for current week */}
+              <Text style={s.orgModalLabel}>Which day?</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.orgDayScroll} contentContainerStyle={s.orgDayScrollContent}>
+                {DAY_LABELS_FULL.map((_, idx) => {
+                  const { label, dateStr } = getWeekDayInfo(idx);
+                  const selected = orgRideDay === idx;
+                  return (
+                    <TouchableOpacity
+                      key={idx}
+                      style={[s.orgDayPill, selected && s.orgDayPillSelected]}
+                      onPress={() => setOrgRideDay(idx)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[s.orgDayShort, selected && s.orgDayTextSelected]}>{label.toUpperCase()}</Text>
+                      <Text style={[s.orgDayDate, selected && s.orgDayTextSelected]}>{dateStr}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
 
               <Text style={s.orgModalLabel}>Describe the ride</Text>
               <TextInput
@@ -655,6 +676,20 @@ const s = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, fontFamily: FF.regular, color: colors.text,
   },
   orgModalNote: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginBottom: 16, lineHeight: 17 },
+
+  // Day picker inside modal
+  orgDayScroll: { marginBottom: 16 },
+  orgDayScrollContent: { paddingRight: 8 },
+  orgDayPill: {
+    alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10,
+    borderRadius: 10, borderWidth: 1.5, borderColor: colors.border,
+    marginRight: 8, backgroundColor: colors.bg, minWidth: 58,
+  },
+  orgDayPillSelected: { borderColor: colors.primary, backgroundColor: colors.primary + '18' },
+  orgDayShort: { fontSize: 10, fontWeight: '700', fontFamily: FF.semibold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  orgDayDate: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginTop: 3 },
+  orgDayTextSelected: { color: colors.primary },
+
   orgModalAddBtn: {
     backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: 'center',
   },

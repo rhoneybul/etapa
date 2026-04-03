@@ -56,6 +56,7 @@ export default function HomeScreen({ navigation }) {
   const [unlocking, setUnlocking] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [starterPriceLabel, setStarterPriceLabel] = useState(null); // fetched from Stripe
+  const [subscribed, setSubscribed] = useState(true); // assumed true until checked
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const cachedPlanHash = useRef(null); // Track plan state to avoid unnecessary reloads
   const initialLoadDone = useRef(false);
@@ -81,15 +82,12 @@ export default function HomeScreen({ navigation }) {
       getCurrentUser(), getPlans(), getGoals(), isStravaConnected(), getUserPrefs(),
     ]);
 
-    // Gate: if user has plans but no subscription, go straight to paywall.
-    // We return without clearing loading so the loading screen stays visible
-    // until the navigation completes — no flash of the plans page.
+    // Check subscription status — but don't redirect; let unsubscribed users browse their plan
     if (p.length > 0) {
-      const subscribed = await isSubscribed();
-      if (!subscribed) {
-        navigation.replace('Paywall', { fromHome: true, nextScreen: 'Home' });
-        return;
-      }
+      const subCheck = await isSubscribed();
+      setSubscribed(subCheck);
+    } else {
+      setSubscribed(true); // no plan yet, doesn't matter
     }
 
     // Fetch subscription plan type (starter, monthly, annual)
@@ -421,6 +419,21 @@ export default function HomeScreen({ navigation }) {
               <View style={s.iconBtn}><Text style={s.iconBtnText}>{'\u2022\u2022\u2022'}</Text></View>
             </TouchableOpacity>
           </View>
+
+          {/* Subscribe banner — shown when user has a plan but no active subscription */}
+          {!subscribed && plans.length > 0 && (
+            <TouchableOpacity
+              style={s.subscribeBanner}
+              onPress={() => navigation.navigate('Paywall', { nextScreen: 'Home' })}
+              activeOpacity={0.85}
+            >
+              <View style={s.subscribeBannerLeft}>
+                <Text style={s.subscribeBannerTitle}>Subscribe to start training</Text>
+                <Text style={s.subscribeBannerSub}>You're browsing in preview mode — subscribe to unlock full access</Text>
+              </View>
+              <Text style={s.subscribeBannerArrow}>{'\u203A'}</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Beginner program card — only show if no beginner plan exists */}
           {!plans.some(p => p.name === 'Get into Cycling') && (
@@ -786,6 +799,19 @@ const s = StyleSheet.create({
   // Minimalist icon button (three dots)
   iconBtn: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   iconBtnText: { fontSize: 14, color: colors.textMuted, letterSpacing: 1 },
+
+  // Subscribe banner (shown when unsubscribed with a plan)
+  subscribeBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    marginHorizontal: 20, marginBottom: 12,
+    backgroundColor: colors.primary + '12',
+    borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: colors.primary + '30',
+  },
+  subscribeBannerLeft: { flex: 1 },
+  subscribeBannerTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, marginBottom: 2 },
+  subscribeBannerSub: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 17 },
+  subscribeBannerArrow: { fontSize: 22, color: colors.primary, fontWeight: '300', marginLeft: 8 },
 
   // New plan button
   newPlanBtn: {

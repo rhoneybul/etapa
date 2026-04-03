@@ -728,14 +728,10 @@ export default function PlanConfigScreen({ navigation, route }) {
 
             {showAddOneOff ? (
               <View style={s.organisedForm}>
-                <Text style={s.organisedFormLabel}>Date (YYYY-MM-DD)</Text>
-                <TextInput
-                  style={s.organisedFormInput}
-                  placeholder="e.g. 2026-04-09"
-                  placeholderTextColor={colors.textFaint}
-                  keyboardType="default"
+                <DatePicker
+                  label="Date"
                   value={oneOffForm.date}
-                  onChangeText={v => setOneOffForm(f => ({ ...f, date: v }))}
+                  onChange={v => setOneOffForm(f => ({ ...f, date: v }))}
                 />
 
                 <View style={s.organisedFormInputRow}>
@@ -951,13 +947,20 @@ export default function PlanConfigScreen({ navigation, route }) {
                   activeOpacity={0.7}
                 >
                   <Text style={s.dayShort}>{day.short}</Text>
-                  {acts.length > 0 && (
-                    <Text style={s.dayScheduledTag}>Scheduled</Text>
-                  )}
+                  {/* Show recurring ride name if this day has one, otherwise just show activity pills */}
                   {acts.length > 0 ? (
                     <View style={s.dayStack}>
                       {acts.map((actKey, idx) => {
                         const actColor = getActivityColor(actKey);
+                        // For outdoor activities, show recurring ride name if one exists for this day
+                        let displayLabel = getActivityLabel(actKey);
+                        if (actKey === 'outdoor') {
+                          const dayRecurring = recurringRides.filter(r => r.day === day.key);
+                          const outdoorsBefore = acts.slice(0, idx).filter(a => a === 'outdoor').length;
+                          if (dayRecurring[outdoorsBefore]?.notes) {
+                            displayLabel = dayRecurring[outdoorsBefore].notes;
+                          }
+                        }
                         return (
                           <TouchableOpacity
                             key={`${actKey}-${idx}`}
@@ -966,7 +969,7 @@ export default function PlanConfigScreen({ navigation, route }) {
                             activeOpacity={0.7}
                           >
                             <View style={[s.stackDot, { backgroundColor: actColor }]} />
-                            <Text style={[s.stackLabel, { color: actColor }]} numberOfLines={1}>{getActivityLabel(actKey)}</Text>
+                            <Text style={[s.stackLabel, { color: actColor }]} numberOfLines={1}>{displayLabel}</Text>
                             <Text style={[s.stackRemove, { color: actColor }]}>{'\u00D7'}</Text>
                           </TouchableOpacity>
                         );
@@ -1383,6 +1386,7 @@ const s = StyleSheet.create({
   },
   dayShort: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
   dayScheduledTag: { fontSize: 8, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E', letterSpacing: 0.3, marginBottom: 3, textTransform: 'uppercase' },
+  dayRecurringName: { fontSize: 8, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, marginBottom: 3, textAlign: 'center', paddingHorizontal: 2 },
   dayStack: { width: '100%', alignItems: 'center', gap: 3 },
   stackPill: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
