@@ -46,15 +46,45 @@ export default function PlansPage() {
   const router = useRouter();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/plans")
-      .then((r) => r.json())
-      .then((data) => setPlans(Array.isArray(data) ? data : []))
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok) {
+          setError(data.error || `API error ${r.status}`);
+          return;
+        }
+        if (Array.isArray(data)) {
+          setPlans(data);
+        } else if (data.error) {
+          setError(data.error);
+        } else {
+          setPlans([]);
+        }
+      })
+      .catch((err) => setError(err.message || "Failed to fetch plans"))
       .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="animate-pulse text-etapa-textMuted">Loading plans...</div>;
+
+  if (error) return (
+    <div>
+      <h1 className="text-lg font-semibold text-white mb-6">Plans</h1>
+      <div className="bg-red-900/20 border border-red-900/40 rounded-xl p-5 text-sm text-red-400">
+        <p className="font-medium mb-1">Failed to load plans</p>
+        <p className="text-red-400/70">{error}</p>
+        <button
+          onClick={() => { setError(null); setLoading(true); window.location.reload(); }}
+          className="mt-3 px-4 py-2 bg-red-900/30 border border-red-900/40 rounded-lg text-xs text-red-300 hover:bg-red-900/50 transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  );
 
   const activePlans = plans.filter((p) => p.status === "active");
   const totalActivities = plans.reduce((sum, p) => sum + p.activityCount, 0);

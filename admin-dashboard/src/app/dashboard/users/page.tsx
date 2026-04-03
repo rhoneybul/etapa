@@ -28,6 +28,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [sendingCheckin, setSendingCheckin] = useState<string | null>(null);
 
   const fetchUsers = () => {
     setLoading(true);
@@ -66,6 +67,26 @@ export default function UsersPage() {
       console.error(err);
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handleSendCheckin = async (user: User) => {
+    if (!window.confirm(`Send a coach check-in notification to ${user.name || user.email}?`)) return;
+
+    setSendingCheckin(user.id);
+    try {
+      const res = await fetch(`/api/users/${user.id}/coach-checkin`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`Check-in sent!\n\nCoach: ${data.coachName}\nMessage: "${data.message}"`);
+      } else {
+        alert(`Failed: ${data.error || "Unknown error"}`);
+      }
+    } catch (err) {
+      alert("Failed to send check-in. Check the console for details.");
+      console.error(err);
+    } finally {
+      setSendingCheckin(null);
     }
   };
 
@@ -121,13 +142,23 @@ export default function UsersPage() {
             <span className="text-xs text-etapa-textMid">{u.lastSignInAt ? new Date(u.lastSignInAt).toLocaleDateString() : "\u2014"}</span>
           )},
           { key: "actions", label: "", render: (u: User) => (
-            <button
-              onClick={() => handleDelete(u)}
-              disabled={deleting === u.id}
-              className="text-xs text-red-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {deleting === u.id ? "Deleting..." : "Delete"}
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => handleSendCheckin(u)}
+                disabled={sendingCheckin === u.id || u.planCount === 0}
+                className="text-xs text-etapa-primary hover:text-amber-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title={u.planCount === 0 ? "User has no plans" : "Send coach check-in"}
+              >
+                {sendingCheckin === u.id ? "Sending..." : "Check-in"}
+              </button>
+              <button
+                onClick={() => handleDelete(u)}
+                disabled={deleting === u.id}
+                className="text-xs text-red-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {deleting === u.id ? "Deleting..." : "Delete"}
+              </button>
+            </div>
           )},
         ]}
         data={users}

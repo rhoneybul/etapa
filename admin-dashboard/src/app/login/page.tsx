@@ -41,7 +41,9 @@ function LoginContent() {
           <div className="mb-4 p-3 bg-red-900/20 border border-red-900/40 rounded-lg text-sm text-red-400">
             {error === "auth"
               ? "Authentication failed. Please try again."
-              : "Access denied. Your account does not have admin permissions."}
+              : error === "forbidden"
+                ? "Access denied. Your account does not have admin permissions. Ask an existing admin to grant you access."
+                : "Access denied. Your account does not have admin permissions."}
           </div>
         )}
 

@@ -16,7 +16,7 @@ import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 import { useFonts, Poppins_300Light, Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold } from '@expo-google-fonts/poppins';
 import * as SplashScreen from 'expo-splash-screen';
-import { getSession } from './src/services/authService';
+import { getSession, getCurrentUser, signOut, onAuthStateChange } from './src/services/authService';
 import { hydrateFromServer } from './src/services/storageService';
 import { checkStripeReturn } from './src/services/subscriptionService';
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from './src/services/revenueCatService';
@@ -98,6 +98,24 @@ function App() {
 
     getSession().then(async session => {
       if (session) {
+        // Verify the session is still valid against the server.
+        // getSession() reads from cache — a deleted account or expired token
+        // will still return a session. getUser() makes a server call.
+        try {
+          const user = await getCurrentUser();
+          if (!user) {
+            // Session is stale — sign out and send to login
+            await signOut().catch(() => {});
+            setInitialRoute('SignIn');
+            return;
+          }
+        } catch {
+          // Network error verifying — sign out to be safe
+          await signOut().catch(() => {});
+          setInitialRoute('SignIn');
+          return;
+        }
+
         analytics.identify(session.user?.id, { email: session.user?.email });
 
         // Link RevenueCat to the authenticated user
@@ -136,7 +154,21 @@ function App() {
       }
     });
 
-    return () => responseListener?.remove();
+    // Listen for auth state changes — if user gets signed out (e.g. token
+    // revoked, account deleted), reset to SignIn immediately.
+    const unsubAuth = onAuthStateChange((user) => {
+      if (!user && initialRoute && initialRoute !== 'SignIn') {
+        const nav = navigationRef.current;
+        if (nav) {
+          nav.reset({ index: 0, routes: [{ name: 'SignIn' }] });
+        }
+      }
+    });
+
+    return () => {
+      responseListener?.remove();
+      unsubAuth();
+    };
   }, []);
 
   // Keep native splash visible until the app is fully ready (fonts + route determined).

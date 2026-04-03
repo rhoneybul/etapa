@@ -23,12 +23,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) {
         router.push("/login");
-      } else {
-        setUser(session.user);
+        setLoading(false);
+        return;
       }
+
+      // Verify admin status — prevents non-admins with stale sessions
+      try {
+        const res = await fetch(`/api/admins/check?email=${encodeURIComponent(session.user.email || "")}`);
+        const data = await res.json();
+        if (!data.isAdmin) {
+          await supabase.auth.signOut();
+          router.push("/login?error=forbidden");
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // If check fails, allow through (API routes will still enforce admin)
+      }
+
+      setUser(session.user);
       setLoading(false);
     });
 

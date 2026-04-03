@@ -50,10 +50,9 @@ async function requireAdmin(req, res, next) {
   });
 }
 
-router.use(requireAdmin);
-
 // ── GET /api/admin/check — check if an email has admin access ────────────────
-// Used by the NextAuth signIn callback to verify admin status
+// Public endpoint (no admin auth required) — used by the dashboard login flow
+// to verify a user is an admin before granting access.
 router.get('/check', async (req, res) => {
   const email = req.query.email?.toLowerCase();
   if (!email) return res.json({ isAdmin: false });
@@ -73,6 +72,9 @@ router.get('/check', async (req, res) => {
     return res.json({ isAdmin: false });
   }
 });
+
+// All routes below require admin auth
+router.use(requireAdmin);
 
 // ── POST /api/admin/grant — set is_admin: true on a user by email ────────────
 router.post('/grant', async (req, res, next) => {
@@ -1084,6 +1086,142 @@ router.delete('/users/:id', async (req, res, next) => {
 
     console.log(`[admin] Hard-deleted user ${id} (${user.email}):`, deletionResults);
     res.json({ ok: true, email: user.email, deletionResults });
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/admin/users/:id/coach-checkin — manually send a coach check-in ──
+router.post('/users/:id/coach-checkin', async (req, res, next) => {
+  try {
+    const userId = req.params.id;
+
+    // Find user's most recent active plan to get the coach
+    const { data: plans } = await supabase
+      .from('plans')
+      .select('id, config_id')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const plan = plans?.[0];
+    if (!plan) {
+      return res.status(404).json({ error: 'User has no active plan' });
+    }
+
+    // Get coach ID from plan config
+    let coachId = 'matteo';
+    if (plan.config_id) {
+      const { data: config } = await supabase
+        .from('plan_configs')
+        .select('coach_id')
+        .eq('id', plan.config_id)
+        .maybeSingle();
+      if (config?.coach_id) coachId = config.coach_id;
+    }
+
+    // Coach personas
+    const COACHES = {
+      clara:  { name: 'Clara', style: 'warm and encouraging, uses simple language, celebrates small wins' },
+      lars:   { name: 'Lars', style: 'direct and honest, short punchy sentences, expects discipline' },
+      sophie: { name: 'Sophie', style: 'methodical and educational, references training science' },
+      matteo: { name: 'Matteo', style: 'calm and balanced, philosophical, uses metaphors' },
+      elena:  { name: 'Elena', style: 'passionate and race-focused, high energy' },
+      tom:    { name: 'Tom', style: 'chatty and friendly, casual British humour' },
+    };
+
+    const coachInfo = COACHES[coachId] || COACHES.matteo;
+
+    // Find most recent completed activity for context
+    const { data: activities } = await supabase
+      .from('activities')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('plan_id', plan.id)
+      .eq('completed', true)
+      .order('completed_at', { ascending: false })
+      .limit(1);
+
+    const activity = activities?.[0];
+
+    // Generate the message via Claude
+    const apiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
+    let body;
+
+    if (apiKey) {
+      const _fetch = typeof globalThis.fetch === 'function'
+        ? globalThis.fetch
+        : (() => { const f = require('node-fetch'); return f.default || f; })();
+
+      const prompt = activity
+        ? `You are ${coachInfo.name}, a cycling coach. Your style: ${coachInfo.style}.
+The rider recently completed: ${activity.title || activity.type} (${activity.duration_mins ? activity.duration_mins + ' min' : 'unknown duration'}).
+Write a brief, personalised check-in message (2-3 sentences max) asking how things are going and offering encouragement. Reference their recent training. Keep it natural and in character. No emojis. No greeting — jump straight in.`
+        : `You are ${coachInfo.name}, a cycling coach. Your style: ${coachInfo.style}.
+Write a brief, friendly check-in message (2-3 sentences max) asking how training is going and if they need any adjustments to their plan. Keep it natural and in character. No emojis. No greeting — jump straight in.`;
+
+      try {
+        const aiRes = await _fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 150,
+            messages: [{ role: 'user', content: prompt }],
+          }),
+        });
+        const json = await aiRes.json();
+        body = json.content?.[0]?.text?.trim();
+      } catch (err) {
+        console.error('[admin] Coach check-in AI error:', err);
+      }
+    }
+
+    if (!body) {
+      body = activity
+        ? `How did your ${activity.title || 'session'} go? Let me know if you need any adjustments to your plan.`
+        : `How is your training going? Let me know if you need any adjustments to your plan.`;
+    }
+
+    // Save to chat session
+    const sessionId = `${plan.id}_w0`;
+    const { data: existingSession } = await supabase
+      .from('chat_sessions')
+      .select('messages')
+      .eq('id', sessionId)
+      .maybeSingle();
+
+    const existingMessages = existingSession?.messages || [];
+    const checkinMessage = {
+      role: 'assistant',
+      content: body,
+      ts: Date.now(),
+      checkin: true,
+    };
+
+    await supabase
+      .from('chat_sessions')
+      .upsert({
+        id: sessionId,
+        user_id: userId,
+        plan_id: plan.id,
+        week_num: null,
+        messages: [...existingMessages, checkinMessage],
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+
+    // Send push notification
+    await sendPushToUser(userId, {
+      title: `${coachInfo.name} checked in`,
+      body,
+      type: 'coach_checkin',
+      data: { coachId, planId: plan.id },
+    });
+
+    res.json({ success: true, coachId, coachName: coachInfo.name, message: body });
   } catch (err) { next(err); }
 });
 

@@ -5,12 +5,18 @@
 
 const API_URL = process.env.ETAPA_API_URL || "http://localhost:3001";
 
-export async function etapaFetch(path: string, token: string) {
+export async function etapaFetch(
+  path: string,
+  token: string,
+  options?: { method?: string; body?: unknown }
+) {
   const res = await fetch(`${API_URL}${path}`, {
+    method: options?.method || "GET",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
+    ...(options?.body ? { body: JSON.stringify(options.body) } : {}),
     // Don't cache in Next.js — always fetch fresh
     cache: "no-store",
   });

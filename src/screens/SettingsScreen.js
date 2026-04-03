@@ -553,8 +553,14 @@ export default function SettingsScreen({ navigation }) {
                 goPaywall({ fromHome: true, nextScreen: 'Home' });
                 return;
               }
-              const current = preferences?.coach_checkin || 'weekly';
               Alert.alert('Coach Check-ins', 'How often would you like check-ins from your coach?', [
+                {
+                  text: 'Daily',
+                  onPress: async () => {
+                    setPreferences(prev => ({ ...prev, coach_checkin: 'after_session' }));
+                    await api.preferences.update({ coach_checkin: 'after_session' });
+                  },
+                },
                 {
                   text: 'Weekly',
                   onPress: async () => {
@@ -568,7 +574,7 @@ export default function SettingsScreen({ navigation }) {
                     setPreferences(prev => ({ ...prev, coach_checkin: 'none' }));
                     await api.preferences.update({ coach_checkin: 'none' });
                   },
-                  style: current === 'none' ? 'default' : 'destructive',
+                  style: 'destructive',
                 },
                 { text: 'Cancel', style: 'cancel' },
               ]);
@@ -578,7 +584,7 @@ export default function SettingsScreen({ navigation }) {
               <View>
                 <Text style={s.rowTitle}>Coach Check-ins</Text>
                 <Text style={s.rowSub}>
-                  {preferences?.coach_checkin === 'none' ? 'Off' : 'Weekly'}
+                  {preferences?.coach_checkin === 'none' ? 'Off' : preferences?.coach_checkin === 'after_session' ? 'Daily' : 'Weekly'}
                 </Text>
               </View>
             </View>
