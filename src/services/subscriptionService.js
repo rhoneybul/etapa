@@ -42,6 +42,48 @@ async function authRequest(method, path, body) {
   }
 }
 
+// ── Prices ──────────────────────────────────────────────────────────────────────
+
+let _pricesCache = null;
+let _pricesCacheTime = 0;
+const PRICES_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+/**
+ * Fetch live prices from the server (Stripe).
+ * Cached for 1 hour in memory.
+ * Returns { monthly, annual, lifetime, starter } with amount, formatted, etc.
+ */
+export async function getPrices(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && _pricesCache && (now - _pricesCacheTime) < PRICES_CACHE_TTL) {
+    return _pricesCache;
+  }
+
+  const data = await authRequest('GET', '/api/stripe/prices');
+  if (data && !data.error) {
+    _pricesCache = data;
+    _pricesCacheTime = now;
+    return data;
+  }
+
+  // Return cached data if available, even if stale
+  if (_pricesCache) return _pricesCache;
+
+  // Offline/error fallback
+  return null;
+}
+
+/**
+ * Validate a promo code and get discount info.
+ * @param {string} code - promo code string or promo ID (promo_xxx)
+ * @param {string} [plan] - optional plan to calculate discounted price
+ * @returns {{ valid, promoId, label, discountedFormatted, ... } | null}
+ */
+export async function validatePromo(code, plan) {
+  const data = await authRequest('POST', '/api/stripe/validate-promo', { code, plan });
+  return data;
+}
+
 // ── Subscription status ─────────────────────────────────────────────────────────
 
 /**
@@ -104,9 +146,10 @@ export async function getSubscriptionOfferings() {
  *
  * @param {string} plan - 'monthly' | 'annual' | 'lifetime' | 'starter'
  * @param {object|null} rcPackage - RevenueCat package object (native only, from getSubscriptionOfferings)
+ * @param {string|null} promoCode - optional Stripe promo code ID or code string
  * @returns {{ success: boolean, cancelled?: boolean, error?: string }}
  */
-export async function openCheckout(plan, rcPackage = null) {
+export async function openCheckout(plan, rcPackage = null, promoCode = null) {
   // ── Native: use RevenueCat ────────────────────────────────────────────────
   if (isRevenueCatAvailable() && rcPackage) {
     const result = await purchasePackage(rcPackage);
@@ -119,7 +162,7 @@ export async function openCheckout(plan, rcPackage = null) {
     ? `${window.location.origin}/stripe`
     : 'etapa://stripe';
 
-  const data = await authRequest('POST', '/api/stripe/create-checkout-session', { plan, redirectBase });
+  const data = await authRequest('POST', '/api/stripe/create-checkout-session', { plan, redirectBase, promoCode });
   if (!data?.url) throw new Error('Could not create checkout session. Please try again.');
 
   if (isWeb) {

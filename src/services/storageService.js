@@ -387,18 +387,28 @@ export function isOnTrack(plan) {
  * Get the date for a specific day in a specific week of a plan.
  */
 export function getActivityDate(planStartDate, week, dayOfWeek) {
-  const start = new Date(planStartDate);
+  // Parse as local date to avoid UTC timezone shift issues.
+  // planStartDate is typically an ISO string like "2026-04-06T00:00:00.000Z".
+  // Using new Date(iso) converts to local time which can shift the date by -1 day.
+  const iso = typeof planStartDate === 'string' ? planStartDate : new Date(planStartDate).toISOString();
+  const [datePart] = iso.split('T');
+  const [y, m, d] = datePart.split('-').map(Number);
+  const start = new Date(y, m - 1, d); // local midnight — no timezone shift
   const offset = (week - 1) * 7 + (dayOfWeek ?? 0);
-  const d = new Date(start);
-  d.setDate(d.getDate() + offset);
-  return d;
+  const result = new Date(start);
+  result.setDate(result.getDate() + offset);
+  return result;
 }
 
 /**
  * Get the month label for a given week.
  */
 export function getWeekMonthLabel(planStartDate, week) {
-  const start = new Date(planStartDate);
+  // Parse as local date to avoid UTC shift
+  const iso = typeof planStartDate === 'string' ? planStartDate : new Date(planStartDate).toISOString();
+  const [datePart] = iso.split('T');
+  const [y, m, d] = datePart.split('-').map(Number);
+  const start = new Date(y, m - 1, d);
   const weekStart = new Date(start);
   weekStart.setDate(weekStart.getDate() + (week - 1) * 7);
   const weekEnd = new Date(weekStart);

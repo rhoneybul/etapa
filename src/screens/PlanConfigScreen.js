@@ -160,6 +160,9 @@ export default function PlanConfigScreen({ navigation, route }) {
   // Coach selection
   const [coachId, setCoachId] = useState(DEFAULT_COACH_ID);
 
+  // Activity search (for cross-training)
+  const [activitySearch, setActivitySearch] = useState('');
+
   // Recurring rides — fixed rides the user does every week
   // Each: { id, day, durationMins, distanceKm, elevationM, notes }
   const [recurringRides, setRecurringRides] = useState(
@@ -735,14 +738,18 @@ export default function PlanConfigScreen({ navigation, route }) {
             <View style={s.paletteSectionLabel}>
               <Text style={s.paletteSectionText}>Other activities</Text>
             </View>
-            {CROSS_TRAINING_TYPES.map(ct => {
+            {CROSS_TRAINING_TYPES.filter(ct => {
+              if (!activitySearch.trim()) return true;
+              const q = activitySearch.toLowerCase();
+              return ct.label.toLowerCase().includes(q) || ct.key.toLowerCase().includes(q);
+            }).map(ct => {
               const isSelected = selectedActivity === ct.key;
               const isUsed = Object.values(dayActivities).some(acts => acts.includes(ct.key));
               return (
                 <TouchableOpacity
                   key={ct.key}
                   style={[s.palettePill, isSelected && s.palettePillSelected, isSelected && { borderColor: CT_COLOR, backgroundColor: CT_COLOR + '18' }, isUsed && !isSelected && { borderColor: CT_COLOR + '66' }]}
-                  onPress={() => setSelectedActivity(ct.key)}
+                  onPress={() => { setSelectedActivity(ct.key); setActivitySearch(''); }}
                   activeOpacity={0.7}
                 >
                   <View style={[s.paletteDot, { backgroundColor: CT_COLOR }]} />
@@ -751,6 +758,18 @@ export default function PlanConfigScreen({ navigation, route }) {
               );
             })}
           </ScrollView>
+
+          {/* Search box for activities */}
+          <View style={s.activitySearchWrap}>
+            <TextInput
+              style={s.activitySearchInput}
+              placeholder="Search activities (e.g. row, swim, yoga)"
+              placeholderTextColor={colors.textFaint}
+              value={activitySearch}
+              onChangeText={setActivitySearch}
+              returnKeyType="search"
+            />
+          </View>
 
           {/* Selected activity indicator */}
           {selectedActivity && (
@@ -787,6 +806,9 @@ export default function PlanConfigScreen({ navigation, route }) {
                   activeOpacity={0.7}
                 >
                   <Text style={s.dayShort}>{day.short}</Text>
+                  {acts.length > 0 && (
+                    <Text style={s.dayScheduledTag}>Scheduled</Text>
+                  )}
                   {acts.length > 0 ? (
                     <View style={s.dayStack}>
                       {acts.map((actKey, idx) => {
@@ -1189,6 +1211,13 @@ const s = StyleSheet.create({
   paletteSectionLabel: { justifyContent: 'center', marginRight: 6 },
   paletteSectionText: { fontSize: 9, fontWeight: '600', fontFamily: FF.semibold, color: colors.textFaint, textTransform: 'uppercase', letterSpacing: 0.5 },
 
+  // ── Activity search ────────────────────────────────────────────────────
+  activitySearchWrap: { paddingHorizontal: 16, marginTop: 8 },
+  activitySearchInput: {
+    backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: 14, paddingVertical: 10, fontSize: 13, fontFamily: FF.regular, color: colors.text,
+  },
+
   // ── Selected indicator ───────────────────────────────────────────────────
   selectedIndicator: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -1208,6 +1237,7 @@ const s = StyleSheet.create({
     paddingVertical: 8, paddingHorizontal: 4,
   },
   dayShort: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
+  dayScheduledTag: { fontSize: 8, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E', letterSpacing: 0.3, marginBottom: 3, textTransform: 'uppercase' },
   dayStack: { width: '100%', alignItems: 'center', gap: 3 },
   stackPill: {
     flexDirection: 'row', alignItems: 'center', gap: 3,

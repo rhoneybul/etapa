@@ -44,8 +44,15 @@ git add "$APP_JSON"
 git commit -m "chore: bump version to $NEW_VERSION"
 
 echo ""
-echo "Building + submitting to TestFlight (preview profile)..."
+echo "Building + submitting to test flight"
 echo ""
 
 # Build and auto-submit to TestFlight
 npx eas build --platform ios --profile production --auto-submit
+
+echo ""
+echo "Building + submitting to play store
+echo ""
+
+# Build and auto-submit to TestFlight
+npx eas build --platform android --profile production --auto-submit

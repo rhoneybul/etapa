@@ -12,43 +12,69 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, fontFamily } from '../theme';
-import { openCheckout, getSubscriptionOfferings, restorePurchases } from '../services/subscriptionService';
+import { openCheckout, getSubscriptionOfferings, restorePurchases, getPrices } from '../services/subscriptionService';
 import { isRevenueCatAvailable } from '../services/revenueCatService';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
 
-const PLANS = {
+// Fallback plan metadata (prices will be overwritten by server data)
+const PLAN_META = {
   lifetime: {
     id: 'lifetime',
     label: 'Lifetime',
-    price: '$149',
+    fallbackPrice: '$149',
     per: '',
-    sub: 'One-time payment · Forever yours',
+    fallbackSub: 'One-time payment · Forever yours',
     badge: 'LAUNCH SPECIAL',
-    trialLine: '7-day money-back guarantee',
+    fallbackTrialLine: '7-day money-back guarantee',
     originalPrice: '$249',
     isLifetime: true,
   },
   annual: {
     id: 'annual',
     label: 'Annual',
-    price: '$8.25',
+    fallbackPrice: '$8.25',
     per: '/mo',
-    sub: 'Billed $99/year',
+    fallbackSub: 'Billed $99/year',
     badge: 'MOST POPULAR',
-    trialLine: 'then $99/year',
+    fallbackTrialLine: 'then $99/year',
   },
   monthly: {
     id: 'monthly',
     label: 'Monthly',
-    price: '$9.99',
+    fallbackPrice: '$9.99',
     per: '/mo',
-    sub: 'Billed monthly',
+    fallbackSub: 'Billed monthly',
     badge: null,
-    trialLine: 'then $9.99/month',
+    fallbackTrialLine: 'then $9.99/month',
   },
 };
+
+/** Build display PLANS from server prices + fallback metadata */
+function buildPlans(serverPrices) {
+  const plans = {};
+  for (const [key, meta] of Object.entries(PLAN_META)) {
+    const sp = serverPrices?.[key];
+    if (sp) {
+      plans[key] = {
+        ...meta,
+        price: sp.perMonth || sp.formatted,
+        sub: sp.billedLabel || meta.fallbackSub,
+        trialLine: meta.isLifetime
+          ? '7-day money-back guarantee'
+          : sp.interval === 'year'
+            ? `then ${sp.formatted}/year`
+            : sp.interval === 'month'
+              ? `then ${sp.formatted}/month`
+              : meta.fallbackTrialLine,
+      };
+    } else {
+      plans[key] = { ...meta, price: meta.fallbackPrice, sub: meta.fallbackSub, trialLine: meta.fallbackTrialLine };
+    }
+  }
+  return plans;
+}
 
 // Dummy plan data for the holding screen background
 const DUMMY_PLAN = [
@@ -73,6 +99,8 @@ export default function PaywallScreen({ navigation, route }) {
   const [loading, setLoading] = useState(false);
   const [rcOfferings, setRcOfferings] = useState(null); // RevenueCat packages (native only)
   const [restoring, setRestoring] = useState(false);
+  const [plans, setPlans] = useState(() => buildPlans(null));
+  const [serverPrices, setServerPrices] = useState(null);
 
   const isNative = Platform.OS !== 'web';
   const hasRevenueCat = isNative && isRevenueCatAvailable();
@@ -83,6 +111,16 @@ export default function PaywallScreen({ navigation, route }) {
   // fromHome = user has plans but no subscription
   const fromHome = route?.params?.fromHome === true;
   const [showHolding, setShowHolding] = useState(false);
+
+  // Fetch live prices from server on mount
+  useEffect(() => {
+    getPrices().then(prices => {
+      if (prices) {
+        setServerPrices(prices);
+        setPlans(buildPlans(prices));
+      }
+    }).catch(() => {});
+  }, []);
 
   // Fetch RevenueCat offerings on mount (native only)
   useEffect(() => {
@@ -157,11 +195,17 @@ export default function PaywallScreen({ navigation, route }) {
     if (fromHome) {
       setShowHolding(true);
     } else {
-      navigation.goBack();
+      // Go back to plan preview if we came from PlanReady, otherwise goBack safely.
+      // NEVER destroy the plan — the user may have just generated it.
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation.replace('Home');
+      }
     }
   };
 
-  const plan = PLANS[selected];
+  const plan = plans[selected];
 
   // Holding screen — shown when user dismisses the paywall but has no subscription
   if (showHolding) {
@@ -212,23 +256,23 @@ export default function PaywallScreen({ navigation, route }) {
           <View style={s.holdingPlansRow}>
             <View style={s.holdingPlanPill}>
               <Text style={s.holdingPlanPillLabel}>Monthly</Text>
-              <Text style={s.holdingPlanPillPrice}>$9.99<Text style={s.holdingPlanPillPer}>/mo</Text></Text>
+              <Text style={s.holdingPlanPillPrice}>{plans.monthly.price}<Text style={s.holdingPlanPillPer}>/mo</Text></Text>
             </View>
             <View style={[s.holdingPlanPill, s.holdingPlanPillHighlight]}>
               <Text style={[s.holdingPlanPillLabel, { color: colors.primary }]}>Annual</Text>
-              <Text style={[s.holdingPlanPillPrice, { color: colors.primary }]}>$8.25<Text style={s.holdingPlanPillPer}>/mo</Text></Text>
+              <Text style={[s.holdingPlanPillPrice, { color: colors.primary }]}>{plans.annual.price}<Text style={s.holdingPlanPillPer}>/mo</Text></Text>
               <View style={s.holdingPlanPillBadge}><Text style={s.holdingPlanPillBadgeText}>POPULAR</Text></View>
             </View>
             <View style={s.holdingPlanPill}>
               <Text style={s.holdingPlanPillLabel}>Lifetime</Text>
-              <Text style={s.holdingPlanPillPrice}>$149</Text>
+              <Text style={s.holdingPlanPillPrice}>{plans.lifetime.price}</Text>
             </View>
           </View>
           <Text style={s.holdingTrialNote}>1 week free trial on all subscription plans</Text>
 
           {/* Lifetime savings callout — informational, not a button */}
           <View style={s.holdingSavingsRow}>
-            <Text style={s.holdingSavingsText}>Lifetime access · $149 one-time</Text>
+            <Text style={s.holdingSavingsText}>Lifetime access · {plans.lifetime.price} one-time</Text>
             <View style={s.holdingSavingsBadge}>
               <Text style={s.holdingSavingsBadgeText}>SAVE $100</Text>
             </View>
@@ -302,7 +346,7 @@ export default function PaywallScreen({ navigation, route }) {
 
         {/* Plan cards */}
         <View style={s.plans}>
-          {Object.values(PLANS).map(p => {
+          {Object.values(plans).map(p => {
             const isSelected = selected === p.id;
             // Use RevenueCat price if available (native)
             const rcPkg = hasRevenueCat ? findRcPackage(p.id) : null;

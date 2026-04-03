@@ -46,9 +46,6 @@ export default function PlanReadyScreen({ navigation, route }) {
   const [assessment, setAssessment] = useState(null);
   const [loadingAssessment, setLoadingAssessment] = useState(false);
   const [units, setUnits] = useState('km');
-  const [applyingSuggestion, setApplyingSuggestion] = useState(null); // index of suggestion being applied
-  const [dayPickerVisible, setDayPickerVisible] = useState(false);
-  const [pendingSuggestion, setPendingSuggestion] = useState(null);
   const assessFade = useRef(new Animated.Value(0)).current;
 
   // Animations
@@ -72,15 +69,17 @@ export default function PlanReadyScreen({ navigation, route }) {
         const g = goals.find(g => g.id === p.goalId) || null;
         setGoal(g);
 
-        // Fetch coach assessment in background
-        if (p.configId) {
+        // Use cached assessment if available, otherwise fetch
+        if (p.assessment && p.assessment.successChance) {
+          setAssessment(p.assessment);
+          Animated.timing(assessFade, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+        } else if (p.configId) {
           setLoadingAssessment(true);
           const cfg = await getPlanConfig(p.configId);
           const result = await assessPlan(p, g, cfg);
           setLoadingAssessment(false);
           if (result && result.successChance) {
             setAssessment(result);
-            // Persist assessment to the plan
             p.assessment = result;
             await savePlan(p);
             Animated.timing(assessFade, { toValue: 1, duration: 500, useNativeDriver: true }).start();
@@ -104,32 +103,17 @@ export default function PlanReadyScreen({ navigation, route }) {
     ]).start();
   }, [plan]);
 
-  const applySuggestion = async (sug, index, dayOfWeek) => {
-    setApplyingSuggestion(index);
-    try {
-      const instruction = dayOfWeek !== undefined
-        ? `${sug.title}: ${sug.text}. Add the new session on day ${dayOfWeek} (0=Mon, 6=Sun).`
-        : `${sug.title}: ${sug.text}`;
-      const cfg = plan.configId ? await getPlanConfig(plan.configId) : null;
-      const coachId = cfg?.coachId || null;
-      const updated = await editPlanWithLLM(plan, goal, instruction, 'plan', () => {}, coachId);
-      if (updated) {
-        // Save the pre-change plan for undo
-        const previousPlan = { ...plan };
-        await savePlan(updated);
-        setPlan(updated);
-        // Navigate to changes screen
-        navigation.navigate('PlanChanges', {
-          planId: updated.id,
-          previousPlan,
-          suggestionTitle: sug.title,
-        });
+  // Refresh plan after returning from suggestion application
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', async () => {
+      if (planId) {
+        const plans = await getPlans();
+        const p = plans.find(pl => pl.id === planId) || plans[0];
+        if (p) setPlan(p);
       }
-    } catch (err) {
-      console.warn('Failed to apply suggestion:', err);
-    }
-    setApplyingSuggestion(null);
-  };
+    });
+    return unsub;
+  }, [navigation, planId]);
 
   if (!plan) return <View style={s.container} />;
 
@@ -294,31 +278,23 @@ export default function PlanReadyScreen({ navigation, route }) {
                   <Text style={s.assessSectionHint}>Tap a suggestion to apply it to your plan</Text>
                   {(assessment.suggestions || assessment.recommendations).map((sug, i) => {
                     const sugColor = SUGGEST_COLORS[sug.type] || '#64748B';
-                    const isApplying = applyingSuggestion === i;
-                    const needsDay = sug.type === 'strength' || sug.type === 'cross_training';
                     return (
                       <TouchableOpacity
                         key={i}
-                        style={[s.suggestCard, isApplying && s.suggestCardApplying]}
+                        style={s.suggestCard}
                         activeOpacity={0.7}
-                        disabled={applyingSuggestion !== null}
                         onPress={() => {
-                          if (needsDay) {
-                            setPendingSuggestion({ ...sug, index: i });
-                            setDayPickerVisible(true);
-                          } else {
-                            applySuggestion(sug, i);
-                          }
+                          navigation.navigate('ApplySuggestion', {
+                            planId: plan.id,
+                            goalId: goal?.id,
+                            suggestion: sug,
+                          });
                         }}
                       >
                         <View style={s.suggestHeader}>
                           <View style={[s.assessDot, { backgroundColor: sugColor }]} />
                           <Text style={s.suggestTitle}>{sug.title || sug.type}</Text>
-                          {isApplying ? (
-                            <ActivityIndicator color={colors.primary} size="small" style={{ marginLeft: 'auto' }} />
-                          ) : (
-                            <Text style={s.suggestApplyArrow}>{'\u203A'}</Text>
-                          )}
+                          <Text style={s.suggestApplyArrow}>{'\u203A'}</Text>
                         </View>
                         <Text style={s.assessText}>{sug.text}</Text>
                       </TouchableOpacity>
@@ -329,33 +305,7 @@ export default function PlanReadyScreen({ navigation, route }) {
             </Animated.View>
           )}
 
-          {/* Day picker modal for suggestions that need a day */}
-          {dayPickerVisible && pendingSuggestion && (
-            <View style={s.dayPickerOverlay}>
-              <View style={s.dayPickerCard}>
-                <Text style={s.dayPickerTitle}>Which day?</Text>
-                <Text style={s.dayPickerSub}>Choose a day to add this session</Text>
-                <View style={s.dayPickerGrid}>
-                  {DAY_NAMES.map((name, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      style={s.dayPickerBtn}
-                      onPress={() => {
-                        setDayPickerVisible(false);
-                        applySuggestion(pendingSuggestion, pendingSuggestion.index, idx);
-                        setPendingSuggestion(null);
-                      }}
-                    >
-                      <Text style={s.dayPickerBtnText}>{name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <TouchableOpacity style={s.dayPickerCancel} onPress={() => { setDayPickerVisible(false); setPendingSuggestion(null); }}>
-                  <Text style={s.dayPickerCancelText}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
+          {/* Suggestions are now applied via ApplySuggestionScreen */}
 
           <View style={{ height: 100 }} />
         </ScrollView>
@@ -374,11 +324,11 @@ export default function PlanReadyScreen({ navigation, route }) {
               style={[s.ctaBtn, { flex: 1 }]}
               onPress={async () => {
                 if (requirePaywall) {
-                  navigation.replace('Paywall', { nextScreen: 'Home' });
+                  navigation.navigate('Paywall', { nextScreen: 'Home' });
                 } else {
                   const subscribed = await isSubscribed();
                   if (!subscribed) {
-                    navigation.replace('Paywall', { nextScreen: 'Home' });
+                    navigation.navigate('Paywall', { nextScreen: 'Home' });
                   } else {
                     navigation.replace('Home');
                   }
@@ -391,22 +341,23 @@ export default function PlanReadyScreen({ navigation, route }) {
           </View>
           <TouchableOpacity
             style={s.detailLink}
-            onPress={async () => {
-              if (requirePaywall) {
-                navigation.replace('Paywall', { nextScreen: 'PlanOverview', nextParams: { planId: plan.id } });
-              } else {
-                const subscribed = await isSubscribed();
-                if (!subscribed) {
-                  navigation.replace('Paywall', { nextScreen: 'PlanOverview', nextParams: { planId: plan.id } });
-                } else {
-                  navigation.replace('PlanOverview', { planId: plan.id });
-                }
-              }
-            }}
+            onPress={() => navigation.navigate('PlanOverview', { planId: plan.id })}
             activeOpacity={0.7}
           >
             <Text style={s.detailLinkText}>View full plan details</Text>
           </TouchableOpacity>
+          {plan.configId && (
+            <TouchableOpacity
+              style={s.detailLink}
+              onPress={async () => {
+                const cfg = await getPlanConfig(plan.configId);
+                navigation.navigate('CoachChat', { planId: plan.id, coachId: cfg?.coachId });
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[s.detailLinkText, { color: colors.primary }]}>Ask your coach a question</Text>
+            </TouchableOpacity>
+          )}
         </Animated.View>
       </SafeAreaView>
     </View>

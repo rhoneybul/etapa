@@ -5,13 +5,13 @@
  */
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image, Animated,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image, Animated, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { getCurrentUser } from '../services/authService';
-import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig } from '../services/storageService';
-import { isSubscribed, getSubscriptionStatus, upgradeStarter, openCheckout } from '../services/subscriptionService';
+import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig, getUserPrefs } from '../services/storageService';
+import { isSubscribed, getSubscriptionStatus, upgradeStarter, openCheckout, getPrices } from '../services/subscriptionService';
 import UpgradePrompt from '../components/UpgradePrompt';
 import { isStravaConnected } from '../services/stravaService';
 import { getSessionColor, getSessionLabel, getMetricLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
@@ -54,7 +54,11 @@ export default function HomeScreen({ navigation }) {
   const [upgrading, setUpgrading] = useState(false);
   const [subPlan, setSubPlan] = useState(null); // 'starter' | 'monthly' | 'annual' | null
   const [unlocking, setUnlocking] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [starterPriceLabel, setStarterPriceLabel] = useState(null); // fetched from Stripe
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const cachedPlanHash = useRef(null); // Track plan state to avoid unnecessary reloads
+  const initialLoadDone = useRef(false);
 
   useEffect(() => {
     Animated.loop(
@@ -65,10 +69,16 @@ export default function HomeScreen({ navigation }) {
     ).start();
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const [user, p, g, strava] = await Promise.all([
-      getCurrentUser(), getPlans(), getGoals(), isStravaConnected(),
+  const load = useCallback(async ({ force = false } = {}) => {
+    // On focus, only reload if plan data may have changed
+    if (!force && initialLoadDone.current) {
+      const p = await getPlans();
+      const hash = JSON.stringify(p.map(pl => ({ id: pl.id, updatedAt: pl.updatedAt, actLen: pl.activities?.length })));
+      if (hash === cachedPlanHash.current) return; // No changes — skip reload
+    }
+    setLoading(!initialLoadDone.current); // Only show loading spinner on first load
+    const [user, p, g, strava, userPrefs] = await Promise.all([
+      getCurrentUser(), getPlans(), getGoals(), isStravaConnected(), getUserPrefs(),
     ]);
 
     // Gate: if user has plans but no subscription, go straight to paywall.
@@ -86,11 +96,18 @@ export default function HomeScreen({ navigation }) {
     const subStatus = await getSubscriptionStatus();
     setSubPlan(subStatus?.plan || null);
 
-    const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || null;
+    // Fetch live prices (non-blocking)
+    getPrices().then(prices => {
+      if (prices?.starter) setStarterPriceLabel(prices.starter.formatted);
+    }).catch(() => {});
+
+    const displayName = userPrefs?.displayName || user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || null;
     setName(displayName);
     setPlans(p);
     setGoals(g);
     setStravaOk(strava);
+    cachedPlanHash.current = JSON.stringify(p.map(pl => ({ id: pl.id, updatedAt: pl.updatedAt, actLen: pl.activities?.length })));
+    initialLoadDone.current = true;
 
     if (p.length > 0) {
       const plan = p[selectedPlanIdx] || p[0];
@@ -110,11 +127,17 @@ export default function HomeScreen({ navigation }) {
     setLoading(false);
   }, [selectedPlanIdx, navigation]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load({ force: true }); }, [load]);
   useEffect(() => {
-    const unsub = navigation.addListener('focus', load);
+    const unsub = navigation.addListener('focus', () => load());
     return unsub;
   }, [navigation, load]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load({ force: true });
+    setRefreshing(false);
+  }, [load]);
 
   const firstName = name?.split(' ')[0] ?? null;
   const activePlan = plans[selectedPlanIdx] || null;
@@ -150,7 +173,8 @@ export default function HomeScreen({ navigation }) {
   const handleUnlockPlan = async (plan) => {
     setUnlocking(true);
     try {
-      const result = await openCheckout('starter');
+      // Auto-apply the starter promo code
+      const result = await openCheckout('starter', null, 'promo_1TI5VkAmoVZFfAwUakin4FXz');
       if (result.success) {
         plan.paymentStatus = 'paid';
         await savePlan(plan);
@@ -380,7 +404,10 @@ export default function HomeScreen({ navigation }) {
   return (
     <View style={s.container}>
       <SafeAreaView style={s.safe}>
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} colors={[colors.primary]} />}
+        >
           {/* Header */}
           <View style={s.header}>
             <View style={s.headerLeft}>
@@ -506,7 +533,7 @@ export default function HomeScreen({ navigation }) {
                   disabled={unlocking}
                   activeOpacity={0.85}
                 >
-                  <Text style={s.lockedPayBtnText}>{unlocking ? 'Processing...' : 'Pay $50 and unlock'}</Text>
+                  <Text style={s.lockedPayBtnText}>{unlocking ? 'Processing...' : `Pay ${starterPriceLabel || '$39.99'} and unlock`}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={s.lockedCancelBtn}

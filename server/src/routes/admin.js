@@ -277,6 +277,207 @@ router.get('/plans', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── GET /api/admin/plans/:id — single plan with full activities ─────────────
+router.get('/plans/:id', async (req, res, next) => {
+  try {
+    const planId = req.params.id;
+
+    // Get the plan
+    const { data: plan, error: planErr } = await supabase
+      .from('plans')
+      .select('*')
+      .eq('id', planId)
+      .single();
+    if (planErr || !plan) return res.status(404).json({ error: 'Plan not found' });
+
+    // Get all activities for this plan
+    const { data: activities, error: actErr } = await supabase
+      .from('activities')
+      .select('*')
+      .eq('plan_id', planId)
+      .order('week', { ascending: true })
+      .order('day_of_week', { ascending: true });
+    if (actErr) throw actErr;
+
+    // Get plan config
+    let config = null;
+    if (plan.config_id) {
+      const { data: cfg } = await supabase.from('plan_configs').select('*').eq('id', plan.config_id).single();
+      config = cfg || null;
+    }
+
+    // Get goal
+    let goal = null;
+    if (plan.goal_id) {
+      const { data: g } = await supabase.from('goals').select('*').eq('id', plan.goal_id).single();
+      goal = g || null;
+    }
+
+    // Get user info
+    let userName = 'Unknown';
+    let userEmail = null;
+    try {
+      const { data: { user } } = await supabase.auth.admin.getUserById(plan.user_id);
+      if (user) {
+        userName = user.user_metadata?.full_name || user.user_metadata?.name || user.email || 'Unknown';
+        userEmail = user.email;
+      }
+    } catch { /* ignore */ }
+
+    res.json({
+      id: plan.id,
+      name: plan.name,
+      status: plan.status,
+      weeks: plan.weeks,
+      startDate: plan.start_date,
+      currentWeek: plan.current_week,
+      createdAt: plan.created_at,
+      userId: plan.user_id,
+      userName,
+      userEmail,
+      goalId: plan.goal_id,
+      configId: plan.config_id,
+      config: config ? {
+        daysPerWeek: config.days_per_week,
+        sessionsPerWeek: config.sessions_per_week,
+        fitnessLevel: config.fitness_level,
+        indoorTrainer: config.indoor_trainer,
+        coachId: config.coach_id,
+        trainingTypes: config.training_types,
+        extraNotes: config.extra_notes,
+      } : null,
+      goal: goal ? {
+        cyclingType: goal.cycling_type,
+        goalType: goal.goal_type,
+        targetDistance: goal.target_distance,
+        targetElevation: goal.target_elevation,
+        targetTime: goal.target_time,
+        targetDate: goal.target_date,
+        eventName: goal.event_name,
+        planName: goal.plan_name,
+      } : null,
+      activities: (activities || []).map(a => ({
+        id: a.id,
+        week: a.week,
+        dayOfWeek: a.day_of_week,
+        type: a.type,
+        subType: a.sub_type,
+        title: a.title,
+        description: a.description,
+        notes: a.notes,
+        durationMins: a.duration_mins,
+        distanceKm: a.distance_km ? Number(a.distance_km) : null,
+        effort: a.effort,
+        completed: a.completed,
+        completedAt: a.completed_at,
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
+// ── PUT /api/admin/plans/:id — update a plan and its activities (admin) ─────
+router.put('/plans/:id', async (req, res, next) => {
+  try {
+    const planId = req.params.id;
+    const body = req.body;
+
+    // Verify plan exists
+    const { data: existing, error: fetchErr } = await supabase
+      .from('plans')
+      .select('user_id')
+      .eq('id', planId)
+      .single();
+    if (fetchErr || !existing) return res.status(404).json({ error: 'Plan not found' });
+
+    const userId = existing.user_id;
+
+    // Update plan metadata
+    const planUpdates = {};
+    if (body.name !== undefined) planUpdates.name = body.name;
+    if (body.status !== undefined) planUpdates.status = body.status;
+    if (body.weeks !== undefined) planUpdates.weeks = body.weeks;
+    if (body.startDate !== undefined) planUpdates.start_date = body.startDate;
+    if (body.currentWeek !== undefined) planUpdates.current_week = body.currentWeek;
+
+    if (Object.keys(planUpdates).length > 0) {
+      const { error: updateErr } = await supabase
+        .from('plans')
+        .update(planUpdates)
+        .eq('id', planId);
+      if (updateErr) throw updateErr;
+    }
+
+    // Replace activities if provided
+    if (body.activities) {
+      // Delete existing
+      const { error: delErr } = await supabase
+        .from('activities')
+        .delete()
+        .eq('plan_id', planId);
+      if (delErr) throw delErr;
+
+      // Insert new
+      if (body.activities.length > 0) {
+        const actRows = body.activities.map(a => ({
+          id: a.id || `act_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          user_id: userId,
+          plan_id: planId,
+          week: a.week,
+          day_of_week: a.dayOfWeek ?? null,
+          type: a.type,
+          sub_type: a.subType || null,
+          title: a.title,
+          description: a.description || null,
+          notes: a.notes || null,
+          duration_mins: a.durationMins || null,
+          distance_km: a.distanceKm || null,
+          effort: a.effort || 'moderate',
+          completed: a.completed || false,
+          completed_at: a.completedAt || null,
+        }));
+        const { error: insErr } = await supabase.from('activities').insert(actRows);
+        if (insErr) throw insErr;
+      }
+    }
+
+    res.json({ ok: true, id: planId });
+  } catch (err) { next(err); }
+});
+
+// ── PATCH /api/admin/plans/:planId/activities/:activityId — edit single activity
+router.patch('/plans/:planId/activities/:activityId', async (req, res, next) => {
+  try {
+    const { planId, activityId } = req.params;
+    const b = req.body;
+
+    const updates = {};
+    if (b.title !== undefined)       updates.title = b.title;
+    if (b.description !== undefined) updates.description = b.description;
+    if (b.notes !== undefined)       updates.notes = b.notes;
+    if (b.type !== undefined)        updates.type = b.type;
+    if (b.subType !== undefined)     updates.sub_type = b.subType;
+    if (b.week !== undefined)        updates.week = b.week;
+    if (b.dayOfWeek !== undefined)   updates.day_of_week = b.dayOfWeek;
+    if (b.durationMins !== undefined) updates.duration_mins = b.durationMins;
+    if (b.distanceKm !== undefined)  updates.distance_km = b.distanceKm;
+    if (b.effort !== undefined)      updates.effort = b.effort;
+    if (b.completed !== undefined)   updates.completed = b.completed;
+    if (b.completedAt !== undefined) updates.completed_at = b.completedAt;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+
+    const { error } = await supabase
+      .from('activities')
+      .update(updates)
+      .eq('id', activityId)
+      .eq('plan_id', planId);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 // ── GET /api/admin/payments — all subscriptions / payments ───────────────────
 router.get('/payments', async (req, res, next) => {
   try {
@@ -689,12 +890,12 @@ router.get('/payments/details', async (req, res, next) => {
         }
       }
 
-      // For starter (one-time) payments without invoices, use known price
+      // For starter (one-time) payments without invoices, show as unknown amount
       if (sub.plan === 'starter' && entry.payments.length === 0 && sub.status === 'paid') {
-        entry.totalPaid = 50;
+        entry.totalPaid = null; // Actual amount unknown — may have been discounted
         entry.payments = [{
           id: sub.id,
-          amount: 50,
+          amount: null,
           currency: 'usd',
           status: 'paid',
           paid: true,

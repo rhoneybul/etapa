@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, fontFamily } from '../theme';
-import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan } from '../services/storageService';
+import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan, getUserPrefs } from '../services/storageService';
 import { coachChat } from '../services/llmPlanService';
 import { api } from '../services/api';
 import { getCoach } from '../data/coaches';
@@ -97,10 +97,10 @@ export default function CoachChatScreen({ navigation, route }) {
   // Load plan, goal, chat history, and user name
   useEffect(() => {
     (async () => {
-      // Fetch user name for personalised coaching
+      // Fetch user name for personalised coaching — prefer local display name
       try {
-        const user = await getCurrentUser();
-        const name = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || null;
+        const [user, userPrefs] = await Promise.all([getCurrentUser(), getUserPrefs()]);
+        const name = userPrefs?.displayName || user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || null;
         setUserName(name);
       } catch {}
 

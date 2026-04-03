@@ -23,6 +23,131 @@ const STARTER_ACCESS_DAYS = 90;
 // Lifetime plan = one-time payment, access until 2099
 const LIFETIME_END = '2099-12-31T23:59:59.000Z';
 
+// ── GET /api/stripe/prices ──────────────────────────────────────────────────
+// Returns live prices from Stripe so the app never hardcodes amounts.
+router.get('/prices', async (req, res) => {
+  const stripe = getStripe();
+  if (!stripe) {
+    // Dev fallback — return sensible defaults
+    return res.json({
+      monthly:  { amount: 999,   currency: 'usd', formatted: '$9.99',  interval: 'month' },
+      annual:   { amount: 9900,  currency: 'usd', formatted: '$99.00', interval: 'year', perMonth: '$8.25' },
+      lifetime: { amount: 14900, currency: 'usd', formatted: '$149.00', interval: null },
+      starter:  { amount: 3999,  currency: 'usd', formatted: '$39.99', interval: null },
+    });
+  }
+
+  try {
+    const prices = PRICES();
+    const ids = Object.entries(prices).filter(([, v]) => v);
+
+    const results = {};
+    await Promise.all(ids.map(async ([plan, priceId]) => {
+      try {
+        const price = await stripe.prices.retrieve(priceId, { expand: ['product'] });
+        const amount = price.unit_amount;
+        const currency = price.currency;
+        const symbol = currency === 'usd' ? '$' : currency.toUpperCase() + ' ';
+        const formatted = `${symbol}${(amount / 100).toFixed(2)}`;
+        const interval = price.recurring?.interval || null;
+
+        const entry = { amount, currency, formatted, interval };
+
+        // For annual plans, calculate per-month cost
+        if (interval === 'year') {
+          entry.perMonth = `${symbol}${(amount / 100 / 12).toFixed(2)}`;
+          entry.billedLabel = `Billed ${formatted}/year`;
+        }
+        if (interval === 'month') {
+          entry.billedLabel = `Billed monthly`;
+        }
+
+        results[plan] = entry;
+      } catch (err) {
+        console.error(`Failed to fetch price for ${plan}:`, err.message);
+      }
+    }));
+
+    // Cache for 1 hour
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.json(results);
+  } catch (err) {
+    console.error('Stripe prices error:', err);
+    res.status(500).json({ error: 'Failed to fetch prices' });
+  }
+});
+
+// ── POST /api/stripe/validate-promo ─────────────────────────────────────────
+// Validates a Stripe promotion code and returns discount info.
+router.post('/validate-promo', async (req, res) => {
+  const stripe = getStripe();
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+
+  const { code, plan } = req.body;
+  if (!code) return res.status(400).json({ error: 'Promo code is required' });
+
+  try {
+    // Look up promotion codes by code string
+    const promos = await stripe.promotionCodes.list({ code, active: true, limit: 1 });
+    if (!promos.data.length) {
+      return res.json({ valid: false, message: 'Invalid or expired promo code' });
+    }
+
+    const promo = promos.data[0];
+    const coupon = promo.coupon;
+
+    // Build discount info
+    const discount = {
+      valid: true,
+      promoId: promo.id,
+      couponId: coupon.id,
+      name: coupon.name || code.toUpperCase(),
+    };
+
+    if (coupon.percent_off) {
+      discount.type = 'percent';
+      discount.percentOff = coupon.percent_off;
+      discount.label = `${coupon.percent_off}% off`;
+    } else if (coupon.amount_off) {
+      discount.type = 'amount';
+      discount.amountOff = coupon.amount_off;
+      discount.currency = coupon.currency;
+      const symbol = (coupon.currency || 'usd') === 'usd' ? '$' : '';
+      discount.label = `${symbol}${(coupon.amount_off / 100).toFixed(2)} off`;
+    }
+
+    // If a plan was specified, calculate the discounted price
+    if (plan) {
+      const prices = PRICES();
+      const priceId = prices[plan];
+      if (priceId) {
+        try {
+          const price = await stripe.prices.retrieve(priceId);
+          const original = price.unit_amount;
+          let discounted = original;
+          if (coupon.percent_off) {
+            discounted = Math.round(original * (1 - coupon.percent_off / 100));
+          } else if (coupon.amount_off) {
+            discounted = Math.max(0, original - coupon.amount_off);
+          }
+          const symbol = (price.currency || 'usd') === 'usd' ? '$' : '';
+          discount.originalAmount = original;
+          discount.discountedAmount = discounted;
+          discount.originalFormatted = `${symbol}${(original / 100).toFixed(2)}`;
+          discount.discountedFormatted = `${symbol}${(discounted / 100).toFixed(2)}`;
+        } catch (priceErr) {
+          console.error('Failed to fetch price for promo calc:', priceErr.message);
+        }
+      }
+    }
+
+    res.json(discount);
+  } catch (err) {
+    console.error('Stripe validate-promo error:', err);
+    res.status(500).json({ error: 'Failed to validate promo code' });
+  }
+});
+
 // ── GET /api/stripe/subscription-status ──────────────────────────────────────
 router.get('/subscription-status', async (req, res) => {
   // If Stripe is not configured, allow access (dev mode)
@@ -64,7 +189,7 @@ router.post('/create-checkout-session', async (req, res) => {
   const stripe = getStripe();
   if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
 
-  const { plan, redirectBase } = req.body;
+  const { plan, redirectBase, promoCode } = req.body;
   const prices = PRICES();
   const priceId = prices[plan];
   if (!priceId) return res.status(400).json({ error: 'Invalid plan. Must be "monthly", "annual", "starter", or "lifetime".' });
@@ -89,11 +214,28 @@ router.post('/create-checkout-session', async (req, res) => {
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       customer_email: userEmail,
-      allow_promotion_codes: true,
       success_url: `${base}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${base}/cancel`,
       metadata: { userId, plan },
     };
+
+    // If a promo code was provided, apply it directly; otherwise allow manual entry
+    if (promoCode) {
+      // promoCode can be a promo ID (promo_xxx) or a code string
+      if (promoCode.startsWith('promo_')) {
+        sessionConfig.discounts = [{ promotion_code: promoCode }];
+      } else {
+        // Look up the promo code string to get its ID
+        const promos = await stripe.promotionCodes.list({ code: promoCode, active: true, limit: 1 });
+        if (promos.data.length) {
+          sessionConfig.discounts = [{ promotion_code: promos.data[0].id }];
+        } else {
+          sessionConfig.allow_promotion_codes = true;
+        }
+      }
+    } else {
+      sessionConfig.allow_promotion_codes = true;
+    }
 
     if (isOneTime) {
       // One-time payment for starter or lifetime
@@ -263,7 +405,7 @@ router.post('/upgrade-starter', async (req, res) => {
     const now = new Date();
     const periodEnd = new Date(starterRow.current_period_end);
     const daysRemaining = Math.max(0, Math.ceil((periodEnd - now) / (1000 * 60 * 60 * 24)));
-    const starterPriceCents = 5000; // $50.00
+    const starterPriceCents = 3999; // $39.99 base (may be discounted via promo)
     const refundCents = Math.round((daysRemaining / STARTER_ACCESS_DAYS) * starterPriceCents);
 
     // 3. Issue pro-rata refund on the original payment intent
@@ -399,7 +541,13 @@ router.post('/refund-starter', async (req, res) => {
       updated_at: new Date().toISOString(),
     }).eq('id', starterRow.id);
 
-    res.json({ ok: true, refundedAmount: 50, daysSinceStart });
+    // Fetch actual charge amount from Stripe for accurate refund display
+    let refundedAmount;
+    try {
+      const pi = await stripe.paymentIntents.retrieve(starterPaymentIntentId);
+      refundedAmount = (pi.amount_received || pi.amount) / 100;
+    } catch { refundedAmount = null; }
+    res.json({ ok: true, refundedAmount, daysSinceStart });
   } catch (err) {
     console.error('Stripe refund-starter error:', err);
     res.status(500).json({ error: 'Failed to process refund' });
@@ -463,7 +611,13 @@ router.post('/refund-lifetime', async (req, res) => {
       updated_at: new Date().toISOString(),
     }).eq('id', lifetimeRow.id);
 
-    res.json({ ok: true, refundedAmount: 149, daysSincePurchase });
+    // Fetch actual charge amount from Stripe for accurate refund display
+    let refundedAmount;
+    try {
+      const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+      refundedAmount = (pi.amount_received || pi.amount) / 100;
+    } catch { refundedAmount = null; }
+    res.json({ ok: true, refundedAmount, daysSincePurchase });
   } catch (err) {
     console.error('Stripe refund-lifetime error:', err);
     res.status(500).json({ error: 'Failed to process refund' });

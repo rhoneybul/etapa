@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { signOut } from '../services/authService';
 import { clearPlan, getPlans, deletePlan, clearUserData, getUserPrefs, setUserPrefs } from '../services/storageService';
-import { openBillingPortal, getSubscriptionStatus, upgradeStarter, refundStarter, refundLifetime, restorePurchases } from '../services/subscriptionService';
+import { openBillingPortal, getSubscriptionStatus, upgradeStarter, refundStarter, refundLifetime, restorePurchases, getPrices } from '../services/subscriptionService';
 import { logoutRevenueCat, isRevenueCatAvailable } from '../services/revenueCatService';
 import { connectStrava, disconnectStrava, isStravaConnected, isStravaConfigured, getStravaTokens } from '../services/stravaService';
 import UpgradePrompt from '../components/UpgradePrompt';
@@ -35,10 +35,12 @@ export default function SettingsScreen({ navigation }) {
   const [userPrefs, setUserPrefsState] = useState({ units: 'km', displayName: '' });
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
+  const [starterPriceLabel, setStarterPriceLabel] = useState(null);
 
   useEffect(() => {
     checkStrava();
     getSubscriptionStatus().then(setSubscription).catch(() => {});
+    getPrices().then(prices => { if (prices?.starter) setStarterPriceLabel(prices.starter.formatted); }).catch(() => {});
     api.notifications.unreadCount().then(d => setUnreadCount(d?.count || 0)).catch(() => {});
     api.preferences.get().then(setPreferences).catch(() => {});
     getUserPrefs().then(p => { setUserPrefsState(p); setNameInput(p.displayName || ''); }).catch(() => {});
@@ -119,7 +121,7 @@ export default function SettingsScreen({ navigation }) {
   const handleRefundStarter = () => {
     Alert.alert(
       'Request refund?',
-      'You\'ll receive a full $50 refund and your Get into Cycling plan will be cancelled. This can\'t be undone.',
+      `You'll receive a full refund${starterPriceLabel ? ` of ${starterPriceLabel}` : ''} and your Get into Cycling plan will be cancelled. This can't be undone.`,
       [
         { text: 'Keep my plan', style: 'cancel' },
         {
@@ -128,7 +130,7 @@ export default function SettingsScreen({ navigation }) {
           onPress: async () => {
             try {
               await refundStarter(starterPlan?.startDate);
-              Alert.alert('Refund processed', 'Your $50 refund is on its way. It may take 5–10 business days to appear.');
+              Alert.alert('Refund processed', 'Your refund is on its way. It may take 5–10 business days to appear.');
               // Refresh subscription and plans
               getSubscriptionStatus().then(setSubscription).catch(() => {});
               if (starterPlan) {
@@ -147,7 +149,7 @@ export default function SettingsScreen({ navigation }) {
   const handleRefundLifetime = () => {
     Alert.alert(
       'Request lifetime refund?',
-      'You\'ll receive a full $149 refund and your lifetime access will be revoked. This can\'t be undone.',
+      'You\'ll receive a full refund and your lifetime access will be revoked. This can\'t be undone.',
       [
         { text: 'Keep lifetime access', style: 'cancel' },
         {
@@ -156,7 +158,7 @@ export default function SettingsScreen({ navigation }) {
           onPress: async () => {
             try {
               await refundLifetime();
-              Alert.alert('Refund processed', 'Your $149 refund is on its way. It may take 5–10 business days to appear.');
+              Alert.alert('Refund processed', 'Your refund is on its way. It may take 5–10 business days to appear.');
               getSubscriptionStatus().then(setSubscription).catch(() => {});
             } catch (err) {
               Alert.alert('Refund failed', err.message || 'Please contact support.');
@@ -382,7 +384,7 @@ export default function SettingsScreen({ navigation }) {
                   <View style={s.rowLeft}>
                     <View>
                       <Text style={[s.rowTitle, { color: '#EF4444' }]}>Request Refund</Text>
-                      <Text style={s.rowSub}>Full $50 refund · available for first 2 weeks</Text>
+                      <Text style={s.rowSub}>Full {starterPriceLabel || ''} refund · available for first 2 weeks</Text>
                     </View>
                   </View>
                   <Text style={s.chevron}>{'\u203A'}</Text>

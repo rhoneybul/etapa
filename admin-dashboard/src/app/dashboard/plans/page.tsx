@@ -3,6 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { StatCard } from "@/components/stat-card";
@@ -42,6 +43,7 @@ interface Plan {
 }
 
 export default function PlansPage() {
+  const router = useRouter();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -72,8 +74,11 @@ export default function PlansPage() {
         searchPlaceholder="Search by user..."
         columns={[
           { key: "name", label: "Plan Name", render: (p: Plan) => (
-            <div>
-              <p className="font-medium text-white">{p.name || "Untitled"}</p>
+            <div
+              className="cursor-pointer"
+              onClick={() => router.push(`/dashboard/plans/${p.id}`)}
+            >
+              <p className="font-medium text-etapa-primary hover:text-etapa-primary/80 transition-colors">{p.name || "Untitled"}</p>
               <p className="text-xs text-etapa-textMuted">{p.weeks} weeks, {p.activityCount} activities</p>
             </div>
           )},

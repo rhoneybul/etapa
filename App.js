@@ -34,6 +34,7 @@ import CalendarScreen      from './src/screens/CalendarScreen';
 import PlanOverviewScreen  from './src/screens/PlanOverviewScreen';
 import PlanReadyScreen     from './src/screens/PlanReadyScreen';
 import PlanChangesScreen   from './src/screens/PlanChangesScreen';
+import ApplySuggestionScreen from './src/screens/ApplySuggestionScreen';
 import CoachChatScreen     from './src/screens/CoachChatScreen';
 import FeedbackScreen      from './src/screens/FeedbackScreen';
 import SupportChatScreen   from './src/screens/SupportChatScreen';
@@ -221,6 +222,7 @@ function App() {
               <Stack.Screen name="Calendar"       component={CalendarScreen} />
               <Stack.Screen name="PlanReady"      component={PlanReadyScreen} />
               <Stack.Screen name="PlanChanges"    component={PlanChangesScreen} />
+              <Stack.Screen name="ApplySuggestion" component={ApplySuggestionScreen} />
               <Stack.Screen name="PlanOverview"   component={PlanOverviewScreen} />
               <Stack.Screen name="CoachChat"      component={CoachChatScreen} />
               <Stack.Screen name="ActivityDetail" component={ActivityDetailScreen} />

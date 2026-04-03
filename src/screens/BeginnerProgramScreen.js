@@ -5,18 +5,19 @@
  * bike setup, gear, and building confidence.
  *
  * Payment options:
- *   - Pay now ($50 one-time) → full access immediately
+ *   - Pay now (price fetched from Stripe) → full access immediately
  *   - Pay when it starts → plan is generated but locked until payment
+ * Supports Stripe promo/discount codes.
  * Full refund available within first 2 weeks of plan start date.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Alert,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Alert, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { saveGoal } from '../services/storageService';
-import { isSubscribed, openCheckout } from '../services/subscriptionService';
+import { isSubscribed, openCheckout, getPrices, validatePromo } from '../services/subscriptionService';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
@@ -58,6 +59,46 @@ export default function BeginnerProgramScreen({ navigation }) {
   const [daysPerWeek, setDaysPerWeek] = useState(null);
   const [showTips, setShowTips] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
+  // Dynamic pricing
+  const [starterPrice, setStarterPrice] = useState({ formatted: '$39.99', amount: 3999 });
+  const [promoInput, setPromoInput] = useState('');
+  const [promoResult, setPromoResult] = useState(null); // { valid, promoId, label, discountedFormatted, ... }
+  const [validatingPromo, setValidatingPromo] = useState(false);
+
+  // Default promo code for the starter plan (auto-applied)
+  const DEFAULT_STARTER_PROMO = 'promo_1TI5VkAmoVZFfAwUakin4FXz';
+
+  // Fetch live starter price + auto-apply default promo on mount
+  useEffect(() => {
+    getPrices().then(prices => {
+      if (prices?.starter) setStarterPrice(prices.starter);
+    }).catch(() => {});
+
+    // Auto-apply the default promo code
+    validatePromo(DEFAULT_STARTER_PROMO, 'starter').then(result => {
+      if (result?.valid) setPromoResult(result);
+    }).catch(() => {});
+  }, []);
+
+  const displayPrice = promoResult?.valid ? promoResult.discountedFormatted : starterPrice.formatted;
+  const hasDiscount = promoResult?.valid;
+
+  const handleApplyPromo = async () => {
+    const code = promoInput.trim();
+    if (!code) return;
+    setValidatingPromo(true);
+    try {
+      const result = await validatePromo(code, 'starter');
+      setPromoResult(result);
+      if (!result?.valid) {
+        Alert.alert('Invalid code', result?.message || 'This promo code is not valid.');
+      }
+    } catch {
+      Alert.alert('Error', 'Could not validate promo code. Please try again.');
+    } finally {
+      setValidatingPromo(false);
+    }
+  };
 
   /** Proceed to PlanConfig with an optional paymentStatus flag */
   const proceedToConfig = async (paymentStatus) => {
@@ -96,7 +137,8 @@ export default function BeginnerProgramScreen({ navigation }) {
 
     setPurchasing(true);
     try {
-      const result = await openCheckout('starter');
+      const promoCode = promoResult?.valid ? promoResult.promoId : null;
+      const result = await openCheckout('starter', null, promoCode);
       if (!result.success) {
         setPurchasing(false);
         return; // User cancelled
@@ -145,9 +187,49 @@ export default function BeginnerProgramScreen({ navigation }) {
 
           {/* Price card */}
           <View style={s.priceCard}>
-            <Text style={s.priceAmount}>$50</Text>
+            {hasDiscount && (
+              <Text style={s.priceOriginal}>{starterPrice.formatted}</Text>
+            )}
+            <Text style={s.priceAmount}>{displayPrice}</Text>
             <Text style={s.priceSub}>one-time · 3 months access</Text>
+            {hasDiscount && (
+              <View style={s.promoBadge}>
+                <Text style={s.promoBadgeText}>{promoResult.label}</Text>
+              </View>
+            )}
             <Text style={s.priceRefund}>Full refund within 2 weeks of starting</Text>
+          </View>
+
+          {/* Promo code */}
+          <View style={s.promoSection}>
+            <Text style={s.promoLabel}>Have a promo code?</Text>
+            <View style={s.promoRow}>
+              <TextInput
+                style={s.promoInput}
+                placeholder="Enter code"
+                placeholderTextColor={colors.textMuted}
+                value={promoInput}
+                onChangeText={(t) => { setPromoInput(t); if (promoResult) setPromoResult(null); }}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                editable={!validatingPromo}
+              />
+              <TouchableOpacity
+                style={[s.promoBtn, (!promoInput.trim() || validatingPromo) && { opacity: 0.4 }]}
+                onPress={handleApplyPromo}
+                disabled={!promoInput.trim() || validatingPromo}
+                activeOpacity={0.8}
+              >
+                {validatingPromo ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={s.promoBtnText}>Apply</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+            {promoResult?.valid && (
+              <Text style={s.promoSuccess}>{promoResult.label} applied!</Text>
+            )}
           </View>
 
           {/* What's included */}
@@ -229,7 +311,7 @@ export default function BeginnerProgramScreen({ navigation }) {
             ) : (
               <>
                 <Text style={s.ctaText}>Pay now and get started</Text>
-                <Text style={s.ctaSub}>$50 · full access to your plan</Text>
+                <Text style={s.ctaSub}>{displayPrice} · full access to your plan</Text>
               </>
             )}
           </TouchableOpacity>
@@ -276,8 +358,34 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, alignItems: 'center', marginBottom: 28,
   },
   priceAmount: { fontSize: 32, fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
+  priceOriginal: {
+    fontSize: 18, fontFamily: FF.regular, color: colors.textMuted,
+    textDecorationLine: 'line-through', marginBottom: 2,
+  },
   priceSub: { fontSize: 13, fontFamily: FF.regular, color: colors.textMid, marginBottom: 6 },
+  promoBadge: {
+    backgroundColor: 'rgba(34,197,94,0.12)', borderRadius: 6,
+    paddingHorizontal: 10, paddingVertical: 4, marginBottom: 6,
+  },
+  promoBadgeText: { fontSize: 11, fontFamily: FF.semibold, color: '#22C55E', letterSpacing: 0.5 },
   priceRefund: { fontSize: 12, fontFamily: FF.regular, color: '#22C55E' },
+
+  // Promo code
+  promoSection: { marginBottom: 28 },
+  promoLabel: { fontSize: 13, fontFamily: FF.medium, color: colors.textMid, marginBottom: 8 },
+  promoRow: { flexDirection: 'row', gap: 10 },
+  promoInput: {
+    flex: 1, backgroundColor: colors.surface, borderRadius: 10,
+    borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14,
+    paddingVertical: 12, fontSize: 14, fontFamily: FF.medium, color: colors.text,
+    letterSpacing: 1,
+  },
+  promoBtn: {
+    backgroundColor: '#22C55E', borderRadius: 10,
+    paddingHorizontal: 20, justifyContent: 'center', alignItems: 'center',
+  },
+  promoBtnText: { fontSize: 14, fontFamily: FF.semibold, color: '#fff' },
+  promoSuccess: { fontSize: 12, fontFamily: FF.medium, color: '#22C55E', marginTop: 6 },
 
   // Sections
   section: { marginBottom: 28 },
