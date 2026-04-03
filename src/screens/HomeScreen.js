@@ -22,6 +22,15 @@ const FF = fontFamily;
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const CYCLING_LABELS = { road: 'Road', gravel: 'Gravel', mtb: 'MTB', mixed: 'Mixed' };
 
+const SUGGEST_COLORS = {
+  training:      '#D97706',
+  nutrition:     '#22C55E',
+  strength:      '#8B5CF6',
+  cross_training:'#06B6D4',
+  mental:        '#3B82F6',
+  recovery:      '#64748B',
+};
+
 /**
  * Compute total plan distance and weekly hours from activities.
  */
@@ -57,6 +66,7 @@ export default function HomeScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [starterPriceLabel, setStarterPriceLabel] = useState(null); // fetched from Stripe
   const [subscribed, setSubscribed] = useState(true); // assumed true until checked
+  const [previewDaysLeft, setPreviewDaysLeft] = useState(null); // null = subscribed / no limit
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const cachedPlanHash = useRef(null); // Track plan state to avoid unnecessary reloads
   const initialLoadDone = useRef(false);
@@ -82,12 +92,35 @@ export default function HomeScreen({ navigation }) {
       getCurrentUser(), getPlans(), getGoals(), isStravaConnected(), getUserPrefs(),
     ]);
 
-    // Check subscription status — but don't redirect; let unsubscribed users browse their plan
+    // Check subscription status — unsubscribed users get a 7-day preview window
     if (p.length > 0) {
       const subCheck = await isSubscribed();
-      setSubscribed(subCheck);
+      if (!subCheck) {
+        // Find the oldest plan's creation date to start the 7-day clock
+        const sortedByDate = [...p].sort((a, b) => {
+          const da = new Date(a.createdAt || a.startDate || 0);
+          const db = new Date(b.createdAt || b.startDate || 0);
+          return da - db;
+        });
+        const firstCreatedAt = sortedByDate[0]?.createdAt || sortedByDate[0]?.startDate;
+        const daysSinceFirst = firstCreatedAt
+          ? Math.floor((Date.now() - new Date(firstCreatedAt).getTime()) / (1000 * 60 * 60 * 24))
+          : 0;
+        const PREVIEW_DAYS = 7;
+        if (daysSinceFirst > PREVIEW_DAYS) {
+          // Preview window expired — require subscription
+          navigation.replace('Paywall', { fromHome: true, nextScreen: 'Home' });
+          return;
+        }
+        setPreviewDaysLeft(Math.max(0, PREVIEW_DAYS - daysSinceFirst));
+        setSubscribed(false);
+      } else {
+        setSubscribed(true);
+        setPreviewDaysLeft(null);
+      }
     } else {
-      setSubscribed(true); // no plan yet, doesn't matter
+      setSubscribed(true);
+      setPreviewDaysLeft(null);
     }
 
     // Fetch subscription plan type (starter, monthly, annual)
@@ -428,8 +461,14 @@ export default function HomeScreen({ navigation }) {
               activeOpacity={0.85}
             >
               <View style={s.subscribeBannerLeft}>
-                <Text style={s.subscribeBannerTitle}>Subscribe to start training</Text>
-                <Text style={s.subscribeBannerSub}>You're browsing in preview mode — subscribe to unlock full access</Text>
+                <Text style={s.subscribeBannerTitle}>
+                  {previewDaysLeft !== null && previewDaysLeft <= 1
+                    ? 'Last day of preview'
+                    : previewDaysLeft !== null
+                      ? `${previewDaysLeft} days of preview left`
+                      : 'Subscribe to start training'}
+                </Text>
+                <Text style={s.subscribeBannerSub}>Subscribe to unlock full training access</Text>
               </View>
               <Text style={s.subscribeBannerArrow}>{'\u203A'}</Text>
             </TouchableOpacity>
@@ -707,6 +746,46 @@ export default function HomeScreen({ navigation }) {
             );
           })()}
 
+          {/* Coach suggestions — always shown when plan has an assessment */}
+          {((activePlan?.assessment?.suggestions?.length > 0) || (activePlan?.assessment?.recommendations?.length > 0)) && (
+            <View style={s.suggestSection}>
+              <View style={s.suggestHeader}>
+                <Text style={s.suggestSectionTitle}>Ways to level up</Text>
+                <Text style={s.suggestSectionHint}>Tap to apply to your plan</Text>
+              </View>
+              {(activePlan.assessment.suggestions || activePlan.assessment.recommendations || []).map((sug, i) => {
+                const sugColor = SUGGEST_COLORS[sug.type] || '#64748B';
+                const appliedKey = sug.title || sug.text || '';
+                const isApplied = (activePlan.appliedSuggestions || []).includes(appliedKey);
+                return (
+                  <TouchableOpacity
+                    key={i}
+                    style={[s.suggestCard, isApplied && s.suggestCardApplied]}
+                    activeOpacity={isApplied ? 1 : 0.75}
+                    onPress={() => {
+                      if (isApplied) return;
+                      navigation.navigate('ApplySuggestion', {
+                        planId: activePlan.id,
+                        goalId: activeGoal?.id,
+                        suggestion: sug,
+                      });
+                    }}
+                  >
+                    <View style={[s.suggestDot, { backgroundColor: isApplied ? '#64748B' : sugColor }]} />
+                    <View style={s.suggestBody}>
+                      <Text style={[s.suggestTitle, isApplied && s.suggestTitleApplied]}>{sug.title || sug.type}</Text>
+                      <Text style={[s.suggestText, isApplied && s.suggestTextApplied]} numberOfLines={2}>{sug.text}</Text>
+                    </View>
+                    {isApplied
+                      ? <Text style={s.suggestAppliedLabel}>{'\u2713'}</Text>
+                      : <Text style={s.suggestArrow}>{'\u203A'}</Text>
+                    }
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
           {/* Week progress */}
           <View style={s.section}>
             <View style={s.sectionRow}>
@@ -847,6 +926,26 @@ const s = StyleSheet.create({
   planActions: { paddingHorizontal: 20, marginTop: 8, alignItems: 'center' },
   planActionBtn: { paddingVertical: 10, paddingHorizontal: 16 },
   planActionText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.textFaint },
+
+  // Coach suggestions section
+  suggestSection: { marginHorizontal: 20, marginBottom: 16 },
+  suggestHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 },
+  suggestSectionTitle: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  suggestSectionHint: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint },
+  suggestCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.surface, borderRadius: 12, padding: 14, marginBottom: 8,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  suggestCardApplied: { opacity: 0.45 },
+  suggestDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
+  suggestBody: { flex: 1 },
+  suggestTitle: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 2 },
+  suggestTitleApplied: { color: colors.textMuted },
+  suggestText: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 17 },
+  suggestTextApplied: { color: colors.textFaint },
+  suggestArrow: { fontSize: 20, color: colors.textMid, fontWeight: '300' },
+  suggestAppliedLabel: { fontSize: 14, color: '#64748B', fontWeight: '600' },
 
   // Strava connect
   stravaCard: {

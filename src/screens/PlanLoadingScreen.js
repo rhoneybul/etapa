@@ -26,11 +26,11 @@ const POLL_INTERVAL = 2000; // 2 seconds
 
 // Marketing / tips shown while the plan generates
 const MARKETING_TIPS = [
-  { icon: '', title: 'Personalised to you', body: 'Your AI coach analyses your fitness level, goals, and schedule to build a plan that fits your life.' },
-  { icon: '📈', title: 'Progressive overload', body: 'Each week builds on the last — volume and intensity increase gradually so your body adapts safely.' },
-  { icon: '🔄', title: 'Built-in recovery', body: 'Deload weeks and rest days are scheduled automatically to prevent burnout and overtraining.' },
-  { icon: '✏️', title: 'Fully editable', body: 'Need to move a session or skip a week? Chat with your coach to adjust the plan anytime.' },
-  { icon: '🏔️', title: 'Event-ready tapering', body: 'If you have a target event, your plan tapers volume in the final weeks so you arrive fresh.' },
+  { title: 'Personalised to you', body: 'Your AI coach analyses your fitness level, goals, and schedule to build a plan that fits your life.' },
+  { title: 'Progressive overload', body: 'Each week builds on the last — volume and intensity increase gradually so your body adapts safely.' },
+  { title: 'Built-in recovery', body: 'Deload weeks and rest days are scheduled automatically to prevent burnout and overtraining.' },
+  { title: 'Fully editable', body: 'Need to move a session or skip a week? Chat with your coach to adjust the plan anytime.' },
+  { title: 'Event-ready tapering', body: 'If you have a target event, your plan tapers volume in the final weeks so you arrive fresh.' },
 ];
 
 // Progress stages for the animated bar (when using sync fallback)
@@ -312,7 +312,6 @@ export default function PlanLoadingScreen({ navigation, route }) {
 
           {/* Marketing tip card */}
           <Animated.View style={[s.tipCard, { opacity: tipFade }]}>
-            {tip.icon ? <Text style={s.tipIcon}>{tip.icon}</Text> : null}
             <Text style={s.tipTitle}>{tip.title}</Text>
             <Text style={s.tipBody}>{tip.body}</Text>
           </Animated.View>
