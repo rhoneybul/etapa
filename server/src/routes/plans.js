@@ -38,19 +38,23 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/plans — create a plan with activities
+// POST /api/plans — create or replace a plan with activities (upsert — safe to call repeatedly)
 router.post('/', async (req, res, next) => {
   try {
     const userId = req.user.id;
     const plan = req.body;
 
-    // Insert plan
+    // Upsert plan row — if the plan already exists (same id) we overwrite it cleanly
     const planRow = planToRow(plan, userId);
-    const { error: planErr } = await supabase.from('plans').insert(planRow);
+    const { error: planErr } = await supabase
+      .from('plans')
+      .upsert(planRow, { onConflict: 'id' });
     if (planErr) throw planErr;
 
-    // Insert activities
-    if (plan.activities?.length > 0) {
+    // Replace activities: delete all existing then bulk-insert fresh set
+    // (Upsert on activities is tricky because IDs can change between edits)
+    if (plan.activities && plan.activities.length > 0) {
+      await supabase.from('activities').delete().eq('plan_id', plan.id).eq('user_id', userId);
       const actRows = plan.activities.map(a => activityToRow(a, userId, plan.id));
       const { error: actErr } = await supabase.from('activities').insert(actRows);
       if (actErr) throw actErr;

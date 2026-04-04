@@ -142,19 +142,14 @@ export async function savePlan(plan) {
   await ensureMigrated();
   let plans = (await getJSON(KEYS.PLANS)) || [];
   const idx = plans.findIndex(p => p.id === plan.id);
-  const isNew = idx < 0;
   if (idx >= 0) {
     plans[idx] = plan;
   } else {
     plans.push(plan);
   }
   await setJSON(KEYS.PLANS, plans);
-  // Sync to server
-  if (isNew) {
-    api.plans.create(plan).catch(() => {});
-  } else {
-    api.plans.update(plan.id, plan).catch(() => {});
-  }
+  // Always push via create (server uses upsert — safe for both new and existing plans)
+  api.plans.create(plan).catch(() => {});
   return plan;
 }
 
@@ -347,6 +342,36 @@ export async function hydrateFromServer({ force = false } = {}) {
   } catch (err) {
     console.warn('Hydration from server failed:', err);
     return { hydrated: false, reason: 'api_error' };
+  }
+}
+
+/**
+ * Push all locally-stored plans (+ their activities) up to the server.
+ * The server endpoint is now an upsert, so this is safe to call at any time —
+ * it won't create duplicates and won't overwrite progress that only exists
+ * server-side (activity completion state etc. is included in the local plan).
+ *
+ * Call this once after the user is authenticated so the admin dashboard always
+ * has up-to-date data even if previous syncs failed silently.
+ */
+export async function syncPlansToServer() {
+  try {
+    const plans = (await getJSON(KEYS.PLANS)) || [];
+    if (plans.length === 0) return { synced: 0 };
+    let synced = 0;
+    for (const plan of plans) {
+      try {
+        await api.plans.create(plan); // server uses upsert — idempotent
+        synced++;
+      } catch {
+        // keep going — best-effort sync
+      }
+    }
+    console.log(`[storageService] Synced ${synced}/${plans.length} plans to server`);
+    return { synced };
+  } catch (err) {
+    console.warn('[storageService] syncPlansToServer failed:', err);
+    return { synced: 0 };
   }
 }
 

@@ -18,6 +18,7 @@ import { getSessionColor, getSessionLabel, getMetricLabel, getCrossTrainingForDa
 import { getCoach } from '../data/coaches';
 import analytics from '../services/analyticsService';
 import api from '../services/api';
+import { syncPlansToServer } from '../services/storageService';
 
 const FF = fontFamily;
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -101,6 +102,10 @@ export default function HomeScreen({ navigation }) {
       getCurrentUser(), getPlans(), getGoals(), isStravaConnected(), getUserPrefs(),
       api.appConfig.get().catch(() => ({})),
     ]);
+
+    // Push any locally-stored plans to the server (idempotent upsert — safe to run every load).
+    // This ensures the admin dashboard always has up-to-date data even if earlier syncs failed.
+    if (p.length > 0) syncPlansToServer().catch(() => {});
 
     // Sync remote trial config into state so the banner message updates
     const remoteTrial = remoteConfig?.trial_config;

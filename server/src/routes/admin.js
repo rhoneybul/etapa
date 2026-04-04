@@ -1127,15 +1127,15 @@ router.post('/users/:id/coach-checkin', async (req, res, next) => {
   try {
     const userId = req.params.id;
 
-    // Find user's most recent active plan to get the coach
-    const { data: plans } = await supabase
+    // Find user's most recent plan (any status — don't gate the check-in on active-only)
+    const { data: plans, error: planFetchErr } = await supabase
       .from('plans')
-      .select('id, config_id')
+      .select('id, config_id, status')
       .eq('user_id', userId)
-      .eq('status', 'active')
       .order('created_at', { ascending: false })
       .limit(1);
 
+    if (planFetchErr) console.error('[admin check-in] plan fetch error:', planFetchErr.message);
     const plan = plans?.[0] || null;
 
     // Get coach ID from plan config (fall back to matteo if no plan)
