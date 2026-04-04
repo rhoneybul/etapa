@@ -2,7 +2,7 @@
  * Plan Configuration Wizard — 4 steps:
  *  Step 1: How active are you? (fitness level — beginner / intermediate / advanced / expert)
  *  Step 2: What training types? (outdoor, indoor, strength)
- *  Step 3: Build your week — session counts, day placement, AND other training
+ *  Step 3: Build your week — day placement and other training
  *  Step 4: Duration (if no target date) & start date
  */
 import React, { useState } from 'react';
@@ -144,12 +144,6 @@ export default function PlanConfigScreen({ navigation, route }) {
     adjustmentDefaults?.weeks || beginnerDefaults?.weeks || null
   );
 
-  // Step 3: session counts per cycling type
-  const [sessionCounts, setSessionCounts] = useState(
-    adjustmentDefaults?.sessionCounts
-      || (beginnerDefaults ? { outdoor: beginnerDefaults.daysPerWeek } : { outdoor: 2 })
-  );
-
   // Unified day activities — each day holds an array of activity keys
   // e.g. { monday: ['outdoor', 'run'], tuesday: ['indoor'], ... }
   const [dayActivities, setDayActivities] = useState({});
@@ -188,62 +182,20 @@ export default function PlanConfigScreen({ navigation, route }) {
     setTrainingTypes(prev => {
       if (type === 'outdoor') return prev;
       const next = prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type];
-      setSessionCounts(sc => {
-        const updated = { ...sc };
-        if (!next.includes(type)) {
-          delete updated[type];
-          // Remove placed instances of this type from dayActivities
-          setDayActivities(da => {
-            const cleaned = {};
-            Object.entries(da).forEach(([day, acts]) => {
-              const filtered = acts.filter(a => a !== type);
-              if (filtered.length > 0) cleaned[day] = filtered;
-            });
-            return cleaned;
-          });
-        } else if (!updated[type]) {
-          updated[type] = 1;
-        }
-        return updated;
-      });
-      return next;
-    });
-  };
-
-  const adjustCount = (type, delta) => {
-    setSessionCounts(prev => {
-      const next = { ...prev };
-      const newVal = Math.max(0, (next[type] || 0) + delta);
-      next[type] = newVal;
-
-      // Count how many of this type are placed
-      let placedCount = 0;
-      Object.values(dayActivities).forEach(acts => { placedCount += acts.filter(a => a === type).length; });
-
-      if (placedCount > newVal) {
+      if (!next.includes(type)) {
+        // Remove placed instances of this type from dayActivities
         setDayActivities(da => {
-          const cleaned = { ...da };
-          let toRemove = placedCount - newVal;
-          for (let i = DAYS.length - 1; i >= 0 && toRemove > 0; i--) {
-            const dayKey = DAYS[i].key;
-            const acts = cleaned[dayKey] || [];
-            const idx = acts.lastIndexOf(type);
-            if (idx !== -1) {
-              const updated = [...acts];
-              updated.splice(idx, 1);
-              if (updated.length === 0) delete cleaned[dayKey];
-              else cleaned[dayKey] = updated;
-              toRemove--;
-            }
-          }
+          const cleaned = {};
+          Object.entries(da).forEach(([day, acts]) => {
+            const filtered = acts.filter(a => a !== type);
+            if (filtered.length > 0) cleaned[day] = filtered;
+          });
           return cleaned;
         });
       }
       return next;
     });
   };
-
-  const totalSessions = Object.values(sessionCounts).reduce((s, v) => s + v, 0);
 
   // Count placed cycling sessions
   const placedByType = {};
@@ -253,7 +205,8 @@ export default function PlanConfigScreen({ navigation, route }) {
   });
 
   const totalCyclingPlaced = Object.values(placedByType).reduce((s, v) => s + v, 0);
-  const allPlaced = totalCyclingPlaced > 0 && totalCyclingPlaced >= totalSessions;
+  const totalSessions = totalCyclingPlaced;
+  const allPlaced = totalCyclingPlaced > 0;
 
   // Handle tapping a day card — place or remove the selected activity
   const handleDayTap = (dayKey) => {
@@ -262,7 +215,7 @@ export default function PlanConfigScreen({ navigation, route }) {
       const current = next[dayKey] || [];
       const act = selectedActivity;
 
-      // If it's a cycling type, place freely and auto-adjust session count
+      // If it's a cycling type, place freely
       if (isCyclingType(act)) {
         if (current.includes(act)) {
           // Remove it
@@ -270,25 +223,9 @@ export default function PlanConfigScreen({ navigation, route }) {
           updated.splice(updated.indexOf(act), 1);
           if (updated.length === 0) delete next[dayKey];
           else next[dayKey] = updated;
-          // Auto-decrement session count if needed
-          let newPlaced = 0;
-          Object.values(next).forEach(acts => { newPlaced += acts.filter(a => a === act).length; });
-          setSessionCounts(sc => {
-            const current = sc[act] || 0;
-            if (newPlaced < current) return { ...sc, [act]: Math.max(1, newPlaced) };
-            return sc;
-          });
         } else {
           // Add it — no quota limit
           next[dayKey] = [...current, act];
-          // Auto-increment session count if placement exceeds current target
-          let newPlaced = 0;
-          Object.values(next).forEach(acts => { newPlaced += acts.filter(a => a === act).length; });
-          setSessionCounts(sc => {
-            const target = sc[act] || 0;
-            if (newPlaced > target) return { ...sc, [act]: newPlaced };
-            return sc;
-          });
         }
       } else {
         // Cross-training: toggle on/off
@@ -345,18 +282,6 @@ export default function PlanConfigScreen({ navigation, route }) {
       }
       return next;
     });
-    // Ensure outdoor count is at least enough for this placement
-    setSessionCounts(prev => {
-      let placedOutdoor = 0;
-      Object.values(dayActivities).forEach(acts => { placedOutdoor += acts.filter(a => a === 'outdoor').length; });
-      // +1 for the one we just placed
-      const newPlaced = placedOutdoor + 1;
-      if ((prev.outdoor || 0) < newPlaced) {
-        return { ...prev, outdoor: newPlaced };
-      }
-      return prev;
-    });
-
     setRecurringForm({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' });
     setShowAddRecurring(false);
   };
@@ -459,11 +384,6 @@ export default function PlanConfigScreen({ navigation, route }) {
       if (step === 1) analytics.events.configStepCompleted(1, { fitnessLevel });
       if (step === 2) {
         analytics.events.configStepCompleted(2, { trainingTypes });
-        setSessionCounts(prev => {
-          const next = {};
-          trainingTypes.forEach(t => { next[t] = prev[t] || 1; });
-          return next;
-        });
         setDayActivities({});
         setSelectedActivity(trainingTypes[0] || 'outdoor');
       }
@@ -478,13 +398,17 @@ export default function PlanConfigScreen({ navigation, route }) {
 
     const startDate = getChosenStartDate();
     const weeks = planWeeks || suggestWeeks(goal, fitnessLevel, startDate);
+    const selectedSessionCounts = {};
+    trainingTypes.forEach(t => {
+      if ((placedByType[t] || 0) > 0) selectedSessionCounts[t] = placedByType[t];
+    });
 
     const config = await savePlanConfig({
       goalId: goal.id,
       daysPerWeek,
       weeks,
       trainingTypes,
-      sessionCounts,
+      sessionCounts: selectedSessionCounts,
       availableDays,
       dayAssignments,
       fitnessLevel,
@@ -575,7 +499,6 @@ export default function PlanConfigScreen({ navigation, route }) {
         label: tt.short,
         color: TYPE_COLORS[tt.key] || colors.primary,
         isCycling: true,
-        target: sessionCounts[tt.key] || 0,
         placed: placedByType[tt.key] || 0,
       }));
 
@@ -590,9 +513,6 @@ export default function PlanConfigScreen({ navigation, route }) {
         if (TYPE_COLORS[key]) return TYPE_COLORS[key];
         return CT_COLOR;
       };
-
-      // Count how many outdoor rides come from organised rides
-      const organisedOutdoorCount = recurringRides.length;
 
       return (
         <ScrollView showsVerticalScrollIndicator={false}>
@@ -807,55 +727,11 @@ export default function PlanConfigScreen({ navigation, route }) {
             )}
           </View>
 
-          {/* ── Session counters (how many can you do?) ── */}
-          <View style={s.divider} />
-          <Text style={s.counterSectionTitle}>Starting sessions per week</Text>
-          {organisedOutdoorCount > 0 && (
-            <Text style={s.counterSectionHint}>
-              {organisedOutdoorCount} outdoor ride{organisedOutdoorCount !== 1 ? 's' : ''} already added from your organised rides
-            </Text>
-          )}
-          {activeTypes.map(tt => {
-            const count = sessionCounts[tt.key] || 0;
-            const placed = placedByType[tt.key] || 0;
-            const fromOrganised = tt.key === 'outdoor' ? organisedOutdoorCount : 0;
-            return (
-              <View key={tt.key} style={s.counterRow}>
-                <View style={[s.typeIndicator, { backgroundColor: TYPE_COLORS[tt.key] || colors.primary }]} />
-                <View style={s.counterLabelWrap}>
-                  <Text style={s.counterLabel}>{tt.label}</Text>
-                  {fromOrganised > 0 && (
-                    <Text style={s.counterOrganisedNote}>{fromOrganised} from organised rides</Text>
-                  )}
-                  {placed > 0 && (
-                    <Text style={s.counterHintDone}>{placed} placed</Text>
-                  )}
-                </View>
-                <View style={s.counterControls}>
-                  <TouchableOpacity
-                    style={[s.counterBtn, count <= 0 && s.counterBtnDisabled]}
-                    onPress={() => adjustCount(tt.key, -1)}
-                    disabled={count <= 0}
-                  >
-                    <Text style={[s.counterBtnText, count <= 0 && s.counterBtnTextDisabled]}>{'\u2212'}</Text>
-                  </TouchableOpacity>
-                  <Text style={s.counterValue}>{count}</Text>
-                  <TouchableOpacity
-                    style={s.counterBtn}
-                    onPress={() => adjustCount(tt.key, 1)}
-                  >
-                    <Text style={s.counterBtnText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })}
-
           {/* ── Activity palette ── */}
           <View style={s.divider} />
           <Text style={s.placeLabel}>Build your week</Text>
           <Text style={s.placeSub}>
-            Select an activity, then tap a day to place it. Tap a placed item to remove it. You can stack multiple activities on one day.
+            Select an activity, then tap a day to place it. Tap a placed item to remove it. No need to set a number first — just place as many sessions as you want.
           </Text>
           <Text style={[s.placeStatus, allPlaced ? s.placeStatusOk : s.placeStatusPending]}>
             {totalCyclingPlaced} cycling session{totalCyclingPlaced !== 1 ? 's' : ''} placed
@@ -877,7 +753,6 @@ export default function PlanConfigScreen({ navigation, route }) {
             {/* Cycling types */}
             {cyclingPalette.map(cp => {
               const isSelected = selectedActivity === cp.key;
-              const remaining = cp.target - cp.placed;
               return (
                 <TouchableOpacity
                   key={cp.key}
@@ -887,9 +762,9 @@ export default function PlanConfigScreen({ navigation, route }) {
                 >
                   <View style={[s.paletteDot, { backgroundColor: cp.color }]} />
                   <Text style={[s.paletteLabel, isSelected && { color: cp.color }]}>{cp.label}</Text>
-                  {remaining > 0 && (
+                  {cp.placed > 0 && (
                     <View style={[s.paletteBadge, { backgroundColor: cp.color }]}>
-                      <Text style={s.paletteBadgeText}>{remaining}</Text>
+                      <Text style={s.paletteBadgeText}>{cp.placed}</Text>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -1278,7 +1153,7 @@ export default function PlanConfigScreen({ navigation, route }) {
   const subtitles = {
     1: 'Be honest \u2014 this helps us set realistic targets',
     2: 'Choose as many as you like',
-    3: 'Add any fixed rides, set session counts, and place them on days',
+    3: 'Add fixed rides and place as many sessions as you want',
     4: goal.targetDate ? 'Pick a start date for your training plan' : 'How long and when to begin',
     5: 'Pick a coaching personality that fits your style',
   };
