@@ -13,6 +13,22 @@ const { supabase } = require('../lib/supabase');
 
 const WEBHOOK_SECRET = process.env.REVENUECAT_WEBHOOK_SECRET;
 
+// ── Slack helper ──────────────────────────────────────────────────────────────
+const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || process.env.SLACK_SUBSCRIPTIONS_WEBHOOK_URL;
+
+async function notifySlack(text) {
+  if (!SLACK_WEBHOOK_URL) return;
+  try {
+    await fetch(SLACK_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+  } catch (err) {
+    console.error('[RevenueCat slack] Failed to notify:', err.message);
+  }
+}
+
 // Lifetime = access until 2099 (same as Stripe lifetime handling)
 const LIFETIME_END = '2099-12-31T23:59:59.000Z';
 
@@ -128,6 +144,20 @@ async function revenueCatWebhookHandler(req, res) {
     }
 
     console.log(`[RevenueCat webhook] Synced: ${eventType} → ${plan} (${status}) for ${appUserId}`);
+
+    // Slack notifications for key events
+    const planLabel = { lifetime: 'Lifetime', annual: 'Annual', monthly: 'Monthly', starter: 'Starter' }[plan] || plan;
+    const storeLabel = store ? ` via ${store}` : '';
+    if (eventType === 'INITIAL_PURCHASE') {
+      notifySlack(`💰 *New IAP purchase* — ${appUserId} subscribed to ${planLabel}${storeLabel}`);
+    } else if (eventType === 'RENEWAL') {
+      notifySlack(`🔄 *Subscription renewed* — ${appUserId} (${planLabel}${storeLabel})`);
+    } else if (eventType === 'CANCELLATION') {
+      notifySlack(`🚫 *IAP subscription cancelled* — ${appUserId} (${planLabel}${storeLabel})`);
+    } else if (eventType === 'EXPIRATION') {
+      notifySlack(`⏰ *IAP subscription expired* — ${appUserId} (${planLabel}${storeLabel})`);
+    }
+
     res.json({ received: true });
   } catch (err) {
     console.error('[RevenueCat webhook] Handler error:', err);

@@ -10,61 +10,133 @@ interface MaintenanceConfig {
   message: string;
 }
 
+interface TrialConfig {
+  days: number;
+  bannerMessage: string;
+}
+
+const TRIAL_DEFAULTS: TrialConfig = {
+  days: 7,
+  bannerMessage: "Subscribe to unlock full training access",
+};
+
 export default function ConfigPage() {
-  const [config, setConfig] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingMaintenance, setSavingMaintenance] = useState(false);
+  const [savingTrial, setSavingTrial] = useState(false);
+  const [savedTrial, setSavedTrial] = useState(false);
   const [maintenance, setMaintenance] = useState<MaintenanceConfig>({
     enabled: false,
     title: "We'll be right back",
     message: "Sorry, our wheels are spinning \u2014 we will be back soon.",
   });
+  const [trial, setTrial] = useState<TrialConfig>(TRIAL_DEFAULTS);
 
   useEffect(() => {
     fetch("/api/config")
       .then((r) => r.json())
       .then((data) => {
-        setConfig(data);
-        if (data.maintenance_mode) {
-          setMaintenance(data.maintenance_mode);
+        if (data.maintenance_mode) setMaintenance(data.maintenance_mode);
+        if (data.trial_config) {
+          setTrial({ ...TRIAL_DEFAULTS, ...data.trial_config });
         }
       })
       .finally(() => setLoading(false));
   }, []);
 
   async function saveMaintenance() {
-    setSaving(true);
+    setSavingMaintenance(true);
     try {
       await fetch("/api/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: "maintenance_mode", value: maintenance }),
       });
-    } catch {
-      // handle error
-    }
-    setSaving(false);
+    } catch { /* ignore */ }
+    setSavingMaintenance(false);
+  }
+
+  async function saveTrial() {
+    setSavingTrial(true);
+    try {
+      await fetch("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "trial_config", value: trial }),
+      });
+      setSavedTrial(true);
+      setTimeout(() => setSavedTrial(false), 2500);
+    } catch { /* ignore */ }
+    setSavingTrial(false);
   }
 
   if (loading) return <div className="animate-pulse text-etapa-textMuted">Loading config...</div>;
 
   return (
-    <div>
-      <h1 className="text-lg font-semibold text-white mb-1">Remote Config</h1>
-      <p className="text-sm text-etapa-textMuted mb-8">Control app behaviour remotely. Changes take effect immediately.</p>
+    <div className="space-y-6 max-w-xl">
+      <div>
+        <h1 className="text-lg font-semibold text-white mb-1">Remote Config</h1>
+        <p className="text-sm text-etapa-textMuted">Control app behaviour remotely. Changes take effect immediately.</p>
+      </div>
+
+      {/* Trial Period */}
+      <div className="bg-etapa-surface border border-etapa-border rounded-xl p-6">
+        <h2 className="text-sm font-semibold text-white mb-1">Trial Period</h2>
+        <p className="text-xs text-etapa-textMuted mb-4">
+          Free users get this many days to browse their plan before the paywall appears.
+          The message shows in the upgrade banner inside the app.
+        </p>
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <label className="text-xs font-medium text-etapa-textMuted block mb-1">Trial Length (days)</label>
+              <input
+                type="number"
+                min={1}
+                max={90}
+                value={trial.days}
+                onChange={(e) => setTrial({ ...trial, days: Math.max(1, parseInt(e.target.value) || 7) })}
+                className="w-full px-3 py-2 bg-etapa-surfaceLight border border-etapa-border rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-etapa-primary"
+              />
+            </div>
+            <div className="pt-5 text-xs text-etapa-textFaint">days after first plan</div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-etapa-textMuted block mb-1">
+              App Banner Message
+            </label>
+            <input
+              type="text"
+              value={trial.bannerMessage}
+              onChange={(e) => setTrial({ ...trial, bannerMessage: e.target.value })}
+              placeholder="Subscribe to unlock full training access"
+              className="w-full px-3 py-2 bg-etapa-surfaceLight border border-etapa-border rounded-lg text-sm text-white placeholder-etapa-textFaint focus:outline-none focus:ring-2 focus:ring-etapa-primary"
+            />
+            <p className="text-xs text-etapa-textFaint mt-1">
+              Shown as the subtitle under "X days of preview left" in the app banner
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={saveTrial}
+          disabled={savingTrial}
+          className="mt-4 px-4 py-2 bg-etapa-primary text-white text-sm font-medium rounded-lg hover:bg-etapa-primaryDark disabled:opacity-40 transition-colors"
+        >
+          {savingTrial ? "Saving..." : savedTrial ? "Saved!" : "Save Trial Settings"}
+        </button>
+      </div>
 
       {/* Maintenance Mode */}
-      <div className="bg-etapa-surface border border-etapa-border rounded-xl p-6 max-w-xl">
+      <div className="bg-etapa-surface border border-etapa-border rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-sm font-semibold text-white">Maintenance Mode</h2>
             <p className="text-xs text-etapa-textMuted mt-1">Show a "down for maintenance" screen to all users</p>
           </div>
           <button
-            onClick={() => {
-              const next = { ...maintenance, enabled: !maintenance.enabled };
-              setMaintenance(next);
-            }}
+            onClick={() => setMaintenance({ ...maintenance, enabled: !maintenance.enabled })}
             className={`relative w-11 h-6 rounded-full transition-colors ${
               maintenance.enabled ? "bg-etapa-primary" : "bg-etapa-border"
             }`}
@@ -108,10 +180,10 @@ export default function ConfigPage() {
 
         <button
           onClick={saveMaintenance}
-          disabled={saving}
+          disabled={savingMaintenance}
           className="mt-4 px-4 py-2 bg-etapa-primary text-white text-sm font-medium rounded-lg hover:bg-etapa-primaryDark disabled:opacity-40 transition-colors"
         >
-          {saving ? "Saving..." : "Save Changes"}
+          {savingMaintenance ? "Saving..." : "Save Changes"}
         </button>
       </div>
     </div>

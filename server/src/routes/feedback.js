@@ -15,6 +15,25 @@ const express = require('express');
 const { supabase } = require('../lib/supabase');
 const router  = express.Router();
 
+// ── Slack helper ──────────────────────────────────────────────────────────────
+const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || process.env.SLACK_SUBSCRIPTIONS_WEBHOOK_URL;
+
+async function notifySlack(text) {
+  if (!SLACK_WEBHOOK_URL) return;
+  try {
+    const _fetch = typeof globalThis.fetch === 'function'
+      ? globalThis.fetch
+      : (() => { const f = require('node-fetch'); return f.default || f; })();
+    await _fetch(SLACK_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+  } catch (err) {
+    console.error('[feedback slack] Failed to notify:', err.message);
+  }
+}
+
 const LINEAR_API_KEY   = process.env.LINEAR_API_KEY || '';
 const LINEAR_TEAM_ID   = process.env.LINEAR_TEAM_ID || '';
 
@@ -149,6 +168,11 @@ router.post('/', async (req, res) => {
     if (dbError) {
       console.error('[feedback] Failed to persist to DB (Linear issue was still created):', dbError);
     }
+
+    // Notify Slack
+    const categoryEmoji = { bug: '🐛', feature: '💡', support: '🆘', general: '💬' }[category] || '📝';
+    const preview = message.trim().slice(0, 120) + (message.length > 120 ? '...' : '');
+    notifySlack(`${categoryEmoji} *New ${category} feedback* from ${userEmail || 'anonymous'}\n>${preview}\n<${issue.url}|View in Linear (${issue.identifier})>`);
 
     res.status(201).json({
       success: true,

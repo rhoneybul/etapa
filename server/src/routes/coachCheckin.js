@@ -172,32 +172,42 @@ router.post('/run', async (req, res) => {
         // Insert the check-in message into the plan-level coach chat session
         // so it appears in the global coach chat next time the user opens it.
         const planId = activity.plan_id;
-        const sessionId = `${planId}_w0`; // weekNum=0 means full plan scope
 
-        const { data: existingSession } = await supabase
-          .from('chat_sessions')
-          .select('messages')
-          .eq('id', sessionId)
-          .maybeSingle();
+        // Only save to chat_sessions if we have a valid plan_id — the FK
+        // constraint requires it to reference an existing row in plans.
+        if (planId) {
+          const sessionId = `${planId}_w0`; // weekNum=0 means full plan scope
 
-        const existingMessages = existingSession?.messages || [];
-        const checkinMessage = {
-          role: 'assistant',
-          content: body,
-          ts: Date.now(),
-          checkin: true, // flag so the UI can style it differently if needed
-        };
+          const { data: existingSession } = await supabase
+            .from('chat_sessions')
+            .select('messages')
+            .eq('id', sessionId)
+            .maybeSingle();
 
-        await supabase
-          .from('chat_sessions')
-          .upsert({
-            id: sessionId,
-            user_id: pref.user_id,
-            plan_id: planId,
-            week_num: null,
-            messages: [...existingMessages, checkinMessage],
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'id' });
+          const existingMessages = existingSession?.messages || [];
+          const checkinMessage = {
+            role: 'assistant',
+            content: body,
+            ts: Date.now(),
+            checkin: true, // flag so the UI can style it differently if needed
+          };
+
+          const { error: upsertErr } = await supabase
+            .from('chat_sessions')
+            .upsert({
+              id: sessionId,
+              user_id: pref.user_id,
+              plan_id: planId,
+              week_num: null,
+              messages: [...existingMessages, checkinMessage],
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'id' });
+
+          if (upsertErr) {
+            // FK violation or other DB error — log but don't block the push
+            console.error(`[coach-checkin] chat_sessions upsert failed for plan ${planId}:`, upsertErr.message);
+          }
+        }
 
         // Also send a push notification so the user knows about it
         await sendPushToUser(pref.user_id, {

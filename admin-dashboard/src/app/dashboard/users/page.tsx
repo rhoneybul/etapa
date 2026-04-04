@@ -7,6 +7,14 @@ import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { StatCard } from "@/components/stat-card";
 
+interface TrialInfo {
+  startedAt: string;
+  daysTotal: number;
+  daysLeft: number;
+  ended: boolean;
+  isSubscribed: boolean;
+}
+
 interface User {
   id: string;
   email: string;
@@ -22,6 +30,60 @@ interface User {
   firstPlanAt: string | null;
   messageCount: number;
   feedbackCount: number;
+  trial: TrialInfo | null;
+}
+
+function TrialCell({ trial, subscription }: { trial: TrialInfo | null; subscription: User["subscription"] }) {
+  if (!trial) return <span className="text-xs text-etapa-textFaint">no plan</span>;
+
+  // Subscribed — trial irrelevant
+  if (trial.isSubscribed || (subscription && ["active", "trialing", "paid"].includes(subscription.status))) {
+    return (
+      <div>
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-900/40 text-green-400">
+          subscribed
+        </span>
+        <p className="text-xs text-etapa-textFaint mt-0.5">
+          trial started {new Date(trial.startedAt).toLocaleDateString()}
+        </p>
+      </div>
+    );
+  }
+
+  if (trial.ended) {
+    return (
+      <div>
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-900/40 text-red-400">
+          trial ended
+        </span>
+        <p className="text-xs text-etapa-textFaint mt-0.5">
+          started {new Date(trial.startedAt).toLocaleDateString()}
+        </p>
+      </div>
+    );
+  }
+
+  const pct = Math.round(((trial.daysTotal - trial.daysLeft) / trial.daysTotal) * 100);
+
+  return (
+    <div className="min-w-[110px]">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs text-etapa-textMid">
+          {trial.daysLeft === 0 ? "last day" : `${trial.daysLeft}d left`}
+        </span>
+        <span className="text-xs text-etapa-textFaint">{trial.daysTotal}d trial</span>
+      </div>
+      <div className="w-full bg-etapa-surfaceLight rounded-full h-1.5">
+        <div
+          className="h-1.5 rounded-full bg-etapa-primary"
+          style={{ width: `${100 - pct}%` }}
+        />
+      </div>
+      <p className="text-xs text-etapa-textFaint mt-0.5">
+        since {new Date(trial.startedAt).toLocaleDateString()}
+      </p>
+    </div>
+  );
 }
 
 export default function UsersPage() {
@@ -129,6 +191,9 @@ export default function UsersPage() {
               {u.firstPlanAt && <p className="text-xs text-etapa-textMuted">since {new Date(u.firstPlanAt).toLocaleDateString()}</p>}
             </div>
           )},
+          { key: "trial", label: "Trial", render: (u: User) => (
+            <TrialCell trial={u.trial} subscription={u.subscription} />
+          )},
           { key: "messageCount", label: "Messages", render: (u: User) => (
             <span className="text-sm text-etapa-textMid">{u.messageCount}</span>
           )},
@@ -145,9 +210,9 @@ export default function UsersPage() {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => handleSendCheckin(u)}
-                disabled={sendingCheckin === u.id || u.planCount === 0}
+                disabled={sendingCheckin === u.id}
                 className="text-xs text-etapa-primary hover:text-amber-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                title={u.planCount === 0 ? "User has no plans" : "Send coach check-in"}
+                title="Send coach check-in"
               >
                 {sendingCheckin === u.id ? "Sending..." : "Check-in"}
               </button>

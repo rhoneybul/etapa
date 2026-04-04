@@ -5,6 +5,25 @@ const express = require('express');
 const { supabase } = require('../lib/supabase');
 const router = express.Router();
 
+// ── Slack helper ──────────────────────────────────────────────────────────────
+const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || process.env.SLACK_SUBSCRIPTIONS_WEBHOOK_URL;
+
+async function notifySlack(text) {
+  if (!SLACK_WEBHOOK_URL) return;
+  try {
+    const _fetch = typeof globalThis.fetch === 'function'
+      ? globalThis.fetch
+      : (() => { const f = require('node-fetch'); return f.default || f; })();
+    await _fetch(SLACK_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+  } catch (err) {
+    console.error('[notifications slack] Failed to notify:', err.message);
+  }
+}
+
 // ── POST /api/notifications/register-token ──────────────────────────────────
 // Register or refresh an Expo push token for the authenticated user
 router.post('/register-token', async (req, res) => {
@@ -14,6 +33,13 @@ router.post('/register-token', async (req, res) => {
 
     const { token, platform } = req.body;
     if (!token) return res.status(400).json({ error: 'token is required' });
+
+    // Check if this user has registered any tokens before — if not, it's a new signup
+    const { count: existingCount } = await supabase
+      .from('push_tokens')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId);
+    const isNewUser = (existingCount || 0) === 0;
 
     const tokenId = `pt_${userId.slice(0, 8)}_${Buffer.from(token).toString('base64').slice(0, 12)}`;
 
@@ -44,6 +70,13 @@ router.post('/register-token', async (req, res) => {
       user_id: userId,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id' });
+
+    // Notify Slack about the new signup (fire-and-forget, don't block response)
+    if (isNewUser) {
+      const email = req.user?.email || userId;
+      const platformLabel = (platform || 'ios').toUpperCase();
+      notifySlack(`🎉 *New sign-up* — ${email} just joined on ${platformLabel}`);
+    }
 
     res.json({ ok: true });
   } catch (err) {

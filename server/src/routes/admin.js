@@ -141,7 +141,7 @@ router.get('/admins', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── GET /api/admin/users — all users with subs, plan count, and message counts
+// ── GET /api/admin/users — all users with subs, plan count, message counts, and trial status
 router.get('/users', async (req, res, next) => {
   try {
     const { data: { users }, error } = await supabase.auth.admin.listUsers({
@@ -186,19 +186,52 @@ router.get('/users', async (req, res, next) => {
       feedbackCountByUser[f.user_id] = (feedbackCountByUser[f.user_id] || 0) + 1;
     }
 
-    const result = users.map(u => ({
-      id: u.id,
-      email: u.email,
-      name: u.user_metadata?.full_name || u.user_metadata?.name || null,
-      isAdmin: u.user_metadata?.is_admin === true,
-      createdAt: u.created_at,
-      lastSignInAt: u.last_sign_in_at,
-      subscription: subsByUser[u.id] || null,
-      planCount: planCountByUser[u.id] || 0,
-      firstPlanAt: firstPlanByUser[u.id] || null,
-      messageCount: msgCountByUser[u.id] || 0,
-      feedbackCount: feedbackCountByUser[u.id] || 0,
-    }));
+    // Trial config from app_config (fall back to 7 days if not set)
+    const { data: trialRow } = await supabase
+      .from('app_config')
+      .select('value')
+      .eq('key', 'trial_config')
+      .maybeSingle();
+    const trialDays = trialRow?.value?.days ?? 7;
+
+    const now = Date.now();
+
+    const result = users.map(u => {
+      const sub = subsByUser[u.id] || null;
+      const isSubscribed = sub && ['active', 'trialing', 'paid'].includes(sub.status);
+      const firstPlanAt = firstPlanByUser[u.id] || null;
+
+      // Compute trial status for unsubscribed users who have a plan
+      let trial = null;
+      if (firstPlanAt) {
+        const trialStartMs = new Date(firstPlanAt).getTime();
+        const trialEndMs = trialStartMs + trialDays * 24 * 60 * 60 * 1000;
+        const msLeft = trialEndMs - now;
+        const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000));
+        trial = {
+          startedAt: firstPlanAt,
+          daysTotal: trialDays,
+          daysLeft: Math.max(0, daysLeft),
+          ended: daysLeft <= 0,
+          isSubscribed: !!isSubscribed,
+        };
+      }
+
+      return {
+        id: u.id,
+        email: u.email,
+        name: u.user_metadata?.full_name || u.user_metadata?.name || null,
+        isAdmin: u.user_metadata?.is_admin === true,
+        createdAt: u.created_at,
+        lastSignInAt: u.last_sign_in_at,
+        subscription: sub,
+        planCount: planCountByUser[u.id] || 0,
+        firstPlanAt,
+        messageCount: msgCountByUser[u.id] || 0,
+        feedbackCount: feedbackCountByUser[u.id] || 0,
+        trial,
+      };
+    });
 
     res.json(result);
   } catch (err) { next(err); }
@@ -1103,14 +1136,11 @@ router.post('/users/:id/coach-checkin', async (req, res, next) => {
       .order('created_at', { ascending: false })
       .limit(1);
 
-    const plan = plans?.[0];
-    if (!plan) {
-      return res.status(404).json({ error: 'User has no active plan' });
-    }
+    const plan = plans?.[0] || null;
 
-    // Get coach ID from plan config
+    // Get coach ID from plan config (fall back to matteo if no plan)
     let coachId = 'matteo';
-    if (plan.config_id) {
+    if (plan?.config_id) {
       const { data: config } = await supabase
         .from('plan_configs')
         .select('coach_id')
@@ -1131,15 +1161,19 @@ router.post('/users/:id/coach-checkin', async (req, res, next) => {
 
     const coachInfo = COACHES[coachId] || COACHES.matteo;
 
-    // Find most recent completed activity for context
-    const { data: activities } = await supabase
-      .from('activities')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('plan_id', plan.id)
-      .eq('completed', true)
-      .order('completed_at', { ascending: false })
-      .limit(1);
+    // Find most recent completed activity for context (only if user has a plan)
+    let activities = null;
+    if (plan) {
+      const { data: acts } = await supabase
+        .from('activities')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('plan_id', plan.id)
+        .eq('completed', true)
+        .order('completed_at', { ascending: false })
+        .limit(1);
+      activities = acts;
+    }
 
     const activity = activities?.[0];
 
@@ -1156,8 +1190,11 @@ router.post('/users/:id/coach-checkin', async (req, res, next) => {
         ? `You are ${coachInfo.name}, a cycling coach. Your style: ${coachInfo.style}.
 The rider recently completed: ${activity.title || activity.type} (${activity.duration_mins ? activity.duration_mins + ' min' : 'unknown duration'}).
 Write a brief, personalised check-in message (2-3 sentences max) asking how things are going and offering encouragement. Reference their recent training. Keep it natural and in character. No emojis. No greeting — jump straight in.`
-        : `You are ${coachInfo.name}, a cycling coach. Your style: ${coachInfo.style}.
-Write a brief, friendly check-in message (2-3 sentences max) asking how training is going and if they need any adjustments to their plan. Keep it natural and in character. No emojis. No greeting — jump straight in.`;
+        : plan
+          ? `You are ${coachInfo.name}, a cycling coach. Your style: ${coachInfo.style}.
+Write a brief, friendly check-in message (2-3 sentences max) asking how training is going and if they need any adjustments to their plan. Keep it natural and in character. No emojis. No greeting — jump straight in.`
+          : `You are ${coachInfo.name}, a cycling coach. Your style: ${coachInfo.style}.
+Write a brief, friendly message (2-3 sentences max) welcoming a new rider and encouraging them to set up their first training plan. Keep it natural and in character. No emojis. No greeting — jump straight in.`;
 
       try {
         const aiRes = await _fetch('https://api.anthropic.com/v1/messages', {
@@ -1183,42 +1220,46 @@ Write a brief, friendly check-in message (2-3 sentences max) asking how training
     if (!body) {
       body = activity
         ? `How did your ${activity.title || 'session'} go? Let me know if you need any adjustments to your plan.`
-        : `How is your training going? Let me know if you need any adjustments to your plan.`;
+        : plan
+          ? `How is your training going? Let me know if you need any adjustments to your plan.`
+          : `Good to see you here. When you're ready, set up your first training plan and I'll build something tailored to your goals.`;
     }
 
-    // Save to chat session
-    const sessionId = `${plan.id}_w0`;
-    const { data: existingSession } = await supabase
-      .from('chat_sessions')
-      .select('messages')
-      .eq('id', sessionId)
-      .maybeSingle();
+    // Save to chat session only if the user has a plan
+    if (plan) {
+      const sessionId = `${plan.id}_w0`;
+      const { data: existingSession } = await supabase
+        .from('chat_sessions')
+        .select('messages')
+        .eq('id', sessionId)
+        .maybeSingle();
 
-    const existingMessages = existingSession?.messages || [];
-    const checkinMessage = {
-      role: 'assistant',
-      content: body,
-      ts: Date.now(),
-      checkin: true,
-    };
+      const existingMessages = existingSession?.messages || [];
+      const checkinMessage = {
+        role: 'assistant',
+        content: body,
+        ts: Date.now(),
+        checkin: true,
+      };
 
-    await supabase
-      .from('chat_sessions')
-      .upsert({
-        id: sessionId,
-        user_id: userId,
-        plan_id: plan.id,
-        week_num: null,
-        messages: [...existingMessages, checkinMessage],
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'id' });
+      await supabase
+        .from('chat_sessions')
+        .upsert({
+          id: sessionId,
+          user_id: userId,
+          plan_id: plan.id,
+          week_num: null,
+          messages: [...existingMessages, checkinMessage],
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+    }
 
-    // Send push notification
+    // Send push notification (always)
     await sendPushToUser(userId, {
       title: `${coachInfo.name} checked in`,
       body,
       type: 'coach_checkin',
-      data: { coachId, planId: plan.id },
+      data: { coachId, planId: plan?.id || null },
     });
 
     res.json({ success: true, coachId, coachName: coachInfo.name, message: body });

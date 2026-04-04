@@ -17,6 +17,7 @@ import { isStravaConnected } from '../services/stravaService';
 import { getSessionColor, getSessionLabel, getMetricLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
 import { getCoach } from '../data/coaches';
 import analytics from '../services/analyticsService';
+import api from '../services/api';
 
 const FF = fontFamily;
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -67,17 +68,25 @@ export default function HomeScreen({ navigation }) {
   const [starterPriceLabel, setStarterPriceLabel] = useState(null); // fetched from Stripe
   const [subscribed, setSubscribed] = useState(true); // assumed true until checked
   const [previewDaysLeft, setPreviewDaysLeft] = useState(null); // null = subscribed / no limit
+  const [trialConfig, setTrialConfig] = useState({ days: 7, bannerMessage: 'Subscribe to unlock full training access' });
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const cachedPlanHash = useRef(null); // Track plan state to avoid unnecessary reloads
   const initialLoadDone = useRef(false);
+  const isMounted = useRef(true); // Guard against setState after unmount
 
   useEffect(() => {
-    Animated.loop(
+    isMounted.current = true;
+    const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.08, duration: 1000, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
       ])
-    ).start();
+    );
+    anim.start();
+    return () => {
+      isMounted.current = false;
+      anim.stop(); // prevent accessing deallocated native nodes after unmount
+    };
   }, []);
 
   const load = useCallback(async ({ force = false } = {}) => {
@@ -88,15 +97,25 @@ export default function HomeScreen({ navigation }) {
       if (hash === cachedPlanHash.current) return; // No changes — skip reload
     }
     setLoading(!initialLoadDone.current); // Only show loading spinner on first load
-    const [user, p, g, strava, userPrefs] = await Promise.all([
+    const [user, p, g, strava, userPrefs, remoteConfig] = await Promise.all([
       getCurrentUser(), getPlans(), getGoals(), isStravaConnected(), getUserPrefs(),
+      api.appConfig.get().catch(() => ({})),
     ]);
 
-    // Check subscription status — unsubscribed users get a 7-day preview window
+    // Sync remote trial config into state so the banner message updates
+    const remoteTrial = remoteConfig?.trial_config;
+    const resolvedTrialConfig = {
+      days: remoteTrial?.days ?? 7,
+      bannerMessage: remoteTrial?.bannerMessage ?? 'Subscribe to unlock full training access',
+    };
+    if (isMounted.current) setTrialConfig(resolvedTrialConfig);
+
+    // Check subscription status — unsubscribed users get a remote-configurable preview window
     if (p.length > 0) {
       const subCheck = await isSubscribed();
+      if (!isMounted.current) return; // component unmounted during async call
       if (!subCheck) {
-        // Find the oldest plan's creation date to start the 7-day clock
+        // Find the oldest plan's creation date to start the trial clock
         const sortedByDate = [...p].sort((a, b) => {
           const da = new Date(a.createdAt || a.startDate || 0);
           const db = new Date(b.createdAt || b.startDate || 0);
@@ -106,7 +125,7 @@ export default function HomeScreen({ navigation }) {
         const daysSinceFirst = firstCreatedAt
           ? Math.floor((Date.now() - new Date(firstCreatedAt).getTime()) / (1000 * 60 * 60 * 24))
           : 0;
-        const PREVIEW_DAYS = 7;
+        const PREVIEW_DAYS = resolvedTrialConfig.days;
         if (daysSinceFirst > PREVIEW_DAYS) {
           // Preview window expired — require subscription
           navigation.replace('Paywall', { fromHome: true, nextScreen: 'Home' });
@@ -125,14 +144,16 @@ export default function HomeScreen({ navigation }) {
 
     // Fetch subscription plan type (starter, monthly, annual)
     const subStatus = await getSubscriptionStatus();
+    if (!isMounted.current) return;
     setSubPlan(subStatus?.plan || null);
 
-    // Fetch live prices (non-blocking)
+    // Fetch live prices (non-blocking) — only update state if still mounted
     getPrices().then(prices => {
-      if (prices?.starter) setStarterPriceLabel(prices.starter.formatted);
+      if (isMounted.current && prices?.starter) setStarterPriceLabel(prices.starter.formatted);
     }).catch(() => {});
 
     const displayName = userPrefs?.displayName || user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || null;
+    if (!isMounted.current) return;
     setName(displayName);
     setPlans(p);
     setGoals(g);
@@ -152,10 +173,11 @@ export default function HomeScreen({ navigation }) {
       }
       if (plan?.configId) {
         const cfg = await getPlanConfig(plan.configId);
+        if (!isMounted.current) return;
         setActivePlanConfig(cfg);
       }
     }
-    setLoading(false);
+    if (isMounted.current) setLoading(false);
   }, [selectedPlanIdx, navigation]);
 
   useEffect(() => { load({ force: true }); }, [load]);
@@ -468,7 +490,7 @@ export default function HomeScreen({ navigation }) {
                       ? `${previewDaysLeft} days of preview left`
                       : 'Subscribe to start training'}
                 </Text>
-                <Text style={s.subscribeBannerSub}>Subscribe to unlock full training access</Text>
+                <Text style={s.subscribeBannerSub}>{trialConfig.bannerMessage}</Text>
               </View>
               <Text style={s.subscribeBannerArrow}>{'\u203A'}</Text>
             </TouchableOpacity>
