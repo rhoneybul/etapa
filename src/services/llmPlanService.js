@@ -182,17 +182,21 @@ export async function generatePlanWithLLM(goal, config, onProgress) {
  * Build a full plan object from LLM-generated activities array.
  */
 function buildPlanFromActivities(activities, goal, config) {
-  let startDate;
+  let startDateStr;
   if (config.startDate) {
-    startDate = new Date(config.startDate);
+    // config.startDate may be YYYY-MM-DD or full ISO — extract date part
+    startDateStr = config.startDate.split('T')[0];
   } else {
     const now = new Date();
     const dow = now.getDay();
     const daysUntilMon = dow === 0 ? 1 : dow === 1 ? 0 : 8 - dow;
-    startDate = new Date(now);
+    const startDate = new Date(now);
     startDate.setDate(startDate.getDate() + daysUntilMon);
+    const y = startDate.getFullYear();
+    const m = String(startDate.getMonth() + 1).padStart(2, '0');
+    const d = String(startDate.getDate()).padStart(2, '0');
+    startDateStr = `${y}-${m}-${d}`;
   }
-  startDate.setHours(0, 0, 0, 0);
 
   const planId = uid();
 
@@ -202,7 +206,7 @@ function buildPlanFromActivities(activities, goal, config) {
     configId: config.id,
     name: goal.planName || null,
     status: 'active',
-    startDate: startDate.toISOString(),
+    startDate: startDateStr,
     weeks: config.weeks || 8,
     currentWeek: 1,
     activities: activities.map(a => ({
@@ -234,10 +238,11 @@ function buildPlanFromActivities(activities, goal, config) {
 export async function editPlanWithLLM(plan, goal, instruction, scope, onProgress, coachId) {
   const serverUrl = getServerUrl();
 
-  // Calculate current week
+  // Calculate current week (parse date as local to avoid timezone shifts)
   const now = new Date();
-  const start = new Date(plan.startDate);
-  const daysSince = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+  const sp = plan.startDate.split('T')[0].split('-');
+  const start = new Date(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]), 12, 0, 0);
+  const daysSince = Math.round((now - start) / (1000 * 60 * 60 * 24));
   const currentWeek = Math.max(1, Math.min(Math.floor(daysSince / 7) + 1, plan.weeks));
 
   // Try server LLM edit first

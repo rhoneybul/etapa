@@ -16,6 +16,7 @@ import { assessPlan, editPlanWithLLM } from '../services/llmPlanService';
 import { isSubscribed } from '../services/subscriptionService';
 import { connectStrava, isStravaConnected, isStravaConfigured } from '../services/stravaService';
 import { convertDistance, distanceLabel } from '../utils/units';
+import StravaLogo from '../components/StravaLogo';
 
 const FF = fontFamily;
 
@@ -133,7 +134,8 @@ export default function PlanReadyScreen({ navigation, route }) {
   const totalRides = plan.activities?.filter(a => a.type === 'ride').length || 0;
   const totalStrength = plan.activities?.filter(a => a.type === 'strength').length || 0;
 
-  const start = new Date(plan.startDate);
+  const startParts = plan.startDate.split('T')[0].split('-');
+  const start = new Date(Number(startParts[0]), Number(startParts[1]) - 1, Number(startParts[2]), 12, 0, 0);
   const endDate = new Date(start);
   endDate.setDate(endDate.getDate() + (plan.weeks * 7) - 1);
   const formatShort = (d) => {
@@ -324,7 +326,7 @@ export default function PlanReadyScreen({ navigation, route }) {
           {isStravaConfigured && !stravaOk && (
             <Animated.View style={[s.stravaCard, { opacity: ctaFade }]}>
               <View style={s.stravaHeader}>
-                <Text style={s.stravaLogo}>S</Text>
+                <View style={s.stravaLogo}><StravaLogo size={20} color="#fff" /></View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.stravaTitle}>Connect Strava</Text>
                   <Text style={s.stravaSub}>Automatically track your rides and match them to your plan</Text>
@@ -552,8 +554,7 @@ const s = StyleSheet.create({
   stravaHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
   stravaLogo: {
     width: 36, height: 36, borderRadius: 8, backgroundColor: '#FC4C02',
-    color: '#fff', fontSize: 20, fontWeight: '700', textAlign: 'center', lineHeight: 36,
-    overflow: 'hidden',
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
   stravaTitle: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
   stravaSub: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, marginTop: 2, lineHeight: 17 },

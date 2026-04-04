@@ -31,29 +31,36 @@ async function setCachedActivities(activities) {
 // ── Date helpers ────────────────────────────────────────────────────────────
 
 /** Get the plan day index (0=Mon..6=Sun) for a given Date */
+/** Parse a date string as local date at noon (avoids timezone/DST shifts) */
+function parseDateLocal(dateStr) {
+  const parts = dateStr.split('T')[0].split('-');
+  return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12, 0, 0);
+}
+
 function getDayOfWeek(dateStr) {
-  const d = new Date(dateStr);
+  const d = parseDateLocal(dateStr);
   const js = d.getDay(); // 0=Sun
   return js === 0 ? 6 : js - 1; // convert to 0=Mon
 }
 
 /** Get the plan week number for a date relative to the plan start */
 function getWeekNumber(planStartDate, dateStr) {
-  const start = new Date(planStartDate);
-  start.setHours(0, 0, 0, 0);
-  const d = new Date(dateStr);
-  d.setHours(0, 0, 0, 0);
-  const daysSince = Math.floor((d - start) / (1000 * 60 * 60 * 24));
+  const start = parseDateLocal(planStartDate);
+  const d = parseDateLocal(dateStr);
+  const daysSince = Math.round((d - start) / (1000 * 60 * 60 * 24));
   if (daysSince < 0) return -1; // before plan start
   return Math.floor(daysSince / 7) + 1;
 }
 
 /** Get actual date for a plan's week + dayOfWeek */
 function getPlanDayDate(planStartDate, week, dayOfWeek) {
-  const start = new Date(planStartDate);
+  const start = parseDateLocal(planStartDate);
   const d = new Date(start);
   d.setDate(d.getDate() + (week - 1) * 7 + dayOfWeek);
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 // ── Core sync ───────────────────────────────────────────────────────────────

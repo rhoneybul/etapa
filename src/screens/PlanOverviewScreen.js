@@ -198,7 +198,8 @@ export default function PlanOverviewScreen({ navigation, route }) {
   const weekFlags = getWeekFlags(weekVolumes, phases, plan);
 
   const now = new Date();
-  const start = new Date(plan.startDate);
+  const startParts = plan.startDate.split('T')[0].split('-');
+  const start = new Date(Number(startParts[0]), Number(startParts[1]) - 1, Number(startParts[2]), 12, 0, 0);
   const daysSince = Math.floor((now - start) / (1000 * 60 * 60 * 24));
   const currentWeek = Math.max(1, Math.min(Math.floor(daysSince / 7) + 1, plan.weeks));
 

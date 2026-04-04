@@ -394,8 +394,9 @@ export function getWeekProgress(plan, weekNumber) {
 export function isOnTrack(plan) {
   if (!plan) return null;
   const now = new Date();
-  const start = new Date(plan.startDate);
-  const daysSinceStart = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+  const sp = plan.startDate.split('T')[0].split('-');
+  const start = new Date(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]), 12, 0, 0);
+  const daysSinceStart = Math.round((now - start) / (1000 * 60 * 60 * 24));
   const currentWeek = Math.min(Math.floor(daysSinceStart / 7) + 1, plan.weeks);
 
   let totalExpected = 0;
@@ -414,13 +415,11 @@ export function isOnTrack(plan) {
  * Get the date for a specific day in a specific week of a plan.
  */
 export function getActivityDate(planStartDate, week, dayOfWeek) {
-  // Parse as local date to avoid UTC timezone shift issues.
-  // planStartDate is typically an ISO string like "2026-04-06T00:00:00.000Z".
-  // Using new Date(iso) converts to local time which can shift the date by -1 day.
-  const iso = typeof planStartDate === 'string' ? planStartDate : new Date(planStartDate).toISOString();
-  const [datePart] = iso.split('T');
+  // Parse as local date at noon to avoid UTC timezone shift and DST edge cases.
+  // planStartDate is YYYY-MM-DD (or legacy ISO string — split on 'T' handles both).
+  const datePart = String(planStartDate).split('T')[0];
   const [y, m, d] = datePart.split('-').map(Number);
-  const start = new Date(y, m - 1, d); // local midnight — no timezone shift
+  const start = new Date(y, m - 1, d, 12, 0, 0); // noon local — no timezone shift
   const offset = (week - 1) * 7 + (dayOfWeek ?? 0);
   const result = new Date(start);
   result.setDate(result.getDate() + offset);

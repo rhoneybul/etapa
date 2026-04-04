@@ -16,6 +16,7 @@ import { connectStrava, disconnectStrava, isStravaConnected, isStravaConfigured,
 import UpgradePrompt from '../components/UpgradePrompt';
 import ComingSoon from '../components/ComingSoon';
 import analytics from '../services/analyticsService';
+import StravaLogo from '../components/StravaLogo';
 import { api } from '../services/api';
 
 const FF = fontFamily;
@@ -195,9 +196,10 @@ export default function SettingsScreen({ navigation }) {
   // Check if starter plan is within 2-week refund window
   const isRefundEligible = (() => {
     if (!starterPlan?.startDate || subscription?.plan !== 'starter') return false;
-    const startDate = new Date(starterPlan.startDate);
+    const sp = starterPlan.startDate.split('T')[0].split('-');
+    const startDate = new Date(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]), 12, 0, 0);
     const now = new Date();
-    const daysSinceStart = Math.floor((now - startDate) / (1000 * 60 * 60 * 24));
+    const daysSinceStart = Math.round((now - startDate) / (1000 * 60 * 60 * 24));
     return daysSinceStart <= 14;
   })();
 
@@ -329,17 +331,26 @@ export default function SettingsScreen({ navigation }) {
         {/* Strava */}
         <Text style={s.sectionLabel}>CONNECTIONS</Text>
         <View style={s.card}>
-          <View style={s.row}>
+          <TouchableOpacity style={s.row} onPress={stravaOk ? handleDisconnectStrava : handleConnectStrava} activeOpacity={0.7}>
             <View style={s.rowLeft}>
+              <View style={s.stravaIconWrap}>
+                <StravaLogo size={20} />
+              </View>
               <View>
                 <Text style={s.rowTitle}>Strava</Text>
-                <Text style={s.rowSub}>Sync your rides automatically</Text>
+                <Text style={s.rowSub}>
+                  {stravaOk
+                    ? (stravaName ? `Connected as ${stravaName}` : 'Connected')
+                    : 'Sync your rides automatically'}
+                </Text>
               </View>
             </View>
-            <View style={s.comingSoonBadge}>
-              <Text style={s.comingSoonText}>Coming Soon</Text>
+            <View style={[s.stravaBadge, stravaOk && s.stravaBadgeConnected]}>
+              <Text style={[s.stravaBadgeText, stravaOk && s.stravaBadgeTextConnected]}>
+                {stravaOk ? 'Disconnect' : 'Connect'}
+              </Text>
             </View>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Coaching */}
@@ -677,6 +688,11 @@ const s = StyleSheet.create({
   disconnectText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: '#EF4444' },
   comingSoonBadge: { backgroundColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   comingSoonText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted },
+  stravaIconWrap: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#FC4C02', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  stravaBadge: { backgroundColor: 'rgba(252,76,2,0.12)', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  stravaBadgeConnected: { backgroundColor: 'rgba(239,68,68,0.10)' },
+  stravaBadgeText: { fontSize: 12, fontWeight: '600', fontFamily: FF.semibold, color: '#FC4C02' },
+  stravaBadgeTextConnected: { color: '#EF4444' },
   starterBadge: { backgroundColor: 'rgba(34,197,94,0.12)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   starterBadgeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E', letterSpacing: 0.5 },
   unreadBadge: { backgroundColor: colors.primary, borderRadius: 10, minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6 },

@@ -406,13 +406,18 @@ ${goal.targetDistance ? `- Target distance: ${goal.targetDistance} km` : ''}
 ${goal.targetElevation ? `- Target elevation: ${goal.targetElevation} m` : ''}
 ${goal.targetTime ? `- Target finish time: ${goal.targetTime} hours` : ''}
 ${goal.targetDate ? `- Event/target date: ${goal.targetDate}` : ''}
-- Plan start date: ${config.startDate || 'next Monday'}
+- Plan start date: ${config.startDate ? config.startDate.split('T')[0] : 'next Monday'} (this is a MONDAY — Week 1 Day 0)
+- Current year: ${new Date().getFullYear()}
 
 ## Plan structure
 - Total weeks: ${weeks}
 - Training days per week: ${config.daysPerWeek || 3}
-- Available days: ${availableDayNames.join(', ')} (the athlete can ONLY train on these days)
+- Available days: ${availableDayNames.map((name, i) => {
+    const idx = dayNames.indexOf(name);
+    return idx >= 0 ? `${name} (dayOfWeek=${idx})` : name;
+  }).join(', ')} (the athlete can ONLY train on these days)
 - Day number mapping: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6
+- IMPORTANT: dayOfWeek values MUST exactly match the available days listed above. Do NOT use any other dayOfWeek values.
 - Session distribution: ${Object.entries(sessionCounts).map(([k, v]) => `${v}x ${k}`).join(', ')}
 ${longRideDay ? `- Long ride day: ${dayNames[typeof longRideDay === 'number' ? longRideDay : dayNames.findIndex(n => n.toLowerCase().startsWith(String(longRideDay).toLowerCase()))] || longRideDay}. The athlete's longest/endurance ride each week MUST be scheduled on this day. This is their preferred day for long rides.` : ''}
 - CRITICAL: You MUST generate EXACTLY ${config.daysPerWeek || 3} sessions per week (unless it's a deload/taper week where you may reduce by 1). Each session MUST be on one of the available days listed above. Do NOT add extra sessions.
@@ -1198,17 +1203,22 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
     job.progress = 'Finalising your plan...';
 
     // Build the full plan object (mirrors client-side buildPlanFromActivities)
-    let startDate;
+    // Use YYYY-MM-DD date string to avoid timezone shifts between client/server
+    let startDateStr;
     if (config.startDate) {
-      startDate = new Date(config.startDate);
+      // config.startDate may be YYYY-MM-DD or full ISO — extract date part safely
+      startDateStr = config.startDate.split('T')[0];
     } else {
       const now = new Date();
       const dow = now.getDay();
       const daysUntilMon = dow === 0 ? 1 : dow === 1 ? 0 : 8 - dow;
-      startDate = new Date(now);
+      const startDate = new Date(now);
       startDate.setDate(startDate.getDate() + daysUntilMon);
+      const y = startDate.getFullYear();
+      const m = String(startDate.getMonth() + 1).padStart(2, '0');
+      const d = String(startDate.getDate()).padStart(2, '0');
+      startDateStr = `${y}-${m}-${d}`;
     }
-    startDate.setHours(0, 0, 0, 0);
 
     const planId = `plan_${crypto.randomBytes(8).toString('hex')}`;
     const activities = rawActivities.map((a, i) => ({
@@ -1236,7 +1246,7 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
       configId: config.id,
       name: goal.planName || null,
       status: 'active',
-      startDate: startDate.toISOString(),
+      startDate: startDateStr,
       weeks: config.weeks || 8,
       currentWeek: 1,
       activities,

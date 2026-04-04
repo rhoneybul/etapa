@@ -183,8 +183,9 @@ export default function CoachChatScreen({ navigation, route }) {
 
     // Build context
     const now = new Date();
-    const start = new Date(plan.startDate);
-    const daysSince = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+    const sp = plan.startDate.split('T')[0].split('-');
+    const start = new Date(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]), 12, 0, 0);
+    const daysSince = Math.round((now - start) / (1000 * 60 * 60 * 24));
     const currentWeek = Math.max(1, Math.min(Math.floor(daysSince / 7) + 1, plan.weeks));
 
     // Build a per-week summary of all activities so the coach knows the full plan

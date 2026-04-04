@@ -346,17 +346,20 @@ export function generatePlan(goal, config) {
   }
 
   // Use config start date if provided, otherwise next Monday
-  let startDate;
+  let startDateStr;
   if (config.startDate) {
-    startDate = new Date(config.startDate);
+    startDateStr = config.startDate.split('T')[0];
   } else {
     const now = new Date();
     const dayOfWeek = now.getDay();
     const daysUntilMonday = dayOfWeek === 0 ? 1 : dayOfWeek === 1 ? 0 : 8 - dayOfWeek;
-    startDate = new Date(now);
+    const startDate = new Date(now);
     startDate.setDate(startDate.getDate() + daysUntilMonday);
+    const y = startDate.getFullYear();
+    const m = String(startDate.getMonth() + 1).padStart(2, '0');
+    const d = String(startDate.getDate()).padStart(2, '0');
+    startDateStr = `${y}-${m}-${d}`;
   }
-  startDate.setHours(0, 0, 0, 0);
 
   return {
     id: uid(),
@@ -364,7 +367,7 @@ export function generatePlan(goal, config) {
     configId: config.id,
     name: goal.planName || null,
     status: 'active',
-    startDate: startDate.toISOString(),
+    startDate: startDateStr,
     weeks,
     currentWeek: 1,
     activities,
@@ -437,9 +440,15 @@ function buildWeekRides(rideDays, isDeload, isTaper, isLastTaperWeek, isPeak, go
 
 export function suggestWeeks(goal, fitnessLevel, startDate) {
   if (goal.targetDate) {
-    const from = startDate ? new Date(startDate) : new Date();
-    from.setHours(0, 0, 0, 0);
-    const target = new Date(goal.targetDate + (goal.targetDate.includes('T') ? '' : 'T00:00:00'));
+    let from;
+    if (startDate) {
+      const sp = String(startDate).split('T')[0].split('-');
+      from = new Date(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]), 12, 0, 0);
+    } else {
+      from = new Date();
+    }
+    const tp = goal.targetDate.split('T')[0].split('-');
+    const target = new Date(Number(tp[0]), Number(tp[1]) - 1, Number(tp[2]), 12, 0, 0);
     // Plan should finish the week BEFORE the event — leave race week free
     const msToTarget = target - from;
     const weeksToTarget = Math.floor(msToTarget / (7 * 24 * 60 * 60 * 1000));

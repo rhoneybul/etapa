@@ -15,6 +15,7 @@ import { uid } from '../services/storageService';
 import { getSessionColor, getSessionLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
 import { syncStravaActivities, getStravaActivitiesForWeek, getStravaActivitiesForDate } from '../services/stravaSyncService';
 import { isStravaConnected } from '../services/stravaService';
+import StravaLogo from '../components/StravaLogo';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
@@ -44,7 +45,7 @@ export default function WeekViewScreen({ navigation, route }) {
   // Compute the actual date for a given day index in the current week
   const getWeekDayInfo = (dayIdx) => {
     if (!plan?.startDate) return { label: DAY_LABELS_FULL[dayIdx], dateStr: '' };
-    const start = new Date(plan.startDate);
+    const start = parseDateLocal(plan.startDate);
     const d = new Date(start);
     d.setDate(d.getDate() + (week - 1) * 7 + dayIdx);
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -71,17 +72,21 @@ export default function WeekViewScreen({ navigation, route }) {
       setGoal(goals.find(g => g.id === p.goalId) || null);
       const cfg = await getPlanConfig(p.configId);
       setPlanConfig(cfg);
-      // Sync Strava activities (non-blocking)
-      const currentPlan = p;
-      isStravaConnected().then(connected => {
+      // Sync Strava activities (non-blocking — wrapped in try/catch to prevent crashes)
+      try {
+        const connected = await isStravaConnected();
         if (connected) {
-          syncStravaActivities(currentPlan).then(async (result) => {
+          syncStravaActivities(p).then(async (result) => {
             if (result?.stravaActivities) setStravaActivities(result.stravaActivities);
-            // Reload plan if auto-complete matched activities
-            if (result?.matchedCount > 0) loadPlan();
+            if (result?.matchedCount > 0) {
+              const refreshed = await getPlans();
+              const updated = refreshed.find(pl => pl.id === (planId || p.id)) || null;
+              if (updated) setPlan(updated);
+            }
           }).catch(() => {});
         }
-      });
+      } catch {}
+
     }
   }, [planId, navigation]);
 
@@ -314,15 +319,25 @@ export default function WeekViewScreen({ navigation, route }) {
                   return (
                     <View key={activity.id}>
                       <TouchableOpacity
-                        style={[s.activityCard, activity.completed && s.activityCardDone, isEditing && s.activityCardEditing]}
+                        style={[
+                          s.activityCard,
+                          activity.type === 'strength' && s.activityCardStrength,
+                          activity.completed && s.activityCardDone,
+                          isEditing && s.activityCardEditing,
+                        ]}
                         onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
                         onLongPress={() => { setEditingActivity(activity); setActEditText(''); setActEditStatus(''); }}
                         activeOpacity={0.75}
                         delayLongPress={400}
                       >
-                        <View style={[s.activityAccent, { backgroundColor: getSessionColor(activity) }]} />
+                        <View style={[
+                          s.activityAccent,
+                          { backgroundColor: getSessionColor(activity) },
+                          activity.type === 'strength' && s.accentStrength,
+                        ]} />
                         <View style={s.activityBody}>
                           <View style={s.activityTop}>
+                            <View style={[s.typeShape, activity.type === 'strength' ? s.typeShapeSquare : s.typeShapeCircle, { backgroundColor: getSessionColor(activity) }]} />
                             <View style={[s.activityTypeBadge, { backgroundColor: getSessionColor(activity) + '18' }]}>
                               <Text style={[s.activityTypeText, { color: getSessionColor(activity) }]}>{getSessionLabel(activity)}</Text>
                             </View>
@@ -335,7 +350,7 @@ export default function WeekViewScreen({ navigation, route }) {
                               </Text>
                               {activity.stravaActivityId && (
                                 <View style={s.stravaMatchBadge}>
-                                  <Text style={s.stravaMatchLogo}>S</Text>
+                                  <StravaLogo size={12} />
                                   <Text style={s.stravaMatchText}>
                                     {activity.stravaData?.distanceKm ? `${activity.stravaData.distanceKm} km` : ''}
                                     {activity.stravaData?.distanceKm && activity.stravaData?.durationMins ? ' \u00B7 ' : ''}
@@ -396,6 +411,7 @@ export default function WeekViewScreen({ navigation, route }) {
                   <View key={`ct-${i}`} style={s.ctCard}>
                     <View style={[s.activityAccent, { backgroundColor: CROSS_TRAINING_COLOR }]} />
                     <View style={s.ctBody}>
+                      <View style={[s.typeShape, s.typeShapeDiamond, { backgroundColor: CROSS_TRAINING_COLOR }]} />
                       <View style={[s.activityTypeBadge, { backgroundColor: CROSS_TRAINING_COLOR + '18' }]}>
                         <Text style={[s.activityTypeText, { color: CROSS_TRAINING_COLOR }]}>{ct.label}</Text>
                       </View>
@@ -404,29 +420,23 @@ export default function WeekViewScreen({ navigation, route }) {
                   </View>
                 ))}
                 {/* Unmatched Strava rides for this day */}
-                {(() => {
-                  const dateStr = plan?.startDate ? getDayDateStr(plan.startDate, week, dayIdx) : null;
-                  if (!dateStr) return null;
-                  const dayStrava = getStravaActivitiesForDate(stravaActivities, dateStr)
-                    .filter(sa => !dayActivities.some(a => a.stravaActivityId === sa.stravaId));
-                  return dayStrava.map(sa => (
-                    <View key={sa.stravaId} style={s.stravaRideCard}>
-                      <View style={[s.activityAccent, { backgroundColor: '#FC4C02' }]} />
-                      <View style={s.stravaRideBody}>
-                        <View style={[s.activityTypeBadge, { backgroundColor: 'rgba(252,76,2,0.12)' }]}>
-                          <Text style={[s.activityTypeText, { color: '#FC4C02' }]}>STRAVA</Text>
-                        </View>
-                        <Text style={s.stravaRideName}>{sa.name || 'Ride'}</Text>
-                        <Text style={s.stravaRideMeta}>
-                          {sa.distanceKm ? `${sa.distanceKm} km` : ''}
-                          {sa.distanceKm && sa.durationMins ? ' \u00B7 ' : ''}
-                          {sa.durationMins ? `${sa.durationMins} min` : ''}
-                          {sa.avgSpeedKmh ? ` \u00B7 ${sa.avgSpeedKmh} km/h` : ''}
-                        </Text>
+                {dayStravaRides.map(sa => (
+                  <View key={sa.stravaId} style={s.stravaRideCard}>
+                    <View style={[s.activityAccent, { backgroundColor: '#FC4C02' }]} />
+                    <View style={s.stravaRideBody}>
+                      <View style={[s.activityTypeBadge, { backgroundColor: 'rgba(252,76,2,0.12)' }]}>
+                        <Text style={[s.activityTypeText, { color: '#FC4C02' }]}>STRAVA</Text>
                       </View>
+                      <Text style={s.stravaRideName}>{sa.name || 'Ride'}</Text>
+                      <Text style={s.stravaRideMeta}>
+                        {sa.distanceKm ? `${sa.distanceKm} km` : ''}
+                        {sa.distanceKm && sa.durationMins ? ' \u00B7 ' : ''}
+                        {sa.durationMins ? `${sa.durationMins} min` : ''}
+                        {sa.avgSpeedKmh ? ` \u00B7 ${sa.avgSpeedKmh} km/h` : ''}
+                      </Text>
                     </View>
-                  ));
-                })()}
+                  </View>
+                ))}
               </View>
             );
           })}
@@ -565,8 +575,14 @@ export default function WeekViewScreen({ navigation, route }) {
   );
 }
 
+function parseDateLocal(dateStr) {
+  // Parse YYYY-MM-DD or ISO string as local date (noon to avoid DST edge cases)
+  const parts = dateStr.split('T')[0].split('-');
+  return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12, 0, 0);
+}
+
 function getDayDate(startDateStr, week, dayIdx) {
-  const start = new Date(startDateStr);
+  const start = parseDateLocal(startDateStr);
   const offset = (week - 1) * 7 + dayIdx;
   const d = new Date(start);
   d.setDate(d.getDate() + offset);
@@ -576,10 +592,13 @@ function getDayDate(startDateStr, week, dayIdx) {
 }
 
 function getDayDateStr(startDateStr, week, dayIdx) {
-  const start = new Date(startDateStr);
+  const start = parseDateLocal(startDateStr);
   const d = new Date(start);
   d.setDate(d.getDate() + (week - 1) * 7 + dayIdx);
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 const HIT = { top: 12, bottom: 12, left: 12, right: 12 };
@@ -640,10 +659,16 @@ const s = StyleSheet.create({
     flexDirection: 'row', backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 8,
     borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: colors.border,
   },
+  activityCardStrength: { borderStyle: 'dashed', borderColor: 'rgba(139,92,246,0.3)' },
   activityCardDone: { opacity: 0.5 },
   activityAccent: { width: 4 },
+  accentStrength: { width: 4, borderRadius: 0 },
   activityBody: { flex: 1, padding: 14 },
-  activityTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  activityTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  typeShape: { width: 8, height: 8 },
+  typeShapeCircle: { borderRadius: 4 },
+  typeShapeSquare: { borderRadius: 2 },
+  typeShapeDiamond: { borderRadius: 1, transform: [{ rotate: '45deg' }] },
   activityTypeBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   activityTypeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, textTransform: 'uppercase', letterSpacing: 0.3 },
   activityTitleWrap: { flex: 1 },
@@ -762,9 +787,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'flex-start',
   },
   stravaMatchLogo: {
-    fontSize: 10, fontWeight: '700', color: '#FC4C02',
-    width: 14, height: 14, lineHeight: 14, textAlign: 'center',
-    backgroundColor: 'rgba(252,76,2,0.15)', borderRadius: 3, overflow: 'hidden',
+    width: 14, height: 14,
   },
   stravaMatchText: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: '#FC4C02' },
   stravaRideCard: {

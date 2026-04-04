@@ -21,6 +21,7 @@ import { getCoach } from '../data/coaches';
 import analytics from '../services/analyticsService';
 import api from '../services/api';
 import ComingSoon from '../components/ComingSoon';
+import StravaLogo from '../components/StravaLogo';
 import { triggerMaintenanceMode } from '../../App';
 import { syncPlansToServer } from '../services/storageService';
 
@@ -187,9 +188,9 @@ export default function HomeScreen({ navigation }) {
     if (p.length > 0) {
       const plan = p[selectedPlanIdx] || p[0];
       if (plan?.startDate) {
-        const start = new Date(plan.startDate);
+        const start = parseDateLocal(plan.startDate);
         const now = new Date();
-        const daysSince = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+        const daysSince = Math.round((now - start) / (1000 * 60 * 60 * 24));
         const wk = Math.max(1, Math.min(Math.floor(daysSince / 7) + 1, plan.weeks));
         setCurrentWeek(wk);
         analytics.events.planViewed({ planId: plan.id, currentWeek: wk, totalWeeks: plan.weeks });
@@ -645,7 +646,7 @@ export default function HomeScreen({ navigation }) {
                   <Text style={s.lockedBadgeText}>PAYMENT REQUIRED</Text>
                 </View>
                 <Text style={s.lockedTitle}>{activePlan.name || 'Get into Cycling'}</Text>
-                <Text style={s.lockedMeta}>{activePlan.weeks} weeks {'\u00B7'} starts {new Date(activePlan.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
+                <Text style={s.lockedMeta}>{activePlan.weeks} weeks {'\u00B7'} starts {parseDateLocal(activePlan.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
 
                 {/* High-level overview */}
                 <View style={s.lockedOverview}>
@@ -788,7 +789,7 @@ export default function HomeScreen({ navigation }) {
                         </Text>
                         {activity.stravaActivityId && (
                           <View style={s.stravaMatchBadge}>
-                            <Text style={s.stravaMatchLogo}>S</Text>
+                            <StravaLogo size={12} />
                             <Text style={s.stravaMatchText}>
                               {activity.stravaData?.distanceKm ? `${activity.stravaData.distanceKm} km` : ''}
                               {activity.stravaData?.distanceKm && activity.stravaData?.durationMins ? ' \u00B7 ' : ''}
@@ -828,7 +829,7 @@ export default function HomeScreen({ navigation }) {
                       </View>
                     </View>
                   </View>
-                  <Text style={s.stravaRideLogo}>S</Text>
+                  <View style={s.stravaRideLogo}><StravaLogo size={18} /></View>
                 </View>
               ))}
             </View>
@@ -964,8 +965,14 @@ export default function HomeScreen({ navigation }) {
   );
 }
 
+function parseDateLocal(dateStr) {
+  // Parse YYYY-MM-DD or ISO string as local date (noon to avoid DST edge cases)
+  const parts = dateStr.split('T')[0].split('-');
+  return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12, 0, 0);
+}
+
 function getDayDate(startDateStr, week, dayIdx) {
-  const start = new Date(startDateStr);
+  const start = parseDateLocal(startDateStr);
   const offset = (week - 1) * 7 + dayIdx;
   const d = new Date(start);
   d.setDate(d.getDate() + offset);
@@ -974,10 +981,13 @@ function getDayDate(startDateStr, week, dayIdx) {
 
 /** Returns YYYY-MM-DD for a given plan week + day index */
 function getDayDateStr(startDateStr, week, dayIdx) {
-  const start = new Date(startDateStr);
+  const start = parseDateLocal(startDateStr);
   const d = new Date(start);
   d.setDate(d.getDate() + (week - 1) * 7 + dayIdx);
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 const HIT = { top: 8, bottom: 8, left: 8, right: 8 };
@@ -1246,13 +1256,10 @@ const s = StyleSheet.create({
     paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'flex-start',
   },
   stravaMatchLogo: {
-    fontSize: 10, fontWeight: '700', color: '#FC4C02',
-    width: 14, height: 14, lineHeight: 14, textAlign: 'center',
-    backgroundColor: 'rgba(252,76,2,0.15)', borderRadius: 3, overflow: 'hidden',
+    width: 14, height: 14,
   },
   stravaMatchText: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: '#FC4C02' },
   stravaRideLogo: {
-    fontSize: 16, fontWeight: '700', color: '#FC4C02',
     paddingRight: 14,
   },
 

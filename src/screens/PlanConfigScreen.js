@@ -253,7 +253,7 @@ export default function PlanConfigScreen({ navigation, route }) {
   });
 
   const totalCyclingPlaced = Object.values(placedByType).reduce((s, v) => s + v, 0);
-  const allPlaced = totalCyclingPlaced === totalSessions && totalSessions > 0;
+  const allPlaced = totalCyclingPlaced > 0 && totalCyclingPlaced >= totalSessions;
 
   // Handle tapping a day card — place or remove the selected activity
   const handleDayTap = (dayKey) => {
@@ -262,21 +262,33 @@ export default function PlanConfigScreen({ navigation, route }) {
       const current = next[dayKey] || [];
       const act = selectedActivity;
 
-      // If it's a cycling type, check quota
+      // If it's a cycling type, place freely and auto-adjust session count
       if (isCyclingType(act)) {
-        const target = sessionCounts[act] || 0;
-        let placed = 0;
-        Object.values(prev).forEach(acts => { placed += acts.filter(a => a === act).length; });
-
         if (current.includes(act)) {
           // Remove it
           const updated = [...current];
           updated.splice(updated.indexOf(act), 1);
           if (updated.length === 0) delete next[dayKey];
           else next[dayKey] = updated;
-        } else if (placed < target) {
-          // Add it
+          // Auto-decrement session count if needed
+          let newPlaced = 0;
+          Object.values(next).forEach(acts => { newPlaced += acts.filter(a => a === act).length; });
+          setSessionCounts(sc => {
+            const current = sc[act] || 0;
+            if (newPlaced < current) return { ...sc, [act]: Math.max(1, newPlaced) };
+            return sc;
+          });
+        } else {
+          // Add it — no quota limit
           next[dayKey] = [...current, act];
+          // Auto-increment session count if placement exceeds current target
+          let newPlaced = 0;
+          Object.values(next).forEach(acts => { newPlaced += acts.filter(a => a === act).length; });
+          setSessionCounts(sc => {
+            const target = sc[act] || 0;
+            if (newPlaced > target) return { ...sc, [act]: newPlaced };
+            return sc;
+          });
         }
       } else {
         // Cross-training: toggle on/off
@@ -479,7 +491,7 @@ export default function PlanConfigScreen({ navigation, route }) {
       coachId,
       crossTrainingDays: crossTrainingDaysLegacy,
       crossTrainingDaysFull: crossTrainingDays,
-      startDate: startDate.toISOString(),
+      startDate: `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`,
       recurringRides,
       oneOffRides,
       longRideDay: effectiveLongRideDay,
@@ -797,7 +809,7 @@ export default function PlanConfigScreen({ navigation, route }) {
 
           {/* ── Session counters (how many can you do?) ── */}
           <View style={s.divider} />
-          <Text style={s.counterSectionTitle}>How many sessions per week?</Text>
+          <Text style={s.counterSectionTitle}>Starting sessions per week</Text>
           {organisedOutdoorCount > 0 && (
             <Text style={s.counterSectionHint}>
               {organisedOutdoorCount} outdoor ride{organisedOutdoorCount !== 1 ? 's' : ''} already added from your organised rides
@@ -815,11 +827,8 @@ export default function PlanConfigScreen({ navigation, route }) {
                   {fromOrganised > 0 && (
                     <Text style={s.counterOrganisedNote}>{fromOrganised} from organised rides</Text>
                   )}
-                  {count > 0 && placed < count && (
-                    <Text style={s.counterHint}>{count - placed} to place</Text>
-                  )}
-                  {count > 0 && placed >= count && (
-                    <Text style={s.counterHintDone}>{'\u2713'} All placed</Text>
+                  {placed > 0 && (
+                    <Text style={s.counterHintDone}>{placed} placed</Text>
                   )}
                 </View>
                 <View style={s.counterControls}>
@@ -849,7 +858,7 @@ export default function PlanConfigScreen({ navigation, route }) {
             Select an activity, then tap a day to place it. Tap a placed item to remove it. You can stack multiple activities on one day.
           </Text>
           <Text style={[s.placeStatus, allPlaced ? s.placeStatusOk : s.placeStatusPending]}>
-            {totalCyclingPlaced}/{totalSessions} cycling sessions placed
+            {totalCyclingPlaced} cycling session{totalCyclingPlaced !== 1 ? 's' : ''} placed
           </Text>
 
           {/* Search box for activities — above the palette */}

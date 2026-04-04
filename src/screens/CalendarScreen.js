@@ -133,6 +133,7 @@ export default function CalendarScreen({ navigation }) {
         label: getSessionLabel(a),
         metric: getMetricLabel(a),
         color: getSessionColor(a),
+        type: a.type,
       }));
     }
     const ct = crossTrainingMap[getKey(day)];
@@ -245,7 +246,12 @@ export default function CalendarScreen({ navigation }) {
                         )}
                         {items.map((item, idx) => (
                           <View key={idx} style={s.cellItemRow}>
-                            <View style={[s.cellItemDot, { backgroundColor: isSelected(day) ? 'rgba(255,255,255,0.7)' : item.color }]} />
+                            <View style={[
+                              s.cellItemDot,
+                              item.type === 'strength' && s.cellItemDotSquare,
+                              item.isCrossTraining && s.cellItemDotDiamond,
+                              { backgroundColor: isSelected(day) ? 'rgba(255,255,255,0.7)' : item.color },
+                            ]} />
                             <Text style={[s.cellItemLabel, isSelected(day) ? { color: 'rgba(255,255,255,0.8)' } : { color: item.color }]}>
                               {item.metric || item.label}
                             </Text>
@@ -300,13 +306,14 @@ export default function CalendarScreen({ navigation }) {
           {selectedActivities.map(activity => (
             <TouchableOpacity
               key={activity.id}
-              style={[s.actCard, activity.completed && s.actCardDone]}
+              style={[s.actCard, activity.type === 'strength' && s.actCardStrength, activity.completed && s.actCardDone]}
               onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
               activeOpacity={0.75}
             >
               <View style={[s.actAccent, { backgroundColor: getSessionColor(activity) }]} />
               <View style={s.actBody}>
                 <View style={s.actTop}>
+                  <View style={[s.typeShape, activity.type === 'strength' ? s.typeShapeSquare : s.typeShapeCircle, { backgroundColor: getSessionColor(activity) }]} />
                   <View style={[s.actTypeBadge, { backgroundColor: getSessionColor(activity) + '18' }]}>
                     <Text style={[s.actTypeText, { color: getSessionColor(activity) }]}>{getSessionLabel(activity)}</Text>
                   </View>
@@ -378,6 +385,8 @@ const s = StyleSheet.create({
 
   cellItemRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 1 },
   cellItemDot: { width: 4, height: 4, borderRadius: 2 },
+  cellItemDotSquare: { borderRadius: 1 },
+  cellItemDotDiamond: { borderRadius: 0, transform: [{ rotate: '45deg' }] },
   cellItemLabel: { fontSize: 8, fontWeight: '600', fontFamily: FF.semibold },
 
   // Goal banner in selected day detail
@@ -404,10 +413,14 @@ const s = StyleSheet.create({
     flexDirection: 'row', backgroundColor: colors.surface, marginBottom: 8,
     borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: colors.border,
   },
+  actCardStrength: { borderStyle: 'dashed', borderColor: 'rgba(139,92,246,0.3)' },
   actCardDone: { opacity: 0.5 },
   actAccent: { width: 4 },
   actBody: { flex: 1, padding: 14 },
-  actTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  actTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  typeShape: { width: 8, height: 8 },
+  typeShapeCircle: { borderRadius: 4 },
+  typeShapeSquare: { borderRadius: 2 },
   actTypeBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   actTypeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, textTransform: 'uppercase', letterSpacing: 0.3 },
   actTextWrap: { flex: 1 },
