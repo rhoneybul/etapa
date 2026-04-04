@@ -41,6 +41,7 @@ yarn-error.*
 
 # server env
 server/.env
+server/.env.test
 
 # misc
 logs/
