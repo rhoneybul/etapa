@@ -1,73 +1,72 @@
 /**
  * Strava integration — OAuth connect + activity sync.
  *
- * Uses EXPO_PUBLIC_STRAVA_CLIENT_ID and EXPO_PUBLIC_STRAVA_CLIENT_SECRET from .env
+ * OAuth flow (server-assisted):
+ *  1. User taps "Connect Strava" → opens Strava auth in browser
+ *  2. Strava redirects to server callback (GET /api/strava/callback?code=...)
+ *  3. Server exchanges code for tokens (keeps client_secret secure)
+ *  4. Server redirects back to app via deep link with tokens
+ *  5. App stores tokens in AsyncStorage
  *
- * Flow:
- *  1. User taps "Connect Strava" → opens OAuth browser
- *  2. User authorises → redirect back with code
- *  3. Exchange code for tokens → store in AsyncStorage
- *  4. Fetch recent activities → match against plan activities
+ * Env vars:
+ *   EXPO_PUBLIC_STRAVA_CLIENT_ID  — used to build the auth URL
+ *   EXPO_PUBLIC_API_URL            — server base URL for the callback
+ *   STRAVA_CLIENT_ID + STRAVA_CLIENT_SECRET — on the server only
  */
 import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { saveStravaTokens, getStravaTokens, clearStravaTokens } from './storageService';
 
-const STRAVA_CLIENT_ID     = process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID || '';
-const STRAVA_CLIENT_SECRET = process.env.EXPO_PUBLIC_STRAVA_CLIENT_SECRET || '';
-const REDIRECT_URI         = 'etapa://strava/callback';
-const STRAVA_AUTH_URL       = 'https://www.strava.com/oauth/authorize';
-const STRAVA_TOKEN_URL      = 'https://www.strava.com/oauth/token';
+const STRAVA_CLIENT_ID = process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID || '';
+const SERVER_URL       = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
+const STRAVA_AUTH_URL  = 'https://www.strava.com/oauth/authorize';
+const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token';
+const APP_REDIRECT_URI = 'etapa://strava/callback';
 
-export const isStravaConfigured = !!(STRAVA_CLIENT_ID && STRAVA_CLIENT_SECRET);
+// The redirect URI points to the server, which exchanges the code and redirects
+// back to the app. This is required because Strava doesn't allow custom URI schemes.
+const SERVER_CALLBACK_URI = `${SERVER_URL}/api/strava/callback`;
+
+export const isStravaConfigured = !!STRAVA_CLIENT_ID;
 
 // ── Connect (OAuth) ──────────────────────────────────────────────────────────
 
 export async function connectStrava() {
   if (!isStravaConfigured) {
-    throw new Error('Strava credentials not configured. Add EXPO_PUBLIC_STRAVA_CLIENT_ID and EXPO_PUBLIC_STRAVA_CLIENT_SECRET to .env');
+    throw new Error('Strava credentials not configured. Add EXPO_PUBLIC_STRAVA_CLIENT_ID to .env');
   }
 
-  const authUrl = `${STRAVA_AUTH_URL}?client_id=${STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=read,activity:read_all&approval_prompt=auto`;
+  const authUrl = `${STRAVA_AUTH_URL}?client_id=${STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(SERVER_CALLBACK_URI)}&scope=read,activity:read_all&approval_prompt=auto`;
 
-  const result = await WebBrowser.openAuthSessionAsync(authUrl, REDIRECT_URI);
+  // openAuthSessionAsync intercepts the deep link redirect from the server
+  const result = await WebBrowser.openAuthSessionAsync(authUrl, APP_REDIRECT_URI);
 
   if (result.type !== 'success') {
     throw new Error('Strava authorisation cancelled');
   }
 
-  // Extract code from redirect URL
+  // The server already exchanged the code — tokens come back as query params
   const url = new URL(result.url);
-  const code = url.searchParams.get('code');
-  if (!code) throw new Error('No authorisation code received from Strava');
+  const error = url.searchParams.get('error');
+  if (error) throw new Error(`Strava auth failed: ${error}`);
 
-  // Exchange code for tokens
-  const res = await fetch(STRAVA_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: STRAVA_CLIENT_ID,
-      client_secret: STRAVA_CLIENT_SECRET,
-      code,
-      grant_type: 'authorization_code',
-    }),
-  });
+  const accessToken  = url.searchParams.get('access_token');
+  const refreshToken = url.searchParams.get('refresh_token');
+  const expiresAt    = url.searchParams.get('expires_at');
+  const athleteId    = url.searchParams.get('athlete_id');
+  const athleteName  = url.searchParams.get('athlete_name');
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || 'Failed to exchange Strava code');
-  }
+  if (!accessToken) throw new Error('No access token received from Strava');
 
-  const tokens = await res.json();
   await saveStravaTokens({
-    accessToken:  tokens.access_token,
-    refreshToken: tokens.refresh_token,
-    expiresAt:    tokens.expires_at,
-    athleteId:    tokens.athlete?.id,
-    athleteName:  tokens.athlete?.firstname,
+    accessToken,
+    refreshToken,
+    expiresAt: Number(expiresAt),
+    athleteId: athleteId || null,
+    athleteName: athleteName || null,
   });
 
-  return tokens;
+  return { access_token: accessToken, athlete: { id: athleteId, firstname: athleteName } };
 }
 
 // ── Disconnect ───────────────────────────────────────────────────────────────
@@ -94,16 +93,13 @@ async function ensureFreshToken() {
     return tokens.accessToken;
   }
 
-  // Refresh
-  const res = await fetch(STRAVA_TOKEN_URL, {
+  // Refresh — this goes directly to Strava (refresh doesn't need redirect_uri)
+  // We need the client_id for this, but the secret is handled server-side.
+  // For token refresh we call our own server endpoint instead.
+  const res = await fetch(`${SERVER_URL}/api/strava/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: STRAVA_CLIENT_ID,
-      client_secret: STRAVA_CLIENT_SECRET,
-      refresh_token: tokens.refreshToken,
-      grant_type: 'refresh_token',
-    }),
+    body: JSON.stringify({ refresh_token: tokens.refreshToken }),
   });
 
   if (!res.ok) throw new Error('Failed to refresh Strava token');
