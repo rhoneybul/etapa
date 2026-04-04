@@ -177,7 +177,7 @@ router.post('/run', async (req, res) => {
         if (activity.plans?.config_id) {
           const { data: config } = await supabase
             .from('plan_configs')
-            .select('coach_id')
+            .select('*')
             .eq('id', activity.plans.config_id)
             .maybeSingle();
           if (config?.coach_id) coachId = config.coach_id;

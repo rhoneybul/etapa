@@ -1,5 +1,9 @@
 const { Router } = require('express');
 const { supabase } = require('../lib/supabase');
+const {
+  isMissingPlanConfigCoachIdColumn,
+  removeCoachIdField,
+} = require('../lib/planConfigCompat');
 const router = Router();
 
 // GET /api/plan-configs — list user's plan configs
@@ -19,7 +23,14 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const row = toRow(req.body, req.user.id);
-    const { data, error } = await supabase.from('plan_configs').insert(row).select().single();
+    let { data, error } = await supabase.from('plan_configs').insert(row).select().single();
+    if (isMissingPlanConfigCoachIdColumn(error)) {
+      ({ data, error } = await supabase
+        .from('plan_configs')
+        .insert(removeCoachIdField(row))
+        .select()
+        .single());
+    }
     if (error) throw error;
     res.status(201).json(toClient(data));
   } catch (err) { next(err); }
@@ -30,13 +41,22 @@ router.put('/:id', async (req, res, next) => {
   try {
     const updates = toRow(req.body, req.user.id);
     delete updates.id; // Don't overwrite PK
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('plan_configs')
       .update(updates)
       .eq('id', req.params.id)
       .eq('user_id', req.user.id)
       .select()
       .single();
+    if (isMissingPlanConfigCoachIdColumn(error)) {
+      ({ data, error } = await supabase
+        .from('plan_configs')
+        .update(removeCoachIdField(updates))
+        .eq('id', req.params.id)
+        .eq('user_id', req.user.id)
+        .select()
+        .single());
+    }
     if (error) throw error;
     res.json(toClient(data));
   } catch (err) { next(err); }
@@ -80,7 +100,7 @@ function toClient(row) {
     crossTrainingDaysFull: row.cross_training_days_full,
     indoorTrainer: row.indoor_trainer,
     extraNotes: row.extra_notes,
-    coachId: row.coach_id,
+    coachId: row.coach_id ?? null,
     createdAt: row.created_at,
   };
 }

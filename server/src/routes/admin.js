@@ -1143,7 +1143,7 @@ router.post('/users/:id/coach-checkin', async (req, res, next) => {
     if (plan?.config_id) {
       const { data: config } = await supabase
         .from('plan_configs')
-        .select('coach_id')
+        .select('*')
         .eq('id', plan.config_id)
         .maybeSingle();
       if (config?.coach_id) coachId = config.coach_id;
