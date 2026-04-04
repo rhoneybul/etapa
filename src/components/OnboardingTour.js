@@ -20,14 +20,14 @@ const STEPS = [
     title: 'Welcome to Etapa',
     body: 'Your personal cycling coach. Let\'s take a quick look at what\'s waiting for you.',
     position: 'center',
-    icon: '🚴',
+    icon: null,
   },
   {
     id: 'plan',
     title: 'Your Training Plan',
     body: 'We\'ll build a personalised weekly plan based on your goals — with sessions tailored to your level, schedule, and target event.',
     position: 'top',
-    icon: '📋',
+    icon: null,
     dummyCard: {
       type: 'plan',
       title: 'Build Base Fitness',
@@ -46,13 +46,13 @@ const STEPS = [
     title: 'Your AI Coach',
     body: 'After each session, your coach checks in — asking how it went, offering tips, and preparing you for what\'s next.',
     position: 'middle',
-    icon: '💬',
+    icon: null,
     dummyCard: {
       type: 'chat',
       messages: [
         { role: 'coach', text: 'Great work on yesterday\'s tempo ride! 25 km at moderate effort is solid for Week 3. How did your legs feel on the intervals?' },
         { role: 'user', text: 'Felt good! The last two intervals were tough but manageable.' },
-        { role: 'coach', text: 'That\'s exactly where you want to be. Friday\'s endurance ride is 40 km — take the first half easy and build into it. Stay hydrated! 💧' },
+        { role: 'coach', text: 'That\'s exactly where you want to be. Friday\'s endurance ride is 40 km — take the first half easy and build into it. Stay hydrated.' },
       ],
     },
   },
@@ -61,7 +61,7 @@ const STEPS = [
     title: 'Track Your Progress',
     body: 'See your weekly distance, completed sessions, and how you\'re tracking against your plan. Connect Strava for automatic syncing.',
     position: 'middle',
-    icon: '📊',
+    icon: null,
     dummyCard: {
       type: 'stats',
       stats: [
@@ -77,7 +77,7 @@ const STEPS = [
     title: 'Ready to ride?',
     body: 'Let\'s set your goal and build your first training plan.',
     position: 'center',
-    icon: '🎯',
+    icon: null,
     cta: 'Create my plan',
   },
 ];
@@ -220,9 +220,6 @@ export default function OnboardingTour({ visible, onComplete, onCreatePlan }) {
             showsVerticalScrollIndicator={false}
             bounces={false}
           >
-            {/* Icon */}
-            <Text style={s.icon}>{current.icon}</Text>
-
             {/* Title + body */}
             <Text style={s.title}>{current.title}</Text>
             <Text style={s.body}>{current.body}</Text>
