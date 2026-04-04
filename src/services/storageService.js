@@ -288,6 +288,7 @@ export async function clearUserData() {
     KEYS.PLANS,
     KEYS.PLAN_CONFIGS,
     KEYS.CURRENT_USER,
+    KEYS.ONBOARDING_DONE,
   ]);
   migrated = false; // Reset migration flag so next user gets a fresh start
 }
