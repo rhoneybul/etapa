@@ -12,6 +12,7 @@ const KEYS = {
   PLAN_CONFIGS:   '@etapa_plan_configs',
   PLANS:          '@etapa_plans',
   STRAVA:         '@etapa_strava',
+  STRAVA_ACTIVITIES: '@etapa_strava_activities',
   CURRENT_USER:   '@etapa_current_user_id',
   USER_PREFS:     '@etapa_user_prefs',
   ONBOARDING_DONE:'@etapa_onboarding_done',

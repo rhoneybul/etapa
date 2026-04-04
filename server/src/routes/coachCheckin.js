@@ -72,8 +72,9 @@ The rider completed this session yesterday:
 - Duration: ${activity.duration_mins ? `${activity.duration_mins} minutes` : 'Unknown'}
 - Effort: ${activity.effort || 'moderate'}
 ${activity.description ? `- Description: ${activity.description.slice(0, 200)}` : ''}
+${activity.strava_data ? `- Strava data: ${activity.strava_data.distanceKm ? activity.strava_data.distanceKm + ' km actual' : ''}${activity.strava_data.durationMins ? ', ' + activity.strava_data.durationMins + ' min actual' : ''}${activity.strava_data.avgSpeedKmh ? ', avg ' + activity.strava_data.avgSpeedKmh + ' km/h' : ''}` : ''}
 ${nextActivityBlock}
-Write a brief, personalised check-in message (3-4 sentences). First, ask specifically about the session they completed — reference the session by name, ask how their legs felt, if the effort level was right, etc. ${nextActivity ? `Then briefly mention what\'s coming next ("${nextActivity.title}") and offer a quick tip to prepare — pacing, nutrition, recovery, whatever fits.` : 'Then ask if they need any adjustments to their plan.'} Keep it natural and in character. No emojis. No greeting — jump straight in.`;
+Write a brief, personalised check-in message (3-4 sentences). First, ask specifically about the session they completed — reference the session by name, ask how their legs felt, if the effort level was right, etc.${activity.strava_data ? ' Reference their actual Strava stats (distance, time, speed) and compare to what was planned — give specific feedback.' : ''} ${nextActivity ? `Then briefly mention what\'s coming next ("${nextActivity.title}") and offer a quick tip to prepare — pacing, nutrition, recovery, whatever fits.` : 'Then ask if they need any adjustments to their plan.'} Keep it natural and in character. No emojis. No greeting — jump straight in.`;
 
   try {
     const res = await _fetch('https://api.anthropic.com/v1/messages', {

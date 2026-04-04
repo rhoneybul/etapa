@@ -967,6 +967,21 @@ Only include the plan_update block when you are actually making changes. For que
         systemPrompt += `\n## All plan activities (with IDs — use these when modifying)\n`;
         systemPrompt += JSON.stringify(context.allActivities, null, 2) + '\n';
       }
+
+      // Strava actual ride data — compare planned vs actual
+      if (context.stravaActivities && context.stravaActivities.length > 0) {
+        systemPrompt += `\n## Strava actual activities (synced from the athlete's Strava account)\n`;
+        systemPrompt += `The athlete has connected Strava. Below are their actual rides. Use this to assess compliance, give feedback on performance, and adjust future weeks if needed.\n`;
+        systemPrompt += JSON.stringify(context.stravaActivities, null, 2) + '\n';
+      }
+      if (context.weekComparisons && context.weekComparisons.length > 0) {
+        systemPrompt += `\n## Planned vs Actual weekly comparison\n`;
+        for (const cmp of context.weekComparisons) {
+          systemPrompt += `Week ${cmp.week}: planned ${cmp.plannedRides} rides (${cmp.plannedKm} km), actual ${cmp.actualRides} rides (${cmp.actualKm} km)`;
+          if (cmp.compliancePct !== null) systemPrompt += ` — ${cmp.compliancePct}% compliance`;
+          systemPrompt += '\n';
+        }
+      }
     }
 
     // Format messages for Claude API

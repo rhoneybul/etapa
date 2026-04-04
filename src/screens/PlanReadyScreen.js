@@ -14,6 +14,7 @@ import { colors, fontFamily } from '../theme';
 import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan, getUserPrefs } from '../services/storageService';
 import { assessPlan, editPlanWithLLM } from '../services/llmPlanService';
 import { isSubscribed } from '../services/subscriptionService';
+import { connectStrava, isStravaConnected, isStravaConfigured } from '../services/stravaService';
 import { convertDistance, distanceLabel } from '../utils/units';
 
 const FF = fontFamily;
@@ -46,6 +47,8 @@ export default function PlanReadyScreen({ navigation, route }) {
   const [assessment, setAssessment] = useState(null);
   const [loadingAssessment, setLoadingAssessment] = useState(false);
   const [units, setUnits] = useState('km');
+  const [stravaOk, setStravaOk] = useState(false);
+  const [connectingStrava, setConnectingStrava] = useState(false);
   const assessFade = useRef(new Animated.Value(0)).current;
 
   // Guard against double-tap navigation
@@ -60,6 +63,7 @@ export default function PlanReadyScreen({ navigation, route }) {
 
   useEffect(() => {
     getUserPrefs().then(prefs => setUnits(prefs.units || 'km')).catch(() => {});
+    isStravaConnected().then(setStravaOk).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -316,6 +320,43 @@ export default function PlanReadyScreen({ navigation, route }) {
 
           {/* Suggestions are now applied via ApplySuggestionScreen */}
 
+          {/* Strava connect prompt — only show if not already connected */}
+          {isStravaConfigured && !stravaOk && (
+            <Animated.View style={[s.stravaCard, { opacity: ctaFade }]}>
+              <View style={s.stravaHeader}>
+                <Text style={s.stravaLogo}>S</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.stravaTitle}>Connect Strava</Text>
+                  <Text style={s.stravaSub}>Automatically track your rides and match them to your plan</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[s.stravaBtn, connectingStrava && { opacity: 0.6 }]}
+                onPress={async () => {
+                  setConnectingStrava(true);
+                  try {
+                    await connectStrava();
+                    setStravaOk(true);
+                  } catch {}
+                  setConnectingStrava(false);
+                }}
+                activeOpacity={0.85}
+                disabled={connectingStrava}
+              >
+                {connectingStrava
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={s.stravaBtnText}>Connect</Text>
+                }
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+          {stravaOk && (
+            <Animated.View style={[s.stravaConnected, { opacity: ctaFade }]}>
+              <Text style={s.stravaConnectedIcon}>{'\u2713'}</Text>
+              <Text style={s.stravaConnectedText}>Strava connected — your rides will sync automatically</Text>
+            </Animated.View>
+          )}
+
           <View style={{ height: 100 }} />
         </ScrollView>
 
@@ -502,4 +543,30 @@ const s = StyleSheet.create({
   ctaText: { fontSize: 17, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
   detailLink: { alignItems: 'center', paddingVertical: 12 },
   detailLinkText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
+
+  // Strava connect
+  stravaCard: {
+    backgroundColor: colors.surface, borderRadius: 14, padding: 18, marginTop: 16,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  stravaHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  stravaLogo: {
+    width: 36, height: 36, borderRadius: 8, backgroundColor: '#FC4C02',
+    color: '#fff', fontSize: 20, fontWeight: '700', textAlign: 'center', lineHeight: 36,
+    overflow: 'hidden',
+  },
+  stravaTitle: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  stravaSub: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, marginTop: 2, lineHeight: 17 },
+  stravaBtn: {
+    backgroundColor: '#FC4C02', borderRadius: 10, paddingVertical: 12,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  stravaBtnText: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
+  stravaConnected: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16,
+    backgroundColor: 'rgba(34,197,94,0.08)', borderRadius: 10, padding: 14,
+    borderWidth: 1, borderColor: 'rgba(34,197,94,0.15)',
+  },
+  stravaConnectedIcon: { fontSize: 18, color: '#22C55E', fontWeight: '700' },
+  stravaConnectedText: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, flex: 1 },
 });

@@ -16,6 +16,8 @@ import { coachChat } from '../services/llmPlanService';
 import { api } from '../services/api';
 import { getCoach } from '../data/coaches';
 import { getCurrentUser } from '../services/authService';
+import { syncStravaActivities, buildStravaContextForAI, weekComparisonSummary } from '../services/stravaSyncService';
+import { isStravaConnected } from '../services/stravaService';
 import analytics from '../services/analyticsService';
 
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -92,6 +94,7 @@ export default function CoachChatScreen({ navigation, route }) {
   const [applyingUpdate, setApplyingUpdate] = useState(false);
   const [lastFailedMsg, setLastFailedMsg] = useState(null); // last user message content that failed
   const [userName, setUserName] = useState(null);
+  const [stravaActivities, setStravaActivities] = useState([]);
   const scrollRef = useRef(null);
 
   // Load plan, goal, chat history, and user name
@@ -113,6 +116,14 @@ export default function CoachChatScreen({ navigation, route }) {
         const cfg = await getPlanConfig(p.configId);
         setPlanConfig(cfg);
         analytics.events.coachChatOpened(cfg?.coachId || null, weekNum ? 'week' : 'plan');
+        // Sync Strava data for coach context
+        isStravaConnected().then(connected => {
+          if (connected) {
+            syncStravaActivities(p).then(result => {
+              if (result?.stravaActivities) setStravaActivities(result.stravaActivities);
+            }).catch(() => {});
+          }
+        });
 
         // Load saved chat — local + server, merging any new server-side
         // messages (e.g. coach check-ins injected by the cron job).
@@ -224,6 +235,18 @@ export default function CoachChatScreen({ navigation, route }) {
       weekSummaries,
       allActivities,
     };
+
+    // Add Strava actual data so coach can compare planned vs actual
+    if (stravaActivities.length > 0) {
+      context.stravaActivities = buildStravaContextForAI(stravaActivities);
+      // Build week-by-week comparison for the coach
+      const weekComparisons = [];
+      for (let w = 1; w <= plan.weeks; w++) {
+        const cmp = weekComparisonSummary(plan, stravaActivities, w);
+        if (cmp.actualRides > 0 || cmp.plannedRides > 0) weekComparisons.push(cmp);
+      }
+      if (weekComparisons.length > 0) context.weekComparisons = weekComparisons;
+    }
 
     if (weekNum) {
       context.weekNum = weekNum;

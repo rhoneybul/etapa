@@ -13,6 +13,8 @@ import { getPlan, getPlans, getWeekActivities, getWeekProgress, markActivityComp
 import { editActivityWithAI, adjustWeekForOrganisedRide } from '../services/llmPlanService';
 import { uid } from '../services/storageService';
 import { getSessionColor, getSessionLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
+import { syncStravaActivities, getStravaActivitiesForWeek, getStravaActivitiesForDate } from '../services/stravaSyncService';
+import { isStravaConnected } from '../services/stravaService';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
@@ -37,6 +39,7 @@ export default function WeekViewScreen({ navigation, route }) {
   const [showOrgRide, setShowOrgRide] = useState(false);
   const [orgRideDay, setOrgRideDay] = useState(null);
   const [orgRideForm, setOrgRideForm] = useState({ description: '', durationMins: '', distanceKm: '', elevationM: '' });
+  const [stravaActivities, setStravaActivities] = useState([]);
 
   // Compute the actual date for a given day index in the current week
   const getWeekDayInfo = (dayIdx) => {
@@ -68,6 +71,17 @@ export default function WeekViewScreen({ navigation, route }) {
       setGoal(goals.find(g => g.id === p.goalId) || null);
       const cfg = await getPlanConfig(p.configId);
       setPlanConfig(cfg);
+      // Sync Strava activities (non-blocking)
+      const currentPlan = p;
+      isStravaConnected().then(connected => {
+        if (connected) {
+          syncStravaActivities(currentPlan).then(async (result) => {
+            if (result?.stravaActivities) setStravaActivities(result.stravaActivities);
+            // Reload plan if auto-complete matched activities
+            if (result?.matchedCount > 0) loadPlan();
+          }).catch(() => {});
+        }
+      });
     }
   }, [planId, navigation]);
 
@@ -284,7 +298,11 @@ export default function WeekViewScreen({ navigation, route }) {
           {DAY_LABELS_FULL.map((dayLabel, dayIdx) => {
             const dayActivities = byDay[dayIdx] || [];
             const ctItems = getCrossTrainingForDay(crossTraining, dayIdx);
-            if (dayActivities.length === 0 && ctItems.length === 0) return null;
+            const dateStr = plan?.startDate ? getDayDateStr(plan.startDate, week, dayIdx) : null;
+            const dayStravaRides = dateStr
+              ? getStravaActivitiesForDate(stravaActivities, dateStr).filter(sa => !dayActivities.some(a => a.stravaActivityId === sa.stravaId))
+              : [];
+            if (dayActivities.length === 0 && ctItems.length === 0 && dayStravaRides.length === 0) return null;
 
             const dayDate = getDayDate(plan.startDate, week, dayIdx);
 
@@ -315,6 +333,17 @@ export default function WeekViewScreen({ navigation, route }) {
                                 {activity.durationMins ? `~${activity.durationMins} min` : ''}
                                 {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
                               </Text>
+                              {activity.stravaActivityId && (
+                                <View style={s.stravaMatchBadge}>
+                                  <Text style={s.stravaMatchLogo}>S</Text>
+                                  <Text style={s.stravaMatchText}>
+                                    {activity.stravaData?.distanceKm ? `${activity.stravaData.distanceKm} km` : ''}
+                                    {activity.stravaData?.distanceKm && activity.stravaData?.durationMins ? ' \u00B7 ' : ''}
+                                    {activity.stravaData?.durationMins ? `${activity.stravaData.durationMins} min` : ''}
+                                    {activity.stravaData?.avgSpeedKmh ? ` \u00B7 ${activity.stravaData.avgSpeedKmh} km/h` : ''}
+                                  </Text>
+                                </View>
+                              )}
                             </View>
                             <TouchableOpacity
                               style={[s.checkBtn, activity.completed && s.checkBtnDone]}
@@ -374,6 +403,30 @@ export default function WeekViewScreen({ navigation, route }) {
                     </View>
                   </View>
                 ))}
+                {/* Unmatched Strava rides for this day */}
+                {(() => {
+                  const dateStr = plan?.startDate ? getDayDateStr(plan.startDate, week, dayIdx) : null;
+                  if (!dateStr) return null;
+                  const dayStrava = getStravaActivitiesForDate(stravaActivities, dateStr)
+                    .filter(sa => !dayActivities.some(a => a.stravaActivityId === sa.stravaId));
+                  return dayStrava.map(sa => (
+                    <View key={sa.stravaId} style={s.stravaRideCard}>
+                      <View style={[s.activityAccent, { backgroundColor: '#FC4C02' }]} />
+                      <View style={s.stravaRideBody}>
+                        <View style={[s.activityTypeBadge, { backgroundColor: 'rgba(252,76,2,0.12)' }]}>
+                          <Text style={[s.activityTypeText, { color: '#FC4C02' }]}>STRAVA</Text>
+                        </View>
+                        <Text style={s.stravaRideName}>{sa.name || 'Ride'}</Text>
+                        <Text style={s.stravaRideMeta}>
+                          {sa.distanceKm ? `${sa.distanceKm} km` : ''}
+                          {sa.distanceKm && sa.durationMins ? ' \u00B7 ' : ''}
+                          {sa.durationMins ? `${sa.durationMins} min` : ''}
+                          {sa.avgSpeedKmh ? ` \u00B7 ${sa.avgSpeedKmh} km/h` : ''}
+                        </Text>
+                      </View>
+                    </View>
+                  ));
+                })()}
               </View>
             );
           })}
@@ -520,6 +573,13 @@ function getDayDate(startDateStr, week, dayIdx) {
   const day = d.getDate();
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${day} ${months[d.getMonth()]}`;
+}
+
+function getDayDateStr(startDateStr, week, dayIdx) {
+  const start = new Date(startDateStr);
+  const d = new Date(start);
+  d.setDate(d.getDate() + (week - 1) * 7 + dayIdx);
+  return d.toISOString().split('T')[0];
 }
 
 const HIT = { top: 12, bottom: 12, left: 12, right: 12 };
@@ -694,4 +754,24 @@ const s = StyleSheet.create({
     backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: 'center',
   },
   orgModalAddText: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
+
+  // Strava inline
+  stravaMatchBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4,
+    backgroundColor: 'rgba(252,76,2,0.08)', borderRadius: 6,
+    paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'flex-start',
+  },
+  stravaMatchLogo: {
+    fontSize: 10, fontWeight: '700', color: '#FC4C02',
+    width: 14, height: 14, lineHeight: 14, textAlign: 'center',
+    backgroundColor: 'rgba(252,76,2,0.15)', borderRadius: 3, overflow: 'hidden',
+  },
+  stravaMatchText: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: '#FC4C02' },
+  stravaRideCard: {
+    flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 14,
+    overflow: 'hidden', marginBottom: 8, borderWidth: 1, borderColor: 'rgba(252,76,2,0.2)',
+  },
+  stravaRideBody: { flex: 1, padding: 14, gap: 4 },
+  stravaRideName: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
+  stravaRideMeta: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: '#FC4C02' },
 });

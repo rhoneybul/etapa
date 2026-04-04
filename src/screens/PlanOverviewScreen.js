@@ -11,6 +11,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { getPlans, getGoals, getWeekActivities, getPlanConfig, updatePlanConfig } from '../services/storageService';
 import { getCrossTrainingLabel } from '../utils/sessionLabels';
+import { syncStravaActivities, getStravaActivitiesForWeek } from '../services/stravaSyncService';
+import { isStravaConnected } from '../services/stravaService';
 import analytics from '../services/analyticsService';
 
 const DAY_LABELS = [
@@ -132,6 +134,7 @@ export default function PlanOverviewScreen({ navigation, route }) {
   const [recurringRides, setRecurringRides] = useState([]);
   const [showAddRecurring, setShowAddRecurring] = useState(false);
   const [recurringForm, setRecurringForm] = useState({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' });
+  const [stravaActivities, setStravaActivities] = useState([]);
 
   const load = useCallback(async () => {
     const plans = await getPlans();
@@ -146,6 +149,14 @@ export default function PlanOverviewScreen({ navigation, route }) {
         setRecurringRides(cfg?.recurringRides || []);
       }
       analytics.events.planOverviewViewed(p.id, p.weeks);
+      // Load Strava data (non-blocking)
+      isStravaConnected().then(connected => {
+        if (connected) {
+          syncStravaActivities(p).then(result => {
+            if (result?.stravaActivities) setStravaActivities(result.stravaActivities);
+          }).catch(() => {});
+        }
+      });
     }
   }, [planId]);
 
@@ -264,6 +275,15 @@ export default function PlanOverviewScreen({ navigation, route }) {
                           <View style={{ width: '100%', height: totalH, backgroundColor: '#64748B', borderRadius: 3 }} />
                         )}
                       </View>
+                      {/* Strava actual km label */}
+                      {(() => {
+                        const weekStrava = getStravaActivitiesForWeek(stravaActivities, i + 1);
+                        const actualKm = Math.round(weekStrava.reduce((s, a) => s + (a.distanceKm || 0), 0));
+                        if (actualKm <= 0) return null;
+                        return (
+                          <Text style={s.stravaBarLabel}>{actualKm}</Text>
+                        );
+                      })()}
                     </TouchableOpacity>
                   );
                 })}
@@ -301,6 +321,12 @@ export default function PlanOverviewScreen({ navigation, route }) {
                   <View style={[s.legendDot, { backgroundColor: '#22C55E' }]} />
                   <Text style={s.legendText}>Current</Text>
                 </View>
+                {stravaActivities.length > 0 && (
+                  <View style={s.legendItem}>
+                    <View style={[s.legendDot, { backgroundColor: '#FC4C02' }]} />
+                    <Text style={s.legendText}>Strava actual</Text>
+                  </View>
+                )}
               </View>
             </View>
 
@@ -366,6 +392,12 @@ export default function PlanOverviewScreen({ navigation, route }) {
                       {v.rideCount > 0 && v.strengthCount > 0 ? ' \u00B7 ' : ''}
                       {v.strengthCount > 0 ? `${v.strengthCount} strength` : ''}
                       {v.totalKm > 0 ? ` \u00B7 ${Math.round(v.totalKm)} km` : ''}
+                      {(() => {
+                        const weekStrava = getStravaActivitiesForWeek(stravaActivities, weekNum);
+                        if (weekStrava.length === 0) return '';
+                        const actualKm = Math.round(weekStrava.reduce((s, a) => s + (a.distanceKm || 0), 0));
+                        return actualKm > 0 ? ` \u00B7 ${actualKm} km actual` : '';
+                      })()}
                       {(() => {
                         // Show cross-training from config
                         const ctDays = planConfig?.crossTrainingDaysFull;
@@ -517,6 +549,9 @@ const s = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
   legendText: { fontSize: 10, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
+  stravaBarLabel: {
+    fontSize: 8, fontWeight: '600', fontFamily: FF.semibold, color: '#FC4C02', marginTop: 1,
+  },
 
   sectionTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, paddingHorizontal: 20, marginBottom: 10, marginTop: 4 },
 
