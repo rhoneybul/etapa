@@ -199,6 +199,10 @@ function buildPlanFromActivities(activities, goal, config) {
   }
 
   const planId = uid();
+  const maxWeeks = config.weeks || 8;
+
+  // Filter out activities that exceed the configured week count
+  const validActivities = activities.filter(a => a.week >= 1 && a.week <= maxWeeks);
 
   return {
     id: planId,
@@ -207,9 +211,9 @@ function buildPlanFromActivities(activities, goal, config) {
     name: goal.planName || null,
     status: 'active',
     startDate: startDateStr,
-    weeks: config.weeks || 8,
+    weeks: maxWeeks,
     currentWeek: 1,
-    activities: activities.map(a => ({
+    activities: validActivities.map(a => ({
       id: uid(),
       planId,
       week: a.week,

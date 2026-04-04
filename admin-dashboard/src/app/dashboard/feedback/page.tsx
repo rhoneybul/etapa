@@ -332,12 +332,12 @@ export default function FeedbackPage() {
     );
   });
 
-  // If a thread is selected, show the two-panel layout
+  // If a thread is selected, show the two-panel layout (desktop) or full-screen thread (mobile)
   if (selectedItem) {
     return (
       <div className="h-[calc(100vh-64px)] flex">
-        {/* Left: feedback list (narrow) */}
-        <div className="w-80 border-r border-etapa-border flex flex-col bg-etapa-surface/50">
+        {/* Left: feedback list (narrow) — hidden on mobile when thread selected */}
+        <div className="hidden md:flex w-80 border-r border-etapa-border flex-col bg-etapa-surface/50">
           <div className="p-3 border-b border-etapa-border">
             <input
               type="text"
@@ -378,7 +378,7 @@ export default function FeedbackPage() {
           </div>
         </div>
 
-        {/* Right: thread view */}
+        {/* Right: thread view — full width on mobile */}
         <div className="flex-1 bg-black">
           <ThreadPanel
             feedbackItem={selectedItem}
@@ -413,11 +413,12 @@ export default function FeedbackPage() {
           placeholder="Search by message, user, or category..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full max-w-sm px-3 py-2 bg-etapa-surface border border-etapa-border rounded-lg text-sm text-white placeholder-etapa-textFaint focus:outline-none focus:ring-2 focus:ring-etapa-primary focus:border-transparent"
+          className="w-full sm:max-w-sm px-3 py-2 bg-etapa-surface border border-etapa-border rounded-lg text-sm text-white placeholder-etapa-textFaint focus:outline-none focus:ring-2 focus:ring-etapa-primary focus:border-transparent"
         />
       </div>
 
-      <div className="bg-etapa-surface rounded-xl border border-etapa-border overflow-hidden">
+      {/* Desktop table */}
+      <div className="hidden md:block bg-etapa-surface rounded-xl border border-etapa-border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -530,6 +531,49 @@ export default function FeedbackPage() {
         <p className="px-4 py-2 text-xs text-etapa-textFaint border-t border-etapa-border">
           {filtered.length} result{filtered.length !== 1 ? "s" : ""}
         </p>
+      </div>
+
+      {/* Mobile card view */}
+      <div className="md:hidden space-y-3">
+        {filtered.length === 0 ? (
+          <div className="bg-etapa-surface rounded-xl border border-etapa-border p-6 text-center text-etapa-textFaint text-sm">
+            No feedback found
+          </div>
+        ) : (
+          filtered.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setSelectedItem(f)}
+              className="w-full text-left bg-etapa-surface rounded-xl border border-etapa-border p-4 hover:bg-etapa-surfaceLight transition-colors"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-medium text-white truncate">{f.userName}</span>
+                  <Badge value={f.category} />
+                </div>
+                <span
+                  className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${
+                    !f.status || f.status === "open"
+                      ? "bg-amber-500/15 text-amber-400"
+                      : f.status === "resolved"
+                      ? "bg-green-500/15 text-green-400"
+                      : "bg-zinc-500/15 text-zinc-400"
+                  }`}
+                >
+                  {f.status || "open"}
+                </span>
+              </div>
+              <p className="text-sm text-etapa-textMid line-clamp-2">{f.message}</p>
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-xs text-etapa-textFaint">{new Date(f.createdAt).toLocaleDateString()}</span>
+                {f.linearIssueKey && (
+                  <span className="text-xs font-mono text-etapa-primary">{f.linearIssueKey}</span>
+                )}
+              </div>
+            </button>
+          ))
+        )}
+        <p className="text-xs text-etapa-textFaint">{filtered.length} result{filtered.length !== 1 ? "s" : ""}</p>
       </div>
     </div>
   );

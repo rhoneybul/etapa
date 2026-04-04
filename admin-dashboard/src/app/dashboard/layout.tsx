@@ -21,6 +21,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const supabase = createClient();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -59,6 +60,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => subscription.unsubscribe();
   }, []);
 
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
   async function handleSignOut() {
     await supabase.auth.signOut();
     router.push("/login");
@@ -76,67 +82,123 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const displayName = user.user_metadata?.full_name || user.user_metadata?.name || user.email || "";
 
+  const sidebarContent = (
+    <>
+      <div className="p-4 border-b border-etapa-border">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 bg-etapa-primary rounded-lg flex items-center justify-center">
+            <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <div>
+            <span className="font-semibold text-sm text-white">Etapa</span>
+            <span className="text-[10px] text-etapa-textMuted ml-1.5 uppercase tracking-wider">Admin</span>
+          </div>
+          {/* Close button — mobile only */}
+          <button
+            onClick={() => setMobileMenuOpen(false)}
+            className="ml-auto lg:hidden p-1 text-etapa-textMuted hover:text-white"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <nav className="flex-1 p-3 space-y-0.5">
+        {navItems.map((item) => {
+          const isActive = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                isActive
+                  ? "bg-etapa-primary/15 text-etapa-primary font-medium"
+                  : "text-etapa-textMid hover:bg-etapa-surfaceLight hover:text-white"
+              }`}
+            >
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />
+              </svg>
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      <div className="p-3 border-t border-etapa-border">
+        <div className="flex items-center gap-2 px-3 py-2">
+          <div className="w-7 h-7 bg-etapa-primary/20 rounded-full flex items-center justify-center text-xs font-medium text-etapa-primary">
+            {displayName.charAt(0).toUpperCase() || "?"}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-white truncate">{displayName}</p>
+            <p className="text-xs text-etapa-textMuted truncate">{user.email}</p>
+          </div>
+        </div>
+        <button
+          onClick={handleSignOut}
+          className="mt-1 w-full text-left px-3 py-1.5 text-xs text-etapa-textMuted hover:text-white hover:bg-etapa-surfaceLight rounded-lg transition-colors"
+        >
+          Sign out
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <div className="min-h-screen flex font-poppins">
-      {/* Sidebar */}
-      <aside className="w-56 bg-etapa-surface border-r border-etapa-border flex flex-col">
-        <div className="p-4 border-b border-etapa-border">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-etapa-primary rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      {/* Desktop sidebar — hidden on mobile */}
+      <aside className="hidden lg:flex w-56 bg-etapa-surface border-r border-etapa-border flex-col">
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile overlay backdrop */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Mobile slide-out sidebar */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-etapa-surface border-r border-etapa-border flex flex-col transform transition-transform duration-200 ease-in-out lg:hidden ${
+          mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* Main content area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Mobile top bar */}
+        <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-etapa-surface border-b border-etapa-border">
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            className="p-1.5 rounded-lg text-etapa-textMid hover:text-white hover:bg-etapa-surfaceLight transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-etapa-primary rounded-md flex items-center justify-center">
+              <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <div>
-              <span className="font-semibold text-sm text-white">Etapa</span>
-              <span className="text-[10px] text-etapa-textMuted ml-1.5 uppercase tracking-wider">Admin</span>
-            </div>
+            <span className="font-semibold text-sm text-white">Etapa</span>
+            <span className="text-[10px] text-etapa-textMuted uppercase tracking-wider">Admin</span>
           </div>
-        </div>
+        </header>
 
-        <nav className="flex-1 p-3 space-y-0.5">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                  isActive
-                    ? "bg-etapa-primary/15 text-etapa-primary font-medium"
-                    : "text-etapa-textMid hover:bg-etapa-surfaceLight hover:text-white"
-                }`}
-              >
-                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />
-                </svg>
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="p-3 border-t border-etapa-border">
-          <div className="flex items-center gap-2 px-3 py-2">
-            <div className="w-7 h-7 bg-etapa-primary/20 rounded-full flex items-center justify-center text-xs font-medium text-etapa-primary">
-              {displayName.charAt(0).toUpperCase() || "?"}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-white truncate">{displayName}</p>
-              <p className="text-xs text-etapa-textMuted truncate">{user.email}</p>
-            </div>
-          </div>
-          <button
-            onClick={handleSignOut}
-            className="mt-1 w-full text-left px-3 py-1.5 text-xs text-etapa-textMuted hover:text-white hover:bg-etapa-surfaceLight rounded-lg transition-colors"
-          >
-            Sign out
-          </button>
-        </div>
-      </aside>
-
-      {/* Main content */}
-      <main className="flex-1 p-8 overflow-auto bg-black">{children}</main>
+        {/* Page content — responsive padding */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-auto bg-black">{children}</main>
+      </div>
     </div>
   );
 }

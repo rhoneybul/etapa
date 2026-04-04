@@ -346,21 +346,37 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          <View style={s.emptyPlanWrap}>
-            <View style={s.emptyIconCircle}>
-              <Text style={s.emptyIcon}>{'\u2192'}</Text>
-            </View>
-            <Text style={s.emptyTitle}>A new plan awaits{firstName ? `, ${firstName}` : ''}</Text>
-            <Text style={s.emptySub}>Set a goal and we'll build your training plan</Text>
+          <ScrollView contentContainerStyle={s.emptyPlanWrap} showsVerticalScrollIndicator={false}>
+            <Text style={s.emptyTitle}>
+              {firstName ? `Hey ${firstName}, let's ride` : "Let's ride"}
+            </Text>
+            <Text style={s.emptySub}>Choose how you'd like to get started</Text>
 
+            {/* Get into Cycling — beginner card */}
+            <TouchableOpacity
+              style={s.beginnerCard}
+              onPress={() => navigation.navigate('BeginnerProgram')}
+              activeOpacity={0.88}
+            >
+              <View style={s.beginnerBadge}>
+                <Text style={s.beginnerBadgeText}>BEGINNER FRIENDLY</Text>
+              </View>
+              <Text style={s.beginnerTitle}>Get into Cycling</Text>
+              <Text style={s.beginnerSub}>
+                A 12-week program to get you riding regularly.{'\n'}No experience needed.
+              </Text>
+            </TouchableOpacity>
+
+            {/* Custom plan */}
             <TouchableOpacity
               style={s.createBtn}
               onPress={handleMakePlan}
               activeOpacity={0.88}
             >
-              <Text style={s.createBtnText}>Make me a plan</Text>
+              <Text style={s.createBtnText}>Create a custom plan</Text>
+              <Text style={s.createBtnSub}>Race training, distance goals, or general fitness</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         </SafeAreaView>
         <UpgradePrompt
           visible={showUpgrade}
@@ -1113,13 +1129,26 @@ const s = StyleSheet.create({
   beginnerCompactSub: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
 
   // Empty plan state
-  emptyPlanWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingTop: 40 },
-  emptyIconCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(217,119,6,0.08)', alignItems: 'center', justifyContent: 'center', marginBottom: 20, borderWidth: 1, borderColor: 'rgba(217,119,6,0.15)' },
-  emptyIcon: { fontSize: 28, color: colors.primary },
-  emptyTitle: { fontSize: 22, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, textAlign: 'center', marginBottom: 8 },
-  emptySub: { fontSize: 15, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center', marginBottom: 28 },
-  createBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: 16, paddingHorizontal: 40, shadowColor: '#D97706', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 6 },
-  createBtnText: { fontSize: 17, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
+  emptyPlanWrap: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 32, paddingBottom: 40 },
+  emptyTitle: { fontSize: 24, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 6 },
+  emptySub: { fontSize: 15, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginBottom: 28 },
+  beginnerCard: {
+    backgroundColor: 'rgba(34,197,94,0.06)', borderRadius: 18, padding: 22,
+    borderWidth: 1.5, borderColor: 'rgba(34,197,94,0.2)', marginBottom: 16,
+  },
+  beginnerBadge: {
+    alignSelf: 'flex-start', backgroundColor: 'rgba(34,197,94,0.12)',
+    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, marginBottom: 12,
+  },
+  beginnerBadgeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E', letterSpacing: 0.8 },
+  beginnerTitle: { fontSize: 19, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 6 },
+  beginnerSub: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 20 },
+  createBtn: {
+    backgroundColor: colors.surface, borderRadius: 18, paddingVertical: 20, paddingHorizontal: 24,
+    borderWidth: 1, borderColor: colors.border, alignItems: 'center',
+  },
+  createBtnText: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  createBtnSub: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 4 },
 
   // Week calendar strip
   weekStrip: { backgroundColor: colors.surface, marginHorizontal: 16, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border },

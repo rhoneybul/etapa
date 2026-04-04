@@ -139,7 +139,8 @@ export default function PaymentsPage() {
         <StatCard label="Total Revenue" value={formatCurrency(totalRevenue)} />
       </div>
 
-      <div className="bg-etapa-surface rounded-xl border border-etapa-border overflow-hidden">
+      {/* Desktop table */}
+      <div className="hidden md:block bg-etapa-surface rounded-xl border border-etapa-border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -233,7 +234,7 @@ export default function PaymentsPage() {
                                   </td>
                                   <td className="py-2 pr-4">
                                     {p.periodStart && p.periodEnd
-                                      ? `${formatDate(p.periodStart)} – ${formatDate(p.periodEnd)}`
+                                      ? `${formatDate(p.periodStart)} \u2013 ${formatDate(p.periodEnd)}`
                                       : "\u2014"}
                                   </td>
                                   <td className="py-2 pr-4">
@@ -269,6 +270,83 @@ export default function PaymentsPage() {
           </table>
         </div>
       </div>
+
+      {/* Mobile card view */}
+      <div className="md:hidden space-y-3">
+        {subs.length === 0 ? (
+          <div className="bg-etapa-surface rounded-xl border border-etapa-border p-6 text-center text-etapa-textFaint text-sm">
+            No subscriptions found
+          </div>
+        ) : (
+          subs.map((sub) => (
+            <div key={sub.id} className="bg-etapa-surface rounded-xl border border-etapa-border overflow-hidden">
+              <button
+                onClick={() => setExpanded(expanded === sub.id ? null : sub.id)}
+                className="w-full text-left p-4 hover:bg-etapa-surfaceLight transition-colors"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-white truncate">{sub.userName}</p>
+                    {sub.userEmail && <p className="text-xs text-etapa-textMuted truncate">{sub.userEmail}</p>}
+                  </div>
+                  <span className="font-medium text-white shrink-0 ml-3">{formatCurrency(sub.totalPaid, sub.currency)}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge value={sub.plan} />
+                  <Badge value={sub.status} />
+                  <span className="text-xs text-etapa-textFaint ml-auto">{formatDate(sub.createdAt)}</span>
+                </div>
+                {sub.upcomingInvoice && (
+                  <p className="text-xs text-etapa-textMid mt-2">
+                    Next: {formatCurrency(sub.upcomingInvoice.amount, sub.upcomingInvoice.currency)} on {formatDate(sub.upcomingInvoice.dueDate)}
+                  </p>
+                )}
+              </button>
+              {sub.totalPaid > 0 && sub.status !== "refunded" && (
+                <div className="px-4 pb-3">
+                  <button
+                    onClick={() => openRefund(sub)}
+                    className="text-xs text-red-500 hover:text-red-400 transition-colors"
+                  >
+                    Refund
+                  </button>
+                </div>
+              )}
+              {expanded === sub.id && (
+                <div className="px-4 pb-4 border-t border-etapa-border pt-3">
+                  <span className="text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Payment History</span>
+                  {sub.stripeCustomerId && (
+                    <p className="font-mono text-xs text-etapa-textFaint mt-0.5 break-all">{sub.stripeCustomerId}</p>
+                  )}
+                  {sub.payments.length === 0 ? (
+                    <p className="text-xs text-etapa-textFaint mt-2">No payments recorded</p>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {sub.payments.map((p) => (
+                        <div key={p.id} className="flex items-center justify-between text-xs">
+                          <div>
+                            <span className="text-white font-medium">{formatCurrency(p.amount, p.currency)}</span>
+                            <span className="text-etapa-textFaint ml-2">{formatDate(p.created)}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge value={p.paid ? "paid" : p.status} />
+                            {p.hostedUrl && (
+                              <a href={p.hostedUrl} target="_blank" rel="noopener noreferrer" className="text-etapa-primary hover:underline">
+                                View
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
       <p className="mt-2 text-xs text-etapa-textFaint">{subs.length} subscription{subs.length !== 1 ? "s" : ""}</p>
 
       {/* Refund Modal */}

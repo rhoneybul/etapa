@@ -421,6 +421,7 @@ ${goal.targetDate ? `- Event/target date: ${goal.targetDate}` : ''}
 - Session distribution: ${Object.entries(sessionCounts).map(([k, v]) => `${v}x ${k}`).join(', ')}
 ${longRideDay ? `- Long ride day: ${dayNames[typeof longRideDay === 'number' ? longRideDay : dayNames.findIndex(n => n.toLowerCase().startsWith(String(longRideDay).toLowerCase()))] || longRideDay}. The athlete's longest/endurance ride each week MUST be scheduled on this day. This is their preferred day for long rides.` : ''}
 - CRITICAL: You MUST generate EXACTLY ${config.daysPerWeek || 3} sessions per week (unless it's a deload/taper week where you may reduce by 1). Each session MUST be on one of the available days listed above. Do NOT add extra sessions.
+- CRITICAL: The plan is EXACTLY ${weeks} weeks long. Do NOT generate any activities with week > ${weeks}. The last activity must be in week ${weeks}.
 ${crossTrainingNote}
 ${recurringRidesNote}
 ${oneOffRidesNote}
@@ -1199,8 +1200,12 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
 
     if (job.status === 'cancelled') return;
 
-    const rawActivities = JSON.parse(jsonMatch[0]);
+    const allRawActivities = JSON.parse(jsonMatch[0]);
     job.progress = 'Finalising your plan...';
+
+    // Filter out activities that exceed the configured week count
+    const maxWeeks = config.weeks || 8;
+    const rawActivities = allRawActivities.filter(a => a.week >= 1 && a.week <= maxWeeks);
 
     // Build the full plan object (mirrors client-side buildPlanFromActivities)
     // Use YYYY-MM-DD date string to avoid timezone shifts between client/server
@@ -1275,7 +1280,7 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
           current_week: plan.currentWeek || 1,
           created_at: plan.createdAt,
         };
-        await supabase.from('plans').insert(planRow);
+        await supabase.from('plans').upsert(planRow, { onConflict: 'id' });
 
         const actRows = activities.map(a => ({
           id: a.id,
@@ -1294,7 +1299,7 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
           completed: false,
           completed_at: null,
         }));
-        await supabase.from('activities').insert(actRows);
+        await supabase.from('activities').upsert(actRows, { onConflict: 'id' });
       } catch (dbErr) {
         console.error(`[async-gen] Job ${jobId} DB save error:`, dbErr);
         // Plan is still in memory for client to pick up

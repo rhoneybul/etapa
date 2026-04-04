@@ -205,30 +205,34 @@ export default function PlanDetailPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <button
-          onClick={() => router.push("/dashboard/plans")}
-          className="text-etapa-textMid hover:text-white transition-colors text-lg"
-        >
-          &larr;
-        </button>
-        <div className="flex-1">
-          <h1 className="text-lg font-semibold text-white">
-            {plan.name || "Untitled Plan"}
-          </h1>
-          <p className="text-xs text-etapa-textMuted">
-            {plan.userName} {plan.userEmail ? `(${plan.userEmail})` : ""} &middot;{" "}
-            {plan.weeks} weeks &middot; {totalCount} activities
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <button
+            onClick={() => router.push("/dashboard/plans")}
+            className="text-etapa-textMid hover:text-white transition-colors text-lg shrink-0"
+          >
+            &larr;
+          </button>
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold text-white truncate">
+              {plan.name || "Untitled Plan"}
+            </h1>
+            <p className="text-xs text-etapa-textMuted truncate">
+              {plan.userName} {plan.userEmail ? `(${plan.userEmail})` : ""} &middot;{" "}
+              {plan.weeks} weeks &middot; {totalCount} activities
+            </p>
+          </div>
         </div>
-        <Badge value={plan.status} />
-        <button
-          onClick={deletePlan}
-          disabled={deleting}
-          className="ml-2 px-3 py-1.5 bg-red-900/30 text-red-400 border border-red-800 text-xs font-medium rounded-lg hover:bg-red-900/50 disabled:opacity-50 transition-colors"
-        >
-          {deleting ? "Deleting..." : "Delete Plan"}
-        </button>
+        <div className="flex items-center gap-2 ml-8 sm:ml-0">
+          <Badge value={plan.status} />
+          <button
+            onClick={deletePlan}
+            disabled={deleting}
+            className="px-3 py-1.5 bg-red-900/30 text-red-400 border border-red-800 text-xs font-medium rounded-lg hover:bg-red-900/50 disabled:opacity-50 transition-colors whitespace-nowrap"
+          >
+            {deleting ? "Deleting..." : "Delete Plan"}
+          </button>
+        </div>
       </div>
 
       {/* Plan info cards */}
@@ -347,8 +351,8 @@ export default function PlanDetailPage() {
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-etapa-textMuted">
+                <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                  <span className="text-xs text-etapa-textMuted hidden sm:inline">
                     {weekActivities.length} sessions
                   </span>
                   <span className="text-xs text-etapa-textMuted">
@@ -378,7 +382,7 @@ export default function PlanDetailPage() {
                             key={activity.id}
                             className="px-4 py-4 bg-etapa-surfaceLight"
                           >
-                            <div className="grid grid-cols-2 gap-3 mb-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                               <div>
                                 <label className="text-[10px] text-etapa-textMuted uppercase tracking-wide mb-1 block">
                                   Title
@@ -422,7 +426,7 @@ export default function PlanDetailPage() {
                                 className="w-full px-3 py-2 bg-etapa-surface border border-etapa-border rounded-lg text-sm text-white focus:ring-2 focus:ring-etapa-primary focus:border-transparent outline-none resize-none"
                               />
                             </div>
-                            <div className="grid grid-cols-4 gap-3 mb-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
                               <div>
                                 <label className="text-[10px] text-etapa-textMuted uppercase tracking-wide mb-1 block">
                                   Day
@@ -541,80 +545,111 @@ export default function PlanDetailPage() {
                       return (
                         <div
                           key={activity.id}
-                          className="px-4 py-3 flex items-start gap-4 hover:bg-etapa-surfaceLight/50 transition-colors group"
+                          className="px-4 py-3 hover:bg-etapa-surfaceLight/50 transition-colors group"
                         >
-                          {/* Day column */}
-                          <div className="w-16 flex-shrink-0">
-                            <p className="text-xs font-medium text-etapa-textMid">
-                              {activity.dayOfWeek !== null
-                                ? DAY_LABELS[activity.dayOfWeek]
-                                : "—"}
-                            </p>
-                            {date && (
-                              <p className="text-[10px] text-etapa-textFaint">
-                                {date.toLocaleDateString("en-GB", {
-                                  day: "numeric",
-                                  month: "short",
-                                })}
+                          <div className="flex items-start gap-3 sm:gap-4">
+                            {/* Day column */}
+                            <div className="w-12 sm:w-16 flex-shrink-0">
+                              <p className="text-xs font-medium text-etapa-textMid">
+                                {activity.dayOfWeek !== null
+                                  ? DAY_LABELS[activity.dayOfWeek]
+                                  : "—"}
                               </p>
-                            )}
-                          </div>
-
-                          {/* Content */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              {activity.completed && (
-                                <span className="text-green-400 text-xs">&#10003;</span>
+                              {date && (
+                                <p className="text-[10px] text-etapa-textFaint">
+                                  {date.toLocaleDateString("en-GB", {
+                                    day: "numeric",
+                                    month: "short",
+                                  })}
+                                </p>
                               )}
-                              <p
-                                className={`text-sm font-medium ${
-                                  activity.completed
-                                    ? "text-etapa-textMuted line-through"
-                                    : "text-white"
-                                }`}
-                              >
-                                {activity.title}
-                              </p>
                             </div>
-                            {activity.description && (
-                              <p className="text-xs text-etapa-textMuted mt-0.5 line-clamp-2">
-                                {activity.description}
-                              </p>
-                            )}
-                            {activity.notes && (
-                              <p className="text-xs text-etapa-textFaint mt-0.5 italic">
-                                {activity.notes}
-                              </p>
-                            )}
-                          </div>
 
-                          {/* Meta */}
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className="text-xs text-etapa-textMuted">
-                              {activity.type}
-                              {activity.subType ? ` / ${activity.subType}` : ""}
-                            </span>
-                            {activity.durationMins && (
-                              <span className="text-xs text-etapa-textFaint">
-                                {activity.durationMins}m
+                            {/* Content */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                {activity.completed && (
+                                  <span className="text-green-400 text-xs">&#10003;</span>
+                                )}
+                                <p
+                                  className={`text-sm font-medium ${
+                                    activity.completed
+                                      ? "text-etapa-textMuted line-through"
+                                      : "text-white"
+                                  }`}
+                                >
+                                  {activity.title}
+                                </p>
+                              </div>
+                              {activity.description && (
+                                <p className="text-xs text-etapa-textMuted mt-0.5 line-clamp-2">
+                                  {activity.description}
+                                </p>
+                              )}
+                              {activity.notes && (
+                                <p className="text-xs text-etapa-textFaint mt-0.5 italic">
+                                  {activity.notes}
+                                </p>
+                              )}
+
+                              {/* Meta — inline on mobile, side on desktop */}
+                              <div className="flex items-center gap-2 flex-wrap mt-1.5 sm:hidden">
+                                <span className="text-xs text-etapa-textMuted">
+                                  {activity.type}
+                                  {activity.subType ? ` / ${activity.subType}` : ""}
+                                </span>
+                                {activity.durationMins && (
+                                  <span className="text-xs text-etapa-textFaint">
+                                    {activity.durationMins}m
+                                  </span>
+                                )}
+                                {activity.distanceKm && (
+                                  <span className="text-xs text-etapa-textFaint">
+                                    {activity.distanceKm}km
+                                  </span>
+                                )}
+                                <span
+                                  className={`text-[10px] px-2 py-0.5 rounded-full border ${effortClass}`}
+                                >
+                                  {activity.effort}
+                                </span>
+                                <button
+                                  onClick={() => startEdit(activity)}
+                                  className="text-xs text-etapa-primary hover:text-etapa-primary/80 transition-all ml-auto"
+                                >
+                                  Edit
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Meta — desktop only */}
+                            <div className="hidden sm:flex items-center gap-2 flex-shrink-0">
+                              <span className="text-xs text-etapa-textMuted">
+                                {activity.type}
+                                {activity.subType ? ` / ${activity.subType}` : ""}
                               </span>
-                            )}
-                            {activity.distanceKm && (
-                              <span className="text-xs text-etapa-textFaint">
-                                {activity.distanceKm}km
+                              {activity.durationMins && (
+                                <span className="text-xs text-etapa-textFaint">
+                                  {activity.durationMins}m
+                                </span>
+                              )}
+                              {activity.distanceKm && (
+                                <span className="text-xs text-etapa-textFaint">
+                                  {activity.distanceKm}km
+                                </span>
+                              )}
+                              <span
+                                className={`text-[10px] px-2 py-0.5 rounded-full border ${effortClass}`}
+                              >
+                                {activity.effort}
                               </span>
-                            )}
-                            <span
-                              className={`text-[10px] px-2 py-0.5 rounded-full border ${effortClass}`}
-                            >
-                              {activity.effort}
-                            </span>
-                            <button
-                              onClick={() => startEdit(activity)}
-                              className="opacity-0 group-hover:opacity-100 text-xs text-etapa-primary hover:text-etapa-primary/80 transition-all ml-1"
-                            >
-                              Edit
-                            </button>
+                              <button
+                                onClick={() => startEdit(activity)}
+                                className="opacity-0 group-hover:opacity-100 text-xs text-etapa-primary hover:text-etapa-primary/80 transition-all ml-1"
+                              >
+                                Edit
+                              </button>
+                            </div>
                           </div>
                         </div>
                       );

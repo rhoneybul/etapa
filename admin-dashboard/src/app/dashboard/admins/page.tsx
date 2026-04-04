@@ -78,7 +78,7 @@ export default function AdminsPage() {
       {/* Add admin form */}
       <div className="bg-etapa-surface rounded-xl border border-etapa-border p-5 mb-6 max-w-lg">
         <h2 className="text-sm font-medium text-white mb-3">Grant admin access</h2>
-        <form onSubmit={handleAdd} className="flex gap-3">
+        <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-3">
           <input
             type="email"
             placeholder="user@example.com"
@@ -89,7 +89,7 @@ export default function AdminsPage() {
           />
           <button
             type="submit"
-            className="px-4 py-2 bg-etapa-primary text-black rounded-lg text-sm font-medium hover:bg-amber-400 transition-colors"
+            className="px-4 py-2 bg-etapa-primary text-black rounded-lg text-sm font-medium hover:bg-amber-400 transition-colors whitespace-nowrap"
           >
             Grant Access
           </button>
@@ -98,8 +98,8 @@ export default function AdminsPage() {
         {success && <p className="mt-2 text-sm text-green-400">{success}</p>}
       </div>
 
-      {/* Admin list */}
-      <div className="bg-etapa-surface rounded-xl border border-etapa-border overflow-hidden max-w-lg">
+      {/* Admin list — desktop table */}
+      <div className="hidden sm:block bg-etapa-surface rounded-xl border border-etapa-border overflow-hidden max-w-lg">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-etapa-border bg-etapa-surfaceLight">
@@ -131,6 +131,32 @@ export default function AdminsPage() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Admin list — mobile cards */}
+      <div className="sm:hidden space-y-3">
+        {admins.length === 0 ? (
+          <div className="bg-etapa-surface rounded-xl border border-etapa-border p-6 text-center text-etapa-textFaint text-sm">
+            No admins found
+          </div>
+        ) : (
+          admins.map((a) => (
+            <div key={a.id} className="bg-etapa-surface rounded-xl border border-etapa-border p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium text-white text-sm truncate">{a.name || "—"}</p>
+                  <p className="text-xs text-etapa-textMuted truncate">{a.email}</p>
+                </div>
+                <button
+                  onClick={() => handleRemove(a.email)}
+                  className="text-xs text-red-400 hover:text-red-300 shrink-0"
+                >
+                  Revoke
+                </button>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
