@@ -1,0 +1,12 @@
+# Maestro E2E test configuration
+# https://maestro.mobile.dev/
+#
+# Run locally:  maestro test .maestro/
+# Run single:   maestro test .maestro/01-app-launch.yaml
+
+# App identifiers
+appId: com.etapa.app
+
+# Default timeouts
+flows:
+  - "*.yaml"

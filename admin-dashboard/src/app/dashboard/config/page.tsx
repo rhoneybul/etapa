@@ -22,9 +22,28 @@ interface MinVersionConfig {
   androidUrl: string;
 }
 
+interface ComingSoonFeature {
+  text: string;
+  emoji: string;
+}
+
+interface ComingSoonConfig {
+  enabled: boolean;
+  showOnHome: boolean;
+  title: string;
+  features: ComingSoonFeature[];
+}
+
 const TRIAL_DEFAULTS: TrialConfig = {
   days: 7,
   bannerMessage: "Subscribe to unlock full training access",
+};
+
+const COMING_SOON_DEFAULTS: ComingSoonConfig = {
+  enabled: false,
+  showOnHome: false,
+  title: "What's coming next",
+  features: [],
 };
 
 const MIN_VERSION_DEFAULTS: MinVersionConfig = {
@@ -51,11 +70,13 @@ export default function ConfigPage() {
   const [trial, setTrial] = useState<TrialConfig>(TRIAL_DEFAULTS);
   const [trialDaysText, setTrialDaysText] = useState("7");
   const [minVersion, setMinVersion] = useState<MinVersionConfig>(MIN_VERSION_DEFAULTS);
+  const [comingSoon, setComingSoon] = useState<ComingSoonConfig>(COMING_SOON_DEFAULTS);
 
   // Saved (server) state — used to detect dirty
   const savedMaintenance = useRef<MaintenanceConfig>(maintenance);
   const savedTrial = useRef<TrialConfig>(trial);
   const savedMinVersion = useRef<MinVersionConfig>(minVersion);
+  const savedComingSoon = useRef<ComingSoonConfig>(comingSoon);
 
   // Saving / saved flash state
   const [savingMaintenance, setSavingMaintenance] = useState(false);
@@ -64,12 +85,15 @@ export default function ConfigPage() {
   const [savedTrialFlash, setSavedTrialFlash] = useState(false);
   const [savingMinVersion, setSavingMinVersion] = useState(false);
   const [savedMinVersionFlash, setSavedMinVersionFlash] = useState(false);
+  const [savingComingSoon, setSavingComingSoon] = useState(false);
+  const [savedComingSoonFlash, setSavedComingSoonFlash] = useState(false);
 
   // Dirty checks
   const maintenanceDirty = !isEqual(maintenance, savedMaintenance.current);
   const trialDirty = !isEqual(trial, savedTrial.current);
   const minVersionDirty = !isEqual(minVersion, savedMinVersion.current);
-  const anyDirty = maintenanceDirty || trialDirty || minVersionDirty;
+  const comingSoonDirty = !isEqual(comingSoon, savedComingSoon.current);
+  const anyDirty = maintenanceDirty || trialDirty || minVersionDirty || comingSoonDirty;
 
   // Warn on page exit with unsaved changes
   const anyDirtyRef = useRef(anyDirty);
@@ -105,6 +129,11 @@ export default function ConfigPage() {
           const merged = { ...MIN_VERSION_DEFAULTS, ...data.min_version };
           setMinVersion(merged);
           savedMinVersion.current = merged;
+        }
+        if (data.coming_soon) {
+          const merged = { ...COMING_SOON_DEFAULTS, ...data.coming_soon };
+          setComingSoon(merged);
+          savedComingSoon.current = merged;
         }
       })
       .finally(() => setLoading(false));
@@ -157,6 +186,24 @@ export default function ConfigPage() {
     setSavingMinVersion(false);
   }
 
+  async function saveComingSoon_() {
+    setSavingComingSoon(true);
+    try {
+      // Filter out empty features before saving
+      const cleaned = { ...comingSoon, features: comingSoon.features.filter(f => f.text.trim()) };
+      await fetch("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "coming_soon", value: cleaned }),
+      });
+      setComingSoon(cleaned);
+      savedComingSoon.current = { ...cleaned };
+      setSavedComingSoonFlash(true);
+      setTimeout(() => setSavedComingSoonFlash(false), 2500);
+    } catch { /* ignore */ }
+    setSavingComingSoon(false);
+  }
+
   // ── Trial days input — free text that coerces to number on blur ────────────
 
   const handleTrialDaysChange = (val: string) => {
@@ -171,7 +218,7 @@ export default function ConfigPage() {
   const handleTrialDaysBlur = () => {
     // Coerce to valid number on blur
     const parsed = parseInt(trialDaysText, 10);
-    const clamped = isNaN(parsed) || parsed < 1 ? 1 : parsed > 365 ? 365 : parsed;
+    const clamped = isNaN(parsed) || parsed < 0 ? 0 : parsed > 365 ? 365 : parsed;
     setTrialDaysText(String(clamped));
     setTrial((t) => ({ ...t, days: clamped }));
   };
@@ -365,6 +412,107 @@ export default function ConfigPage() {
           className="mt-4 px-4 py-2 bg-etapa-primary text-white text-sm font-medium rounded-lg hover:bg-etapa-primaryDark disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {savingMinVersion ? "Saving..." : savedMinVersionFlash ? "Saved!" : "Save Version Settings"}
+        </button>
+      </div>
+
+      {/* Coming Soon */}
+      <div className="bg-etapa-surface border border-etapa-border rounded-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-sm font-semibold text-white">Coming Soon</h2>
+            <p className="text-xs text-etapa-textMuted mt-1">
+              Show upcoming features in the app. Appears in Settings and optionally on the Home screen.
+            </p>
+          </div>
+          <button
+            onClick={() => setComingSoon({ ...comingSoon, enabled: !comingSoon.enabled })}
+            className={`relative w-11 h-6 rounded-full transition-colors ${
+              comingSoon.enabled ? "bg-etapa-primary" : "bg-etapa-border"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                comingSoon.enabled ? "translate-x-5" : ""
+              }`}
+            />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-etapa-textMuted block mb-1">Title</label>
+            <input
+              type="text"
+              value={comingSoon.title}
+              onChange={(e) => setComingSoon({ ...comingSoon, title: e.target.value })}
+              placeholder="What's coming next"
+              className="w-full px-3 py-2 bg-etapa-surfaceLight border border-etapa-border rounded-lg text-sm text-white placeholder-etapa-textFaint focus:outline-none focus:ring-2 focus:ring-etapa-primary"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={comingSoon.showOnHome}
+              onChange={(e) => setComingSoon({ ...comingSoon, showOnHome: e.target.checked })}
+              className="w-4 h-4 rounded border-etapa-border bg-etapa-surfaceLight text-etapa-primary focus:ring-etapa-primary"
+            />
+            <label className="text-xs text-etapa-textMuted">Also show on Home screen</label>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-etapa-textMuted block mb-2">Features</label>
+            {comingSoon.features.map((f, i) => (
+              <div key={i} className="flex items-center gap-2 mb-2">
+                <input
+                  type="text"
+                  value={f.emoji}
+                  onChange={(e) => {
+                    const updated = [...comingSoon.features];
+                    updated[i] = { ...updated[i], emoji: e.target.value };
+                    setComingSoon({ ...comingSoon, features: updated });
+                  }}
+                  placeholder="🔜"
+                  className="w-14 px-2 py-2 bg-etapa-surfaceLight border border-etapa-border rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-etapa-primary"
+                />
+                <input
+                  type="text"
+                  value={f.text}
+                  onChange={(e) => {
+                    const updated = [...comingSoon.features];
+                    updated[i] = { ...updated[i], text: e.target.value };
+                    setComingSoon({ ...comingSoon, features: updated });
+                  }}
+                  placeholder="Feature description..."
+                  className="flex-1 px-3 py-2 bg-etapa-surfaceLight border border-etapa-border rounded-lg text-sm text-white placeholder-etapa-textFaint focus:outline-none focus:ring-2 focus:ring-etapa-primary"
+                />
+                <button
+                  onClick={() => {
+                    const updated = comingSoon.features.filter((_, idx) => idx !== i);
+                    setComingSoon({ ...comingSoon, features: updated });
+                  }}
+                  className="text-red-400 hover:text-red-300 text-lg px-1"
+                  title="Remove"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={() => setComingSoon({ ...comingSoon, features: [...comingSoon.features, { text: "", emoji: "🔜" }] })}
+              className="text-xs text-etapa-primary hover:text-etapa-primaryDark mt-1"
+            >
+              + Add feature
+            </button>
+          </div>
+        </div>
+
+        <button
+          onClick={saveComingSoon_}
+          disabled={savingComingSoon || !comingSoonDirty}
+          className="mt-4 px-4 py-2 bg-etapa-primary text-white text-sm font-medium rounded-lg hover:bg-etapa-primaryDark disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {savingComingSoon ? "Saving..." : savedComingSoonFlash ? "Saved!" : "Save Coming Soon"}
         </button>
       </div>
     </div>

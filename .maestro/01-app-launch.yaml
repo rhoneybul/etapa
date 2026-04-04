@@ -1,0 +1,12 @@
+# Flow 01: App Launch & Sign-In Screen
+# Verifies the app boots successfully and reaches the sign-in screen.
+appId: com.etapa.app
+---
+- launchApp:
+    clearState: true
+
+# The sign-in screen should appear
+- assertVisible: "Sign in"
+
+# Take a screenshot for CI artifacts
+- takeScreenshot: "01-sign-in-screen"

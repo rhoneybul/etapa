@@ -1,0 +1,56 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# API Integration Tests
+# Runs the Jest + Supertest suite against a test Supabase project.
+# Triggered on every push and PR.
+# ──────────────────────────────────────────────────────────────────────────────
+name: API Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - '.github/workflows/test-api.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'server/**'
+
+jobs:
+  api-tests:
+    name: Server API Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Run API tests
+        working-directory: server
+        env:
+          SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_KEY }}
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+          ADMIN_API_KEY: ${{ secrets.TEST_ADMIN_API_KEY }}
+          CRON_SECRET: ${{ secrets.TEST_CRON_SECRET }}
+        run: npm test
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-test-results
+          path: server/junit.xml
+          if-no-files-found: ignore

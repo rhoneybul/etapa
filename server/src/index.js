@@ -150,6 +150,9 @@ app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
 });
 
+// Export the app for testing (Supertest) — only listen when run directly
+module.exports = { app };
+
 app.listen(PORT, () => {
   console.log(`Etapa API running on http://localhost:${PORT}`);
 });

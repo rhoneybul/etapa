@@ -10,7 +10,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { getCurrentUser } from '../services/authService';
-import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig, getUserPrefs } from '../services/storageService';
+import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig, getUserPrefs, isOnboardingDone, setOnboardingDone } from '../services/storageService';
+import OnboardingTour from '../components/OnboardingTour';
 import { isSubscribed, getSubscriptionStatus, upgradeStarter, openCheckout, getPrices } from '../services/subscriptionService';
 import UpgradePrompt from '../components/UpgradePrompt';
 import { isStravaConnected } from '../services/stravaService';
@@ -18,6 +19,7 @@ import { getSessionColor, getSessionLabel, getMetricLabel, getCrossTrainingForDa
 import { getCoach } from '../data/coaches';
 import analytics from '../services/analyticsService';
 import api from '../services/api';
+import ComingSoon from '../components/ComingSoon';
 import { triggerMaintenanceMode } from '../../App';
 import { syncPlansToServer } from '../services/storageService';
 
@@ -71,6 +73,8 @@ export default function HomeScreen({ navigation }) {
   const [subscribed, setSubscribed] = useState(true); // assumed true until checked
   const [previewDaysLeft, setPreviewDaysLeft] = useState(null); // null = subscribed / no limit
   const [trialConfig, setTrialConfig] = useState({ days: 7, bannerMessage: 'Subscribe to unlock full training access' });
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [comingSoonConfig, setComingSoonConfig] = useState(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const cachedPlanHash = useRef(null); // Track plan state to avoid unnecessary reloads
   const initialLoadDone = useRef(false);
@@ -115,6 +119,11 @@ export default function HomeScreen({ navigation }) {
       bannerMessage: remoteTrial?.bannerMessage ?? 'Subscribe to unlock full training access',
     };
     if (isMounted.current) setTrialConfig(resolvedTrialConfig);
+
+    // Load coming soon config (only shown if showOnHome is true)
+    if (remoteConfig?.coming_soon && isMounted.current) {
+      setComingSoonConfig(remoteConfig.coming_soon);
+    }
 
     // Check subscription status — unsubscribed users get a remote-configurable preview window
     if (p.length > 0) {
@@ -163,6 +172,12 @@ export default function HomeScreen({ navigation }) {
     setName(displayName);
     setPlans(p);
     setGoals(g);
+
+    // Show onboarding tour for first-time users (no plans and hasn't seen it)
+    if (p.length === 0 && !initialLoadDone.current) {
+      const obDone = await isOnboardingDone();
+      if (!obDone && isMounted.current) setShowOnboarding(true);
+    }
     setStravaOk(strava);
     cachedPlanHash.current = JSON.stringify(p.map(pl => ({ id: pl.id, updatedAt: pl.updatedAt, actLen: pl.activities?.length })));
     initialLoadDone.current = true;
@@ -307,19 +322,6 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* Beginner program card */}
-          <TouchableOpacity
-            style={s.beginnerCard}
-            onPress={() => navigation.navigate('BeginnerProgram')}
-            activeOpacity={0.85}
-          >
-            <View style={s.beginnerBadge}>
-              <Text style={s.beginnerBadgeText}>NEW</Text>
-            </View>
-            <Text style={s.beginnerTitle}>Get into Cycling</Text>
-            <Text style={s.beginnerSub}>A friendly 12-week program for complete beginners. No experience needed.</Text>
-          </TouchableOpacity>
-
           <View style={s.emptyPlanWrap}>
             <View style={s.emptyIconCircle}>
               <Text style={s.emptyIcon}>{'\u2192'}</Text>
@@ -341,6 +343,14 @@ export default function HomeScreen({ navigation }) {
           onClose={() => setShowUpgrade(false)}
           onUpgrade={handleUpgrade}
           upgrading={upgrading}
+        />
+        <OnboardingTour
+          visible={showOnboarding}
+          onComplete={() => {
+            setShowOnboarding(false);
+            setOnboardingDone();
+          }}
+          onCreatePlan={handleMakePlan}
         />
       </View>
     );
@@ -512,22 +522,8 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           )}
 
-          {/* Beginner program card — only show if no beginner plan exists */}
-          {!plans.some(p => p.name === 'Get into Cycling') && (
-            <TouchableOpacity
-              style={s.beginnerCardCompact}
-              onPress={() => navigation.navigate('BeginnerProgram')}
-              activeOpacity={0.85}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={s.beginnerCompactTitle}>Get into Cycling</Text>
-                <Text style={s.beginnerCompactSub}>12-week beginner program</Text>
-              </View>
-              <View style={s.beginnerBadge}>
-                <Text style={s.beginnerBadgeText}>NEW</Text>
-              </View>
-            </TouchableOpacity>
-          )}
+          {/* Coming Soon — only on home when admin sets showOnHome */}
+          {comingSoonConfig?.showOnHome && <ComingSoon config={comingSoonConfig} />}
 
           {/* New plan button */}
           <TouchableOpacity

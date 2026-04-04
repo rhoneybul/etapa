@@ -1,0 +1,30 @@
+# Flow 03: Navigate core screens
+# After sign-in, verify key screens are reachable.
+# This catches navigation crashes and missing imports.
+appId: com.etapa.app
+---
+- launchApp
+
+# Assume we're signed in from a previous flow (or the app remembers the session)
+# Wait for home to load
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 10000
+
+# Navigate to Settings
+- tapOn: "Settings"
+- assertVisible: "Settings"
+- takeScreenshot: "03-settings"
+
+# Navigate to Messages/Notifications
+- tapOn: "Messages"
+- assertVisible: "Messages"
+- takeScreenshot: "03-notifications"
+
+# Go back to home
+- tapOn:
+    text: "←"
+- tapOn:
+    text: "←"
+
+- takeScreenshot: "03-home-final"

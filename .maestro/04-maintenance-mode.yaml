@@ -1,0 +1,24 @@
+# Flow 04: Maintenance Mode
+# Verifies that when maintenance mode is enabled, the app shows the
+# maintenance screen and pull-to-refresh works.
+#
+# NOTE: This test requires maintenance mode to be enabled on the test
+# server before running. Usually orchestrated by CI.
+appId: com.etapa.app
+---
+- launchApp:
+    clearState: true
+
+# If maintenance mode is enabled, we should see the maintenance title
+- assertVisible:
+    text: "We'll be right back"
+    timeout: 8000
+
+- takeScreenshot: "04-maintenance-screen"
+
+# Pull to refresh should work (swipe down)
+- swipe:
+    direction: DOWN
+    duration: 500
+
+- takeScreenshot: "04-maintenance-after-refresh"

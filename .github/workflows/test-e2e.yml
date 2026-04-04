@@ -1,0 +1,98 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Mobile E2E Tests (Maestro)
+# Builds an iOS simulator build, then runs Maestro flows against it.
+# Runs on PRs to main and manual dispatch.
+#
+# This uses Maestro Cloud for reliable CI execution. You can also run
+# locally with `maestro test .maestro/`.
+# ──────────────────────────────────────────────────────────────────────────────
+name: Mobile E2E Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'App.js'
+      - 'app.json'
+      - '.maestro/**'
+  workflow_dispatch:
+    inputs:
+      flow:
+        description: 'Specific flow to run (blank = all)'
+        required: false
+        default: ''
+
+jobs:
+  e2e-ios:
+    name: Maestro E2E (iOS Simulator)
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> $GITHUB_PATH
+
+      - name: Build iOS simulator app
+        run: npx expo run:ios --no-install --configuration Release
+        env:
+          EXPO_PUBLIC_API_URL: ${{ secrets.TEST_API_URL }}
+
+      - name: Boot iOS Simulator
+        run: |
+          xcrun simctl boot "iPhone 16" || true
+          xcrun simctl bootstatus "iPhone 16" -b
+
+      - name: Install app on simulator
+        run: |
+          APP_PATH=$(find ios/build -name "*.app" -type d | head -1)
+          xcrun simctl install booted "$APP_PATH"
+
+      - name: Run Maestro flows
+        run: |
+          FLOW="${{ github.event.inputs.flow }}"
+          if [ -n "$FLOW" ]; then
+            maestro test ".maestro/$FLOW"
+          else
+            maestro test .maestro/01-app-launch.yaml
+          fi
+        env:
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-screenshots
+          path: ~/.maestro/tests/**/*.png
+          if-no-files-found: ignore
+
+  # ── Alternative: Maestro Cloud (faster, no macOS runner needed) ────────────
+  # Uncomment this job and comment out e2e-ios if you have a Maestro Cloud account.
+  #
+  # e2e-cloud:
+  #   name: Maestro Cloud E2E
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: mobile-dev-inc/action-maestro-cloud@v1
+  #       with:
+  #         api-key: ${{ secrets.MAESTRO_CLOUD_API_KEY }}
+  #         app-file: path/to/your.app  # or .apk
+  #         workspace: .maestro/
+  #         env: |
+  #           TEST_USER_EMAIL=${{ secrets.TEST_USER_EMAIL }}
+  #           TEST_USER_PASSWORD=${{ secrets.TEST_USER_PASSWORD }}

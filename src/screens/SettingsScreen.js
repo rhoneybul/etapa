@@ -14,6 +14,7 @@ import { openBillingPortal, getSubscriptionStatus, upgradeStarter, refundStarter
 import { logoutRevenueCat, isRevenueCatAvailable } from '../services/revenueCatService';
 import { connectStrava, disconnectStrava, isStravaConnected, isStravaConfigured, getStravaTokens } from '../services/stravaService';
 import UpgradePrompt from '../components/UpgradePrompt';
+import ComingSoon from '../components/ComingSoon';
 import analytics from '../services/analyticsService';
 import { api } from '../services/api';
 
@@ -34,6 +35,7 @@ export default function SettingsScreen({ navigation }) {
   const [togglingNotif, setTogglingNotif] = useState(false);
   const [userPrefs, setUserPrefsState] = useState({ units: 'km', displayName: '' });
   const [editingName, setEditingName] = useState(false);
+  const [comingSoonConfig, setComingSoonConfig] = useState(null);
 
   // Guard against double-tap paywall navigation
   const navigatingRef = useRef(false);
@@ -54,6 +56,7 @@ export default function SettingsScreen({ navigation }) {
     api.preferences.get().then(setPreferences).catch(() => {});
     getUserPrefs().then(p => { setUserPrefsState(p); setNameInput(p.displayName || ''); }).catch(() => {});
     Notifications.getPermissionsAsync().then(({ status }) => setNotifPermission(status)).catch(() => {});
+    api.appConfig.get().then(cfg => { if (cfg?.coming_soon) setComingSoonConfig(cfg.coming_soon); }).catch(() => {});
     // Find starter/beginner plan for refund eligibility
     getPlans().then(plans => {
       const bp = plans.find(p => p.name === 'Get into Cycling' && p.paymentStatus === 'paid');
@@ -614,6 +617,9 @@ export default function SettingsScreen({ navigation }) {
             <Text style={s.chevron}>{'\u203A'}</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Coming Soon */}
+        {comingSoonConfig && <ComingSoon config={comingSoonConfig} />}
 
         {/* Account */}
         <Text style={s.sectionLabel}>ACCOUNT</Text>

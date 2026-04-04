@@ -9,16 +9,24 @@ const router = express.Router();
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || process.env.SLACK_SUBSCRIPTIONS_WEBHOOK_URL;
 
 async function notifySlack(text) {
-  if (!SLACK_WEBHOOK_URL) return;
+  if (!SLACK_WEBHOOK_URL) {
+    console.warn('[notifications slack] No SLACK_WEBHOOK_URL configured — skipping notification');
+    return;
+  }
   try {
     const _fetch = typeof globalThis.fetch === 'function'
       ? globalThis.fetch
       : (() => { const f = require('node-fetch'); return f.default || f; })();
-    await _fetch(SLACK_WEBHOOK_URL, {
+    const resp = await _fetch(SLACK_WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
+    if (!resp.ok) {
+      console.error('[notifications slack] Webhook returned', resp.status, await resp.text().catch(() => ''));
+    } else {
+      console.log('[notifications slack] Sent:', text.slice(0, 80));
+    }
   } catch (err) {
     console.error('[notifications slack] Failed to notify:', err.message);
   }
@@ -35,11 +43,28 @@ router.post('/register-token', async (req, res) => {
     if (!token) return res.status(400).json({ error: 'token is required' });
 
     // Check if this user has registered any tokens before — if not, it's a new signup
-    const { count: existingCount } = await supabase
+    const { count: existingCount, error: countError } = await supabase
       .from('push_tokens')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId);
-    const isNewUser = (existingCount || 0) === 0;
+    if (countError) console.error('[notifications] push_tokens count error:', countError);
+
+    // Primary check: no existing push tokens
+    let isNewUser = (existingCount || 0) === 0;
+
+    // Fallback: if the user's auth account was created within the last 5 minutes,
+    // treat as new even if push_tokens check was unreliable
+    if (!isNewUser) {
+      try {
+        const { data: { user } } = await supabase.auth.admin.getUserById(userId);
+        if (user?.created_at) {
+          const ageMs = Date.now() - new Date(user.created_at).getTime();
+          if (ageMs < 5 * 60 * 1000) isNewUser = true; // created < 5 min ago
+        }
+      } catch {}
+    }
+
+    console.log(`[notifications] register-token userId=${userId.slice(0, 8)}… existingCount=${existingCount} isNewUser=${isNewUser}`);
 
     const tokenId = `pt_${userId.slice(0, 8)}_${Buffer.from(token).toString('base64').slice(0, 12)}`;
 

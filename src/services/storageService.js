@@ -14,6 +14,7 @@ const KEYS = {
   STRAVA:         '@etapa_strava',
   CURRENT_USER:   '@etapa_current_user_id',
   USER_PREFS:     '@etapa_user_prefs',
+  ONBOARDING_DONE:'@etapa_onboarding_done',
   // Legacy single-item keys (for migration)
   GOAL:           '@etapa_goal',
   PLAN_CONFIG:    '@etapa_plan_config',
@@ -452,14 +453,46 @@ export function getWeekMonthLabel(planStartDate, week) {
 // ── User Preferences (local — units, display name, etc.) ───────────────────
 
 export async function getUserPrefs() {
-  return (await getJSON(KEYS.USER_PREFS)) || { units: 'km', displayName: '' };
+  const local = (await getJSON(KEYS.USER_PREFS)) || { units: 'km', displayName: '' };
+
+  // If we have no local display name, try to pull from server
+  if (!local.displayName) {
+    try {
+      const serverPrefs = await api.preferences.get();
+      if (serverPrefs?.display_name) {
+        local.displayName = serverPrefs.display_name;
+        await setJSON(KEYS.USER_PREFS, local);
+      }
+    } catch {} // fire-and-forget
+  }
+
+  return local;
 }
 
 export async function setUserPrefs(prefs) {
   const current = await getUserPrefs();
   const updated = { ...current, ...prefs };
   await setJSON(KEYS.USER_PREFS, updated);
+
+  // Sync display name to server (fire-and-forget)
+  if (prefs.displayName !== undefined) {
+    api.preferences.update({ display_name: prefs.displayName }).catch(() => {});
+  }
+
   return updated;
+}
+
+// ── Onboarding state ────────────────────────────────────────────────────────
+
+export async function isOnboardingDone() {
+  const val = await AsyncStorage.getItem(KEYS.ONBOARDING_DONE);
+  return val === 'true';
+}
+
+export async function setOnboardingDone() {
+  await AsyncStorage.setItem(KEYS.ONBOARDING_DONE, 'true');
+  // Also persist to server preferences (fire-and-forget)
+  api.preferences.update({ onboarding_done: true }).catch(() => {});
 }
 
 export { uid };

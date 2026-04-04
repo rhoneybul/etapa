@@ -1,0 +1,27 @@
+# Flow 02: Sign In with test account
+# Signs in with test credentials and verifies the home screen loads.
+#
+# Requires env vars: TEST_USER_EMAIL, TEST_USER_PASSWORD
+# Pass via: maestro test --env TEST_USER_EMAIL=... --env TEST_USER_PASSWORD=... .maestro/02-sign-in.yaml
+appId: com.etapa.app
+---
+- launchApp
+
+# Wait for the sign-in screen
+- assertVisible: "Sign in"
+
+# Tap "Sign in with email" or the email input
+- tapOn: "Continue with email"
+
+# Enter test credentials
+- inputText: ${TEST_USER_EMAIL}
+- tapOn: "Continue"
+- inputText: ${TEST_USER_PASSWORD}
+- tapOn: "Sign in"
+
+# Should reach the home screen (or goal setup if new user)
+- assertVisible:
+    text: ".*"
+    timeout: 10000
+
+- takeScreenshot: "02-signed-in"

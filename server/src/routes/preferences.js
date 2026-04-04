@@ -37,7 +37,7 @@ router.put('/', async (req, res) => {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
-    const { coach_checkin, push_enabled } = req.body;
+    const { coach_checkin, push_enabled, display_name, onboarding_done } = req.body;
 
     const updates = { updated_at: new Date().toISOString() };
     if (coach_checkin !== undefined) {
@@ -49,6 +49,12 @@ router.put('/', async (req, res) => {
     }
     if (push_enabled !== undefined) {
       updates.push_enabled = !!push_enabled;
+    }
+    if (display_name !== undefined) {
+      updates.display_name = (display_name || '').slice(0, 100); // sanitise length
+    }
+    if (onboarding_done !== undefined) {
+      updates.onboarding_done = !!onboarding_done;
     }
 
     const { data, error } = await supabase
