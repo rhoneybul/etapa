@@ -114,21 +114,33 @@ export default function CoachChatScreen({ navigation, route }) {
         setPlanConfig(cfg);
         analytics.events.coachChatOpened(cfg?.coachId || null, weekNum ? 'week' : 'plan');
 
-        // Load saved chat — try local first, then server
+        // Load saved chat — local + server, merging any new server-side
+        // messages (e.g. coach check-ins injected by the cron job).
+        let localMessages = [];
         const saved = await AsyncStorage.getItem(chatKey(p.id, weekNum));
         if (saved) {
-          try { setMessages(JSON.parse(saved)); } catch {}
-        } else {
-          // Try hydrating from server
-          try {
-            const sessions = await api.chatSessions.list(p.id);
-            const wn = weekNum || null;
-            const match = sessions?.find(s => s.planId === p.id && s.weekNum === wn);
-            if (match?.messages?.length > 0) {
-              setMessages(match.messages);
-              await AsyncStorage.setItem(chatKey(p.id, weekNum), JSON.stringify(match.messages));
-            }
-          } catch {}
+          try { localMessages = JSON.parse(saved); } catch {}
+        }
+
+        try {
+          const sessions = await api.chatSessions.list(p.id);
+          const wn = weekNum || null;
+          const match = sessions?.find(s => s.planId === p.id && s.weekNum === wn);
+          const serverMessages = match?.messages || [];
+
+          if (serverMessages.length > localMessages.length) {
+            // Server has new messages (check-ins added server-side) — use server
+            setMessages(serverMessages);
+            await AsyncStorage.setItem(chatKey(p.id, weekNum), JSON.stringify(serverMessages));
+          } else if (localMessages.length > 0) {
+            setMessages(localMessages);
+          } else if (serverMessages.length > 0) {
+            setMessages(serverMessages);
+            await AsyncStorage.setItem(chatKey(p.id, weekNum), JSON.stringify(serverMessages));
+          }
+        } catch {
+          // Server unreachable — fall back to local
+          if (localMessages.length > 0) setMessages(localMessages);
         }
       }
     })();

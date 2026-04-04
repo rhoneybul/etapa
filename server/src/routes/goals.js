@@ -19,7 +19,7 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const row = toRow(req.body, req.user.id);
-    const { data, error } = await supabase.from('goals').insert(row).select().single();
+    const { data, error } = await supabase.from('goals').upsert(row, { onConflict: 'id' }).select().single();
     if (error) throw error;
     res.status(201).json(toClient(data));
   } catch (err) { next(err); }

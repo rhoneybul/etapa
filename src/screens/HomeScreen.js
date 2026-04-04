@@ -18,6 +18,7 @@ import { getSessionColor, getSessionLabel, getMetricLabel, getCrossTrainingForDa
 import { getCoach } from '../data/coaches';
 import analytics from '../services/analyticsService';
 import api from '../services/api';
+import { triggerMaintenanceMode } from '../../App';
 import { syncPlansToServer } from '../services/storageService';
 
 const FF = fontFamily;
@@ -193,6 +194,16 @@ export default function HomeScreen({ navigation }) {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
+    // Check remote config for maintenance mode on every refresh
+    try {
+      const config = await api.appConfig.get();
+      const maint = config?.maintenance_mode;
+      if (maint?.enabled) {
+        triggerMaintenanceMode(maint);
+        setRefreshing(false);
+        return;
+      }
+    } catch {}
     await load({ force: true });
     setRefreshing(false);
   }, [load]);

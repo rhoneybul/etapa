@@ -44,11 +44,32 @@ import BeginnerProgramScreen from './src/screens/BeginnerProgramScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import AboutScreen         from './src/screens/AboutScreen';
 import MaintenanceScreen   from './src/screens/MaintenanceScreen';
+import ForceUpgradeScreen  from './src/screens/ForceUpgradeScreen';
 import WebWrapper          from './src/components/WebWrapper';
 import { registerForPushNotifications, addNotificationResponseListener } from './src/services/notificationService';
 import { api } from './src/services/api';
 
+import Constants from 'expo-constants';
+
+const APP_VERSION = Constants.expoConfig?.version || Constants.manifest?.version || '0.0.0';
+
 const Stack = createStackNavigator();
+
+/**
+ * Compare two semver strings. Returns:
+ *  -1 if a < b,  0 if a === b,  1 if a > b
+ */
+function compareSemver(a, b) {
+  const pa = (a || '0.0.0').split('.').map(Number);
+  const pb = (b || '0.0.0').split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const na = pa[i] || 0;
+    const nb = pb[i] || 0;
+    if (na < nb) return -1;
+    if (na > nb) return 1;
+  }
+  return 0;
+}
 
 const slide = ({ current, layouts }) => ({
   cardStyle: {
@@ -67,9 +88,20 @@ const slide = ({ current, layouts }) => ({
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
+// Global maintenance setter — screens can import and call this to trigger
+// the maintenance gate from anywhere (e.g. on pull-to-refresh).
+let _setMaintenanceMode = null;
+export function triggerMaintenanceMode(config) {
+  _setMaintenanceMode?.(config);
+}
+
 function App() {
   const [initialRoute, setInitialRoute] = useState(null);
   const [maintenanceMode, setMaintenanceMode] = useState(null); // null = loading, false = ok, object = maintenance
+  const [forceUpgrade, setForceUpgrade] = useState(null);       // null = loading, false = ok, object = upgrade config
+
+  // Expose the setter globally
+  _setMaintenanceMode = setMaintenanceMode;
   const navigationRef = React.useRef(null);
   const routeNameRef = React.useRef(null);
 
@@ -81,15 +113,29 @@ function App() {
   });
 
   useEffect(() => {
-    // Check remote config for maintenance mode (before auth)
+    // Check remote config for maintenance mode & minimum version (before auth)
     api.appConfig.get().then(config => {
+      // Maintenance mode
       const maint = config?.maintenance_mode;
       if (maint?.enabled) {
         setMaintenanceMode(maint);
       } else {
         setMaintenanceMode(false);
       }
-    }).catch(() => setMaintenanceMode(false));
+
+      // Minimum version gate
+      const mv = config?.min_version;
+      const requiredVersion = mv?.version;
+      const currentVersion = APP_VERSION;
+      if (requiredVersion && compareSemver(currentVersion, requiredVersion) < 0) {
+        setForceUpgrade(mv);
+      } else {
+        setForceUpgrade(false);
+      }
+    }).catch(() => {
+      setMaintenanceMode(false);
+      setForceUpgrade(false);
+    });
 
     analytics.init();
 
@@ -174,17 +220,17 @@ function App() {
   // Keep native splash visible until the app is fully ready (fonts + route determined).
   // This avoids a jarring "two splash screens" effect.
   useEffect(() => {
-    if (fontsLoaded && initialRoute && maintenanceMode !== null) {
+    if (fontsLoaded && initialRoute && maintenanceMode !== null && forceUpgrade !== null) {
       SplashScreen.hideAsync().catch(() => {});
     }
-  }, [fontsLoaded, initialRoute, maintenanceMode]);
+  }, [fontsLoaded, initialRoute, maintenanceMode, forceUpgrade]);
 
   const onLayoutRootView = useCallback(async () => {
     // No-op — splash is hidden via useEffect above
   }, []);
 
   // Before everything is ready, show nothing (native splash stays visible)
-  if (!fontsLoaded || !initialRoute || maintenanceMode === null) return null;
+  if (!fontsLoaded || !initialRoute || maintenanceMode === null || forceUpgrade === null) return null;
 
   // Show maintenance screen if enabled
   if (maintenanceMode) {
@@ -194,10 +240,36 @@ function App() {
         <MaintenanceScreen
           title={maintenanceMode.title}
           message={maintenanceMode.message}
-          onRetry={() => {
-            api.appConfig.get().then(config => {
+          onRetry={async () => {
+            try {
+              const config = await api.appConfig.get();
               const maint = config?.maintenance_mode;
               if (!maint?.enabled) setMaintenanceMode(false);
+            } catch {}
+          }}
+        />
+      </SafeAreaProvider>
+    );
+  }
+
+  // Show forced upgrade screen if app version is below minimum
+  if (forceUpgrade) {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style="light" />
+        <ForceUpgradeScreen
+          message={forceUpgrade.message}
+          iosUrl={forceUpgrade.iosUrl}
+          androidUrl={forceUpgrade.androidUrl}
+          onRetry={() => {
+            // Re-check remote config (user may have updated via OTA / store)
+            api.appConfig.get().then(config => {
+              const mv = config?.min_version;
+              const requiredVersion = mv?.version;
+              const currentVersion = APP_VERSION;
+              if (!requiredVersion || compareSemver(currentVersion, requiredVersion) >= 0) {
+                setForceUpgrade(false);
+              }
             }).catch(() => {});
           }}
         />

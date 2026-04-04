@@ -46,10 +46,20 @@ router.post('/', async (req, res, next) => {
 
     // Upsert plan row — if the plan already exists (same id) we overwrite it cleanly
     const planRow = planToRow(plan, userId);
-    const { error: planErr } = await supabase
+    let { error: planErr } = await supabase
       .from('plans')
       .upsert(planRow, { onConflict: 'id' });
-    if (planErr) throw planErr;
+
+    // If the goal doesn't exist on the server yet (FK violation), retry without goal_id.
+    // This handles the race where the goal sync hasn't landed before the plan sync.
+    if (planErr && planErr.code === '23503' && planErr.message?.includes('goal_id')) {
+      const { error: retryErr } = await supabase
+        .from('plans')
+        .upsert({ ...planRow, goal_id: null }, { onConflict: 'id' });
+      if (retryErr) throw retryErr;
+    } else if (planErr) {
+      throw planErr;
+    }
 
     // Replace activities: delete all existing then bulk-insert fresh set
     // (Upsert on activities is tricky because IDs can change between edits)

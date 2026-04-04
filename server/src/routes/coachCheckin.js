@@ -33,8 +33,12 @@ const COACHES = {
 
 /**
  * Generate a personalised coach check-in message using Claude.
+ * @param {string} coach - coach ID
+ * @param {object} activity - the completed activity from yesterday
+ * @param {object|null} nextActivity - the next scheduled (uncompleted) activity, if any
+ * @param {boolean} isWeekly - weekly digest mode
  */
-async function generateCheckinMessage(coach, activity, isWeekly = false) {
+async function generateCheckinMessage(coach, activity, nextActivity = null, isWeekly = false) {
   const apiKey = getAnthropicKey();
   if (!apiKey) {
     // Fallback template if no API key
@@ -45,18 +49,31 @@ async function generateCheckinMessage(coach, activity, isWeekly = false) {
 
   const coachInfo = COACHES[coach] || COACHES.matteo;
 
+  let nextActivityBlock = '';
+  if (nextActivity) {
+    nextActivityBlock = `
+Their next scheduled session is:
+- Title: ${nextActivity.title}
+- Type: ${nextActivity.type}${nextActivity.sub_type ? ` (${nextActivity.sub_type})` : ''}
+- Duration: ${nextActivity.duration_mins ? `${nextActivity.duration_mins} minutes` : 'TBD'}
+- Distance: ${nextActivity.distance_km ? `${nextActivity.distance_km} km` : 'N/A'}
+- Effort: ${nextActivity.effort || 'moderate'}
+${nextActivity.description ? `- Description: ${nextActivity.description.slice(0, 200)}` : ''}`;
+  }
+
   const prompt = isWeekly
     ? `You are ${coachInfo.name}, a cycling coach. Your style: ${coachInfo.style}.
 Write a brief, friendly weekly check-in message (2-3 sentences max) asking how their week of training went and if they need any help. Keep it natural and in character. No emojis. No greeting — jump straight in.`
     : `You are ${coachInfo.name}, a cycling coach. Your style: ${coachInfo.style}.
+
 The rider completed this session yesterday:
 - Title: ${activity.title}
 - Type: ${activity.type}${activity.sub_type ? ` (${activity.sub_type})` : ''}
 - Duration: ${activity.duration_mins ? `${activity.duration_mins} minutes` : 'Unknown'}
 - Effort: ${activity.effort || 'moderate'}
 ${activity.description ? `- Description: ${activity.description.slice(0, 200)}` : ''}
-
-Write a brief, personalised check-in message (2-3 sentences max) asking how it went and offering help if needed. Reference the specific session. Keep it natural and in character. No emojis. No greeting — jump straight in.`;
+${nextActivityBlock}
+Write a brief, personalised check-in message (3-4 sentences). First, ask specifically about the session they completed — reference the session by name, ask how their legs felt, if the effort level was right, etc. ${nextActivity ? `Then briefly mention what\'s coming next ("${nextActivity.title}") and offer a quick tip to prepare — pacing, nutrition, recovery, whatever fits.` : 'Then ask if they need any adjustments to their plan.'} Keep it natural and in character. No emojis. No greeting — jump straight in.`;
 
   try {
     const res = await _fetch('https://api.anthropic.com/v1/messages', {
@@ -165,9 +182,23 @@ router.post('/run', async (req, res) => {
           if (config?.coach_id) coachId = config.coach_id;
         }
 
+        // Find the next upcoming (uncompleted) activity in the same plan
+        let nextActivity = null;
+        if (activity.plan_id) {
+          const { data: upcoming } = await supabase
+            .from('activities')
+            .select('title, type, sub_type, duration_mins, distance_km, effort, description, day_of_week, week')
+            .eq('plan_id', activity.plan_id)
+            .eq('completed', false)
+            .order('week', { ascending: true })
+            .order('day_of_week', { ascending: true })
+            .limit(1);
+          if (upcoming?.length) nextActivity = upcoming[0];
+        }
+
         const coachInfo = COACHES[coachId] || COACHES.matteo;
         const isWeekly = pref.coach_checkin === 'weekly';
-        const body = await generateCheckinMessage(coachId, activity, isWeekly);
+        const body = await generateCheckinMessage(coachId, activity, nextActivity, isWeekly);
 
         // Insert the check-in message into the plan-level coach chat session
         // so it appears in the global coach chat next time the user opens it.
