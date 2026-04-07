@@ -406,6 +406,7 @@ ${goal.targetDistance ? `- Target distance: ${goal.targetDistance} km` : ''}
 ${goal.targetElevation ? `- Target elevation: ${goal.targetElevation} m` : ''}
 ${goal.targetTime ? `- Target finish time: ${goal.targetTime} hours` : ''}
 ${goal.targetDate ? `- Event/target date: ${goal.targetDate}` : ''}
+- Today's date: ${new Date().toISOString().split('T')[0]} (${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()]})
 - Plan start date: ${config.startDate ? config.startDate.split('T')[0] : 'next Monday'} (this is a MONDAY — Week 1 Day 0)
 - Current year: ${new Date().getFullYear()}
 
@@ -544,16 +545,36 @@ function buildEditPrompt(plan, goal, instruction, scope, currentWeek) {
     completed: a.completed,
   })), null, 2);
 
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+  // Compute the actual date range for the current week
+  let weekDateNote = '';
+  if (plan.startDate) {
+    const sp = plan.startDate.split('T')[0].split('-');
+    const planStart = new Date(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]));
+    const weekStartDate = new Date(planStart);
+    weekStartDate.setDate(weekStartDate.getDate() + (currentWeek - 1) * 7);
+    const weekEndDate = new Date(weekStartDate);
+    weekEndDate.setDate(weekEndDate.getDate() + 6);
+    weekDateNote = ` (${weekStartDate.toISOString().split('T')[0]} to ${weekEndDate.toISOString().split('T')[0]})`;
+  }
+
   return `The athlete wants to modify their training plan. Here is the instruction:
 
 "${instruction}"
 
 ## Current plan context
+- Today's date: ${todayStr} (${dayNames[today.getDay()]})
 - Goal: ${goal?.goalType || 'improve'} (${goal?.eventName || 'general'})
 - Target distance: ${goal?.targetDistance || 'none'} km
 - Target date: ${goal?.targetDate || 'none'}
+- Plan start date: ${plan.startDate || 'unknown'}
 - Plan weeks: ${plan.weeks}
-- Current week: ${currentWeek}
+- Current week: ${currentWeek}${weekDateNote}
+- Day number mapping: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6
+- IMPORTANT: Any changes to future activities should be for dates AFTER today (${todayStr}). Do not modify activities in the past.
 
 ## Activities to modify (${scope === 'week' ? `week ${currentWeek} only` : `weeks ${currentWeek}–${plan.weeks}`})
 ${activitiesJson}
@@ -585,7 +606,14 @@ function buildActivityEditPrompt(activity, goal, instruction) {
     week: activity.week,
   }, null, 2);
 
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const actDayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
   return `The athlete has a question or edit request about this specific session:
+
+## Current date
+- Today: ${todayStr} (${actDayNames[today.getDay()]})
 
 ## Current session
 ${actJson}
@@ -594,6 +622,7 @@ ${actJson}
 - Goal type: ${goal?.goalType || 'improve'}
 - Target: ${goal?.targetDistance ? goal.targetDistance + ' km' : 'general improvement'}
 - Event: ${goal?.eventName || 'none'}
+${goal?.targetDate ? `- Event date: ${goal.targetDate}` : ''}
 
 ## Athlete's message
 "${instruction}"
@@ -636,7 +665,11 @@ router.post('/assess-plan', async (req, res) => {
       weekSummaries.push(`Week ${w}: ${acts.length} sessions, ${Math.round(totalKm)} km, longest ${Math.round(longestKm)} km, ${Math.round(totalMins)} min total`);
     }
 
+    const assessToday = new Date();
     const prompt = `Review this training plan and provide an encouraging assessment with CONCRETE, ACTIONABLE suggestions for how the athlete could build on it further.
+
+## Current date
+- Today: ${assessToday.toISOString().split('T')[0]} (${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][assessToday.getDay()]})
 
 ## Athlete profile
 - Fitness level: ${config?.fitnessLevel || 'beginner'} (${benchmark.description})
@@ -930,13 +963,30 @@ Only include the plan_update block when you are actually making changes. For que
       if (context.plan) {
         const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
         systemPrompt += `## Current plan context\n`;
-        systemPrompt += `- Today's date: ${today.toISOString().split('T')[0]} (${dayNames[today.getDay()]})\n`;
+        systemPrompt += `- Today's date: ${todayStr} (${dayNames[today.getDay()]})\n`;
         systemPrompt += `- Plan: ${context.plan.name || 'Training plan'}\n`;
         systemPrompt += `- Total weeks: ${context.plan.weeks}\n`;
         systemPrompt += `- Start date: ${context.plan.startDate}\n`;
         systemPrompt += `- Day number mapping: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6\n`;
-        if (context.plan.currentWeek) systemPrompt += `- Current week: ${context.plan.currentWeek} of ${context.plan.weeks}\n`;
+        if (context.plan.currentWeek) {
+          systemPrompt += `- Current week: ${context.plan.currentWeek} of ${context.plan.weeks}\n`;
+          // Compute and show the actual date range for the current week
+          if (context.plan.startDate) {
+            const sp = context.plan.startDate.split('T')[0].split('-');
+            const planStart = new Date(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]));
+            const weekStart = new Date(planStart);
+            weekStart.setDate(weekStart.getDate() + (context.plan.currentWeek - 1) * 7);
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekEnd.getDate() + 6);
+            const planEnd = new Date(planStart);
+            planEnd.setDate(planEnd.getDate() + (context.plan.weeks * 7) - 1);
+            systemPrompt += `- Current week dates: ${weekStart.toISOString().split('T')[0]} (Mon) to ${weekEnd.toISOString().split('T')[0]} (Sun)\n`;
+            systemPrompt += `- Plan end date: ${planEnd.toISOString().split('T')[0]}\n`;
+          }
+        }
+        systemPrompt += `- IMPORTANT: When discussing or modifying activities, be precise about dates. Today is ${todayStr}. Activities before today are in the past and should not be changed. Any adjustments apply to today or future dates only.\n`;
       }
       if (context.goal) {
         systemPrompt += `\n## Athlete's goal\n`;
@@ -945,7 +995,20 @@ Only include the plan_update block when you are actually making changes. For que
         if (context.goal.targetDistance) systemPrompt += `- Target event distance: ${context.goal.targetDistance} km — this is the distance the athlete needs to be ready for\n`;
         if (context.goal.targetElevation) systemPrompt += `- Target elevation: ${context.goal.targetElevation} m\n`;
         if (context.goal.targetTime) systemPrompt += `- Target finish time: ${context.goal.targetTime} hours\n`;
-        if (context.goal.targetDate) systemPrompt += `- Event date: ${context.goal.targetDate}\n`;
+        if (context.goal.targetDate) {
+          systemPrompt += `- Event date: ${context.goal.targetDate}\n`;
+          const tp = context.goal.targetDate.split('T')[0].split('-');
+          const targetDate = new Date(Number(tp[0]), Number(tp[1]) - 1, Number(tp[2]));
+          const daysUntilEvent = Math.ceil((targetDate - new Date()) / (1000 * 60 * 60 * 24));
+          const weeksUntilEvent = Math.floor(daysUntilEvent / 7);
+          if (daysUntilEvent > 0) {
+            systemPrompt += `- Days until event: ${daysUntilEvent} (${weeksUntilEvent} weeks and ${daysUntilEvent % 7} days)\n`;
+          } else if (daysUntilEvent === 0) {
+            systemPrompt += `- EVENT IS TODAY\n`;
+          } else {
+            systemPrompt += `- Event was ${Math.abs(daysUntilEvent)} days ago\n`;
+          }
+        }
         if (context.goal.cyclingType) systemPrompt += `- Cycling type: ${context.goal.cyclingType}\n`;
       }
 
