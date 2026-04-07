@@ -93,8 +93,58 @@ export function getMetricLabel(activity) {
   return '';
 }
 
+// ── Activity type icons (MaterialCommunityIcons names) ──────────────────────
+// Returns the icon name to use for a given activity or cross-training key.
+// All icons come from @expo/vector-icons MaterialCommunityIcons.
+const CT_ICONS = {
+  run:            'run',
+  trail_run:      'run',
+  walk:           'walk',
+  hike:           'hiking',
+  swim:           'swim',
+  weight_training:'dumbbell',
+  crossfit:       'dumbbell',
+  yoga:           'yoga',
+  pilates:        'yoga',
+  rowing:         'rowing',
+  kayak:          'kayak',
+  surf:           'surfing',
+  ski:            'ski',
+  snowboard:      'snowboard',
+  rock_climb:     'image-filter-hdr',
+  soccer:         'soccer',
+  tennis:         'tennis',
+  padel:          'tennis',
+  golf:           'golf',
+  martial_arts:   'karate',
+  dance:          'dance-ballroom',
+  skateboard:     'skateboarding',
+  elliptical:     'bike-stationary',
+  stair_stepper:  'stairs',
+  other:          'lightning-bolt',
+};
+
+/**
+ * Returns a MaterialCommunityIcons icon name for an activity.
+ * Pass `ctKey` (string) for cross-training items, otherwise pass the activity object.
+ */
+export function getActivityIcon(activityOrCtKey) {
+  if (typeof activityOrCtKey === 'string') {
+    return CT_ICONS[activityOrCtKey] || 'lightning-bolt';
+  }
+  const a = activityOrCtKey;
+  if (!a) return 'bike';
+  if (a.type === 'strength') return 'dumbbell';
+  if (a.type === 'rest')     return 'sleep';
+  if (a.type === 'ride') {
+    if (a.subType === 'indoor' || a.title?.toLowerCase().includes('indoor')) return 'bike-stationary';
+    return 'bike';
+  }
+  return 'bike';
+}
+
 // ── Cross-training ──────────────────────────────────────────────────────────
-export const CROSS_TRAINING_COLOR = '#06B6D4'; // cyan
+export const CROSS_TRAINING_COLOR = '#2563A0'; // unified blue
 
 const CT_LABELS = {
   run: 'Run', trail_run: 'Trail Run', walk: 'Walk', hike: 'Hike',

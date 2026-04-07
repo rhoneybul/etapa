@@ -16,7 +16,8 @@ import { isSubscribed, getSubscriptionStatus, upgradeStarter, openCheckout, getP
 import UpgradePrompt from '../components/UpgradePrompt';
 import { isStravaConnected } from '../services/stravaService';
 import { syncStravaActivities, getStravaActivitiesForWeek, getStravaActivitiesForDate } from '../services/stravaSyncService';
-import { getSessionColor, getSessionLabel, getMetricLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
+import { getSessionColor, getSessionLabel, getMetricLabel, getCrossTrainingForDay, getActivityIcon, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getCoach } from '../data/coaches';
 import analytics from '../services/analyticsService';
 import api from '../services/api';
@@ -29,13 +30,17 @@ const FF = fontFamily;
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const CYCLING_LABELS = { road: 'Road', gravel: 'Gravel', mtb: 'MTB', ebike: 'E-Bike', mixed: 'Mixed' };
 
+// Suggestion category colours — primary (training/action), secondary (info/support), neutral (recovery)
+// Uniform dark blue for all activity indicators in the week strip & calendar
+const ACTIVITY_BLUE = '#2563A0';
+
 const SUGGEST_COLORS = {
-  training:      '#E8458B',
-  nutrition:     '#22C55E',
-  strength:      '#8B5CF6',
-  cross_training:'#06B6D4',
-  mental:        '#3B82F6',
-  recovery:      '#64748B',
+  training:      '#E8458B', // primary
+  nutrition:     ACTIVITY_BLUE,
+  strength:      ACTIVITY_BLUE,
+  cross_training:ACTIVITY_BLUE,
+  mental:        ACTIVITY_BLUE,
+  recovery:      '#64748B', // neutral slate
 };
 
 /**
@@ -78,6 +83,7 @@ export default function HomeScreen({ navigation }) {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [comingSoonConfig, setComingSoonConfig] = useState(null);
   const [stravaActivities, setStravaActivities] = useState([]);
+  const [selectedDayIdx, setSelectedDayIdx] = useState(null); // tapped day in the week strip
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const cachedPlanHash = useRef(null); // Track plan state to avoid unnecessary reloads
   const initialLoadDone = useRef(false);
@@ -226,6 +232,9 @@ export default function HomeScreen({ navigation }) {
     return unsub;
   }, [navigation, load]);
 
+  // Deselect day when navigating to a different week
+  useEffect(() => { setSelectedDayIdx(null); }, [currentWeek]);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     // Check remote config for maintenance mode on every refresh
@@ -371,18 +380,37 @@ export default function HomeScreen({ navigation }) {
               </View>
               <Text style={s.beginnerTitle}>Get into Cycling</Text>
               <Text style={s.beginnerSub}>
-                A 12-week program to get you riding regularly.{'\n'}No experience needed.
+                A structured program to get you riding regularly and building toward your first big distance goal. No experience needed.
               </Text>
+              <View style={s.cardFeatureRow}>
+                {['8–20 week program', 'Guided sessions', 'Goal milestones'].map(f => (
+                  <View key={f} style={s.cardFeaturePill}>
+                    <Text style={s.cardFeaturePillText}>{f}</Text>
+                  </View>
+                ))}
+              </View>
             </TouchableOpacity>
 
-            {/* Custom plan */}
+            {/* Build your plan — custom / main feature card */}
             <TouchableOpacity
               style={s.createBtn}
               onPress={handleMakePlan}
               activeOpacity={0.88}
             >
-              <Text style={s.createBtnText}>Create a custom plan</Text>
-              <Text style={s.createBtnSub}>Race training, distance goals, or general fitness</Text>
+              <View style={s.beginnerBadge}>
+                <Text style={s.beginnerBadgeText}>AI-POWERED</Text>
+              </View>
+              <Text style={s.createBtnTitle}>Build your training plan</Text>
+              <Text style={s.createBtnSub}>
+                Race prep, sportive goals, distance targets or just getting fitter — your AI coach builds a personalised plan around your schedule.
+              </Text>
+              <View style={s.cardFeatureRow}>
+                {['Fully personalised', 'Any goal or distance', 'Adapts as you train'].map(f => (
+                  <View key={f} style={s.cardFeaturePill}>
+                    <Text style={s.cardFeaturePillText}>{f}</Text>
+                  </View>
+                ))}
+              </View>
             </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
@@ -412,27 +440,65 @@ export default function HomeScreen({ navigation }) {
   const jsDay = new Date().getDay();
   const todayIdx = jsDay === 0 ? 6 : jsDay - 1;
 
-  // Group activities by day for the week strip
-  const activitiesByDay = {};
-  weekActivities.forEach(a => {
-    if (a.dayOfWeek != null) {
-      if (!activitiesByDay[a.dayOfWeek]) activitiesByDay[a.dayOfWeek] = [];
-      activitiesByDay[a.dayOfWeek].push(a);
-    }
-  });
+  // ── Real today's week — independent of which week the user is browsing ────
+  // We compute this so "Today" always shows actual today's sessions, not whatever
+  // week happens to be selected in the strip.
+  const realTodayWeek = (() => {
+    if (!activePlan?.startDate) return currentWeek;
+    const monday = snapToMonday(parseDateLocal(activePlan.startDate));
+    const now = new Date();
+    now.setHours(12, 0, 0, 0);
+    const diffDays = Math.floor((now - monday) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return 1;
+    return Math.min(Math.floor(diffDays / 7) + 1, activePlan.weeks || 1);
+  })();
+  const viewingToday = currentWeek === realTodayWeek;
 
-  const todayActivities = weekActivities.filter(a => a.dayOfWeek === todayIdx);
-  const todayDateStr = activePlan?.startDate ? getDayDateStr(activePlan.startDate, currentWeek, todayIdx) : null;
+  // Today's activities always come from the real today's week
+  const todayWeekActivities = viewingToday
+    ? weekActivities
+    : getWeekActivities(activePlan, realTodayWeek);
+  const todayActivities = todayWeekActivities.filter(a => a.dayOfWeek === todayIdx);
+  const todayDateStr = activePlan?.startDate ? getDayDateStr(activePlan.startDate, realTodayWeek, todayIdx) : null;
   const todayStravaRides = todayDateStr
     ? getStravaActivitiesForDate(stravaActivities, todayDateStr).filter(sa =>
         !todayActivities.some(a => a.stravaActivityId === sa.stravaId)
       )
     : [];
 
+  // Group activities by day for the week strip (still from currently-viewed week)
+  const activitiesByDay = {};
+  weekActivities.forEach(a => {
+    const d = a.dayOfWeek ?? 0;
+    if (!activitiesByDay[d]) activitiesByDay[d] = [];
+    activitiesByDay[d].push(a);
+  });
+
   const crossTraining = activePlanConfig?.crossTrainingDaysFull || {};
 
   // Get Strava activities for the current week
   const stravaForWeek = getStravaActivitiesForWeek(stravaActivities, currentWeek);
+
+  // Selected day (tapped in week strip) — activities, strava, cross-training
+  const selectedDayActivities = selectedDayIdx !== null ? (activitiesByDay[selectedDayIdx] || []) : [];
+  const selectedDayDateStr = selectedDayIdx !== null && activePlan?.startDate
+    ? getDayDateStr(activePlan.startDate, currentWeek, selectedDayIdx) : null;
+  const selectedDayStrava = selectedDayDateStr
+    ? getStravaActivitiesForDate(stravaActivities, selectedDayDateStr).filter(
+        sa => !selectedDayActivities.some(a => a.stravaActivityId === sa.stravaId)
+      )
+    : [];
+  const selectedDayCT = selectedDayIdx !== null ? getCrossTrainingForDay(crossTraining, selectedDayIdx) : [];
+  const selectedDayHasContent = selectedDayActivities.length > 0 || selectedDayStrava.length > 0 || selectedDayCT.length > 0;
+  // Nice display label for selected day: e.g. "Tuesday · 8 Apr"
+  const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const selectedDayDisplayLabel = (() => {
+    if (selectedDayIdx === null || !activePlan?.startDate) return null;
+    const monday = snapToMonday(parseDateLocal(activePlan.startDate));
+    const d = new Date(monday);
+    d.setDate(d.getDate() + (currentWeek - 1) * 7 + selectedDayIdx);
+    return `${DAY_LABELS[selectedDayIdx]} \u00B7 ${d.getDate()} ${MONTH_SHORT[d.getMonth()]}`;
+  })();
 
   // Structured summary for a day's activities: returns array of { label, metric, color }
   const getDayItems = (dayIdx) => {
@@ -443,6 +509,7 @@ export default function HomeScreen({ navigation }) {
         label: getSessionLabel(a),
         metric: getMetricLabel(a),
         color: getSessionColor(a),
+        _activity: a,
       }));
     }
     // Add Strava rides that don't already match a planned activity
@@ -467,18 +534,14 @@ export default function HomeScreen({ navigation }) {
       metric: null,
       color: CROSS_TRAINING_COLOR,
       isCrossTraining: true,
+      ctKey: ct.key,
     }));
     return items;
   };
 
   const handleDayPress = (dayIdx) => {
-    const acts = activitiesByDay[dayIdx];
-    if (!acts || acts.length === 0) return;
-    if (acts.length === 1) {
-      navigation.navigate('ActivityDetail', { activityId: acts[0].id });
-    } else {
-      navigation.navigate('WeekView', { week: currentWeek, planId: activePlan.id });
-    }
+    // Toggle: tap same day again to deselect
+    setSelectedDayIdx(prev => prev === dayIdx ? null : dayIdx);
   };
 
   const handleDeletePlan = (targetPlan, targetGoal) => {
@@ -738,6 +801,15 @@ export default function HomeScreen({ navigation }) {
               <View style={s.weekNavCenter}>
                 <Text style={s.weekLabel}>Week {currentWeek}/{activePlan.weeks}</Text>
                 <Text style={s.monthLabel}>{monthLabel}</Text>
+                {!viewingToday && (
+                  <TouchableOpacity
+                    onPress={() => setCurrentWeek(realTodayWeek)}
+                    hitSlop={HIT}
+                    style={s.goTodayBtn}
+                  >
+                    <Text style={s.goTodayText}>Go to today</Text>
+                  </TouchableOpacity>
+                )}
               </View>
               <TouchableOpacity
                 onPress={() => { const to = Math.min(activePlan.weeks, currentWeek + 1); analytics.events.weekNavigated('next', currentWeek, to); setCurrentWeek(to); }}
@@ -750,26 +822,42 @@ export default function HomeScreen({ navigation }) {
             <View style={s.dayRow}>
               {DAY_LABELS.map((d, i) => {
                 const items = getDayItems(i);
-                const hasActs = items.length > 0;
-                const CellWrap = hasActs ? TouchableOpacity : View;
-                const cellProps = hasActs ? { onPress: () => handleDayPress(i), activeOpacity: 0.7 } : {};
+                const isSelected = i === selectedDayIdx;
                 return (
-                  <CellWrap key={i} style={s.dayCell} {...cellProps}>
-                    <Text style={[s.dayLabelText, i === todayIdx && s.dayLabelToday]}>{d}</Text>
-                    <View style={[s.dayCircle, i === todayIdx && s.dayCircleToday]}>
-                      <Text style={[s.dayNumber, i === todayIdx && s.dayNumberToday]}>
+                  <TouchableOpacity
+                    key={i}
+                    style={[s.dayCell, isSelected && s.dayCellSelected]}
+                    onPress={() => handleDayPress(i)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[s.dayLabelText, viewingToday && i === todayIdx && s.dayLabelToday, isSelected && s.dayLabelSelected]}>{d}</Text>
+                    <View style={[s.dayCircle, viewingToday && i === todayIdx && s.dayCircleToday, isSelected && s.dayCircleSelected]}>
+                      <Text style={[s.dayNumber, viewingToday && i === todayIdx && s.dayNumberToday, isSelected && s.dayNumberSelected]}>
                         {getDayDate(activePlan.startDate, currentWeek, i)}
                       </Text>
                     </View>
-                    {items.map((item, idx) => (
-                      <View key={idx} style={s.daySummaryRow}>
-                        <View style={[s.daySummaryDot, { backgroundColor: item.color }]} />
-                        <Text style={[s.daySummaryLabel, { color: item.color }]}>
-                          {item.metric || item.label}
-                        </Text>
-                      </View>
-                    ))}
-                  </CellWrap>
+                    {items.map((item, idx) => {
+                      const iconName = item.isCrossTraining
+                        ? getActivityIcon(item.ctKey || 'other')
+                        : getActivityIcon(item._activity);
+                      const iconColor = isSelected ? 'rgba(255,255,255,0.9)' : ACTIVITY_BLUE;
+                      const metricText = item.metric || '';
+                      return (
+                        <View key={idx} style={s.daySummaryCol}>
+                          <MaterialCommunityIcons
+                            name={iconName}
+                            size={10}
+                            color={iconColor}
+                          />
+                          {metricText ? (
+                            <Text style={[s.daySummaryMetric, { color: iconColor }]} numberOfLines={1}>
+                              {metricText}
+                            </Text>
+                          ) : null}
+                        </View>
+                      );
+                    })}
+                  </TouchableOpacity>
                 );
               })}
             </View>
@@ -784,8 +872,97 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* Today's workouts */}
-          {(todayActivities.length > 0 || todayStravaRides.length > 0) && (
+          {/* Selected day panel — shown when user taps a day in the strip */}
+          {selectedDayIdx !== null && (
+            <View style={s.section}>
+              <View style={s.selectedDayHeader}>
+                <Text style={s.sectionTitle}>{selectedDayDisplayLabel}</Text>
+              </View>
+              {!selectedDayHasContent && (
+                <View style={s.restDayCard}>
+                  <MaterialCommunityIcons name="sleep" size={16} color={colors.textFaint} />
+                  <Text style={s.restDayText}>Rest day — no activities scheduled</Text>
+                </View>
+              )}
+              {selectedDayCT.map((ct, idx) => (
+                <View key={`sel-ct-${idx}`} style={s.todayCard}>
+                  <View style={[s.todayAccent, { backgroundColor: ACTIVITY_BLUE }]} />
+                  <View style={s.todayBody}>
+                    <View style={s.todayTitleRow}>
+                      <View style={s.todayTypeCol}>
+                        <View style={[s.todayTypeBadge, { backgroundColor: ACTIVITY_BLUE + '24' }]}>
+                          <Text style={[s.todayTypeText, { color: ACTIVITY_BLUE }]}>YOUR ACTIVITY</Text>
+                        </View>
+                      </View>
+                      <View style={s.todayTitleWrap}>
+                        <Text style={s.todayTitle}>{ct.label}</Text>
+                        <Text style={s.todayMeta}>Factored into plan recovery</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ))}
+              {selectedDayActivities.map(activity => (
+                <TouchableOpacity
+                  key={activity.id}
+                  style={s.todayCard}
+                  onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
+                  activeOpacity={0.8}
+                >
+                  <View style={[s.todayAccent, { backgroundColor: ACTIVITY_BLUE }]} />
+                  <View style={s.todayBody}>
+                    <View style={s.todayTitleRow}>
+                      <View style={s.todayTypeCol}>
+                        <View style={[s.todayTypeBadge, { backgroundColor: ACTIVITY_BLUE + '18' }]}>
+                          <Text style={[s.todayTypeText, { color: ACTIVITY_BLUE }]}>{getSessionLabel(activity)}</Text>
+                        </View>
+                      </View>
+                      <View style={s.todayTitleWrap}>
+                        <Text style={s.todayTitle}>{activity.title}</Text>
+                        <Text style={s.todayMeta}>
+                          {activity.distanceKm ? `${activity.distanceKm} km` : ''}
+                          {activity.distanceKm && activity.durationMins ? ' \u00B7 ' : ''}
+                          {activity.durationMins ? `${activity.durationMins} min` : ''}
+                          {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  {activity.completed
+                    ? <View style={s.doneBadge}><Text style={s.doneMark}>{'\u2713'}</Text></View>
+                    : <Text style={s.todayArrow}>{'\u203A'}</Text>
+                  }
+                </TouchableOpacity>
+              ))}
+              {selectedDayStrava.map(sa => (
+                <View key={sa.stravaId} style={s.todayCard}>
+                  <View style={[s.todayAccent, { backgroundColor: '#FC4C02' }]} />
+                  <View style={s.todayBody}>
+                    <View style={s.todayTitleRow}>
+                      <View style={s.todayTypeCol}>
+                        <View style={[s.todayTypeBadge, { backgroundColor: 'rgba(252,76,2,0.12)' }]}>
+                          <Text style={[s.todayTypeText, { color: '#FC4C02' }]}>STRAVA</Text>
+                        </View>
+                      </View>
+                      <View style={s.todayTitleWrap}>
+                        <Text style={s.todayTitle}>{sa.name || 'Ride'}</Text>
+                        <Text style={s.todayMeta}>
+                          {sa.distanceKm ? `${sa.distanceKm} km` : ''}
+                          {sa.distanceKm && sa.durationMins ? ' \u00B7 ' : ''}
+                          {sa.durationMins ? `${sa.durationMins} min` : ''}
+                          {sa.avgSpeedKmh ? ` \u00B7 ${sa.avgSpeedKmh} km/h` : ''}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={s.stravaRideLogo}><StravaLogo size={18} /></View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Today's workouts — shown only when no day is explicitly selected */}
+          {selectedDayIdx === null && (todayActivities.length > 0 || todayStravaRides.length > 0) && (
             <View style={s.section}>
               <Text style={s.sectionTitle}>Today</Text>
               {todayActivities.map(activity => (
@@ -795,12 +972,12 @@ export default function HomeScreen({ navigation }) {
                   onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
                   activeOpacity={0.8}
                 >
-                  <View style={[s.todayAccent, { backgroundColor: getSessionColor(activity) }]} />
+                  <View style={[s.todayAccent, { backgroundColor: ACTIVITY_BLUE }]} />
                   <View style={s.todayBody}>
                     <View style={s.todayTitleRow}>
                       <View style={s.todayTypeCol}>
-                        <View style={[s.todayTypeBadge, { backgroundColor: getSessionColor(activity) + '18' }]}>
-                          <Text style={[s.todayTypeText, { color: getSessionColor(activity) }]}>{getSessionLabel(activity)}</Text>
+                        <View style={[s.todayTypeBadge, { backgroundColor: ACTIVITY_BLUE + '18' }]}>
+                          <Text style={[s.todayTypeText, { color: ACTIVITY_BLUE }]}>{getSessionLabel(activity)}</Text>
                         </View>
                       </View>
                       <View style={s.todayTitleWrap}>
@@ -1163,18 +1340,33 @@ const s = StyleSheet.create({
   },
   beginnerBadgeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, letterSpacing: 0.8 },
   beginnerTitle: { fontSize: 19, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 6 },
-  beginnerSub: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 20 },
+  beginnerSub: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 20, marginBottom: 0 },
   createBtn: {
-    backgroundColor: colors.surface, borderRadius: 18, paddingVertical: 20, paddingHorizontal: 24,
-    borderWidth: 1, borderColor: 'rgba(232,69,139,0.15)', alignItems: 'center',
+    // Same pink family as beginner card but inverted — solid-ish border, slightly brighter surface
+    backgroundColor: 'rgba(232,69,139,0.04)', borderRadius: 18, padding: 22,
+    borderWidth: 2, borderColor: 'rgba(232,69,139,0.35)', marginBottom: 16,
   },
-  createBtnText: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
-  createBtnSub: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 4 },
+  createBtnTitle: { fontSize: 19, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 6 },
+  createBtnSub: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 20, marginBottom: 0 },
+
+  // Feature pills shared between cards
+  cardFeatureRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 14 },
+  cardFeaturePill: {
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
+    backgroundColor: 'rgba(232,69,139,0.1)', borderWidth: 1, borderColor: 'rgba(232,69,139,0.18)',
+  },
+  cardFeaturePillText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary },
 
   // Week calendar strip
   weekStrip: { backgroundColor: colors.surface, marginHorizontal: 16, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border },
   weekNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  weekNavCenter: { alignItems: 'center' },
+  weekNavCenter: { alignItems: 'center', gap: 4 },
+  goTodayBtn: {
+    backgroundColor: 'rgba(232,69,139,0.12)', borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 3,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.25)',
+  },
+  goTodayText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary },
   weekNavArrow: { fontSize: 28, color: colors.text, fontWeight: '300', paddingHorizontal: 8 },
   weekNavDisabled: { color: colors.textFaint },
   weekLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
@@ -1187,16 +1379,37 @@ const s = StyleSheet.create({
   calendarBtnText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
   calendarBtnArrow: { fontSize: 18, color: colors.primary, fontWeight: '300' },
   dayRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  dayCell: { alignItems: 'center', minWidth: 40, gap: 3 },
+  dayCell: { alignItems: 'center', minWidth: 40, gap: 3, borderRadius: 10, paddingVertical: 4, paddingHorizontal: 2 },
+  dayCellSelected: { backgroundColor: colors.primary },
   dayLabelText: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
   dayLabelToday: { color: colors.primary },
+  dayLabelSelected: { color: 'rgba(255,255,255,0.8)' },
   dayCircle: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   dayCircleToday: { backgroundColor: colors.primary },
+  dayCircleSelected: { backgroundColor: 'rgba(255,255,255,0.2)' },
   dayNumber: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
   dayNumberToday: { color: '#fff' },
+  dayNumberSelected: { color: '#fff' },
   daySummaryRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
+  daySummaryCol: { alignItems: 'center', gap: 1, marginTop: 2 },
+  daySummaryMetric: { fontSize: 8, fontWeight: '700', fontFamily: FF.semibold, lineHeight: 10, maxWidth: 40 },
   daySummaryDot: { width: 5, height: 5, borderRadius: 2.5 },
   daySummaryLabel: { fontSize: 9, fontWeight: '600', fontFamily: FF.semibold },
+
+  // Selected day panel header
+  selectedDayHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  goToDayBtn: {
+    backgroundColor: 'rgba(232,69,139,0.1)', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 5,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
+  },
+  goToDayText: { fontSize: 12, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary },
+  restDayCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.surface, borderRadius: 12, padding: 16,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  restDayText: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint },
 
   // Section
   section: { paddingHorizontal: 20, marginBottom: 16 },

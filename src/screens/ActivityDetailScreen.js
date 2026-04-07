@@ -19,6 +19,7 @@ import analytics from '../services/analyticsService';
 const FF = fontFamily;
 
 const EFFORT_COLORS = SESSION_COLORS;
+const ACTIVITY_BLUE = '#2563A0';
 
 const EFFORT_LABELS = {
   easy:     'Easy \u2014 Zone 2',
@@ -232,7 +233,7 @@ export default function ActivityDetailScreen({ navigation, route }) {
 
   const isRide = activity.type === 'ride';
   const isStrength = activity.type === 'strength';
-  const effortColor = EFFORT_COLORS[activity.effort] || colors.primary;
+  const effortColor = ACTIVITY_BLUE;
 
   return (
     <View style={s.container}>
@@ -329,7 +330,7 @@ export default function ActivityDetailScreen({ navigation, route }) {
                     const next = EFFORT_LIST[(idx + 1) % EFFORT_LIST.length];
                     setEditValues(prev => ({ ...prev, effort: next }));
                   }}>
-                    <Text style={[s.metricValue, { color: EFFORT_COLORS[editValues.effort] || colors.primary }]}>
+                    <Text style={[s.metricValue, { color: ACTIVITY_BLUE }]}>
                       {editValues.effort} {'\u25BE'}
                     </Text>
                   </TouchableOpacity>

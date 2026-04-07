@@ -23,6 +23,13 @@ export const colors = {
   primaryLight: '#E8458B15', // rosa at ~8% opacity
   primaryDark:  '#C4306E',
 
+  // ── Secondary accent — deep blue ─────────────────────────────────────────
+  // Used for coach avatars, informational icons, cross-training, and any UI
+  // chrome that needs a colour but isn't a primary CTA.
+  secondary:      '#0369A1',
+  secondaryLight: '#0369A115',
+  secondaryDark:  '#025A88',
+
   // ── Extended rosa palette ───────────────────────────────────────────────
   rosa50:       '#FFF0F5',
   rosa100:      '#FFD6E7',

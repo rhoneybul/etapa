@@ -22,6 +22,30 @@ import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
 
+const GOAL_OPTIONS = [
+  {
+    key: 'habit',
+    label: 'Build a cycling habit',
+    distance: 25,
+    time: null,
+    sub: "Get out regularly and feel confident on the bike. You'll be riding 20–25 km comfortably by the end.",
+  },
+  {
+    key: 'endurance',
+    label: 'Build real endurance',
+    distance: 50,
+    time: null,
+    sub: "Push further and finish the 12 weeks able to ride 40–50 km without stopping.",
+  },
+  {
+    key: 'century',
+    label: 'Ride my first 100 km',
+    distance: 100,
+    time: null,
+    sub: "An ambitious target — you'll train consistently and build toward a full century by week 12.",
+  },
+];
+
 const DAYS_OPTIONS = [
   { key: 2, label: '2 days', sub: 'Perfect to start. Easy and manageable.' },
   { key: 3, label: '3 days', sub: 'A great balance of riding and rest.' },
@@ -63,6 +87,7 @@ const BIKE_TYPES = [
 ];
 
 export default function BeginnerProgramScreen({ navigation }) {
+  const [goalOption, setGoalOption] = useState(null); // key from GOAL_OPTIONS
   const [daysPerWeek, setDaysPerWeek] = useState(null);
   const [bikeType, setBikeType] = useState('road');
   const [showTips, setShowTips] = useState(false);
@@ -110,18 +135,19 @@ export default function BeginnerProgramScreen({ navigation }) {
 
   /** Proceed to PlanConfig with an optional paymentStatus flag */
   const proceedToConfig = async (paymentStatus) => {
+    const chosen = GOAL_OPTIONS.find(g => g.key === goalOption) || GOAL_OPTIONS[1];
     const goal = await saveGoal({
       cyclingType: bikeType,
       goalType: 'beginner',
-      targetDistance: null,
+      targetDistance: chosen.distance,
       targetElevation: null,
-      targetTime: null,
+      targetTime: chosen.time,
       targetDate: null,
       eventName: null,
-      planName: 'Get into Cycling',
+      planName: `Get into Cycling — ${chosen.label}`,
     });
 
-    analytics.capture?.('beginner_program_started', { daysPerWeek, paymentStatus });
+    analytics.capture?.('beginner_program_started', { daysPerWeek, paymentStatus, goalOption });
 
     navigation.replace('PlanConfig', {
       goal,
@@ -250,13 +276,38 @@ export default function BeginnerProgramScreen({ navigation }) {
                 'Clear ride instructions (no jargon)',
                 'Tips on nutrition, hydration & gear',
                 'AI coach to answer any questions',
-                'Build up to comfortable 40+ km rides',
+                'Progress toward your chosen goal distance',
               ].map((f, i) => (
                 <View key={i} style={s.featureRow}>
                   <Text style={s.featureTick}>{'\u2713'}</Text>
                   <Text style={s.featureText}>{f}</Text>
                 </View>
               ))}
+            </View>
+          </View>
+
+          {/* Goal milestone selector */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>What's your goal?</Text>
+            <Text style={s.sectionSub}>Pick the milestone you want to work towards</Text>
+            <View style={s.daysOptions}>
+              {GOAL_OPTIONS.map(opt => {
+                const isSelected = goalOption === opt.key;
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[s.dayCard, isSelected && s.dayCardSelected]}
+                    onPress={() => setGoalOption(opt.key)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+                      <Text style={[s.dayLabel, isSelected && s.dayLabelSelected]}>{opt.label}</Text>
+                      <Text style={[s.goalDistanceBadge, isSelected && s.goalDistanceBadgeSelected]}>{opt.distance} km</Text>
+                    </View>
+                    <Text style={[s.daySub, isSelected && s.daySubSelected]}>{opt.sub}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
 
@@ -329,9 +380,9 @@ export default function BeginnerProgramScreen({ navigation }) {
         {/* CTAs — two options */}
         <View style={s.ctaWrap}>
           <TouchableOpacity
-            style={[s.ctaBtn, (!daysPerWeek || purchasing) && s.ctaBtnDisabled]}
+            style={[s.ctaBtn, (!daysPerWeek || !goalOption || purchasing) && s.ctaBtnDisabled]}
             onPress={handlePayNow}
-            disabled={!daysPerWeek || purchasing}
+            disabled={!daysPerWeek || !goalOption || purchasing}
             activeOpacity={0.85}
           >
             {purchasing ? (
@@ -345,9 +396,9 @@ export default function BeginnerProgramScreen({ navigation }) {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[s.ctaBtnSecondary, (!daysPerWeek || purchasing) && s.ctaBtnDisabled]}
+            style={[s.ctaBtnSecondary, (!daysPerWeek || !goalOption || purchasing) && s.ctaBtnDisabled]}
             onPress={handlePayLater}
-            disabled={!daysPerWeek || purchasing}
+            disabled={!daysPerWeek || !goalOption || purchasing}
             activeOpacity={0.8}
           >
             <Text style={s.ctaTextSecondary}>Set up now, pay when it starts</Text>
@@ -425,6 +476,14 @@ const s = StyleSheet.create({
   featureRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   featureTick: { color: '#E8458B', fontSize: 14, fontFamily: FF.semibold, width: 18, marginTop: 1 },
   featureText: { fontSize: 14, fontFamily: FF.regular, color: colors.textMid, flex: 1 },
+
+  // Goal distance badge
+  goalDistanceBadge: {
+    fontSize: 12, fontFamily: FF.semibold, color: colors.textMuted,
+    backgroundColor: colors.bg, paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 8, overflow: 'hidden',
+  },
+  goalDistanceBadgeSelected: { color: '#E8458B', backgroundColor: 'rgba(232,69,139,0.1)' },
 
   // Days selector
   daysOptions: { gap: 10 },

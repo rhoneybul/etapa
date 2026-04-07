@@ -2,6 +2,9 @@
  * Coach personas — diverse set of AI coaching personalities.
  * Each coach has a distinct style, voice, and approach to training.
  * Avatars are rendered as coloured initials circles in the UI.
+ *
+ * Avatar colours use only two values from the app's two-accent palette:
+ *   All coaches use a consistent blue: #2563A0
  */
 
 export const COACHES = [
@@ -14,7 +17,7 @@ export const COACHES = [
     tagline: 'Warm and encouraging',
     style: 'supportive',
     level: 'beginner',
-    avatarColor: '#E8458B',
+    avatarColor: '#2563A0',
     avatarInitials: 'CM',
     qualifications: 'BSc Sport Science (INEFC Barcelona), UCI Level 2 Coaching Certificate, Certified Strength & Conditioning Specialist (NSCA)',
     bio: 'Sport science graduate from INEFC Barcelona and UCI-certified cycling coach. Clara spent five years coaching community cycling programmes across Catalonia before launching her own practice. She holds a strength and conditioning certification and specialises in helping new cyclists build sustainable habits. Clara believes everyone can fall in love with cycling — and backs that belief with evidence-based programming.',
@@ -30,7 +33,7 @@ export const COACHES = [
     tagline: 'No-nonsense and direct',
     style: 'tough',
     level: 'advanced',
-    avatarColor: '#EF4444',
+    avatarColor: '#2563A0',
     avatarInitials: 'LE',
     bio: 'Former Danish national-level time triallist and ex-pro team DS. Lars ran development squads across Scandinavia before moving into private coaching. He\'s direct, expects commitment, and knows exactly how hard to push you.',
     personality: 'Direct, demanding, and honest. Doesn\'t waste words. Expects discipline and consistency. Will call out excuses. Uses short, punchy sentences. Pushes the rider to their limit but always with a clear rationale. Believes in earned rest, not easy days. Has a dry Scandinavian wit.',
@@ -45,7 +48,7 @@ export const COACHES = [
     tagline: 'Science-backed precision',
     style: 'analytical',
     level: 'intermediate',
-    avatarColor: '#6366F1',
+    avatarColor: '#2563A0',
     avatarInitials: 'SL',
     bio: 'Sports science PhD from INSEP in Paris and data-driven coach. Sophie explains the why behind every session. She\'ll reference training zones, periodisation theory, and recovery science — but keeps it accessible.',
     personality: 'Methodical, precise, and educational. Explains the science behind training decisions. References heart rate zones, TSS, CTL, and periodisation theory. Backs recommendations with evidence. Patient with questions. Loves data and tracking. Will suggest specific metrics to monitor.',
@@ -60,7 +63,7 @@ export const COACHES = [
     tagline: 'Chill but focused',
     style: 'balanced',
     level: 'intermediate',
-    avatarColor: '#E8458B',
+    avatarColor: '#2563A0',
     avatarInitials: 'MR',
     bio: 'Former touring cyclist from the Dolomites who\'s ridden across three continents. Matteo brings a calm, philosophical approach to coaching — balancing the joy of cycling with structured training.',
     personality: 'Calm, thoughtful, and balanced. Mixes structure with flexibility. Understands life gets in the way and adapts gracefully. Encourages mindfulness on the bike. Uses metaphors and storytelling. Believes training should enhance life, not dominate it. Good at managing stress and overtraining. Has an easy Italian warmth.',
@@ -75,7 +78,7 @@ export const COACHES = [
     tagline: 'Race-day strategist',
     style: 'competitive',
     level: 'advanced',
-    avatarColor: '#DC2626',
+    avatarColor: '#2563A0',
     avatarInitials: 'EV',
     bio: 'Former professional road racer with Grand Fondo podium finishes across Spain and Italy. Elena knows what it takes to peak for race day and will structure every week around that goal.',
     personality: 'Passionate, intense, and race-focused. Every session has a purpose tied to the goal event. Thinks in terms of race strategy — pacing, nutrition, mental preparation. High energy and motivating but expects commitment. Will push hard in build weeks and enforce recovery. Uses racing terminology naturally.',
@@ -90,7 +93,7 @@ export const COACHES = [
     tagline: 'Your friendly riding buddy',
     style: 'casual',
     level: 'beginner',
-    avatarColor: '#0EA5E9',
+    avatarColor: '#2563A0',
     avatarInitials: 'TB',
     qualifications: 'British Cycling Level 3 Coach, Diploma in Personal Training (Active IQ), First Aid in Sport (FA)',
     bio: 'British Cycling Level 3 qualified coach from Yorkshire with a personal training diploma. Tom spent a decade leading group rides and club development squads before going full-time as a coach. He holds a sports first aid certificate and has guided over two hundred riders from their first sportive to century rides. Tom makes training feel like chatting with a friend who happens to know a lot about cycling.',

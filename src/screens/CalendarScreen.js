@@ -9,10 +9,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { getPlans, getGoals, getActivityDate, getPlanConfig } from '../services/storageService';
-import { getSessionColor, getSessionLabel, getMetricLabel, CROSS_TRAINING_COLOR, getCrossTrainingLabel } from '../utils/sessionLabels';
+import { getSessionColor, getSessionLabel, getMetricLabel, getActivityIcon, CROSS_TRAINING_COLOR, getCrossTrainingLabel } from '../utils/sessionLabels';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
+const ACTIVITY_BLUE = '#2563A0';
 const DAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const CYCLING_LABELS = { road: 'Road', gravel: 'Gravel', mtb: 'MTB', ebike: 'E-Bike', mixed: 'Mixed' };
@@ -134,6 +136,7 @@ export default function CalendarScreen({ navigation }) {
         metric: getMetricLabel(a),
         color: getSessionColor(a),
         type: a.type,
+        _activity: a,
       }));
     }
     const ct = crossTrainingMap[getKey(day)];
@@ -143,6 +146,7 @@ export default function CalendarScreen({ navigation }) {
         metric: null,
         color: c.color,
         isCrossTraining: true,
+        ctKey: c.key,
       }));
     }
     return items;
@@ -244,19 +248,23 @@ export default function CalendarScreen({ navigation }) {
                             <View style={s.goalFlagDot} />
                           </View>
                         )}
-                        {items.map((item, idx) => (
-                          <View key={idx} style={s.cellItemRow}>
-                            <View style={[
-                              s.cellItemDot,
-                              item.type === 'strength' && s.cellItemDotSquare,
-                              item.isCrossTraining && s.cellItemDotDiamond,
-                              { backgroundColor: isSelected(day) ? 'rgba(255,255,255,0.7)' : item.color },
-                            ]} />
-                            <Text style={[s.cellItemLabel, isSelected(day) ? { color: 'rgba(255,255,255,0.8)' } : { color: item.color }]}>
-                              {item.metric || item.label}
-                            </Text>
-                          </View>
-                        ))}
+                        {items.map((item, idx) => {
+                          const iconName = item.isCrossTraining
+                            ? getActivityIcon(item.ctKey || 'other')
+                            : getActivityIcon(item._activity);
+                          const iconColor = isSelected(day) ? 'rgba(255,255,255,0.9)' : ACTIVITY_BLUE;
+                          const metricText = item.metric || '';
+                          return (
+                            <View key={idx} style={s.cellItemCol}>
+                              <MaterialCommunityIcons name={iconName} size={11} color={iconColor} />
+                              {metricText ? (
+                                <Text style={[s.cellItemLabel, { color: iconColor }]} numberOfLines={1}>
+                                  {metricText}
+                                </Text>
+                              ) : null}
+                            </View>
+                          );
+                        })}
                       </>
                     ) : null}
                   </TouchableOpacity>
@@ -310,12 +318,12 @@ export default function CalendarScreen({ navigation }) {
               onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
               activeOpacity={0.75}
             >
-              <View style={[s.actAccent, { backgroundColor: getSessionColor(activity) }]} />
+              <View style={[s.actAccent, { backgroundColor: ACTIVITY_BLUE }]} />
               <View style={s.actBody}>
                 <View style={s.actTop}>
-                  <View style={[s.typeShape, activity.type === 'strength' ? s.typeShapeSquare : s.typeShapeCircle, { backgroundColor: getSessionColor(activity) }]} />
-                  <View style={[s.actTypeBadge, { backgroundColor: getSessionColor(activity) + '18' }]}>
-                    <Text style={[s.actTypeText, { color: getSessionColor(activity) }]}>{getSessionLabel(activity)}</Text>
+                  <View style={[s.typeShape, activity.type === 'strength' ? s.typeShapeSquare : s.typeShapeCircle, { backgroundColor: ACTIVITY_BLUE }]} />
+                  <View style={[s.actTypeBadge, { backgroundColor: ACTIVITY_BLUE + '18' }]}>
+                    <Text style={[s.actTypeText, { color: ACTIVITY_BLUE }]}>{getSessionLabel(activity)}</Text>
                   </View>
                   <View style={s.actTextWrap}>
                     <Text style={[s.actTitle, activity.completed && s.actTitleDone]}>{activity.title}</Text>
@@ -371,7 +379,7 @@ const s = StyleSheet.create({
 
   grid: { paddingHorizontal: 12, marginBottom: 8 },
   weekRow: { flexDirection: 'row' },
-  dayCell: { flex: 1, alignItems: 'center', paddingVertical: 4, minHeight: 52, borderRadius: 10 },
+  dayCell: { flex: 1, alignItems: 'center', paddingVertical: 4, minHeight: 58, borderRadius: 10 },
   dayCellToday: { backgroundColor: 'rgba(232,69,139,0.1)' },
   dayCellSelected: { backgroundColor: colors.primary },
   dayText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
@@ -383,11 +391,12 @@ const s = StyleSheet.create({
   goalFlagSelected: { opacity: 0.9 },
   goalFlagDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary },
 
-  cellItemRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 1 },
+  cellItemRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 },
+  cellItemCol: { alignItems: 'center', gap: 1, marginTop: 2 },
   cellItemDot: { width: 4, height: 4, borderRadius: 2 },
   cellItemDotSquare: { borderRadius: 1 },
   cellItemDotDiamond: { borderRadius: 0, transform: [{ rotate: '45deg' }] },
-  cellItemLabel: { fontSize: 8, fontWeight: '600', fontFamily: FF.semibold },
+  cellItemLabel: { fontSize: 8, fontWeight: '700', fontFamily: FF.semibold, lineHeight: 10, maxWidth: 40 },
 
   // Goal banner in selected day detail
   goalBanner: {

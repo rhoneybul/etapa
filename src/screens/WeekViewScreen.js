@@ -12,13 +12,15 @@ import { colors, fontFamily } from '../theme';
 import { getPlan, getPlans, getWeekActivities, getWeekProgress, markActivityComplete, getWeekMonthLabel, getGoals, getPlanConfig, updateActivity, savePlan } from '../services/storageService';
 import { editActivityWithAI, adjustWeekForOrganisedRide } from '../services/llmPlanService';
 import { uid } from '../services/storageService';
-import { getSessionColor, getSessionLabel, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
+import { getSessionColor, getSessionLabel, getActivityIcon, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { syncStravaActivities, getStravaActivitiesForWeek, getStravaActivitiesForDate } from '../services/stravaSyncService';
 import { isStravaConnected } from '../services/stravaService';
 import StravaLogo from '../components/StravaLogo';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
+const ACTIVITY_BLUE = '#2563A0';
 const DAY_LABELS_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 export default function WeekViewScreen({ navigation, route }) {
@@ -272,7 +274,7 @@ export default function WeekViewScreen({ navigation, route }) {
 
         {isDeload && (
           <View style={s.deloadBanner}>
-            <Text style={s.deloadText}>Recovery week \u2014 lighter load to let your body adapt</Text>
+            <Text style={s.deloadText}>{'Recovery week \u2014 lighter load to let your body adapt'}</Text>
           </View>
         )}
 
@@ -332,14 +334,14 @@ export default function WeekViewScreen({ navigation, route }) {
                       >
                         <View style={[
                           s.activityAccent,
-                          { backgroundColor: getSessionColor(activity) },
+                          { backgroundColor: ACTIVITY_BLUE },
                           activity.type === 'strength' && s.accentStrength,
                         ]} />
                         <View style={s.activityBody}>
                           <View style={s.activityTop}>
-                            <View style={[s.typeShape, activity.type === 'strength' ? s.typeShapeSquare : s.typeShapeCircle, { backgroundColor: getSessionColor(activity) }]} />
-                            <View style={[s.activityTypeBadge, { backgroundColor: getSessionColor(activity) + '18' }]}>
-                              <Text style={[s.activityTypeText, { color: getSessionColor(activity) }]}>{getSessionLabel(activity)}</Text>
+                            <MaterialCommunityIcons name={getActivityIcon(activity)} size={14} color={ACTIVITY_BLUE} />
+                            <View style={[s.activityTypeBadge, { backgroundColor: ACTIVITY_BLUE + '18' }]}>
+                              <Text style={[s.activityTypeText, { color: ACTIVITY_BLUE }]}>{getSessionLabel(activity)}</Text>
                             </View>
                             <View style={s.activityTitleWrap}>
                               <Text style={[s.activityTitle, activity.completed && s.activityTitleDone]}>{activity.title}</Text>
