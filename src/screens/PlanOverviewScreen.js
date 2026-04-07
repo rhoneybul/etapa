@@ -45,7 +45,7 @@ const WEEK_FLAGS = {
   recovery: { label: 'Recovery', color: '#64748B', bg: 'rgba(100,116,139,0.12)' },
   peak:     { label: 'Peak week', color: '#EF4444', bg: 'rgba(239,68,68,0.12)' },
   longest:  { label: 'Longest ride', color: '#E8458B', bg: 'rgba(232,69,139,0.12)' },
-  taper:    { label: 'Taper', color: '#22C55E', bg: 'rgba(34,197,94,0.12)' },
+  taper:    { label: 'Taper', color: '#E8458B', bg: 'rgba(232,69,139,0.12)' },
   test:     { label: 'Test week', color: '#6366F1', bg: 'rgba(99,102,241,0.12)' },
 };
 
@@ -255,7 +255,7 @@ export default function PlanOverviewScreen({ navigation, route }) {
                       activeOpacity={0.7}
                     >
                       {v.totalKm > 0 && (
-                        <Text style={[s.chartBarLabel, isCurrent && { color: '#22C55E' }]}>
+                        <Text style={[s.chartBarLabel, isCurrent && { color: '#E8458B' }]}>
                           {Math.round(v.totalKm)}
                         </Text>
                       )}
@@ -319,7 +319,7 @@ export default function PlanOverviewScreen({ navigation, route }) {
                   ));
                 })()}
                 <View style={s.legendItem}>
-                  <View style={[s.legendDot, { backgroundColor: '#22C55E' }]} />
+                  <View style={[s.legendDot, { backgroundColor: '#E8458B' }]} />
                   <Text style={s.legendText}>Current</Text>
                 </View>
                 {stravaActivities.length > 0 && (
@@ -540,12 +540,12 @@ const s = StyleSheet.create({
   chartArea: { flexDirection: 'row', alignItems: 'flex-end', height: 125, gap: 2 },
   chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
   chartBarStack: { width: '80%', borderRadius: 3, minHeight: 4, overflow: 'hidden' },
-  chartBarStackCurrent: { borderWidth: 1.5, borderColor: '#22C55E' },
+  chartBarStackCurrent: { borderWidth: 1.5, borderColor: '#E8458B' },
   chartBarLabel: { fontSize: 9, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, marginBottom: 2 },
   chartDateRow: { flexDirection: 'row', marginTop: 6, gap: 2 },
   chartDateCol: { flex: 1, alignItems: 'center' },
   chartDateLabel: { fontSize: 9, fontWeight: '500', fontFamily: FF.medium, color: colors.textFaint },
-  chartDateLabelCurrent: { color: '#22C55E' },
+  chartDateLabelCurrent: { color: '#E8458B' },
   chartLegend: { flexDirection: 'row', gap: 16, marginTop: 10 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
@@ -561,8 +561,8 @@ const s = StyleSheet.create({
   phaseName: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
   phaseWeeks: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
   phaseDesc: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 18 },
-  currentBadge: { marginTop: 8, alignSelf: 'flex-start', backgroundColor: 'rgba(34,197,94,0.12)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  currentBadgeText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E' },
+  currentBadge: { marginTop: 8, alignSelf: 'flex-start', backgroundColor: 'rgba(232,69,139,0.12)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  currentBadgeText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: '#E8458B' },
 
   weekRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, marginHorizontal: 16, marginBottom: 4, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   weekRowCurrent: { borderColor: colors.primary, borderWidth: 1.5 },

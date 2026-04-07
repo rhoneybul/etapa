@@ -298,16 +298,16 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(232,69,139,0.12)', borderRadius: 6,
     paddingHorizontal: 8, paddingVertical: 3,
   },
-  threadBadgeResolved: { backgroundColor: 'rgba(34,197,94,0.1)' },
+  threadBadgeResolved: { backgroundColor: 'rgba(232,69,139,0.1)' },
   threadBadgeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, textTransform: 'uppercase', letterSpacing: 0.4 },
-  threadBadgeTextResolved: { color: '#22C55E' },
+  threadBadgeTextResolved: { color: '#E8458B' },
   threadTime: { fontSize: 11, fontFamily: FF.regular, color: colors.textFaint },
   threadMessage: { fontSize: 14, fontFamily: FF.regular, color: colors.text, lineHeight: 20 },
   threadReplyRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   threadReplyDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary },
   threadReplyText: { flex: 1, fontSize: 12, fontFamily: FF.regular, color: colors.primary },
   threadResolvedLabel: {
-    fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E',
+    fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: '#E8458B',
     marginTop: 6, textTransform: 'uppercase', letterSpacing: 0.4,
   },
 
@@ -340,12 +340,12 @@ const s = StyleSheet.create({
   submitBtnText: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
 
   thanksCard: {
-    marginHorizontal: 16, marginTop: 20, backgroundColor: 'rgba(34,197,94,0.1)',
+    marginHorizontal: 16, marginTop: 20, backgroundColor: 'rgba(232,69,139,0.1)',
     borderRadius: 14, padding: 24, alignItems: 'center',
-    borderWidth: 1, borderColor: 'rgba(34,197,94,0.2)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
   },
-  thanksCheck: { fontSize: 32, color: '#22C55E', fontWeight: '700', marginBottom: 8 },
-  thanksText: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E' },
+  thanksCheck: { fontSize: 32, color: '#E8458B', fontWeight: '700', marginBottom: 8 },
+  thanksText: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: '#E8458B' },
 
   versionText: { fontSize: 11, fontFamily: FF.regular, color: colors.textFaint, textAlign: 'center', marginTop: 20 },
 });

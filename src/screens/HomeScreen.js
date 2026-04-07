@@ -5,7 +5,7 @@
  */
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image, Animated, RefreshControl,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image, ImageBackground, Animated, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
@@ -332,7 +332,14 @@ export default function HomeScreen({ navigation }) {
   // ── No plan state ─────────────────────────────────────────────────────────
   if (plans.length === 0) {
     return (
-      <View style={s.container}>
+      <ImageBackground
+        source={require('../../assets/bg-mountain.jpg')}
+        style={s.container}
+        imageStyle={s.bgImage}
+        resizeMode="cover"
+      >
+        {/* Dark overlay to make the photo very faint */}
+        <View style={s.bgOverlay} />
         <SafeAreaView style={s.safe}>
           <View style={s.header}>
             <View style={s.headerLeft}>
@@ -393,7 +400,7 @@ export default function HomeScreen({ navigation }) {
           }}
           onCreatePlan={handleMakePlan}
         />
-      </View>
+      </ImageBackground>
     );
   }
 
@@ -1028,8 +1035,8 @@ const s = StyleSheet.create({
   greeting: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 1 },
 
   // Minimalist icon button (three dots)
-  iconBtn: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  iconBtnText: { fontSize: 14, color: colors.textMuted, letterSpacing: 1 },
+  iconBtn: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)', alignItems: 'center', justifyContent: 'center' },
+  iconBtnText: { fontSize: 14, color: colors.textMid, letterSpacing: 1 },
 
   // Subscribe banner (shown when unsubscribed with a plan)
   subscribeBanner: {
@@ -1110,43 +1117,47 @@ const s = StyleSheet.create({
   // Beginner program card (empty state)
   beginnerCard: {
     marginHorizontal: 20, borderRadius: 16, padding: 20, marginBottom: 16,
-    backgroundColor: 'rgba(34,197,94,0.06)', borderWidth: 1, borderColor: 'rgba(34,197,94,0.2)',
+    backgroundColor: 'rgba(232,69,139,0.06)', borderWidth: 1, borderColor: 'rgba(232,69,139,0.22)',
   },
   beginnerBadge: {
-    alignSelf: 'flex-start', backgroundColor: 'rgba(34,197,94,0.15)',
+    alignSelf: 'flex-start', backgroundColor: 'rgba(232,69,139,0.14)',
     borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 10,
   },
-  beginnerBadgeText: { fontSize: 10, fontWeight: '700', fontFamily: FF.semibold, color: '#22C55E', letterSpacing: 1 },
+  beginnerBadgeText: { fontSize: 10, fontWeight: '700', fontFamily: FF.semibold, color: colors.primary, letterSpacing: 1 },
   beginnerTitle: { fontSize: 18, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
   beginnerSub: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 19 },
 
   // Beginner program card (compact — when plans exist)
   beginnerCardCompact: {
     marginHorizontal: 20, borderRadius: 14, padding: 16, marginBottom: 12,
-    backgroundColor: 'rgba(34,197,94,0.06)', borderWidth: 1, borderColor: 'rgba(34,197,94,0.2)',
+    backgroundColor: 'rgba(232,69,139,0.06)', borderWidth: 1, borderColor: 'rgba(232,69,139,0.22)',
     flexDirection: 'row', alignItems: 'center',
   },
   beginnerCompactTitle: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 2 },
   beginnerCompactSub: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
+
+  // Background image for empty state
+  bgImage: { opacity: 0.12 },
+  bgOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.15)' },
 
   // Empty plan state
   emptyPlanWrap: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 32, paddingBottom: 40 },
   emptyTitle: { fontSize: 24, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 6 },
   emptySub: { fontSize: 15, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginBottom: 28 },
   beginnerCard: {
-    backgroundColor: 'rgba(34,197,94,0.06)', borderRadius: 18, padding: 22,
-    borderWidth: 1.5, borderColor: 'rgba(34,197,94,0.2)', marginBottom: 16,
+    backgroundColor: 'rgba(232,69,139,0.06)', borderRadius: 18, padding: 22,
+    borderWidth: 1.5, borderColor: 'rgba(232,69,139,0.22)', marginBottom: 16,
   },
   beginnerBadge: {
-    alignSelf: 'flex-start', backgroundColor: 'rgba(34,197,94,0.12)',
+    alignSelf: 'flex-start', backgroundColor: 'rgba(232,69,139,0.14)',
     borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, marginBottom: 12,
   },
-  beginnerBadgeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E', letterSpacing: 0.8 },
+  beginnerBadgeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, letterSpacing: 0.8 },
   beginnerTitle: { fontSize: 19, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 6 },
   beginnerSub: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 20 },
   createBtn: {
     backgroundColor: colors.surface, borderRadius: 18, paddingVertical: 20, paddingHorizontal: 24,
-    borderWidth: 1, borderColor: colors.border, alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.15)', alignItems: 'center',
   },
   createBtnText: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
   createBtnSub: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 4 },
@@ -1272,7 +1283,7 @@ const s = StyleSheet.create({
   lockedOverviewText: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.text, marginBottom: 8 },
   lockedOverviewHint: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, lineHeight: 19 },
   lockedPayBtn: {
-    backgroundColor: '#22C55E', borderRadius: 14, paddingVertical: 16,
+    backgroundColor: '#E8458B', borderRadius: 14, paddingVertical: 16,
     alignItems: 'center', marginBottom: 10,
   },
   lockedPayBtnText: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },

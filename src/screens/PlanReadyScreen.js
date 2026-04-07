@@ -565,8 +565,8 @@ const s = StyleSheet.create({
   stravaBtnText: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
   stravaConnected: {
     flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16,
-    backgroundColor: 'rgba(34,197,94,0.08)', borderRadius: 10, padding: 14,
-    borderWidth: 1, borderColor: 'rgba(34,197,94,0.15)',
+    backgroundColor: 'rgba(232,69,139,0.08)', borderRadius: 10, padding: 14,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.15)',
   },
   stravaConnectedIcon: { fontSize: 18, color: '#22C55E', fontWeight: '700' },
   stravaConnectedText: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, flex: 1 },

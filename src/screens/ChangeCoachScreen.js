@@ -132,12 +132,12 @@ export default function ChangeCoachScreen({ navigation }) {
                   <Text style={s.coachBio} numberOfLines={2}>{coach.bio}</Text>
                   <View style={s.coachBadgeRow}>
                     <View style={[s.coachLevelBadge, {
-                      backgroundColor: coach.level === 'beginner' ? 'rgba(34,197,94,0.12)'
+                      backgroundColor: coach.level === 'beginner' ? 'rgba(232,69,139,0.12)'
                         : coach.level === 'intermediate' ? 'rgba(232,69,139,0.12)'
                         : 'rgba(239,68,68,0.12)'
                     }]}>
                       <Text style={[s.coachLevelText, {
-                        color: coach.level === 'beginner' ? '#22C55E'
+                        color: coach.level === 'beginner' ? '#E8458B'
                           : coach.level === 'intermediate' ? '#E8458B'
                           : '#EF4444'
                       }]}>
@@ -215,8 +215,8 @@ const s = StyleSheet.create({
   coachName: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
   coachNameSelected: { color: colors.primary },
   coachPronouns: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint },
-  currentBadge: { backgroundColor: 'rgba(34,197,94,0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  currentBadgeText: { fontSize: 9, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E', textTransform: 'uppercase', letterSpacing: 0.4 },
+  currentBadge: { backgroundColor: 'rgba(232,69,139,0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  currentBadgeText: { fontSize: 9, fontWeight: '600', fontFamily: FF.semibold, color: '#E8458B', textTransform: 'uppercase', letterSpacing: 0.4 },
   coachTagline: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, marginTop: 1 },
   coachTaglineSelected: { color: colors.primary },
   coachBio: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 17, marginTop: 4 },

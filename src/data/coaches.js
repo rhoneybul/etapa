@@ -14,7 +14,7 @@ export const COACHES = [
     tagline: 'Warm and encouraging',
     style: 'supportive',
     level: 'beginner',
-    avatarColor: '#22C55E',
+    avatarColor: '#E8458B',
     avatarInitials: 'CM',
     qualifications: 'BSc Sport Science (INEFC Barcelona), UCI Level 2 Coaching Certificate, Certified Strength & Conditioning Specialist (NSCA)',
     bio: 'Sport science graduate from INEFC Barcelona and UCI-certified cycling coach. Clara spent five years coaching community cycling programmes across Catalonia before launching her own practice. She holds a strength and conditioning certification and specialises in helping new cyclists build sustainable habits. Clara believes everyone can fall in love with cycling — and backs that belief with evidence-based programming.',

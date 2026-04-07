@@ -549,7 +549,7 @@ const s = StyleSheet.create({
   backArrow: { fontSize: 22, color: colors.text, width: 32 },
   headerTitle: { flex: 1, fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, textAlign: 'center' },
   editBtn: { fontSize: 15, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
-  saveBtn: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E' },
+  saveBtn: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: '#E8458B' },
 
   scroll: { flex: 1 },
 
@@ -560,8 +560,8 @@ const s = StyleSheet.create({
   typeTag: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, marginBottom: 10 },
   typeTagText: { fontSize: 12, fontWeight: '600', fontFamily: FF.semibold, textTransform: 'uppercase', letterSpacing: 0.5 },
   title: { fontSize: 22, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
-  completedBadge: { marginTop: 10, backgroundColor: 'rgba(34,197,94,0.12)', alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  completedText: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E' },
+  completedBadge: { marginTop: 10, backgroundColor: 'rgba(232,69,139,0.12)', alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  completedText: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: '#E8458B' },
 
   metricsCard: {
     flexDirection: 'row', backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 12,

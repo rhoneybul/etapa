@@ -343,10 +343,10 @@ const s = StyleSheet.create({
   // Hero
   hero: { marginBottom: 20, paddingTop: 8 },
   badge: {
-    alignSelf: 'flex-start', backgroundColor: 'rgba(34,197,94,0.12)',
+    alignSelf: 'flex-start', backgroundColor: 'rgba(232,69,139,0.12)',
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 14,
   },
-  badgeText: { fontSize: 10, fontFamily: FF.semibold, color: '#22C55E', letterSpacing: 1 },
+  badgeText: { fontSize: 10, fontFamily: FF.semibold, color: '#E8458B', letterSpacing: 1 },
   title: { fontSize: 28, fontFamily: FF.semibold, color: colors.text, marginBottom: 10 },
   subtitle: {
     fontSize: 15, fontFamily: FF.regular, color: colors.textMid, lineHeight: 22,
@@ -364,11 +364,11 @@ const s = StyleSheet.create({
   },
   priceSub: { fontSize: 13, fontFamily: FF.regular, color: colors.textMid, marginBottom: 6 },
   promoBadge: {
-    backgroundColor: 'rgba(34,197,94,0.12)', borderRadius: 6,
+    backgroundColor: 'rgba(232,69,139,0.12)', borderRadius: 6,
     paddingHorizontal: 10, paddingVertical: 4, marginBottom: 6,
   },
-  promoBadgeText: { fontSize: 11, fontFamily: FF.semibold, color: '#22C55E', letterSpacing: 0.5 },
-  priceRefund: { fontSize: 12, fontFamily: FF.regular, color: '#22C55E' },
+  promoBadgeText: { fontSize: 11, fontFamily: FF.semibold, color: '#E8458B', letterSpacing: 0.5 },
+  priceRefund: { fontSize: 12, fontFamily: FF.regular, color: '#E8458B' },
 
   // Promo code
   promoSection: { marginBottom: 28 },
@@ -381,11 +381,11 @@ const s = StyleSheet.create({
     letterSpacing: 1,
   },
   promoBtn: {
-    backgroundColor: '#22C55E', borderRadius: 10,
+    backgroundColor: '#E8458B', borderRadius: 10,
     paddingHorizontal: 20, justifyContent: 'center', alignItems: 'center',
   },
   promoBtnText: { fontSize: 14, fontFamily: FF.semibold, color: '#fff' },
-  promoSuccess: { fontSize: 12, fontFamily: FF.medium, color: '#22C55E', marginTop: 6 },
+  promoSuccess: { fontSize: 12, fontFamily: FF.medium, color: '#E8458B', marginTop: 6 },
 
   // Sections
   section: { marginBottom: 28 },
@@ -395,7 +395,7 @@ const s = StyleSheet.create({
   // Features
   featureList: { gap: 10, marginTop: 12 },
   featureRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  featureTick: { color: '#22C55E', fontSize: 14, fontFamily: FF.semibold, width: 18, marginTop: 1 },
+  featureTick: { color: '#E8458B', fontSize: 14, fontFamily: FF.semibold, width: 18, marginTop: 1 },
   featureText: { fontSize: 14, fontFamily: FF.regular, color: colors.textMid, flex: 1 },
 
   // Days selector
@@ -404,11 +404,11 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 14, padding: 18,
     borderWidth: 1.5, borderColor: colors.border,
   },
-  dayCardSelected: { borderColor: '#22C55E', backgroundColor: 'rgba(34,197,94,0.06)' },
+  dayCardSelected: { borderColor: '#E8458B', backgroundColor: 'rgba(232,69,139,0.06)' },
   dayLabel: { fontSize: 16, fontFamily: FF.semibold, color: colors.text, marginBottom: 3 },
-  dayLabelSelected: { color: '#22C55E' },
+  dayLabelSelected: { color: '#E8458B' },
   daySub: { fontSize: 13, fontFamily: FF.regular, color: colors.textMuted },
-  daySubSelected: { color: 'rgba(34,197,94,0.7)' },
+  daySubSelected: { color: 'rgba(232,69,139,0.7)' },
 
   // Tips
   tipsToggle: {
@@ -429,7 +429,7 @@ const s = StyleSheet.create({
   // CTAs
   ctaWrap: { paddingHorizontal: 24, paddingBottom: 16, paddingTop: 8, gap: 10 },
   ctaBtn: {
-    backgroundColor: '#22C55E', borderRadius: 14, paddingVertical: 16,
+    backgroundColor: '#E8458B', borderRadius: 14, paddingVertical: 16,
     alignItems: 'center',
   },
   ctaBtnDisabled: { opacity: 0.4 },

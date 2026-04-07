@@ -102,7 +102,7 @@ export default function PlanChangesScreen({ navigation, route }) {
               <Text style={s.sectionTitle}>Added</Text>
               {changes.added.map((a, i) => (
                 <View key={i} style={s.changeRow}>
-                  <View style={[s.changeDot, { backgroundColor: '#22C55E' }]} />
+                  <View style={[s.changeDot, { backgroundColor: '#E8458B' }]} />
                   <Text style={s.changeText}>{formatActivity(a)}</Text>
                 </View>
               ))}

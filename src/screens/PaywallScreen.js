@@ -676,9 +676,9 @@ const s = StyleSheet.create({
   guaranteeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(34,197,94,0.08)',
+    backgroundColor: 'rgba(232,69,139,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.2)',
+    borderColor: 'rgba(232,69,139,0.2)',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
@@ -799,9 +799,9 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
   },
   holdingSavingsBadge: {
-    backgroundColor: 'rgba(34,197,94,0.2)',
+    backgroundColor: 'rgba(232,69,139,0.2)',
     borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.45)',
+    borderColor: 'rgba(232,69,139,0.45)',
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,

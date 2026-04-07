@@ -19,7 +19,7 @@ const FF = fontFamily;
 const TOTAL_STEPS = 5;
 
 const FITNESS_LEVEL_COLORS = {
-  beginner:     '#22C55E',
+  beginner:     '#E8458B',
   intermediate: '#E8458B',
   advanced:     '#EF4444',
   expert:       '#DC2626',
@@ -717,8 +717,8 @@ export default function PlanConfigScreen({ navigation, route }) {
             {oneOffRides.map(ride => (
               <View key={ride.id} style={s.organisedCard}>
                 <View style={s.organisedCardRow}>
-                  <View style={[s.organisedDayBadge, { backgroundColor: '#22C55E18' }]}>
-                    <Text style={[s.organisedDayBadgeText, { color: '#22C55E' }]}>
+                  <View style={[s.organisedDayBadge, { backgroundColor: '#E8458B18' }]}>
+                    <Text style={[s.organisedDayBadgeText, { color: '#E8458B' }]}>
                       {(() => {
                         const [y, m, d] = ride.date.split('-').map(Number);
                         const dt = new Date(y, m - 1, d);
@@ -1164,12 +1164,12 @@ export default function PlanConfigScreen({ navigation, route }) {
                   <Text style={s.coachBio} numberOfLines={selected ? undefined : 2}>{coach.bio}</Text>
                   <View style={s.coachBadgeRow}>
                     <View style={[s.coachLevelBadge, {
-                      backgroundColor: coach.level === 'beginner' ? 'rgba(34,197,94,0.12)'
+                      backgroundColor: coach.level === 'beginner' ? 'rgba(232,69,139,0.12)'
                         : coach.level === 'intermediate' ? 'rgba(232,69,139,0.12)'
                         : 'rgba(239,68,68,0.12)'
                     }]}>
                       <Text style={[s.coachLevelText, {
-                        color: coach.level === 'beginner' ? '#22C55E'
+                        color: coach.level === 'beginner' ? '#E8458B'
                           : coach.level === 'intermediate' ? '#E8458B'
                           : '#EF4444'
                       }]}>
@@ -1350,7 +1350,7 @@ const s = StyleSheet.create({
   divider: { height: 1, backgroundColor: colors.border, marginVertical: 16 },
   placeLabel: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4, marginHorizontal: 4 },
   placeStatus: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, marginBottom: 14, marginHorizontal: 4 },
-  placeStatusOk: { color: '#22C55E' },
+  placeStatusOk: { color: '#E8458B' },
   placeStatusPending: { color: colors.primary },
 
   // ── Activity palette ─────────────────────────────────────────────────────
@@ -1397,7 +1397,7 @@ const s = StyleSheet.create({
     paddingVertical: 8, paddingHorizontal: 4,
   },
   dayShort: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
-  dayScheduledTag: { fontSize: 8, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E', letterSpacing: 0.3, marginBottom: 3, textTransform: 'uppercase' },
+  dayScheduledTag: { fontSize: 8, fontWeight: '600', fontFamily: FF.semibold, color: '#E8458B', letterSpacing: 0.3, marginBottom: 3, textTransform: 'uppercase' },
   dayRecurringName: { fontSize: 8, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, marginBottom: 3, textAlign: 'center', paddingHorizontal: 2 },
   dayStack: { width: '100%', alignItems: 'center', gap: 3 },
   stackPill: {
@@ -1411,7 +1411,7 @@ const s = StyleSheet.create({
   dayEmptyPlus: { fontSize: 22, color: colors.primary, fontWeight: '500', marginTop: 4 },
   dayHint: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, textAlign: 'center', marginTop: 4, marginBottom: 8 },
 
-  counterHintDone: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: '#22C55E', marginTop: 1 },
+  counterHintDone: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: '#E8458B', marginTop: 1 },
 
   // Cross-training info note
   crossTrainNote: {
@@ -1510,8 +1510,8 @@ const s = StyleSheet.create({
   durationPillActive: { borderColor: colors.primary, backgroundColor: 'rgba(232,69,139,0.1)' },
   durationPillText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
   durationPillTextActive: { color: colors.primary, fontWeight: '600' },
-  beginnerDurationBadge: { alignSelf: 'flex-start', backgroundColor: 'rgba(34,197,94,0.12)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, marginBottom: 16 },
-  beginnerDurationText: { fontSize: 14, fontFamily: FF.semibold, color: '#22C55E' },
+  beginnerDurationBadge: { alignSelf: 'flex-start', backgroundColor: 'rgba(232,69,139,0.12)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, marginBottom: 16 },
+  beginnerDurationText: { fontSize: 14, fontFamily: FF.semibold, color: '#E8458B' },
 
   // ── Start date ─────────────────────────────────────────────────────────────
   startDateOption: {
@@ -1532,9 +1532,9 @@ const s = StyleSheet.create({
   startDateDesc: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, lineHeight: 18 },
   recommendBadge: {
     marginTop: 6, alignSelf: 'flex-start',
-    backgroundColor: 'rgba(34,197,94,0.12)', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8,
+    backgroundColor: 'rgba(232,69,139,0.12)', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8,
   },
-  recommendText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: '#22C55E' },
+  recommendText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: '#E8458B' },
 
   customDateWrap: { marginTop: 8, marginBottom: 8 },
   customDateHint: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 6, marginHorizontal: 4 },

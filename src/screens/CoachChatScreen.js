@@ -631,14 +631,14 @@ const s = StyleSheet.create({
 
   // Plan update action bar
   updateBar: {
-    backgroundColor: 'rgba(34,197,94,0.08)', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)',
+    backgroundColor: 'rgba(232,69,139,0.08)', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(232,69,139,0.25)',
     padding: 14, marginBottom: 8, marginTop: 4,
   },
-  updateDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E', marginBottom: 8 },
+  updateDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E8458B', marginBottom: 8 },
   updateBarText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.text, marginBottom: 12, lineHeight: 18 },
   updateActions: { flexDirection: 'row', gap: 10 },
   updateApplyBtn: {
-    flex: 1, height: 42, borderRadius: 12, backgroundColor: '#22C55E',
+    flex: 1, height: 42, borderRadius: 12, backgroundColor: '#E8458B',
     alignItems: 'center', justifyContent: 'center',
   },
   updateApplyText: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },

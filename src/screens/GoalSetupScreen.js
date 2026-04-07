@@ -353,8 +353,8 @@ const s = StyleSheet.create({
   },
   lookupBtnText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
   lookupResult: {
-    backgroundColor: 'rgba(34,197,94,0.06)', borderRadius: 12, padding: 14, marginBottom: 16,
-    borderWidth: 1, borderColor: 'rgba(34,197,94,0.2)',
+    backgroundColor: 'rgba(232,69,139,0.06)', borderRadius: 12, padding: 14, marginBottom: 16,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
   },
   lookupResultName: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
   lookupResultMeta: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, marginBottom: 4 },
