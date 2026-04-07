@@ -205,7 +205,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 14, padding: 14, marginBottom: 10,
     borderWidth: 1.5, borderColor: colors.border,
   },
-  coachCardSelected: { borderColor: colors.primary, backgroundColor: 'rgba(232,69,139,0.04)' },
+  coachCardSelected: { borderColor: colors.primary, backgroundColor: colors.surface },
   coachAvatar: {
     width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
   },

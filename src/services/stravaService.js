@@ -133,7 +133,7 @@ export async function fetchRecentActivities(after = null) {
 
   // Filter to cycling activities only
   return activities
-    .filter(a => a.type === 'Ride' || a.type === 'VirtualRide' || a.type === 'GravelRide' || a.type === 'MountainBikeRide')
+    .filter(a => a.type === 'Ride' || a.type === 'VirtualRide' || a.type === 'GravelRide' || a.type === 'MountainBikeRide' || a.type === 'EBikeRide')
     .map(a => ({
       stravaId:    a.id,
       name:        a.name,

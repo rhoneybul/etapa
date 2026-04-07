@@ -42,6 +42,9 @@ export default function WeekViewScreen({ navigation, route }) {
   const [orgRideForm, setOrgRideForm] = useState({ description: '', durationMins: '', distanceKm: '', elevationM: '' });
   const [stravaActivities, setStravaActivities] = useState([]);
 
+  // Background adjustment flag — must live here (before any early return) to satisfy Rules of Hooks
+  const [adjustingInBackground, setAdjustingInBackground] = useState(false);
+
   // Compute the actual date for a given day index in the current week
   const getWeekDayInfo = (dayIdx) => {
     if (!plan?.startDate) return { label: DAY_LABELS_FULL[dayIdx], dateStr: '' };
@@ -131,9 +134,6 @@ export default function WeekViewScreen({ navigation, route }) {
     await markActivityComplete(id);
     await loadPlan();
   };
-
-  // Track background adjustments
-  const [adjustingInBackground, setAdjustingInBackground] = useState(false);
 
   // Add organised ride to current week
   const handleAddOrganisedRide = async () => {
@@ -581,10 +581,19 @@ function parseDateLocal(dateStr) {
   return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12, 0, 0);
 }
 
+/** Snap a parsed date to the Monday of its week */
+function snapToMonday(date) {
+  const jsDay = date.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const mondayOffset = jsDay === 0 ? -6 : -(jsDay - 1);
+  const monday = new Date(date);
+  monday.setDate(monday.getDate() + mondayOffset);
+  return monday;
+}
+
 function getDayDate(startDateStr, week, dayIdx) {
-  const start = parseDateLocal(startDateStr);
+  const monday = snapToMonday(parseDateLocal(startDateStr));
   const offset = (week - 1) * 7 + dayIdx;
-  const d = new Date(start);
+  const d = new Date(monday);
   d.setDate(d.getDate() + offset);
   const day = d.getDate();
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -592,8 +601,8 @@ function getDayDate(startDateStr, week, dayIdx) {
 }
 
 function getDayDateStr(startDateStr, week, dayIdx) {
-  const start = parseDateLocal(startDateStr);
-  const d = new Date(start);
+  const monday = snapToMonday(parseDateLocal(startDateStr));
+  const d = new Date(monday);
   d.setDate(d.getDate() + (week - 1) * 7 + dayIdx);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');

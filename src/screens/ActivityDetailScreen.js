@@ -478,17 +478,6 @@ export default function ActivityDetailScreen({ navigation, route }) {
             </View>
           )}
 
-          {/* Add organised ride link */}
-          {!isEditing && activity && (
-            <TouchableOpacity
-              style={s.addOrgRideLink}
-              onPress={() => navigation.replace('WeekView', { planId: plan.id, week: activity.week, openOrgRide: activity.dayOfWeek })}
-              activeOpacity={0.7}
-            >
-              <Text style={s.addOrgRideLinkPlus}>+</Text>
-              <Text style={s.addOrgRideLinkText}>Add an organised ride this week</Text>
-            </TouchableOpacity>
-          )}
 
           <View style={{ height: 80 }} />
         </ScrollView>
@@ -507,7 +496,7 @@ export default function ActivityDetailScreen({ navigation, route }) {
                 style={s.chatInput}
                 value={chatText}
                 onChangeText={setChatText}
-                placeholder="Ask your coach anything\u2026"
+                placeholder="Ask your coach anything..."
                 placeholderTextColor={colors.textFaint}
                 editable={!chatLoading}
                 returnKeyType="send"

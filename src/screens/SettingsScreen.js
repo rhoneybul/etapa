@@ -37,6 +37,7 @@ export default function SettingsScreen({ navigation }) {
   const [userPrefs, setUserPrefsState] = useState({ units: 'km', displayName: '' });
   const [editingName, setEditingName] = useState(false);
   const [comingSoonConfig, setComingSoonConfig] = useState(null);
+  const [stravaEnabled, setStravaEnabled] = useState(true); // default to enabled
 
   // Guard against double-tap paywall navigation
   const navigatingRef = useRef(false);
@@ -57,7 +58,10 @@ export default function SettingsScreen({ navigation }) {
     api.preferences.get().then(setPreferences).catch(() => {});
     getUserPrefs().then(p => { setUserPrefsState(p); setNameInput(p.displayName || ''); }).catch(() => {});
     Notifications.getPermissionsAsync().then(({ status }) => setNotifPermission(status)).catch(() => {});
-    api.appConfig.get().then(cfg => { if (cfg?.coming_soon) setComingSoonConfig(cfg.coming_soon); }).catch(() => {});
+    api.appConfig.get().then(cfg => {
+      if (cfg?.coming_soon) setComingSoonConfig(cfg.coming_soon);
+      if (cfg?.strava_enabled !== undefined) setStravaEnabled(!!cfg.strava_enabled);
+    }).catch(() => {});
     // Find starter/beginner plan for refund eligibility
     getPlans().then(plans => {
       const bp = plans.find(p => p.name === 'Get into Cycling' && p.paymentStatus === 'paid');
@@ -331,26 +335,43 @@ export default function SettingsScreen({ navigation }) {
         {/* Strava */}
         <Text style={s.sectionLabel}>CONNECTIONS</Text>
         <View style={s.card}>
-          <TouchableOpacity style={s.row} onPress={stravaOk ? handleDisconnectStrava : handleConnectStrava} activeOpacity={0.7}>
-            <View style={s.rowLeft}>
-              <View style={s.stravaIconWrap}>
-                <StravaLogo size={20} />
+          {stravaEnabled ? (
+            <TouchableOpacity style={s.row} onPress={stravaOk ? handleDisconnectStrava : handleConnectStrava} activeOpacity={0.7}>
+              <View style={s.rowLeft}>
+                <View style={s.stravaIconWrap}>
+                  <StravaLogo size={20} />
+                </View>
+                <View>
+                  <Text style={s.rowTitle}>Strava</Text>
+                  <Text style={s.rowSub}>
+                    {stravaOk
+                      ? (stravaName ? `Connected as ${stravaName}` : 'Connected')
+                      : 'Sync your rides automatically'}
+                  </Text>
+                </View>
               </View>
-              <View>
-                <Text style={s.rowTitle}>Strava</Text>
-                <Text style={s.rowSub}>
-                  {stravaOk
-                    ? (stravaName ? `Connected as ${stravaName}` : 'Connected')
-                    : 'Sync your rides automatically'}
+              <View style={[s.stravaBadge, stravaOk && s.stravaBadgeConnected]}>
+                <Text style={[s.stravaBadgeText, stravaOk && s.stravaBadgeTextConnected]}>
+                  {stravaOk ? 'Disconnect' : 'Connect'}
                 </Text>
               </View>
+            </TouchableOpacity>
+          ) : (
+            <View style={s.row}>
+              <View style={s.rowLeft}>
+                <View style={[s.stravaIconWrap, { opacity: 0.5 }]}>
+                  <StravaLogo size={20} />
+                </View>
+                <View>
+                  <Text style={[s.rowTitle, { color: colors.textMuted }]}>Strava</Text>
+                  <Text style={s.rowSub}>Sync your rides automatically</Text>
+                </View>
+              </View>
+              <View style={s.comingSoonBadge}>
+                <Text style={s.comingSoonText}>Coming Soon</Text>
+              </View>
             </View>
-            <View style={[s.stravaBadge, stravaOk && s.stravaBadgeConnected]}>
-              <Text style={[s.stravaBadgeText, stravaOk && s.stravaBadgeTextConnected]}>
-                {stravaOk ? 'Disconnect' : 'Connect'}
-              </Text>
-            </View>
-          </TouchableOpacity>
+          )}
         </View>
 
         {/* Coaching */}
@@ -406,7 +427,7 @@ export default function SettingsScreen({ navigation }) {
                 <TouchableOpacity style={s.row} onPress={handleRefundStarter}>
                   <View style={s.rowLeft}>
                     <View>
-                      <Text style={[s.rowTitle, { color: '#EF4444' }]}>Request Refund</Text>
+                      <Text style={[s.rowTitle, { color: colors.primary }]}>Request Refund</Text>
                       <Text style={s.rowSub}>Full {starterPriceLabel || ''} refund · available for first 2 weeks</Text>
                     </View>
                   </View>
@@ -418,7 +439,7 @@ export default function SettingsScreen({ navigation }) {
               <TouchableOpacity style={s.row} onPress={handleManagePlan} disabled={portalLoading}>
                 <View style={s.rowLeft}>
                   <View>
-                    <Text style={[s.rowTitle, { color: '#EF4444' }]}>{portalLoading ? 'Opening...' : 'Cancel Subscription'}</Text>
+                    <Text style={[s.rowTitle, { color: colors.primary }]}>{portalLoading ? 'Opening...' : 'Cancel Subscription'}</Text>
                     <Text style={s.rowSub}>Cancel your plan via Stripe</Text>
                   </View>
                 </View>
@@ -445,7 +466,7 @@ export default function SettingsScreen({ navigation }) {
                 <TouchableOpacity style={s.row} onPress={handleRefundLifetime}>
                   <View style={s.rowLeft}>
                     <View>
-                      <Text style={[s.rowTitle, { color: '#EF4444' }]}>Request Refund</Text>
+                      <Text style={[s.rowTitle, { color: colors.primary }]}>Request Refund</Text>
                       <Text style={s.rowSub}>7-day money-back guarantee</Text>
                     </View>
                   </View>
@@ -475,7 +496,7 @@ export default function SettingsScreen({ navigation }) {
               <TouchableOpacity style={s.row} onPress={handleManagePlan} disabled={portalLoading}>
                 <View style={s.rowLeft}>
                   <View>
-                    <Text style={[s.rowTitle, { color: '#EF4444' }]}>{portalLoading ? 'Opening...' : 'Cancel Subscription'}</Text>
+                    <Text style={[s.rowTitle, { color: colors.primary }]}>{portalLoading ? 'Opening...' : 'Cancel Subscription'}</Text>
                     <Text style={s.rowSub}>Cancel your plan via Stripe</Text>
                   </View>
                 </View>
@@ -638,7 +659,7 @@ export default function SettingsScreen({ navigation }) {
         <View style={s.card}>
           <TouchableOpacity style={s.row} onPress={handleSignOut}>
             <View style={s.rowLeft}>
-              <Text style={[s.rowTitle, { color: '#EF4444' }]}>Sign out</Text>
+              <Text style={[s.rowTitle, { color: colors.primary }]}>Sign out</Text>
             </View>
             <Text style={s.chevron}>{'\u203A'}</Text>
           </TouchableOpacity>
@@ -691,9 +712,9 @@ const s = StyleSheet.create({
   comingSoonText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted },
   stravaIconWrap: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#FC4C02', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   stravaBadge: { backgroundColor: 'rgba(232,69,139,0.12)', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
-  stravaBadgeConnected: { backgroundColor: 'rgba(239,68,68,0.10)' },
+  stravaBadgeConnected: { backgroundColor: 'rgba(232,69,139,0.10)' },
   stravaBadgeText: { fontSize: 12, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary },
-  stravaBadgeTextConnected: { color: '#EF4444' },
+  stravaBadgeTextConnected: { color: colors.primary },
   starterBadge: { backgroundColor: 'rgba(232,69,139,0.12)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   starterBadgeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, letterSpacing: 0.5 },
   unreadBadge: { backgroundColor: colors.primary, borderRadius: 10, minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6 },

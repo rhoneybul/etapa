@@ -253,7 +253,7 @@ export default function PlanConfigScreen({ navigation, route }) {
   });
 
   const totalCyclingPlaced = Object.values(placedByType).reduce((s, v) => s + v, 0);
-  const allPlaced = totalCyclingPlaced > 0 && totalCyclingPlaced >= totalSessions;
+  const allPlaced = totalCyclingPlaced > 0;
 
   // Handle tapping a day card — place or remove the selected activity
   const handleDayTap = (dayKey) => {
@@ -412,20 +412,42 @@ export default function PlanConfigScreen({ navigation, route }) {
     setOneOffRides(prev => prev.filter(r => r.id !== id));
   };
 
-  // ── Long ride day auto-detection ──
-  // Prefer Saturday or Sunday if assigned as a ride day; user can override
-  const autoLongRideDay = (() => {
-    const rideDays = Object.entries(dayActivities)
-      .filter(([, acts]) => acts.some(a => isCyclingType(a)))
-      .map(([day]) => day);
-    if (rideDays.includes('saturday')) return 'saturday';
-    if (rideDays.includes('sunday')) return 'sunday';
-    // Fallback: last ride day of the week
-    const dayOrder = DAYS.map(d => d.key);
-    const sorted = rideDays.sort((a, b) => dayOrder.indexOf(b) - dayOrder.indexOf(a));
-    return sorted[0] || null;
-  })();
-  const effectiveLongRideDay = longRideDayOverride || autoLongRideDay;
+  // ── Long ride day — user must explicitly select ──
+  const effectiveLongRideDay = longRideDayOverride || null;
+
+  // Selecting a long ride day also places an outdoor ride on that day and
+  // removes the auto-placed one from the previous long ride day (if any).
+  const handleSelectLongRideDay = (dayKey) => {
+    setDayActivities(prev => {
+      const next = { ...prev };
+      // Remove the auto-placed outdoor from the old long ride day
+      if (longRideDayOverride && longRideDayOverride !== dayKey) {
+        const old = next[longRideDayOverride] || [];
+        const idx = old.indexOf('outdoor');
+        if (idx !== -1) {
+          const updated = [...old];
+          updated.splice(idx, 1);
+          if (updated.length === 0) delete next[longRideDayOverride];
+          else next[longRideDayOverride] = updated;
+        }
+      }
+      // Place an outdoor ride on the new long ride day if not already there
+      const current = next[dayKey] || [];
+      if (!current.includes('outdoor')) {
+        next[dayKey] = [...current, 'outdoor'];
+        // Keep session count in sync
+        let newPlaced = 0;
+        Object.values(next).forEach(acts => { newPlaced += acts.filter(a => a === 'outdoor').length; });
+        setSessionCounts(sc => {
+          const target = sc['outdoor'] || 0;
+          if (newPlaced > target) return { ...sc, outdoor: newPlaced };
+          return sc;
+        });
+      }
+      return next;
+    });
+    setLongRideDayOverride(dayKey);
+  };
 
   // Derive legacy formats for downstream compatibility
   const dayAssignments = {};
@@ -444,7 +466,7 @@ export default function PlanConfigScreen({ navigation, route }) {
   const canContinue = () => {
     if (step === 1) return !!fitnessLevel;
     if (step === 2) return trainingTypes.length > 0;
-    if (step === 3) return allPlaced;
+    if (step === 3) return !!effectiveLongRideDay && allPlaced;
     if (step === 4) {
       if (startDateChoice === 'custom' && !/^\d{4}-\d{2}-\d{2}$/.test(customStartDate)) return false;
       if (!goal.targetDate && !planWeeks) return false;
@@ -809,58 +831,36 @@ export default function PlanConfigScreen({ navigation, route }) {
             )}
           </View>
 
-          {/* ── Session counters (how many can you do?) ── */}
+          {/* ── Long ride day — prominent step before the placement grid ── */}
           <View style={s.divider} />
-          <Text style={s.counterSectionTitle}>Starting sessions per week</Text>
-          {organisedOutdoorCount > 0 && (
-            <Text style={s.counterSectionHint}>
-              {organisedOutdoorCount} outdoor ride{organisedOutdoorCount !== 1 ? 's' : ''} already added from your organised rides
-            </Text>
-          )}
-          {activeTypes.map(tt => {
-            const count = sessionCounts[tt.key] || 0;
-            const placed = placedByType[tt.key] || 0;
-            const fromOrganised = tt.key === 'outdoor' ? organisedOutdoorCount : 0;
-            return (
-              <View key={tt.key} style={s.counterRow}>
-                <View style={[s.typeIndicator, { backgroundColor: TYPE_COLORS[tt.key] || colors.primary }]} />
-                <View style={s.counterLabelWrap}>
-                  <Text style={s.counterLabel}>{tt.label}</Text>
-                  {fromOrganised > 0 && (
-                    <Text style={s.counterOrganisedNote}>{fromOrganised} from organised rides</Text>
-                  )}
-                  {placed > 0 && (
-                    <Text style={s.counterHintDone}>{placed} placed</Text>
-                  )}
-                </View>
-                <View style={s.counterControls}>
-                  <TouchableOpacity
-                    style={[s.counterBtn, count <= 0 && s.counterBtnDisabled]}
-                    onPress={() => adjustCount(tt.key, -1)}
-                    disabled={count <= 0}
-                  >
-                    <Text style={[s.counterBtnText, count <= 0 && s.counterBtnTextDisabled]}>{'\u2212'}</Text>
-                  </TouchableOpacity>
-                  <Text style={s.counterValue}>{count}</Text>
-                  <TouchableOpacity
-                    style={s.counterBtn}
-                    onPress={() => adjustCount(tt.key, 1)}
-                  >
-                    <Text style={s.counterBtnText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })}
+          <Text style={s.placeLabel}>Select your day for your biggest ride</Text>
+          <Text style={s.placeSub}>
+            Your coach will schedule your longest session here each week.
+          </Text>
+          <View style={s.longRideDayRow}>
+            {DAYS.map(d => {
+              const isSelected = effectiveLongRideDay === d.key;
+              return (
+                <TouchableOpacity
+                  key={d.key}
+                  style={[s.longRidePill, isSelected && s.longRidePillSelected]}
+                  onPress={() => handleSelectLongRideDay(d.key)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[s.longRidePillText, isSelected && s.longRidePillTextSelected]}>{d.short}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
           {/* ── Activity palette ── */}
           <View style={s.divider} />
           <Text style={s.placeLabel}>Build your week</Text>
           <Text style={s.placeSub}>
-            Select an activity, then tap a day to place it. Tap a placed item to remove it. You can stack multiple activities on one day.
+            Select an activity, then tap a day to place it. Tap a placed item to remove it. Place as many sessions as you like — you can stack multiple activities on one day.
           </Text>
-          <Text style={[s.placeStatus, allPlaced ? s.placeStatusOk : s.placeStatusPending]}>
-            {totalCyclingPlaced} cycling session{totalCyclingPlaced !== 1 ? 's' : ''} placed
+          <Text style={s.placeSub}>
+            Place as many as you think you're capable of doing — and any other activities in your routine.
           </Text>
 
           {/* Search box for activities — above the palette */}
@@ -889,11 +889,6 @@ export default function PlanConfigScreen({ navigation, route }) {
                 >
                   <View style={[s.paletteDot, { backgroundColor: cp.color }]} />
                   <Text style={[s.paletteLabel, isSelected && { color: cp.color }]}>{cp.label}</Text>
-                  {remaining > 0 && (
-                    <View style={[s.paletteBadge, { backgroundColor: cp.color }]}>
-                      <Text style={s.paletteBadgeText}>{remaining}</Text>
-                    </View>
-                  )}
                 </TouchableOpacity>
               );
             })}
@@ -1003,44 +998,6 @@ export default function PlanConfigScreen({ navigation, route }) {
               </Text>
             </View>
           )}
-
-          {/* ── Long ride day — prominent card ── */}
-          {allPlaced && (
-            <View style={s.longRideSection}>
-              <View style={s.longRideCard}>
-                <Text style={s.longRideCardTitle}>When do you want your long ride?</Text>
-                <Text style={s.longRideCardHint}>
-                  Your longest ride each week will be on{' '}
-                  <Text style={{ color: colors.primary, fontFamily: FF.semibold }}>
-                    {effectiveLongRideDay ? DAYS.find(d => d.key === effectiveLongRideDay)?.short || effectiveLongRideDay : '—'}
-                  </Text>
-                  {autoLongRideDay && !longRideDayOverride ? ' (auto)' : ''}
-                </Text>
-                <View style={s.longRideDayRow}>
-                  {DAYS.filter(d => {
-                    const acts = dayActivities[d.key] || [];
-                    return acts.some(a => isCyclingType(a));
-                  }).map(d => {
-                    const isSelected = effectiveLongRideDay === d.key;
-                    const isAuto = autoLongRideDay === d.key && !longRideDayOverride;
-                    return (
-                      <TouchableOpacity
-                        key={d.key}
-                        style={[s.longRidePill, isSelected && s.longRidePillSelected]}
-                        onPress={() => setLongRideDayOverride(d.key === autoLongRideDay ? null : d.key)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[s.longRidePillText, isSelected && s.longRidePillTextSelected]}>{d.short}</Text>
-                        {isAuto && <Text style={s.longRideAutoTag}>auto</Text>}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* Recurring rides moved up to before activity palette */}
 
           <View style={{ height: 20 }} />
         </ScrollView>
@@ -1552,7 +1509,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 14, padding: 14, marginBottom: 10,
     borderWidth: 1.5, borderColor: colors.border,
   },
-  coachCardSelected: { borderColor: colors.primary, backgroundColor: 'rgba(232,69,139,0.04)' },
+  coachCardSelected: { borderColor: colors.primary, backgroundColor: colors.surface },
   coachAvatar: {
     width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
   },

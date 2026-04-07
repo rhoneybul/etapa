@@ -61,12 +61,14 @@ router.post('/', async (req, res, next) => {
       throw planErr;
     }
 
-    // Replace activities: delete all existing then bulk-insert fresh set
-    // (Upsert on activities is tricky because IDs can change between edits)
+    // Replace activities: delete all existing then upsert fresh set.
+    // Using upsert (not insert) so that concurrent sync requests don't collide
+    // on the primary key — a second overlapping call will just overwrite instead
+    // of throwing a duplicate key 500.
     if (plan.activities && plan.activities.length > 0) {
       await supabase.from('activities').delete().eq('plan_id', plan.id).eq('user_id', userId);
       const actRows = plan.activities.map(a => activityToRow(a, userId, plan.id));
-      const { error: actErr } = await supabase.from('activities').insert(actRows);
+      const { error: actErr } = await supabase.from('activities').upsert(actRows, { onConflict: 'id' });
       if (actErr) throw actErr;
     }
 
@@ -104,7 +106,7 @@ router.put('/:id', async (req, res, next) => {
 
       if (plan.activities.length > 0) {
         const actRows = plan.activities.map(a => activityToRow(a, userId, planId));
-        const { error: insErr } = await supabase.from('activities').insert(actRows);
+        const { error: insErr } = await supabase.from('activities').upsert(actRows, { onConflict: 'id' });
         if (insErr) throw insErr;
       }
     }

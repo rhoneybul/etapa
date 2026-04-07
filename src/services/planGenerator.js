@@ -228,23 +228,58 @@ export function generatePlan(goal, config) {
       progressMultiplier = 1 + (week - 1) * 0.08;
     }
 
-    // Build the ride plan for this week
-    const weekRides = buildWeekRides(rideDaysPerWeek, isDeload, isTaper, isLastTaperWeek, isPeak, goal);
+    // ── Ride day slots: use ALL cycling days from availableDays directly.
+    // Do NOT slice by rideDaysPerWeek — that incorrectly steals cycling slots for
+    // strength. Strength days come from crossTrainingDays config instead.
+    const rideDaySlots = dayIndices; // dayIndices is built only from availableDays (cycling days)
 
-    // Assign rides to days — respect longRideDay preference
-    const rideDaySlots = dayIndices.slice(0, rideDaysPerWeek);
-    const strengthDaySlots = dayIndices.slice(rideDaysPerWeek, rideDaysPerWeek + strengthDaysPerWeek);
+    // Strength slots: pull from crossTrainingDays config so they land on the
+    // days the user actually chose for those sessions.
+    const ctDaysConfig = config.crossTrainingDays || {};
+    const strengthDaySlots = includeStrength
+      ? Object.keys(ctDaysConfig)
+          .map(d => DAY_NAMES.indexOf(d.toLowerCase()))
+          .filter(i => i >= 0)
+          .sort((a, b) => a - b)
+      : [];
 
-    // If longRideDay is set, ensure the Long Ride template lands on that day
+    // Build ride templates for the number of cycling day slots we actually have
+    const weekRides = buildWeekRides(rideDaySlots.length, isDeload, isTaper, isLastTaperWeek, isPeak, goal);
+
+    // ── Lock the Long Ride to the chosen longRideDay ──────────────────────────
     const longRideDayIdx = longRideDay ? DAY_NAMES.indexOf(longRideDay) : -1;
     if (longRideDayIdx >= 0 && rideDaySlots.includes(longRideDayIdx)) {
-      const longIdx = weekRides.findIndex(r => r.title === 'Long Ride');
-      if (longIdx >= 0) {
-        const targetSlotPos = rideDaySlots.indexOf(longRideDayIdx);
-        if (targetSlotPos >= 0 && targetSlotPos !== longIdx) {
-          // Swap rides so the long ride lands on the preferred day
-          [weekRides[longIdx], weekRides[targetSlotPos]] = [weekRides[targetSlotPos], weekRides[longIdx]];
+      const targetSlotPos = rideDaySlots.indexOf(longRideDayIdx);
+
+      // If the current phase doesn't produce a Long Ride template (e.g. taper),
+      // inject one so the day is never left empty or mistyped.
+      let longIdx = weekRides.findIndex(r => r.title === 'Long Ride');
+      if (longIdx < 0 && !isTaper && !isLastTaperWeek) {
+        // Replace the last endurance/tempo with a Long Ride
+        const replaceIdx = weekRides.reduce((best, r, i) =>
+          (r.effort !== 'hard' && i !== targetSlotPos) ? i : best, -1);
+        if (replaceIdx >= 0) {
+          weekRides[replaceIdx] = { ...RIDE_TEMPLATES.longRide };
+          longIdx = replaceIdx;
         }
+      }
+
+      // Swap the Long Ride into the correct slot
+      if (longIdx >= 0 && targetSlotPos < weekRides.length && targetSlotPos !== longIdx) {
+        [weekRides[longIdx], weekRides[targetSlotPos]] = [weekRides[targetSlotPos], weekRides[longIdx]];
+      }
+
+      // ── Adjust adjacent rides for proper recovery ─────────────────────────
+      // Day before long ride → no hard/interval sessions (swap to endurance)
+      if (targetSlotPos > 0) {
+        const before = weekRides[targetSlotPos - 1];
+        if (before && before.effort === 'hard') {
+          weekRides[targetSlotPos - 1] = { ...RIDE_TEMPLATES.endurance };
+        }
+      }
+      // Day after long ride → always recovery
+      if (targetSlotPos < weekRides.length - 1) {
+        weekRides[targetSlotPos + 1] = { ...RIDE_TEMPLATES.recovery };
       }
     }
 
@@ -366,13 +401,80 @@ export function generatePlan(goal, config) {
     startDateStr = `${y}-${m}-${d}`;
   }
 
+  // ── Snap plan start to Monday for date calculations ──
+  // All dayOfWeek values (0=Mon … 6=Sun) are relative to the week's Monday, so
+  // planMonday MUST be used as the stored startDate — otherwise WeekViewScreen
+  // adds dayOfWeek to a non-Monday date and every activity lands on the wrong day.
+  const sdParts = startDateStr.split('-').map(Number);
+  const planStart = new Date(sdParts[0], sdParts[1] - 1, sdParts[2], 12, 0, 0);
+  const jsDayStart = planStart.getDay();
+  const mondayOff = jsDayStart === 0 ? -6 : -(jsDayStart - 1);
+  const planMonday = new Date(planStart);
+  planMonday.setDate(planMonday.getDate() + mondayOff);
+  // Always persist the Monday as startDate so display and scheduling stay in sync
+  const planMondayStr = `${planMonday.getFullYear()}-${String(planMonday.getMonth() + 1).padStart(2, '0')}-${String(planMonday.getDate()).padStart(2, '0')}`;
+
+  // ── Inject one-off planned rides deterministically ──
+  const oneOffRides = config.oneOffRides || [];
+  if (oneOffRides.length > 0) {
+    for (const oo of oneOffRides) {
+      if (!oo.date) continue;
+      const ooParts = oo.date.split('T')[0].split('-').map(Number);
+      const ooDate = new Date(ooParts[0], ooParts[1] - 1, ooParts[2], 12, 0, 0);
+      const diffDays = Math.round((ooDate - planMonday) / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) continue;
+      const ooWeek = Math.floor(diffDays / 7) + 1;
+      const ooDayOfWeek = diffDays % 7;
+      if (ooWeek > weeks) continue;
+
+      activities.push({
+        id: uid(),
+        planId: null,
+        week: ooWeek,
+        dayOfWeek: ooDayOfWeek,
+        type: 'ride',
+        subType: 'oneoff',
+        title: oo.notes ? `Planned: ${oo.notes}` : 'Planned Ride',
+        description: oo.notes || 'A specific ride you have planned for this date.',
+        notes: oo.elevationM ? `${oo.elevationM}m elevation` : null,
+        durationMins: oo.durationMins || 60,
+        distanceKm: oo.distanceKm || null,
+        elevationM: oo.elevationM || null,
+        effort: 'moderate',
+        completed: false,
+        completedAt: null,
+        isOneOff: true,
+        oneOffDate: oo.date,
+        stravaActivityId: null,
+        stravaData: null,
+      });
+    }
+  }
+
+  // ── Hard filter: remove any activity whose date falls on or after the event ──
+  if (goal.targetDate) {
+    const tp = goal.targetDate.split('T')[0].split('-').map(Number);
+    const eventDate = new Date(tp[0], tp[1] - 1, tp[2], 12, 0, 0);
+    const eventMs = eventDate.getTime();
+
+    for (let i = activities.length - 1; i >= 0; i--) {
+      const a = activities[i];
+      const actOffset = (a.week - 1) * 7 + (a.dayOfWeek ?? 0);
+      const actDate = new Date(planMonday);
+      actDate.setDate(actDate.getDate() + actOffset);
+      if (actDate.getTime() >= eventMs) {
+        activities.splice(i, 1);
+      }
+    }
+  }
+
   return {
     id: uid(),
     goalId: goal.id,
     configId: config.id,
     name: goal.planName || null,
     status: 'active',
-    startDate: startDateStr,
+    startDate: planMondayStr,
     weeks,
     currentWeek: 1,
     activities,
@@ -459,9 +561,9 @@ export function suggestWeeks(goal, fitnessLevel, startDate) {
     }
     const tp = goal.targetDate.split('T')[0].split('-');
     const target = new Date(Number(tp[0]), Number(tp[1]) - 1, Number(tp[2]), 12, 0, 0);
-    // Plan should cover up to the event week — the taper phase handles race prep
+    // Plan should finish BEFORE the event — last training week ends before event day
     const msToTarget = target - from;
-    const weeksToTarget = Math.ceil(msToTarget / (7 * 24 * 60 * 60 * 1000));
+    const weeksToTarget = Math.floor(msToTarget / (7 * 24 * 60 * 60 * 1000));
     // At least 4 weeks, at most 24
     return Math.min(Math.max(4, weeksToTarget), 24);
   }

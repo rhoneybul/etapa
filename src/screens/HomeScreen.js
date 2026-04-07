@@ -27,7 +27,7 @@ import { syncPlansToServer } from '../services/storageService';
 
 const FF = fontFamily;
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const CYCLING_LABELS = { road: 'Road', gravel: 'Gravel', mtb: 'MTB', mixed: 'Mixed' };
+const CYCLING_LABELS = { road: 'Road', gravel: 'Gravel', mtb: 'MTB', ebike: 'E-Bike', mixed: 'Mixed' };
 
 const SUGGEST_COLORS = {
   training:      '#E8458B',
@@ -995,18 +995,27 @@ function parseDateLocal(dateStr) {
   return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12, 0, 0);
 }
 
+/** Snap a parsed date to the Monday of its week */
+function snapToMonday(date) {
+  const jsDay = date.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const mondayOffset = jsDay === 0 ? -6 : -(jsDay - 1);
+  const monday = new Date(date);
+  monday.setDate(monday.getDate() + mondayOffset);
+  return monday;
+}
+
 function getDayDate(startDateStr, week, dayIdx) {
-  const start = parseDateLocal(startDateStr);
+  const monday = snapToMonday(parseDateLocal(startDateStr));
   const offset = (week - 1) * 7 + dayIdx;
-  const d = new Date(start);
+  const d = new Date(monday);
   d.setDate(d.getDate() + offset);
   return d.getDate();
 }
 
 /** Returns YYYY-MM-DD for a given plan week + day index */
 function getDayDateStr(startDateStr, week, dayIdx) {
-  const start = parseDateLocal(startDateStr);
-  const d = new Date(start);
+  const monday = snapToMonday(parseDateLocal(startDateStr));
+  const d = new Date(monday);
   d.setDate(d.getDate() + (week - 1) * 7 + dayIdx);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -1137,7 +1146,7 @@ const s = StyleSheet.create({
   beginnerCompactSub: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
 
   // Background image for empty state
-  bgImage: { opacity: 0.12 },
+  bgImage: { opacity: 0.08 },
   bgOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.15)' },
 
   // Empty plan state

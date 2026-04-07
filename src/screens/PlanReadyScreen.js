@@ -326,7 +326,7 @@ export default function PlanReadyScreen({ navigation, route }) {
           {isStravaConfigured && !stravaOk && (
             <Animated.View style={[s.stravaCard, { opacity: ctaFade }]}>
               <View style={s.stravaHeader}>
-                <View style={s.stravaLogo}><StravaLogo size={20} color="#fff" /></View>
+                <View style={s.stravaLogo}><StravaLogo size={40} /></View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.stravaTitle}>Connect Strava</Text>
                   <Text style={s.stravaSub}>Automatically track your rides and match them to your plan</Text>

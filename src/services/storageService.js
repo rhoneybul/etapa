@@ -421,8 +421,16 @@ export function getActivityDate(planStartDate, week, dayOfWeek) {
   const datePart = String(planStartDate).split('T')[0];
   const [y, m, d] = datePart.split('-').map(Number);
   const start = new Date(y, m - 1, d, 12, 0, 0); // noon local — no timezone shift
+
+  // Snap to Monday of the start week so dayOfWeek=0 always means Monday,
+  // even if the stored start date isn't exactly Monday (timezone edge, custom date, etc.)
+  const jsDay = start.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const mondayOffset = jsDay === 0 ? -6 : -(jsDay - 1);
+  const monday = new Date(start);
+  monday.setDate(monday.getDate() + mondayOffset);
+
   const offset = (week - 1) * 7 + (dayOfWeek ?? 0);
-  const result = new Date(start);
+  const result = new Date(monday);
   result.setDate(result.getDate() + offset);
   return result;
 }

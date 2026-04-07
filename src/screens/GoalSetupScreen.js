@@ -20,6 +20,7 @@ const CYCLING_TYPES = [
   { key: 'road',   label: 'Road', description: 'Road cycling on tarmac' },
   { key: 'gravel', label: 'Gravel', description: 'Mixed surface and gravel riding' },
   { key: 'mtb',    label: 'Mountain Bike', description: 'Off-road and trail riding' },
+  { key: 'ebike',  label: 'E-Bike', description: 'Electric-assisted cycling' },
   { key: 'mixed',  label: 'Mixed', description: 'A bit of everything' },
 ];
 

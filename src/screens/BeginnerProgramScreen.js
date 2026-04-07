@@ -55,8 +55,16 @@ const TIPS = [
   },
 ];
 
+const BIKE_TYPES = [
+  { key: 'road',  label: 'Road bike' },
+  { key: 'ebike', label: 'E-Bike' },
+  { key: 'mtb',   label: 'Mountain bike' },
+  { key: 'gravel',label: 'Gravel bike' },
+];
+
 export default function BeginnerProgramScreen({ navigation }) {
   const [daysPerWeek, setDaysPerWeek] = useState(null);
+  const [bikeType, setBikeType] = useState('road');
   const [showTips, setShowTips] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   // Dynamic pricing
@@ -103,7 +111,7 @@ export default function BeginnerProgramScreen({ navigation }) {
   /** Proceed to PlanConfig with an optional paymentStatus flag */
   const proceedToConfig = async (paymentStatus) => {
     const goal = await saveGoal({
-      cyclingType: 'road',
+      cyclingType: bikeType,
       goalType: 'beginner',
       targetDistance: null,
       targetElevation: null,
@@ -274,6 +282,26 @@ export default function BeginnerProgramScreen({ navigation }) {
             </View>
           </View>
 
+          {/* Bike type selector */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>What bike will you ride?</Text>
+            <View style={s.bikeTypeRow}>
+              {BIKE_TYPES.map(bt => {
+                const isSelected = bikeType === bt.key;
+                return (
+                  <TouchableOpacity
+                    key={bt.key}
+                    style={[s.bikeTypePill, isSelected && s.bikeTypePillSelected]}
+                    onPress={() => setBikeType(bt.key)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[s.bikeTypePillText, isSelected && s.bikeTypePillTextSelected]}>{bt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
           {/* Tips section */}
           <TouchableOpacity
             style={s.tipsToggle}
@@ -409,6 +437,16 @@ const s = StyleSheet.create({
   dayLabelSelected: { color: '#E8458B' },
   daySub: { fontSize: 13, fontFamily: FF.regular, color: colors.textMuted },
   daySubSelected: { color: 'rgba(232,69,139,0.7)' },
+
+  // Bike type
+  bikeTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  bikeTypePill: {
+    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12,
+    backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border,
+  },
+  bikeTypePillSelected: { borderColor: '#E8458B', backgroundColor: 'rgba(232,69,139,0.06)' },
+  bikeTypePillText: { fontSize: 14, fontFamily: FF.medium, color: colors.textMid },
+  bikeTypePillTextSelected: { color: '#E8458B' },
 
   // Tips
   tipsToggle: {

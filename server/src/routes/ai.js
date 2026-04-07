@@ -399,7 +399,7 @@ IMPORTANT: These activities add training stress. Factor them into recovery plann
 - Fitness level: ${fitnessLevel} (${benchmark.description})
 - Average speed: ~${benchmark.avgSpeedKmh} km/h
 - Max comfortable distance currently: ~${benchmark.maxComfortableDistKm} km
-- Cycling type: ${goal.cyclingType || 'road'}
+- Cycling type: ${goal.cyclingType || 'road'}${goal.cyclingType === 'ebike' ? ' (electric-assisted — focus on endurance and enjoyment rather than raw power. Adjust distances up since e-bikes allow longer rides at lower effort. Still include some sessions without motor assist for fitness building.)' : ''}
 - Goal: ${goal.goalType === 'race' ? 'Race preparation' : goal.goalType === 'distance' ? 'Hit a distance target' : 'General fitness improvement'}
 ${goal.eventName ? `- Event: ${goal.eventName}` : ''}
 ${goal.targetDistance ? `- Target distance: ${goal.targetDistance} km` : ''}

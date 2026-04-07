@@ -181,6 +181,8 @@ export async function generatePlanWithLLM(goal, config, onProgress) {
 /**
  * Build a full plan object from LLM-generated activities array.
  */
+const DAY_NAMES = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
 function buildPlanFromActivities(activities, goal, config) {
   let startDateStr;
   if (config.startDate) {
@@ -204,6 +206,144 @@ function buildPlanFromActivities(activities, goal, config) {
   // Filter out activities that exceed the configured week count
   const validActivities = activities.filter(a => a.week >= 1 && a.week <= maxWeeks);
 
+  const planActivities = validActivities.map(a => ({
+    id: uid(),
+    planId,
+    week: a.week,
+    dayOfWeek: a.dayOfWeek,
+    type: a.type || 'ride',
+    subType: a.subType || (a.type === 'strength' ? null : 'endurance'),
+    title: a.title || 'Session',
+    description: a.description || '',
+    notes: a.notes || null,
+    durationMins: a.durationMins || 45,
+    distanceKm: a.type === 'strength' ? null : (a.distanceKm || null),
+    effort: a.effort || 'moderate',
+    completed: false,
+    completedAt: null,
+    stravaActivityId: null,
+    stravaData: null,
+  }));
+
+  // ── Helper: parse startDateStr and snap to Monday ──
+  const sdParts = startDateStr.split('-').map(Number);
+  const planStart = new Date(sdParts[0], sdParts[1] - 1, sdParts[2], 12, 0, 0);
+  const jsDay = planStart.getDay();
+  const mondayOffset = jsDay === 0 ? -6 : -(jsDay - 1);
+  const planMonday = new Date(planStart);
+  planMonday.setDate(planMonday.getDate() + mondayOffset);
+
+  // ── Inject recurring/organised rides deterministically ──
+  // The LLM is instructed to include them but may place them on wrong days.
+  // Remove any LLM-generated recurring rides and re-inject at exact dayOfWeek.
+  const recurringRides = config.recurringRides || [];
+  if (recurringRides.length > 0) {
+    for (const rr of recurringRides) {
+      const rrDayIdx = DAY_NAMES.indexOf(rr.day);
+      if (rrDayIdx < 0) continue;
+
+      // For each week, ensure there's a recurring ride on the correct day
+      for (let week = 1; week <= maxWeeks; week++) {
+        // Check if LLM already placed something marked as recurring on this day
+        const existingIdx = planActivities.findIndex(
+          a => a.week === week && a.dayOfWeek === rrDayIdx && a.subType === 'recurring'
+        );
+        if (existingIdx >= 0) continue;
+
+        planActivities.push({
+          id: uid(),
+          planId,
+          week,
+          dayOfWeek: rrDayIdx,
+          type: 'ride',
+          subType: 'recurring',
+          title: rr.notes ? `Recurring: ${rr.notes}` : 'Recurring Ride',
+          description: rr.notes || 'Your regular weekly ride. The plan is built around this.',
+          notes: rr.elevationM ? `${rr.elevationM}m elevation` : null,
+          durationMins: rr.durationMins || 60,
+          distanceKm: rr.distanceKm || null,
+          elevationM: rr.elevationM || null,
+          effort: 'moderate',
+          completed: false,
+          completedAt: null,
+          isRecurring: true,
+          recurringRideId: rr.id,
+          stravaActivityId: null,
+          stravaData: null,
+        });
+      }
+    }
+  }
+
+  // ── Inject one-off planned rides deterministically ──
+  // These have a specific date — we calculate the exact week/dayOfWeek from the plan start.
+  // Remove any LLM-generated version first, then inject at the exact position.
+  const oneOffRides = config.oneOffRides || [];
+  if (oneOffRides.length > 0) {
+    for (const oo of oneOffRides) {
+      if (!oo.date) continue;
+      const ooParts = oo.date.split('T')[0].split('-').map(Number);
+      const ooDate = new Date(ooParts[0], ooParts[1] - 1, ooParts[2], 12, 0, 0);
+
+      // Calculate exact week and dayOfWeek from plan Monday
+      const diffDays = Math.round((ooDate - planMonday) / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) continue; // ride is before plan start — skip
+      const week = Math.floor(diffDays / 7) + 1;
+      const dayOfWeek = diffDays % 7; // 0=Mon, 1=Tue, ..., 6=Sun
+      if (week > maxWeeks) continue; // ride is after plan ends — skip
+
+      // Remove any LLM-generated activity on the same week+day that looks like a planned ride
+      for (let i = planActivities.length - 1; i >= 0; i--) {
+        const a = planActivities[i];
+        if (a.week === week && a.dayOfWeek === dayOfWeek && a.subType === 'oneoff') {
+          planActivities.splice(i, 1);
+        }
+      }
+
+      planActivities.push({
+        id: uid(),
+        planId,
+        week,
+        dayOfWeek,
+        type: 'ride',
+        subType: 'oneoff',
+        title: oo.notes ? `Planned: ${oo.notes}` : 'Planned Ride',
+        description: oo.notes || 'A specific ride you have planned for this date.',
+        notes: oo.elevationM ? `${oo.elevationM}m elevation` : null,
+        durationMins: oo.durationMins || 60,
+        distanceKm: oo.distanceKm || null,
+        elevationM: oo.elevationM || null,
+        effort: 'moderate',
+        completed: false,
+        completedAt: null,
+        isOneOff: true,
+        oneOffDate: oo.date,
+        stravaActivityId: null,
+        stravaData: null,
+      });
+    }
+  }
+
+  // ── Hard filter: remove any activity whose actual date falls on or after the event date ──
+  if (goal.targetDate) {
+    const tp = goal.targetDate.split('T')[0].split('-').map(Number);
+    const eventDate = new Date(tp[0], tp[1] - 1, tp[2], 12, 0, 0);
+    const eventMs = eventDate.getTime();
+
+    for (let i = planActivities.length - 1; i >= 0; i--) {
+      const a = planActivities[i];
+      const actOffset = (a.week - 1) * 7 + (a.dayOfWeek ?? 0);
+      const actDate = new Date(planMonday);
+      actDate.setDate(actDate.getDate() + actOffset);
+      if (actDate.getTime() >= eventMs) {
+        planActivities.splice(i, 1);
+      }
+    }
+  }
+
+  // Sort activities by week then day
+  planActivities.sort((a, b) => a.week !== b.week ? a.week - b.week : a.dayOfWeek - b.dayOfWeek);
+
   return {
     id: planId,
     goalId: goal.id,
@@ -213,24 +353,7 @@ function buildPlanFromActivities(activities, goal, config) {
     startDate: startDateStr,
     weeks: maxWeeks,
     currentWeek: 1,
-    activities: validActivities.map(a => ({
-      id: uid(),
-      planId,
-      week: a.week,
-      dayOfWeek: a.dayOfWeek,
-      type: a.type || 'ride',
-      subType: a.subType || (a.type === 'strength' ? null : 'endurance'),
-      title: a.title || 'Session',
-      description: a.description || '',
-      notes: a.notes || null,
-      durationMins: a.durationMins || 45,
-      distanceKm: a.type === 'strength' ? null : (a.distanceKm || null),
-      effort: a.effort || 'moderate',
-      completed: false,
-      completedAt: null,
-      stravaActivityId: null,
-      stravaData: null,
-    })),
+    activities: planActivities,
     createdAt: new Date().toISOString(),
   };
 }
