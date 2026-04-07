@@ -554,8 +554,9 @@ export default function SettingsScreen({ navigation }) {
                 value={preferences?.push_notifications !== 'disabled'}
                 onValueChange={handleTogglePushNotifications}
                 disabled={togglingNotif}
-                trackColor={{ false: colors.border, true: colors.primary }}
-                thumbColor="#fff"
+                trackColor={{ false: colors.border, true: colors.primaryDark }}
+                thumbColor={preferences?.push_notifications !== 'disabled' ? colors.primary : colors.textMid}
+                ios_backgroundColor={colors.border}
               />
             )}
           </View>

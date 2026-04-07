@@ -1,6 +1,6 @@
 // ── Etapa App Theme ──────────────────────────────────────────────────────────
-// Dark, crisp, performance-focused. Inspired by Ladder's serious aesthetic.
-// Deep black base with warm amber accent. Sharp edges, bold type.
+// Dark, crisp, performance-focused. Maglia rosa accent — the iconic pink
+// of the Giro d'Italia leader's jersey. Deep black base, sharp edges, bold type.
 
 export const colors = {
   // ── Surfaces ─────────────────────────────────────────────────────────────
@@ -18,22 +18,22 @@ export const colors = {
   textMuted:    '#606068',   // labels / captions
   textFaint:    '#35353D',   // placeholders / disabled
 
-  // ── Primary accent — warm amber ──────────────────────────────────────────
-  primary:      '#D97706',
-  primaryLight: '#D9770615', // amber at ~8% opacity
-  primaryDark:  '#B45309',
+  // ── Primary accent — maglia rosa ─────────────────────────────────────────
+  primary:      '#E8458B',
+  primaryLight: '#E8458B15', // rosa at ~8% opacity
+  primaryDark:  '#C4306E',
 
-  // ── Extended amber palette ───────────────────────────────────────────────
-  amber50:      '#FFF8EB',
-  amber100:     '#FEECC7',
-  amber200:     '#FDD889',
-  amber300:     '#FCC14B',
-  amber400:     '#FBAD23',
-  amber500:     '#D97706',
-  amber600:     '#B45309',
-  amber700:     '#92400E',
-  amber800:     '#783510',
-  amber900:     '#5C2D14',
+  // ── Extended rosa palette ───────────────────────────────────────────────
+  rosa50:       '#FFF0F5',
+  rosa100:      '#FFD6E7',
+  rosa200:      '#FFB3D1',
+  rosa300:      '#FF80B3',
+  rosa400:      '#F2598E',
+  rosa500:      '#E8458B',
+  rosa600:      '#C4306E',
+  rosa700:      '#9E2258',
+  rosa800:      '#7D1B46',
+  rosa900:      '#5C1434',
 
   // ── Accent — cool slate for secondary ───────────────────────────────────
   accent:       '#64748B',
@@ -44,7 +44,7 @@ export const colors = {
   goodLight:    '#22C55E15',
   caution:      '#F59E0B',
   cautionLight: '#F59E0B15',
-  cautionBorder:'#78350F',
+  cautionBorder:'#7D1B46',
   warn:         '#EF4444',
   warnLight:    '#EF444415',
   warnBorder:   '#7F1D1D',

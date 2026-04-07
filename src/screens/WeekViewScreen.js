@@ -646,8 +646,8 @@ const s = StyleSheet.create({
   adjustBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     marginHorizontal: 16, marginBottom: 8, paddingHorizontal: 14, paddingVertical: 10,
-    backgroundColor: 'rgba(217,119,6,0.08)', borderRadius: 10,
-    borderWidth: 1, borderColor: 'rgba(217,119,6,0.2)',
+    backgroundColor: 'rgba(232,69,139,0.08)', borderRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
   },
   adjustBannerText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
 

@@ -201,12 +201,12 @@ const s = StyleSheet.create({
   decorRing1: {
     position: 'absolute', top: -60, right: -80,
     width: 260, height: 260, borderRadius: 130,
-    borderWidth: 1, borderColor: 'rgba(217,119,6,0.06)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.06)',
   },
   decorRing2: {
     position: 'absolute', bottom: 160, left: -40,
     width: 180, height: 180, borderRadius: 90,
-    borderWidth: 1, borderColor: 'rgba(217,119,6,0.04)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.04)',
   },
   decorLine1: {
     position: 'absolute', top: height * 0.15, left: -40, right: -40,

@@ -63,7 +63,7 @@ function renderMarkdown(text, baseStyle, onWeekPress) {
           return (
             <Text
               key={i}
-              style={{ color: '#D97706', textDecorationLine: 'underline' }}
+              style={{ color: '#E8458B', textDecorationLine: 'underline' }}
               onPress={() => onWeekPress(p.weekNum)}
             >
               {p.text}
@@ -607,7 +607,7 @@ const s = StyleSheet.create({
   emptyState: { alignItems: 'center', paddingTop: 40, paddingHorizontal: 20 },
   emptyIcon: {
     width: 48, height: 48, borderRadius: 24,
-    backgroundColor: 'rgba(217,119,6,0.12)', borderWidth: 1.5, borderColor: colors.primary,
+    backgroundColor: 'rgba(232,69,139,0.12)', borderWidth: 1.5, borderColor: colors.primary,
     alignItems: 'center', justifyContent: 'center', marginBottom: 16,
   },
   emptyIconText: { fontSize: 22, fontWeight: '700', color: colors.primary },
@@ -673,6 +673,6 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)',
   },
   retryText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: '#EF4444' },
-  reportBtn: { alignSelf: 'flex-start', marginTop: 6, marginLeft: 4, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: 'rgba(217,119,6,0.08)', borderRadius: 8 },
+  reportBtn: { alignSelf: 'flex-start', marginTop: 6, marginLeft: 4, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: 'rgba(232,69,139,0.08)', borderRadius: 8 },
   reportText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
 });

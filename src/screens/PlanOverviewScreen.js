@@ -44,7 +44,7 @@ function getPlanPhases(totalWeeks) {
 const WEEK_FLAGS = {
   recovery: { label: 'Recovery', color: '#64748B', bg: 'rgba(100,116,139,0.12)' },
   peak:     { label: 'Peak week', color: '#EF4444', bg: 'rgba(239,68,68,0.12)' },
-  longest:  { label: 'Longest ride', color: '#D97706', bg: 'rgba(217,119,6,0.12)' },
+  longest:  { label: 'Longest ride', color: '#E8458B', bg: 'rgba(232,69,139,0.12)' },
   taper:    { label: 'Taper', color: '#22C55E', bg: 'rgba(34,197,94,0.12)' },
   test:     { label: 'Test week', color: '#6366F1', bg: 'rgba(99,102,241,0.12)' },
 };
@@ -83,7 +83,7 @@ function getWeekFlags(weekVolumes, phases, plan) {
 
 // Ride type colors for stacked bars
 const RIDE_TYPE_COLORS = {
-  endurance:  '#D97706', // amber (primary)
+  endurance:  '#E8458B', // amber (primary)
   tempo:      '#F59E0B', // lighter amber
   intervals:  '#EF4444', // red
   recovery:   '#64748B', // slate
@@ -567,7 +567,7 @@ const s = StyleSheet.create({
   weekRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, marginHorizontal: 16, marginBottom: 4, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   weekRowCurrent: { borderColor: colors.primary, borderWidth: 1.5 },
   weekNumCol: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surfaceLight, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  weekNumColCurrent: { backgroundColor: 'rgba(217,119,6,0.15)' },
+  weekNumColCurrent: { backgroundColor: 'rgba(232,69,139,0.15)' },
   weekNum: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted },
   weekNumCurrent: { color: colors.primary },
   weekInfo: { flex: 1 },

@@ -614,7 +614,7 @@ const s = StyleSheet.create({
 
   tipsCard: {
     backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 12, borderRadius: 16, padding: 20,
-    borderWidth: 1, borderColor: 'rgba(217,119,6,0.25)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.25)',
   },
   tipsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
   tipsTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
@@ -627,8 +627,8 @@ const s = StyleSheet.create({
   tipText: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 19 },
 
   notesCard: {
-    backgroundColor: 'rgba(217,119,6,0.08)', marginHorizontal: 16, marginBottom: 12, borderRadius: 16, padding: 20,
-    borderWidth: 1, borderColor: 'rgba(217,119,6,0.2)',
+    backgroundColor: 'rgba(232,69,139,0.08)', marginHorizontal: 16, marginBottom: 12, borderRadius: 16, padding: 20,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
   },
   notesTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, marginBottom: 6 },
   notesBody: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 20 },

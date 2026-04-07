@@ -351,9 +351,9 @@ const s = StyleSheet.create({
   logoWrap: {
     width: 72, height: 72, borderRadius: 20,
     overflow: 'hidden', marginBottom: 24,
-    shadowColor: '#D97706', shadowOffset: { width: 0, height: 8 },
+    shadowColor: '#E8458B', shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25, shadowRadius: 20, elevation: 8,
-    borderWidth: 1, borderColor: 'rgba(217,119,6,0.2)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
   },
   logoImage: { width: 72, height: 72 },
   title: { fontSize: 22, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 8 },
@@ -377,8 +377,8 @@ const s = StyleSheet.create({
 
   // ── Marketing tip card ─────────────────────────────────────────────────────
   tipCard: {
-    backgroundColor: 'rgba(217,119,6,0.06)', borderRadius: 16, borderWidth: 1,
-    borderColor: 'rgba(217,119,6,0.15)', padding: 20, marginBottom: 20, alignItems: 'center',
+    backgroundColor: 'rgba(232,69,139,0.06)', borderRadius: 16, borderWidth: 1,
+    borderColor: 'rgba(232,69,139,0.15)', padding: 20, marginBottom: 20, alignItems: 'center',
   },
   tipIcon: { fontSize: 28, marginBottom: 10, fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif' },
   tipTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 6, textAlign: 'center' },

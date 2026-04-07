@@ -8,7 +8,7 @@
 // ── Colour palette ──────────────────────────────────────────────────────────
 export const SESSION_COLORS = {
   easy:       '#22C55E', // green
-  moderate:   '#D97706', // amber
+  moderate:   '#E8458B', // amber
   hard:       '#EF4444', // red
   max:        '#DC2626', // deep red
   recovery:   '#64748B', // slate

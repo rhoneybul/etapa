@@ -16,7 +16,7 @@ const FF = fontFamily;
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const SUGGEST_COLORS = {
-  training: '#D97706',
+  training: '#E8458B',
   nutrition: '#22C55E',
   strength: '#8B5CF6',
   cross_training: '#06B6D4',

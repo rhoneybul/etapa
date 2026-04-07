@@ -20,7 +20,7 @@ const TOTAL_STEPS = 5;
 
 const FITNESS_LEVEL_COLORS = {
   beginner:     '#22C55E',
-  intermediate: '#D97706',
+  intermediate: '#E8458B',
   advanced:     '#EF4444',
   expert:       '#DC2626',
 };
@@ -100,7 +100,7 @@ const DAYS = [
 ];
 
 const TYPE_COLORS = {
-  outdoor:  '#D97706',
+  outdoor:  '#E8458B',
   indoor:   '#3B82F6',
   strength: '#8B5CF6',
 };
@@ -1165,12 +1165,12 @@ export default function PlanConfigScreen({ navigation, route }) {
                   <View style={s.coachBadgeRow}>
                     <View style={[s.coachLevelBadge, {
                       backgroundColor: coach.level === 'beginner' ? 'rgba(34,197,94,0.12)'
-                        : coach.level === 'intermediate' ? 'rgba(217,119,6,0.12)'
+                        : coach.level === 'intermediate' ? 'rgba(232,69,139,0.12)'
                         : 'rgba(239,68,68,0.12)'
                     }]}>
                       <Text style={[s.coachLevelText, {
                         color: coach.level === 'beginner' ? '#22C55E'
-                          : coach.level === 'intermediate' ? '#D97706'
+                          : coach.level === 'intermediate' ? '#E8458B'
                           : '#EF4444'
                       }]}>
                         {coach.level === 'beginner' ? 'Great for beginners'
@@ -1428,8 +1428,8 @@ const s = StyleSheet.create({
   // ── Long ride day ──────────────────────────────────────────────────────
   longRideSection: { marginTop: 16 },
   longRideCard: {
-    backgroundColor: 'rgba(217,119,6,0.06)', borderRadius: 14, padding: 16,
-    borderWidth: 1.5, borderColor: 'rgba(217,119,6,0.2)',
+    backgroundColor: 'rgba(232,69,139,0.06)', borderRadius: 14, padding: 16,
+    borderWidth: 1.5, borderColor: 'rgba(232,69,139,0.2)',
   },
   longRideCardTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
   longRideCardHint: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginBottom: 12, lineHeight: 19 },
@@ -1507,7 +1507,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12,
     backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border,
   },
-  durationPillActive: { borderColor: colors.primary, backgroundColor: 'rgba(217,119,6,0.1)' },
+  durationPillActive: { borderColor: colors.primary, backgroundColor: 'rgba(232,69,139,0.1)' },
   durationPillText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
   durationPillTextActive: { color: colors.primary, fontWeight: '600' },
   beginnerDurationBadge: { alignSelf: 'flex-start', backgroundColor: 'rgba(34,197,94,0.12)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, marginBottom: 16 },
@@ -1519,7 +1519,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 8,
     borderWidth: 1.5, borderColor: colors.border,
   },
-  startDateOptionActive: { borderColor: colors.primary, backgroundColor: 'rgba(217,119,6,0.06)' },
+  startDateOptionActive: { borderColor: colors.primary, backgroundColor: 'rgba(232,69,139,0.06)' },
   startDateRadio: {
     width: 22, height: 22, borderRadius: 11,
     borderWidth: 2, borderColor: colors.textFaint,
@@ -1552,7 +1552,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 14, padding: 14, marginBottom: 10,
     borderWidth: 1.5, borderColor: colors.border,
   },
-  coachCardSelected: { borderColor: colors.primary, backgroundColor: 'rgba(217,119,6,0.04)' },
+  coachCardSelected: { borderColor: colors.primary, backgroundColor: 'rgba(232,69,139,0.04)' },
   coachAvatar: {
     width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
   },

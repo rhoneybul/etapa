@@ -91,7 +91,7 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border,
   },
   badge: {
-    alignSelf: 'flex-start', backgroundColor: 'rgba(217,119,6,0.12)',
+    alignSelf: 'flex-start', backgroundColor: 'rgba(232,69,139,0.12)',
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 14,
   },
   badgeText: { fontSize: 10, fontFamily: FF.semibold, color: colors.primary, letterSpacing: 1 },
@@ -99,8 +99,8 @@ const s = StyleSheet.create({
   body: { fontSize: 14, fontFamily: FF.regular, color: colors.textMid, lineHeight: 21, marginBottom: 20 },
 
   dealCard: {
-    backgroundColor: 'rgba(217,119,6,0.06)', borderRadius: 14, padding: 18,
-    borderWidth: 1, borderColor: 'rgba(217,119,6,0.15)', marginBottom: 24,
+    backgroundColor: 'rgba(232,69,139,0.06)', borderRadius: 14, padding: 18,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.15)', marginBottom: 24,
   },
   dealTitle: { fontSize: 14, fontFamily: FF.semibold, color: colors.primary, marginBottom: 12 },
   dealRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 },

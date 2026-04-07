@@ -348,8 +348,8 @@ const s = StyleSheet.create({
 
   // Race lookup
   lookupBtn: {
-    backgroundColor: 'rgba(217,119,6,0.1)', borderRadius: 12, paddingVertical: 12,
-    alignItems: 'center', marginBottom: 16, borderWidth: 1, borderColor: 'rgba(217,119,6,0.2)',
+    backgroundColor: 'rgba(232,69,139,0.1)', borderRadius: 12, paddingVertical: 12,
+    alignItems: 'center', marginBottom: 16, borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
   },
   lookupBtnText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
   lookupResult: {

@@ -83,7 +83,7 @@ const DUMMY_PLAN = [
   { day: 'WED', type: 'Rest',        duration: '',       color: '#6B7280', barWidth: '20%' },
   { day: 'THU', type: 'Intervals',   duration: '1h 15m', color: '#EF4444', barWidth: '70%' },
   { day: 'FRI', type: 'Easy Ride',   duration: '45 min', color: '#22C55E', barWidth: '48%' },
-  { day: 'SAT', type: 'Long Ride',   duration: '2h 30m', color: '#D97706', barWidth: '88%' },
+  { day: 'SAT', type: 'Long Ride',   duration: '2h 30m', color: '#E8458B', barWidth: '88%' },
   { day: 'SUN', type: 'Rest',        duration: '',       color: '#6B7280', barWidth: '18%' },
 ];
 
@@ -841,9 +841,9 @@ const s = StyleSheet.create({
     width: '100%',
     borderRadius: 14,
     overflow: 'hidden',
-    backgroundColor: 'rgba(217,119,6,0.12)',
+    backgroundColor: 'rgba(232,69,139,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(217,119,6,0.35)',
+    borderColor: 'rgba(232,69,139,0.35)',
     marginBottom: 32,
   },
   holdingNewCyclistInner: {
@@ -913,8 +913,8 @@ const s = StyleSheet.create({
     gap: 2,
   },
   holdingPlanPillHighlight: {
-    backgroundColor: 'rgba(217,119,6,0.1)',
-    borderColor: 'rgba(217,119,6,0.3)',
+    backgroundColor: 'rgba(232,69,139,0.1)',
+    borderColor: 'rgba(232,69,139,0.3)',
   },
   holdingPlanPillLabel: {
     fontSize: 10,
@@ -934,7 +934,7 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.45)',
   },
   holdingPlanPillBadge: {
-    backgroundColor: 'rgba(217,119,6,0.25)',
+    backgroundColor: 'rgba(232,69,139,0.25)',
     borderRadius: 4,
     paddingHorizontal: 5,
     paddingVertical: 1,

@@ -30,7 +30,7 @@ const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const CYCLING_LABELS = { road: 'Road', gravel: 'Gravel', mtb: 'MTB', mixed: 'Mixed' };
 
 const SUGGEST_COLORS = {
-  training:      '#D97706',
+  training:      '#E8458B',
   nutrition:     '#22C55E',
   strength:      '#8B5CF6',
   cross_training:'#06B6D4',
@@ -1014,16 +1014,16 @@ const s = StyleSheet.create({
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingLogoWrap: {
     width: 80, height: 80, borderRadius: 22, overflow: 'hidden',
-    shadowColor: '#D97706', shadowOffset: { width: 0, height: 8 },
+    shadowColor: '#E8458B', shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25, shadowRadius: 20, elevation: 8,
-    borderWidth: 1, borderColor: 'rgba(217,119,6,0.2)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
   },
   loadingLogo: { width: 80, height: 80 },
   safe:      { flex: 1 },
 
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  headerLogo: { width: 38, height: 38, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(217,119,6,0.2)' },
+  headerLogo: { width: 38, height: 38, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)' },
   appName: { fontSize: 24, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, letterSpacing: 0.5 },
   greeting: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 1 },
 
@@ -1162,7 +1162,7 @@ const s = StyleSheet.create({
   calendarBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     marginTop: 12, paddingVertical: 8, borderRadius: 10,
-    backgroundColor: 'rgba(217,119,6,0.08)', borderWidth: 1, borderColor: 'rgba(217,119,6,0.15)',
+    backgroundColor: 'rgba(232,69,139,0.08)', borderWidth: 1, borderColor: 'rgba(232,69,139,0.15)',
   },
   calendarBtnText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
   calendarBtnArrow: { fontSize: 18, color: colors.primary, fontWeight: '300' },
@@ -1219,8 +1219,8 @@ const s = StyleSheet.create({
   // Coach chat card — prominent
   coachCard: {
     marginHorizontal: 20, marginBottom: 20, borderRadius: 16,
-    backgroundColor: colors.surface, borderWidth: 1.5, borderColor: 'rgba(217,119,6,0.3)',
-    padding: 16, shadowColor: '#D97706', shadowOffset: { width: 0, height: 4 },
+    backgroundColor: colors.surface, borderWidth: 1.5, borderColor: 'rgba(232,69,139,0.3)',
+    padding: 16, shadowColor: '#E8458B', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1, shadowRadius: 12, elevation: 4,
   },
   coachCardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -1234,7 +1234,7 @@ const s = StyleSheet.create({
   coachCardHint: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary, marginTop: 1 },
   coachCardArrowWrap: {
     width: 32, height: 32, borderRadius: 16,
-    backgroundColor: 'rgba(217,119,6,0.12)', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(232,69,139,0.12)', alignItems: 'center', justifyContent: 'center',
   },
   coachCardArrow: { fontSize: 20, color: colors.primary, fontWeight: '600' },
   coachCardSub: {
@@ -1258,7 +1258,7 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border,
   },
   lockedBadge: {
-    alignSelf: 'flex-start', backgroundColor: 'rgba(217,119,6,0.12)',
+    alignSelf: 'flex-start', backgroundColor: 'rgba(232,69,139,0.12)',
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 14,
   },
   lockedBadgeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, letterSpacing: 1 },

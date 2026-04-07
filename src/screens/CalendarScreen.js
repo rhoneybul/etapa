@@ -372,13 +372,13 @@ const s = StyleSheet.create({
   grid: { paddingHorizontal: 12, marginBottom: 8 },
   weekRow: { flexDirection: 'row' },
   dayCell: { flex: 1, alignItems: 'center', paddingVertical: 4, minHeight: 52, borderRadius: 10 },
-  dayCellToday: { backgroundColor: 'rgba(217,119,6,0.1)' },
+  dayCellToday: { backgroundColor: 'rgba(232,69,139,0.1)' },
   dayCellSelected: { backgroundColor: colors.primary },
   dayText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
   dayTextToday: { color: colors.primary },
   dayTextSelected: { color: '#fff' },
 
-  dayCellGoal: { backgroundColor: 'rgba(217,119,6,0.12)', borderWidth: 1, borderColor: 'rgba(217,119,6,0.3)' },
+  dayCellGoal: { backgroundColor: 'rgba(232,69,139,0.12)', borderWidth: 1, borderColor: 'rgba(232,69,139,0.3)' },
   goalFlag: { marginTop: 2 },
   goalFlagSelected: { opacity: 0.9 },
   goalFlagDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary },
@@ -392,8 +392,8 @@ const s = StyleSheet.create({
   // Goal banner in selected day detail
   goalBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: 'rgba(217,119,6,0.1)', borderRadius: 14, padding: 14, marginBottom: 10,
-    borderWidth: 1, borderColor: 'rgba(217,119,6,0.25)',
+    backgroundColor: 'rgba(232,69,139,0.1)', borderRadius: 14, padding: 14, marginBottom: 10,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.25)',
   },
   goalBannerDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
   goalBannerText: { flex: 1 },

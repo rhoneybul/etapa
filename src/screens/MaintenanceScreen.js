@@ -171,7 +171,7 @@ const s = StyleSheet.create({
 
   logo: {
     width: 64, height: 64, borderRadius: 18, marginBottom: 32,
-    borderWidth: 1, borderColor: 'rgba(217,119,6,0.2)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
   },
 
   title: {

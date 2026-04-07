@@ -60,7 +60,7 @@ export const COACHES = [
     tagline: 'Chill but focused',
     style: 'balanced',
     level: 'intermediate',
-    avatarColor: '#D97706',
+    avatarColor: '#E8458B',
     avatarInitials: 'MR',
     bio: 'Former touring cyclist from the Dolomites who\'s ridden across three continents. Matteo brings a calm, philosophical approach to coaching — balancing the joy of cycling with structured training.',
     personality: 'Calm, thoughtful, and balanced. Mixes structure with flexibility. Understands life gets in the way and adapts gracefully. Encourages mindfulness on the bike. Uses metaphors and storytelling. Believes training should enhance life, not dominate it. Good at managing stress and overtraining. Has an easy Italian warmth.',

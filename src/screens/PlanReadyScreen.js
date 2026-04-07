@@ -21,7 +21,7 @@ import StravaLogo from '../components/StravaLogo';
 const FF = fontFamily;
 
 const SUGGEST_COLORS = {
-  training: '#D97706',
+  training: '#E8458B',
   nutrition: '#22C55E',
   strength: '#8B5CF6',
   cross_training: '#06B6D4',
@@ -187,7 +187,7 @@ export default function PlanReadyScreen({ navigation, route }) {
           <Animated.View style={[s.breakdownCard, { opacity: statsFade }]}>
             {totalRides > 0 && (
               <View style={s.breakdownRow}>
-                <View style={[s.breakdownDot, { backgroundColor: '#D97706' }]} />
+                <View style={[s.breakdownDot, { backgroundColor: '#E8458B' }]} />
                 <Text style={s.breakdownLabel}>{totalRides} ride{totalRides !== 1 ? 's' : ''}</Text>
               </View>
             )}
@@ -440,8 +440,8 @@ const s = StyleSheet.create({
   heroTitle: { fontSize: 26, fontWeight: '700', fontFamily: FF.semibold, color: colors.text, marginBottom: 8 },
   heroSub: { fontSize: 15, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, textAlign: 'center', lineHeight: 22 },
   aiBadge: {
-    marginTop: 12, backgroundColor: 'rgba(217,119,6,0.1)', borderRadius: 100,
-    paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: 'rgba(217,119,6,0.2)',
+    marginTop: 12, backgroundColor: 'rgba(232,69,139,0.1)', borderRadius: 100,
+    paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
   },
   aiBadgeText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
 
@@ -504,7 +504,7 @@ const s = StyleSheet.create({
   assessLoadingText: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
   assessReadinessExplain: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, lineHeight: 16, marginBottom: 10 },
   assessSectionHint: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginBottom: 10 },
-  suggestCard: { backgroundColor: 'rgba(217,119,6,0.04)', borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(217,119,6,0.08)' },
+  suggestCard: { backgroundColor: 'rgba(232,69,139,0.04)', borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(232,69,139,0.08)' },
   suggestCardApplied: { opacity: 0.45, backgroundColor: 'rgba(100,116,139,0.04)', borderColor: 'rgba(100,116,139,0.08)' },
   suggestTitleApplied: { color: colors.textMuted },
   suggestTextApplied: { color: colors.textFaint },

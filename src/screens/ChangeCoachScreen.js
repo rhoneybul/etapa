@@ -133,12 +133,12 @@ export default function ChangeCoachScreen({ navigation }) {
                   <View style={s.coachBadgeRow}>
                     <View style={[s.coachLevelBadge, {
                       backgroundColor: coach.level === 'beginner' ? 'rgba(34,197,94,0.12)'
-                        : coach.level === 'intermediate' ? 'rgba(217,119,6,0.12)'
+                        : coach.level === 'intermediate' ? 'rgba(232,69,139,0.12)'
                         : 'rgba(239,68,68,0.12)'
                     }]}>
                       <Text style={[s.coachLevelText, {
                         color: coach.level === 'beginner' ? '#22C55E'
-                          : coach.level === 'intermediate' ? '#D97706'
+                          : coach.level === 'intermediate' ? '#E8458B'
                           : '#EF4444'
                       }]}>
                         {coach.level === 'beginner' ? 'Great for beginners'
@@ -205,7 +205,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 14, padding: 14, marginBottom: 10,
     borderWidth: 1.5, borderColor: colors.border,
   },
-  coachCardSelected: { borderColor: colors.primary, backgroundColor: 'rgba(217,119,6,0.04)' },
+  coachCardSelected: { borderColor: colors.primary, backgroundColor: 'rgba(232,69,139,0.04)' },
   coachAvatar: {
     width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
   },

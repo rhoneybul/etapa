@@ -295,7 +295,7 @@ const s = StyleSheet.create({
   },
   threadTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   threadBadge: {
-    backgroundColor: 'rgba(217,119,6,0.12)', borderRadius: 6,
+    backgroundColor: 'rgba(232,69,139,0.12)', borderRadius: 6,
     paddingHorizontal: 8, paddingVertical: 3,
   },
   threadBadgeResolved: { backgroundColor: 'rgba(34,197,94,0.1)' },

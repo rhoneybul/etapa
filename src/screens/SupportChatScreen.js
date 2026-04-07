@@ -209,9 +209,9 @@ const s = StyleSheet.create({
   // System message (welcome / 48h notice)
   systemBubble: {
     alignSelf: 'center', maxWidth: '90%', marginBottom: 16,
-    backgroundColor: 'rgba(217,119,6,0.08)', borderRadius: 14,
+    backgroundColor: 'rgba(232,69,139,0.08)', borderRadius: 14,
     paddingHorizontal: 16, paddingVertical: 12,
-    borderWidth: 1, borderColor: 'rgba(217,119,6,0.15)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.15)',
   },
   systemText: {
     fontSize: 13, fontFamily: FF.regular, color: colors.textMid,
