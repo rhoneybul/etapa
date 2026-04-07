@@ -191,9 +191,10 @@ export default function HomeScreen({ navigation }) {
         const start = parseDateLocal(plan.startDate);
         const now = new Date();
         const daysSince = Math.round((now - start) / (1000 * 60 * 60 * 24));
-        const wk = Math.max(1, Math.min(Math.floor(daysSince / 7) + 1, plan.weeks));
-        setCurrentWeek(wk);
-        analytics.events.planViewed({ planId: plan.id, currentWeek: wk, totalWeeks: plan.weeks });
+        const totalWeeks = (typeof plan.weeks === 'number' && !isNaN(plan.weeks) && plan.weeks > 0) ? plan.weeks : 8;
+        const wk = Math.max(1, Math.min(Math.floor(daysSince / 7) + 1, totalWeeks));
+        setCurrentWeek(isNaN(wk) ? 1 : wk);
+        analytics.events.planViewed({ planId: plan.id, currentWeek: wk, totalWeeks });
       }
       if (plan?.configId) {
         const cfg = await getPlanConfig(plan.configId);

@@ -148,13 +148,18 @@ function getPhaseForWeek(phases, week) {
 export function generatePlan(goal, config) {
   const {
     daysPerWeek = 3,
-    weeks = 8,
+    weeks: rawWeeks = 8,
     trainingTypes = ['outdoor'],
     availableDays = ['monday', 'wednesday', 'saturday'],
     fitnessLevel = 'beginner',
     recurringRides = [],
     longRideDay = null,
   } = config;
+
+  // Guard against NaN weeks (can happen if suggestWeeks fails) — default to 8
+  const weeks = (typeof rawWeeks === 'number' && !isNaN(rawWeeks) && rawWeeks > 0)
+    ? rawWeeks
+    : 8;
 
   const base = BASE_PARAMS[fitnessLevel] || BASE_PARAMS.beginner;
   const includeStrength = trainingTypes.includes('strength');
@@ -442,17 +447,22 @@ export function suggestWeeks(goal, fitnessLevel, startDate) {
   if (goal.targetDate) {
     let from;
     if (startDate) {
-      const sp = String(startDate).split('T')[0].split('-');
-      from = new Date(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]), 12, 0, 0);
+      // startDate may be a Date object or a string — handle both
+      if (startDate instanceof Date) {
+        from = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 12, 0, 0);
+      } else {
+        const sp = String(startDate).split('T')[0].split('-');
+        from = new Date(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]), 12, 0, 0);
+      }
     } else {
       from = new Date();
     }
     const tp = goal.targetDate.split('T')[0].split('-');
     const target = new Date(Number(tp[0]), Number(tp[1]) - 1, Number(tp[2]), 12, 0, 0);
-    // Plan should finish the week BEFORE the event — leave race week free
+    // Plan should cover up to the event week — the taper phase handles race prep
     const msToTarget = target - from;
-    const weeksToTarget = Math.floor(msToTarget / (7 * 24 * 60 * 60 * 1000));
-    // At least 4 weeks, at most 24, and end 1 week before event
+    const weeksToTarget = Math.ceil(msToTarget / (7 * 24 * 60 * 60 * 1000));
+    // At least 4 weeks, at most 24
     return Math.min(Math.max(4, weeksToTarget), 24);
   }
 

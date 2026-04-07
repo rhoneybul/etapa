@@ -477,7 +477,9 @@ export default function PlanConfigScreen({ navigation, route }) {
     const daysPerWeek = totalSessions;
 
     const startDate = getChosenStartDate();
-    const weeks = planWeeks || suggestWeeks(goal, fitnessLevel, startDate);
+    const suggested = planWeeks || suggestWeeks(goal, fitnessLevel, startDate);
+    // Guard against NaN — default to 8 weeks if suggestWeeks fails
+    const weeks = (typeof suggested === 'number' && !isNaN(suggested) && suggested > 0) ? suggested : 8;
 
     const config = await savePlanConfig({
       goalId: goal.id,
@@ -1048,7 +1050,8 @@ export default function PlanConfigScreen({ navigation, route }) {
     // ── Step 4: Duration + start date ──────────────────────────────────────
     if (step === 4) {
       const hasTargetDate = !!goal.targetDate;
-      const effectiveWeeks = planWeeks || suggestWeeks(goal, fitnessLevel, getChosenStartDate());
+      const rawWeeks = planWeeks || suggestWeeks(goal, fitnessLevel, getChosenStartDate());
+      const effectiveWeeks = (typeof rawWeeks === 'number' && !isNaN(rawWeeks) && rawWeeks > 0) ? rawWeeks : 8;
 
       return (
         <ScrollView showsVerticalScrollIndicator={false}>
@@ -1226,7 +1229,7 @@ export default function PlanConfigScreen({ navigation, route }) {
 
   function getRecommendedStart() {
     if (!goal.targetDate) return 'next_monday';
-    const target = new Date(goal.targetDate);
+    const target = new Date(goal.targetDate + 'T12:00:00');
     const weeks = suggestWeeks(goal, fitnessLevel, getNextMonday());
     const idealStart = new Date(target);
     idealStart.setDate(idealStart.getDate() - weeks * 7);

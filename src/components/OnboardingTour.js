@@ -75,10 +75,10 @@ const STEPS = [
   {
     id: 'ready',
     title: 'Ready to ride?',
-    body: 'Let\'s set your goal and build your first training plan.',
+    body: 'Choose how you\'d like to get started.',
     position: 'center',
     icon: null,
-    cta: 'Create my plan',
+    cta: 'Get started',
   },
 ];
 
@@ -183,9 +183,9 @@ export default function OnboardingTour({ visible, onComplete, onCreatePlan }) {
 
   const handleNext = () => {
     if (step >= STEPS.length - 1) {
-      // Final step — create plan or dismiss
+      // Final step — dismiss the tour so the user can choose their path
+      // (Get into Cycling or Create a custom plan)
       onComplete?.();
-      onCreatePlan?.();
       return;
     }
     animateTransition(() => setStep(s => s + 1));
@@ -207,7 +207,7 @@ export default function OnboardingTour({ visible, onComplete, onCreatePlan }) {
         {/* Skip button */}
         {!isLast && (
           <TouchableOpacity style={s.skipBtn} onPress={handleSkip} activeOpacity={0.7}>
-            <Text style={s.skipText}>Skip tour</Text>
+            <Text style={s.skipText}>Skip</Text>
           </TouchableOpacity>
         )}
 
