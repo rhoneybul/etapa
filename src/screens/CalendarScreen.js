@@ -2,30 +2,50 @@
  * Calendar screen — monthly view showing activities across plans.
  * Supports plan filtering and shows type icons in day cells.
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert,
+  TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
-import { getPlans, getGoals, getActivityDate, getPlanConfig } from '../services/storageService';
+import { getPlans, getGoals, getActivityDate, getPlanConfig, savePlan, getWeekActivities, getUserPrefs } from '../services/storageService';
+import { coachChat } from '../services/llmPlanService';
 import { getSessionColor, getSessionLabel, getMetricLabel, getActivityIcon, CROSS_TRAINING_COLOR, getCrossTrainingLabel } from '../utils/sessionLabels';
+import { getCoach } from '../data/coaches';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
-const ACTIVITY_BLUE = '#2563A0';
+const ACTIVITY_BLUE = '#E8458B';
 const DAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const CYCLING_LABELS = { road: 'Road', gravel: 'Gravel', mtb: 'MTB', ebike: 'E-Bike', mixed: 'Mixed' };
 
-export default function CalendarScreen({ navigation }) {
+export default function CalendarScreen({ navigation, route }) {
+  const pendingChanges = route.params?.pendingChanges || null;
   const [plans, setPlans] = useState([]);
   const [goals, setGoals] = useState([]);
   const [planConfigs, setPlanConfigs] = useState({}); // configId → config
   const [viewDate, setViewDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
   const [filterPlanId, setFilterPlanId] = useState(null); // null = all
+  const [reviewMode, setReviewMode] = useState(!!pendingChanges); // true when reviewing coach changes
+  const [movingActivity, setMovingActivity] = useState(null); // { activity, planId, planStartDate } when moving
+
+  // Inline coach chat during review
+  const [reviewMessages, setReviewMessages] = useState([]); // { role, content }
+  const [reviewInput, setReviewInput] = useState('');
+  const [reviewSending, setReviewSending] = useState(false);
+  const [showReviewChat, setShowReviewChat] = useState(false);
+  const reviewScrollRef = useRef(null);
+
+  // Sync reviewMode when pendingChanges arrives via navigation (screen already mounted)
+  useEffect(() => {
+    if (pendingChanges) {
+      setReviewMode(true);
+    }
+  }, [pendingChanges]);
 
   const load = useCallback(async () => {
     const [p, g] = await Promise.all([getPlans(), getGoals()]);
@@ -47,6 +67,267 @@ export default function CalendarScreen({ navigation }) {
     const unsub = navigation.addListener('focus', load);
     return unsub;
   }, [navigation, load]);
+
+  // Compute diff between previous and proposed activities
+  const changeDiff = useMemo(() => {
+    if (!pendingChanges) return null;
+    const { previousActivities, proposedActivities } = pendingChanges;
+    const prevById = {};
+    (previousActivities || []).forEach(a => { prevById[a.id] = a; });
+    const propById = {};
+    (proposedActivities || []).forEach(a => { propById[a.id] = a; });
+
+    const added = [];
+    const modified = [];
+    const removed = [];
+
+    (proposedActivities || []).forEach(a => {
+      if (!prevById[a.id]) {
+        added.push(a);
+      } else {
+        const prev = prevById[a.id];
+        const changed = a.week !== prev.week || a.dayOfWeek !== prev.dayOfWeek ||
+          a.title !== prev.title || a.distanceKm !== prev.distanceKm ||
+          a.durationMins !== prev.durationMins || a.effort !== prev.effort ||
+          a.type !== prev.type || a.subType !== prev.subType;
+        if (changed) modified.push({ before: prev, after: a });
+      }
+    });
+
+    (previousActivities || []).forEach(a => {
+      if (!propById[a.id]) removed.push(a);
+    });
+
+    const affectedDayKeys = new Set();
+    added.forEach(a => affectedDayKeys.add(`${a.week}-${a.dayOfWeek}`));
+    modified.forEach(m => {
+      affectedDayKeys.add(`${m.before.week}-${m.before.dayOfWeek}`);
+      affectedDayKeys.add(`${m.after.week}-${m.after.dayOfWeek}`);
+    });
+    removed.forEach(a => affectedDayKeys.add(`${a.week}-${a.dayOfWeek}`));
+
+    return { added, modified, removed, affectedDayKeys, total: added.length + modified.length + removed.length };
+  }, [pendingChanges]);
+
+  // Accept changes: save the proposed activities
+  const handleAcceptChanges = useCallback(async () => {
+    if (!pendingChanges) return;
+    const allPlans = await getPlans();
+    const plan = allPlans.find(p => p.id === pendingChanges.planId);
+    if (!plan) return;
+    plan.activities = pendingChanges.proposedActivities;
+    await savePlan(plan);
+    setReviewMode(false);
+    navigation.setParams({ pendingChanges: null });
+    load();
+  }, [pendingChanges, navigation, load]);
+
+  // Reject changes: discard and go back
+  const handleRejectChanges = useCallback(() => {
+    setReviewMode(false);
+    navigation.setParams({ pendingChanges: null });
+  }, [navigation]);
+
+  // Send an inline review message to the coach
+  const handleReviewSend = useCallback(async () => {
+    if (!reviewInput.trim() || reviewSending || !pendingChanges) return;
+    const userMsg = { role: 'user', content: reviewInput.trim() };
+    const updatedMsgs = [...reviewMessages, userMsg];
+    setReviewMessages(updatedMsgs);
+    setReviewInput('');
+    setReviewSending(true);
+
+    try {
+      const plan = plans.find(p => p.id === pendingChanges.planId);
+      if (!plan) throw new Error('Plan not found');
+      const cfg = plan.configId ? planConfigs[plan.configId] : null;
+
+      // Build context for the coach
+      const now = new Date();
+      const sp = plan.startDate.split('T')[0].split('-');
+      const start = new Date(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]), 12, 0, 0);
+      const daysSince = Math.round((now - start) / (1000 * 60 * 60 * 24));
+      const currentWeek = Math.max(1, Math.min(Math.floor(daysSince / 7) + 1, plan.weeks));
+
+      const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      const allActivities = (pendingChanges.proposedActivities || []).map(a => {
+        const d = getActivityDate(plan.startDate, a.week, a.dayOfWeek);
+        const calDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return {
+          id: a.id, week: a.week, dayOfWeek: a.dayOfWeek,
+          dayName: DAY_NAMES[a.dayOfWeek] || 'Unknown',
+          calendarDate: calDate,
+          type: a.type, subType: a.subType, title: a.title,
+          durationMins: a.durationMins, distanceKm: a.distanceKm,
+          effort: a.effort, completed: a.completed,
+        };
+      });
+
+      // Week 1 day mapping so the coach knows the calendar layout
+      const week1Days = {};
+      for (let dow = 0; dow < 7; dow++) {
+        const d = getActivityDate(plan.startDate, 1, dow);
+        week1Days[`dayOfWeek ${dow}`] = `${DAY_NAMES[dow]} ${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
+
+      const goal = goals.find(g => g.id === plan.goalId);
+      const context = {
+        plan: { name: plan.name, weeks: plan.weeks, startDate: plan.startDate, currentWeek },
+        calendarMapping: week1Days,
+        goal: goal ? { goalType: goal.goalType, eventName: goal.eventName, targetDistance: goal.targetDistance, targetDate: goal.targetDate, cyclingType: goal.cyclingType } : null,
+        coachId: cfg?.coachId || null,
+        allActivities,
+        reviewMode: true,
+        previousActivities: (pendingChanges.previousActivities || []).map(a => {
+          const d = getActivityDate(plan.startDate, a.week, a.dayOfWeek);
+          const calDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          return {
+            id: a.id, week: a.week, dayOfWeek: a.dayOfWeek,
+            dayName: DAY_NAMES[a.dayOfWeek] || 'Unknown',
+            calendarDate: calDate,
+            title: a.title, durationMins: a.durationMins, distanceKm: a.distanceKm, effort: a.effort,
+          };
+        }),
+      };
+
+      // Prepend a system-like context message about the review
+      const apiMessages = [
+        { role: 'user', content: 'I\'m reviewing changes you suggested to my plan. Here are the proposed changes. I may want to adjust them further.' },
+        { role: 'assistant', content: 'Of course! I\'m happy to adjust the changes. What would you like me to modify?' },
+        ...updatedMsgs.map(m => ({ role: m.role, content: m.content })),
+      ];
+
+      const result = await coachChat(apiMessages, context);
+      const coachMsg = { role: 'assistant', content: result.reply };
+      setReviewMessages(prev => [...prev, coachMsg]);
+
+      // If the coach returned updated activities, refresh the pending changes
+      if (result.updatedActivities && result.updatedActivities.length > 0) {
+        const existing = pendingChanges.proposedActivities || [];
+        const incomingById = {};
+        result.updatedActivities.forEach(a => { incomingById[a.id] = a; });
+        // Merge: update existing, add new
+        const merged = existing.map(a => incomingById[a.id] ? { ...a, ...incomingById[a.id] } : a);
+        const existingIds = new Set(existing.map(a => a.id));
+        result.updatedActivities.forEach(a => {
+          if (!existingIds.has(a.id)) merged.push(a);
+        });
+
+        navigation.setParams({
+          pendingChanges: {
+            ...pendingChanges,
+            proposedActivities: merged,
+          },
+        });
+      }
+    } catch {
+      setReviewMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong. Try again.' }]);
+    }
+
+    setReviewSending(false);
+    setTimeout(() => reviewScrollRef.current?.scrollToEnd({ animated: true }), 100);
+  }, [reviewInput, reviewSending, reviewMessages, pendingChanges, plans, goals, planConfigs, navigation]);
+
+  // Long-press an activity — show move/delete options
+  const handleActivityLongPress = useCallback((activity, planId) => {
+    Alert.alert(activity.title, null, [
+      {
+        text: 'Move to another day',
+        onPress: () => {
+          const plan = plans.find(p => p.id === planId);
+          if (!plan?.startDate) return;
+          setMovingActivity({ activity, planId, planStartDate: plan.startDate });
+          setSelectedDate(null);
+        },
+      },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          Alert.alert('Delete activity?', `Remove "${activity.title}" from your plan?`, [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: async () => {
+                const allPlans = await getPlans();
+                const plan = allPlans.find(p => p.id === planId);
+                if (!plan) return;
+                plan.activities = (plan.activities || []).filter(a => a.id !== activity.id);
+                await savePlan(plan);
+                setSelectedDate(null);
+                load();
+              },
+            },
+          ]);
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [plans, load]);
+
+  // Tap a day cell while moving — place the activity on that day
+  const handlePlaceActivity = useCallback(async (targetDate) => {
+    if (!movingActivity) return;
+    const { activity, planId, planStartDate } = movingActivity;
+
+    // Calculate target week + dayOfWeek from the calendar date
+    const datePart = String(planStartDate).split('T')[0];
+    const [sy, sm, sd] = datePart.split('-').map(Number);
+    const start = new Date(sy, sm - 1, sd, 12, 0, 0);
+    const jsDay = start.getDay();
+    const mondayOffset = jsDay === 0 ? -6 : -(jsDay - 1);
+    const monday = new Date(start);
+    monday.setDate(monday.getDate() + mondayOffset);
+
+    const target = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 12, 0, 0);
+    const diffDays = Math.round((target - monday) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) { setMovingActivity(null); return; }
+
+    const newWeek = Math.floor(diffDays / 7) + 1;
+    const newDayOfWeek = diffDays % 7;
+
+    // Same position — cancel
+    if (newWeek === activity.week && newDayOfWeek === activity.dayOfWeek) {
+      setMovingActivity(null);
+      return;
+    }
+
+    // Find plan and update
+    const allPlans = await getPlans();
+    const plan = allPlans.find(p => p.id === planId);
+    if (!plan) { setMovingActivity(null); return; }
+
+    // Check plan bounds
+    if (newWeek < 1 || newWeek > (plan.weeks || 52)) {
+      Alert.alert('Out of range', 'That day is outside this plan.');
+      setMovingActivity(null);
+      return;
+    }
+
+    const act = plan.activities.find(a => a.id === activity.id);
+    if (act) {
+      act.week = newWeek;
+      act.dayOfWeek = newDayOfWeek;
+      await savePlan(plan);
+    }
+    setMovingActivity(null);
+    load();
+  }, [movingActivity, load]);
+
+  // When entering review mode, jump to the first affected month
+  useEffect(() => {
+    if (reviewMode && pendingChanges && changeDiff && changeDiff.affectedDayKeys.size > 0) {
+      const plan = plans.find(p => p.id === pendingChanges.planId);
+      if (plan?.startDate) {
+        // Get the first affected day
+        const firstKey = [...changeDiff.affectedDayKeys].sort()[0];
+        const [week, dayOfWeek] = firstKey.split('-').map(Number);
+        const d = getActivityDate(plan.startDate, week, dayOfWeek);
+        setViewDate(new Date(d.getFullYear(), d.getMonth(), 1));
+      }
+    }
+  }, [reviewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filtered plans
   const visiblePlans = filterPlanId ? plans.filter(p => p.id === filterPlanId) : plans;
@@ -97,6 +378,40 @@ export default function CalendarScreen({ navigation }) {
       }
     }
   });
+
+  // When in review mode, build a set of affected calendar date keys for highlighting
+  const affectedDateKeys = useMemo(() => {
+    if (!reviewMode || !pendingChanges || !changeDiff) return new Set();
+    const plan = visiblePlans.find(p => p.id === pendingChanges.planId) || plans.find(p => p.id === pendingChanges.planId);
+    if (!plan?.startDate) return new Set();
+    const keys = new Set();
+    changeDiff.affectedDayKeys.forEach(dk => {
+      const [week, dayOfWeek] = dk.split('-').map(Number);
+      const d = getActivityDate(plan.startDate, week, dayOfWeek);
+      keys.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+    });
+    return keys;
+  }, [reviewMode, pendingChanges, changeDiff, visiblePlans, plans]);
+
+  // When in review mode, overlay proposed activities onto the activity map
+  if (reviewMode && pendingChanges) {
+    const plan = visiblePlans.find(p => p.id === pendingChanges.planId) || plans.find(p => p.id === pendingChanges.planId);
+    if (plan?.startDate) {
+      // Remove all previous activities from this plan from the map
+      Object.keys(activityMap).forEach(key => {
+        activityMap[key] = activityMap[key].filter(a => a._planId !== pendingChanges.planId);
+        if (activityMap[key].length === 0) delete activityMap[key];
+      });
+      // Add proposed activities
+      (pendingChanges.proposedActivities || []).forEach(a => {
+        if (a.dayOfWeek == null) return;
+        const d = getActivityDate(plan.startDate, a.week, a.dayOfWeek);
+        const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+        if (!activityMap[key]) activityMap[key] = [];
+        activityMap[key].push({ ...a, _planId: plan.id });
+      });
+    }
+  }
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -214,6 +529,29 @@ export default function CalendarScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
+        {/* Review mode banner */}
+        {reviewMode && changeDiff && (
+          <View style={s.reviewBanner}>
+            <MaterialCommunityIcons name="pencil-outline" size={16} color={colors.primary} />
+            <Text style={s.reviewBannerText}>
+              Your coach suggested {changeDiff.total} change{changeDiff.total !== 1 ? 's' : ''}
+            </Text>
+          </View>
+        )}
+
+        {/* Moving activity banner */}
+        {movingActivity && (
+          <View style={s.moveBanner}>
+            <MaterialCommunityIcons name="cursor-move" size={16} color="#fff" />
+            <Text style={s.moveBannerText} numberOfLines={1}>
+              Moving: {movingActivity.activity.title}
+            </Text>
+            <TouchableOpacity onPress={() => setMovingActivity(null)} hitSlop={HIT}>
+              <Text style={s.moveBannerCancel}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Day headers */}
         <View style={s.dayHeaderRow}>
           {DAY_HEADERS.map(d => (
@@ -233,8 +571,22 @@ export default function CalendarScreen({ navigation }) {
                 return (
                   <TouchableOpacity
                     key={di}
-                    style={[s.dayCell, hasGoal && s.dayCellGoal, isToday(day) && s.dayCellToday, isSelected(day) && s.dayCellSelected]}
-                    onPress={() => day && setSelectedDate(new Date(year, month, day))}
+                    style={[
+                      s.dayCell,
+                      hasGoal && s.dayCellGoal,
+                      isToday(day) && s.dayCellToday,
+                      isSelected(day) && s.dayCellSelected,
+                      reviewMode && day && affectedDateKeys.has(getKey(day)) && !isSelected(day) && s.dayCellChanged,
+                      movingActivity && day && s.dayCellDropTarget,
+                    ]}
+                    onPress={() => {
+                      if (!day) return;
+                      if (movingActivity) {
+                        handlePlaceActivity(new Date(year, month, day));
+                      } else {
+                        setSelectedDate(new Date(year, month, day));
+                      }
+                    }}
                     disabled={!day}
                     activeOpacity={0.7}
                   >
@@ -316,6 +668,8 @@ export default function CalendarScreen({ navigation }) {
               key={activity.id}
               style={[s.actCard, activity.type === 'strength' && s.actCardStrength, activity.completed && s.actCardDone]}
               onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
+              onLongPress={() => handleActivityLongPress(activity, activity._planId)}
+              delayLongPress={400}
               activeOpacity={0.75}
             >
               <View style={[s.actAccent, { backgroundColor: ACTIVITY_BLUE }]} />
@@ -341,8 +695,88 @@ export default function CalendarScreen({ navigation }) {
               </View>
             </TouchableOpacity>
           ))}
-          <View style={{ height: 20 }} />
+          <View style={{ height: 80 }} />
         </ScrollView>
+
+        {/* Review mode bottom panel */}
+        {reviewMode && changeDiff && (
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.reviewPanel}>
+            {/* Inline chat messages */}
+            {showReviewChat && reviewMessages.length > 0 && (
+              <ScrollView
+                ref={reviewScrollRef}
+                style={s.reviewChatScroll}
+                contentContainerStyle={s.reviewChatContent}
+              >
+                {reviewMessages.map((msg, i) => (
+                  <View key={i} style={[s.reviewMsg, msg.role === 'user' ? s.reviewMsgUser : s.reviewMsgCoach]}>
+                    <Text style={[s.reviewMsgText, msg.role === 'user' && s.reviewMsgTextUser]}>
+                      {msg.content}
+                    </Text>
+                  </View>
+                ))}
+                {reviewSending && (
+                  <View style={[s.reviewMsg, s.reviewMsgCoach]}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  </View>
+                )}
+              </ScrollView>
+            )}
+
+            {/* Chat input row */}
+            <View style={s.reviewInputRow}>
+              <TextInput
+                style={s.reviewTextInput}
+                placeholder="Ask your coach to adjust..."
+                placeholderTextColor={colors.textFaint}
+                value={reviewInput}
+                onChangeText={setReviewInput}
+                onFocus={() => setShowReviewChat(true)}
+                onSubmitEditing={handleReviewSend}
+                returnKeyType="send"
+                editable={!reviewSending}
+              />
+              <TouchableOpacity
+                style={[s.reviewSendBtn, (!reviewInput.trim() || reviewSending) && s.reviewSendBtnDisabled]}
+                onPress={handleReviewSend}
+                disabled={!reviewInput.trim() || reviewSending}
+                activeOpacity={0.7}
+              >
+                <MaterialCommunityIcons name="send" size={18} color={reviewInput.trim() && !reviewSending ? '#fff' : colors.textFaint} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Accept / Discard buttons */}
+            <View style={s.reviewBtnRow}>
+              <TouchableOpacity style={s.rejectBtn} onPress={handleRejectChanges} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="close" size={18} color={colors.textMuted} />
+                <Text style={s.rejectBtnText}>Discard</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.acceptBtn} onPress={handleAcceptChanges} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="check" size={18} color="#fff" />
+                <Text style={s.acceptBtnText}>Accept changes</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        )}
+
+        {/* Coach chat bottom bar */}
+        {!reviewMode && visiblePlans.length > 0 && (
+          <View style={s.coachBar}>
+            <TouchableOpacity
+              style={s.coachBtn}
+              onPress={() => navigation.navigate('CoachChat', { planId: visiblePlans[0].id })}
+              activeOpacity={0.7}
+            >
+              <View style={[s.coachDot, { backgroundColor: colors.primary }]} />
+              <View style={s.coachBtnTextWrap}>
+                <Text style={s.coachBtnLabel}>Ask your coach</Text>
+                <Text style={s.coachBtnHint}>Move sessions, adjust the plan, or get advice</Text>
+              </View>
+              <Text style={s.coachBtnArrow}>{'\u203A'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </SafeAreaView>
     </View>
   );
@@ -438,4 +872,85 @@ const s = StyleSheet.create({
   actMeta: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 2 },
   checkDone: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#22C55E', alignItems: 'center', justifyContent: 'center' },
   checkMark: { fontSize: 12, color: '#fff', fontWeight: '700' },
+
+  // Coach chat bottom bar
+  coachBar: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
+  coachBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14,
+    backgroundColor: colors.bg, borderWidth: 1.5, borderColor: colors.border,
+  },
+  coachDot: { width: 10, height: 10, borderRadius: 5 },
+  coachBtnTextWrap: { flex: 1 },
+  coachBtnLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  coachBtnHint: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 1 },
+  coachBtnArrow: { fontSize: 22, color: colors.textFaint, fontWeight: '300' },
+
+  // Review mode
+  reviewBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: 16, marginBottom: 10, paddingHorizontal: 14, paddingVertical: 10,
+    backgroundColor: 'rgba(232,69,139,0.1)', borderRadius: 12,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.25)',
+  },
+  reviewBannerText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+
+  dayCellChanged: {
+    backgroundColor: 'rgba(232,69,139,0.15)',
+    borderWidth: 1.5, borderColor: 'rgba(232,69,139,0.4)',
+  },
+
+  // Review panel (chat + buttons)
+  reviewPanel: {
+    backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border,
+    paddingBottom: Platform.OS === 'ios' ? 0 : 8,
+  },
+  reviewChatScroll: { maxHeight: 160, paddingHorizontal: 16, paddingTop: 10 },
+  reviewChatContent: { gap: 6, paddingBottom: 4 },
+  reviewMsg: { maxWidth: '85%', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14 },
+  reviewMsgUser: { alignSelf: 'flex-end', backgroundColor: colors.primary, borderBottomRightRadius: 4 },
+  reviewMsgCoach: { alignSelf: 'flex-start', backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderBottomLeftRadius: 4 },
+  reviewMsgText: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.text, lineHeight: 20 },
+  reviewMsgTextUser: { color: '#fff' },
+
+  reviewInputRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 16, paddingVertical: 10,
+  },
+  reviewTextInput: {
+    flex: 1, height: 40, borderRadius: 20, paddingHorizontal: 16,
+    backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border,
+    fontSize: 14, fontFamily: FF.regular, color: colors.text,
+  },
+  reviewSendBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center',
+  },
+  reviewSendBtnDisabled: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
+
+  reviewBtnRow: {
+    flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingBottom: 12,
+  },
+  rejectBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 12, borderRadius: 14,
+    backgroundColor: colors.bg, borderWidth: 1.5, borderColor: colors.border,
+  },
+  rejectBtnText: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted },
+  acceptBtn: {
+    flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 12, borderRadius: 14,
+    backgroundColor: colors.primary,
+  },
+  acceptBtnText: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
+
+  // Moving mode
+  moveBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: 16, marginBottom: 10, paddingHorizontal: 14, paddingVertical: 10,
+    backgroundColor: colors.primary, borderRadius: 12,
+  },
+  moveBannerText: { flex: 1, fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: '#fff' },
+  moveBannerCancel: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: 'rgba(255,255,255,0.7)' },
+  dayCellDropTarget: { borderWidth: 1, borderColor: 'rgba(232,69,139,0.3)', borderStyle: 'dashed' },
 });

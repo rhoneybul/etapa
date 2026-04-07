@@ -19,7 +19,7 @@ import analytics from '../services/analyticsService';
 const FF = fontFamily;
 
 const EFFORT_COLORS = SESSION_COLORS;
-const ACTIVITY_BLUE = '#2563A0';
+const ACTIVITY_BLUE = '#A0A8B4';
 
 const EFFORT_LABELS = {
   easy:     'Easy \u2014 Zone 2',

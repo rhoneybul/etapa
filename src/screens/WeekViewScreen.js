@@ -20,7 +20,7 @@ import StravaLogo from '../components/StravaLogo';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
-const ACTIVITY_BLUE = '#2563A0';
+const ACTIVITY_BLUE = '#A0A8B4';
 const DAY_LABELS_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 export default function WeekViewScreen({ navigation, route }) {

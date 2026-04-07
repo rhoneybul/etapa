@@ -32,7 +32,7 @@ const CYCLING_LABELS = { road: 'Road', gravel: 'Gravel', mtb: 'MTB', ebike: 'E-B
 
 // Suggestion category colours — primary (training/action), secondary (info/support), neutral (recovery)
 // Uniform dark blue for all activity indicators in the week strip & calendar
-const ACTIVITY_BLUE = '#2563A0';
+const ACTIVITY_BLUE = '#A0A8B4';
 
 const SUGGEST_COLORS = {
   training:      '#E8458B', // primary
@@ -84,6 +84,7 @@ export default function HomeScreen({ navigation }) {
   const [comingSoonConfig, setComingSoonConfig] = useState(null);
   const [stravaActivities, setStravaActivities] = useState([]);
   const [selectedDayIdx, setSelectedDayIdx] = useState(null); // tapped day in the week strip
+  const [movingActivity, setMovingActivity] = useState(null); // { activity } when hold-to-move
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const cachedPlanHash = useRef(null); // Track plan state to avoid unnecessary reloads
   const initialLoadDone = useRef(false);
@@ -540,8 +541,71 @@ export default function HomeScreen({ navigation }) {
   };
 
   const handleDayPress = (dayIdx) => {
+    if (movingActivity) {
+      handlePlaceActivity(dayIdx);
+      return;
+    }
     // Toggle: tap same day again to deselect
     setSelectedDayIdx(prev => prev === dayIdx ? null : dayIdx);
+  };
+
+  // Long-press an activity — show move/delete options
+  const handleActivityLongPress = (activity) => {
+    Alert.alert(activity.title, null, [
+      {
+        text: 'Move to another day',
+        onPress: () => {
+          setMovingActivity({ activity });
+          setSelectedDayIdx(null);
+        },
+      },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          Alert.alert('Delete activity?', `Remove "${activity.title}" from your plan?`, [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: async () => {
+                if (!activePlan) return;
+                const allPlans = await getPlans();
+                const plan = allPlans.find(p => p.id === activePlan.id);
+                if (!plan) return;
+                plan.activities = (plan.activities || []).filter(a => a.id !== activity.id);
+                await savePlan(plan);
+                setSelectedDayIdx(null);
+                load();
+              },
+            },
+          ]);
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  // Place a moving activity on a target day (within current week)
+  const handlePlaceActivity = async (targetDayIdx) => {
+    if (!movingActivity || !activePlan) { setMovingActivity(null); return; }
+    const { activity } = movingActivity;
+    // Same day — cancel
+    if (targetDayIdx === activity.dayOfWeek && currentWeek === activity.week) {
+      setMovingActivity(null);
+      return;
+    }
+    const allPlans = await getPlans();
+    const plan = allPlans.find(p => p.id === activePlan.id);
+    if (!plan) { setMovingActivity(null); return; }
+    const act = plan.activities.find(a => a.id === activity.id);
+    if (act) {
+      act.week = currentWeek;
+      act.dayOfWeek = targetDayIdx;
+      await savePlan(plan);
+    }
+    setMovingActivity(null);
+    load();
   };
 
   const handleDeletePlan = (targetPlan, targetGoal) => {
@@ -788,6 +852,20 @@ export default function HomeScreen({ navigation }) {
 
           {/* Full plan content — only shown for paid plans */}
           {activePlan?.paymentStatus !== 'pending' && (<>
+
+          {/* Moving activity banner */}
+          {movingActivity && (
+            <View style={s.moveBanner}>
+              <MaterialCommunityIcons name="cursor-move" size={16} color="#fff" />
+              <Text style={s.moveBannerText} numberOfLines={1}>
+                Moving: {movingActivity.activity.title}
+              </Text>
+              <TouchableOpacity onPress={() => setMovingActivity(null)} hitSlop={HIT}>
+                <Text style={s.moveBannerCancel}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Week calendar strip with navigation */}
           <View style={s.weekStrip}>
             <View style={s.weekNav}>
@@ -826,7 +904,7 @@ export default function HomeScreen({ navigation }) {
                 return (
                   <TouchableOpacity
                     key={i}
-                    style={[s.dayCell, isSelected && s.dayCellSelected]}
+                    style={[s.dayCell, isSelected && s.dayCellSelected, movingActivity && s.dayCellDropTarget]}
                     onPress={() => handleDayPress(i)}
                     activeOpacity={0.7}
                   >
@@ -907,6 +985,8 @@ export default function HomeScreen({ navigation }) {
                   key={activity.id}
                   style={s.todayCard}
                   onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
+                  onLongPress={() => handleActivityLongPress(activity)}
+                  delayLongPress={400}
                   activeOpacity={0.8}
                 >
                   <View style={[s.todayAccent, { backgroundColor: ACTIVITY_BLUE }]} />
@@ -970,6 +1050,8 @@ export default function HomeScreen({ navigation }) {
                   key={activity.id}
                   style={s.todayCard}
                   onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
+                  onLongPress={() => handleActivityLongPress(activity)}
+                  delayLongPress={400}
                   activeOpacity={0.8}
                 >
                   <View style={[s.todayAccent, { backgroundColor: ACTIVITY_BLUE }]} />
@@ -1381,6 +1463,7 @@ const s = StyleSheet.create({
   dayRow: { flexDirection: 'row', justifyContent: 'space-around' },
   dayCell: { alignItems: 'center', minWidth: 40, gap: 3, borderRadius: 10, paddingVertical: 4, paddingHorizontal: 2 },
   dayCellSelected: { backgroundColor: colors.primary },
+  dayCellDropTarget: { borderWidth: 1, borderColor: 'rgba(232,69,139,0.4)', borderStyle: 'dashed' },
   dayLabelText: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
   dayLabelToday: { color: colors.primary },
   dayLabelSelected: { color: 'rgba(255,255,255,0.8)' },
@@ -1526,4 +1609,12 @@ const s = StyleSheet.create({
     paddingRight: 14,
   },
 
+  // Moving mode
+  moveBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: 16, marginBottom: 12, paddingHorizontal: 14, paddingVertical: 10,
+    backgroundColor: colors.primary, borderRadius: 12,
+  },
+  moveBannerText: { flex: 1, fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: '#fff' },
+  moveBannerCancel: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: 'rgba(255,255,255,0.7)' },
 });

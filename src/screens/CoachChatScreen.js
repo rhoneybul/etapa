@@ -8,10 +8,11 @@ import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, fontFamily } from '../theme';
-import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan, getUserPrefs } from '../services/storageService';
+import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan, getUserPrefs, getActivityDate } from '../services/storageService';
 import { coachChat } from '../services/llmPlanService';
 import { api } from '../services/api';
 import { getCoach } from '../data/coaches';
@@ -211,17 +212,33 @@ export default function CoachChatScreen({ navigation, route }) {
     }
 
     // Send compact version of all activities (with IDs) so the coach can modify them
-    const allActivities = (plan.activities || []).map(a => ({
-      id: a.id, week: a.week, dayOfWeek: a.dayOfWeek,
-      type: a.type, subType: a.subType, title: a.title,
-      description: a.description, notes: a.notes,
-      durationMins: a.durationMins, distanceKm: a.distanceKm,
-      effort: a.effort, completed: a.completed,
-    }));
+    // Include the actual calendar date so the coach doesn't miscalculate dates
+    const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const allActivities = (plan.activities || []).map(a => {
+      const d = getActivityDate(plan.startDate, a.week, a.dayOfWeek);
+      const calDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return {
+        id: a.id, week: a.week, dayOfWeek: a.dayOfWeek,
+        dayName: DAY_NAMES[a.dayOfWeek] || 'Unknown',
+        calendarDate: calDate,
+        type: a.type, subType: a.subType, title: a.title,
+        description: a.description, notes: a.notes,
+        durationMins: a.durationMins, distanceKm: a.distanceKm,
+        effort: a.effort, completed: a.completed,
+      };
+    });
+
+    // Compute actual day names for week 1 so the coach knows the calendar layout
+    const week1Days = {};
+    for (let dow = 0; dow < 7; dow++) {
+      const d = getActivityDate(plan.startDate, 1, dow);
+      week1Days[`dayOfWeek ${dow}`] = `${DAY_NAMES[dow]} ${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
 
     const context = {
       athleteName: userName || null,
       plan: { name: plan.name, weeks: plan.weeks, startDate: plan.startDate, currentWeek },
+      calendarMapping: week1Days,
       goal: goal ? {
         goalType: goal.goalType,
         eventName: goal.eventName,
@@ -356,23 +373,21 @@ export default function CoachChatScreen({ navigation, route }) {
         a.week !== b.week ? a.week - b.week : a.dayOfWeek - b.dayOfWeek
       );
 
-      await savePlan(updated);
-      setPlan(updated);
       setPendingUpdate(null);
 
-      // Add confirmation message
-      const weekLabel = affectedWeeks.size === plan.weeks
-        ? 'your entire plan'
-        : `week${affectedWeeks.size > 1 ? 's' : ''} ${[...affectedWeeks].sort((a,b) => a-b).join(', ')}`;
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: `Plan updated! I've modified ${weekLabel}. Go back to review the changes.`,
-        ts: Date.now(),
-      }]);
+      // Navigate to Calendar with the proposed changes for review
+      navigation.navigate('Calendar', {
+        pendingChanges: {
+          planId: plan.id,
+          previousActivities: plan.activities || [],
+          proposedActivities: updated.activities,
+          affectedWeeks: [...affectedWeeks],
+        },
+      });
     } catch (err) {
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: 'Sorry, failed to apply the changes. Please try again.',
+        content: 'Sorry, failed to prepare the changes. Please try again.',
         ts: Date.now(),
       }]);
     }
@@ -486,7 +501,15 @@ export default function CoachChatScreen({ navigation, route }) {
 
             {messages.map((msg, i) => (
               <View key={i}>
-                <View style={[s.bubble, msg.role === 'user' ? s.bubbleUser : s.bubbleCoach]}>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  delayLongPress={400}
+                  onLongPress={() => {
+                    Clipboard.setStringAsync(msg.content);
+                    Alert.alert('Copied', 'Message copied to clipboard');
+                  }}
+                  style={[s.bubble, msg.role === 'user' ? s.bubbleUser : s.bubbleCoach]}
+                >
                   {msg.role === 'assistant' && (
                     <Text style={s.bubbleLabel}>{getCoach(planConfig?.coachId)?.name || 'Coach'}</Text>
                   )}
@@ -498,7 +521,7 @@ export default function CoachChatScreen({ navigation, route }) {
                       })
                     : <Text style={[s.bubbleText, s.bubbleTextUser]}>{msg.content}</Text>
                   }
-                </View>
+                </TouchableOpacity>
                 {msg.blocked && (
                   <TouchableOpacity
                     style={s.reportBtn}
