@@ -468,6 +468,48 @@ export function generatePlan(goal, config) {
     }
   }
 
+  // ── Stamp each activity with its actual calendar date ──
+  // This removes date ambiguity: the coach and UI can read exact dates
+  // instead of computing from week + dayOfWeek + startDate.
+  activities.forEach(a => {
+    const offset = (a.week - 1) * 7 + (a.dayOfWeek ?? 0);
+    const d = new Date(planMonday);
+    d.setDate(d.getDate() + offset);
+    a.date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    a.dayName = DAY_NAMES[a.dayOfWeek] ? DAY_NAMES[a.dayOfWeek].charAt(0).toUpperCase() + DAY_NAMES[a.dayOfWeek].slice(1) : null;
+    // Tag schedule type for priority ordering
+    if (!a.scheduleType) {
+      if (a.isOneOff) a.scheduleType = 'organised';
+      else if (a.isRecurring) a.scheduleType = 'recurring';
+      else a.scheduleType = 'planned';
+    }
+  });
+
+  // ── Resolve conflicts: organised > recurring > planned ──
+  // If two activities land on the same day, remove the lower-priority one.
+  const priorityOrder = { organised: 0, recurring: 1, planned: 2 };
+  const dayMap = {};
+  activities.forEach(a => {
+    const key = `${a.week}-${a.dayOfWeek}`;
+    if (!dayMap[key]) dayMap[key] = [];
+    dayMap[key].push(a);
+  });
+  const toRemove = new Set();
+  Object.values(dayMap).forEach(dayActs => {
+    if (dayActs.length <= 1) return;
+    // Sort by priority (lowest number = highest priority)
+    dayActs.sort((a, b) => (priorityOrder[a.scheduleType] ?? 2) - (priorityOrder[b.scheduleType] ?? 2));
+    // Keep the highest priority, mark others for removal if they're lower-priority rides
+    // (but keep strength sessions — they don't conflict with rides)
+    const topPriority = dayActs[0];
+    for (let i = 1; i < dayActs.length; i++) {
+      if (dayActs[i].type === topPriority.type) {
+        toRemove.add(dayActs[i].id);
+      }
+    }
+  });
+  const finalActivities = activities.filter(a => !toRemove.has(a.id));
+
   return {
     id: uid(),
     goalId: goal.id,
@@ -477,7 +519,7 @@ export function generatePlan(goal, config) {
     startDate: planMondayStr,
     weeks,
     currentWeek: 1,
-    activities,
+    activities: finalActivities,
     createdAt: new Date().toISOString(),
   };
 }

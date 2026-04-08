@@ -220,7 +220,8 @@ export default function CoachChatScreen({ navigation, route }) {
       return {
         id: a.id, week: a.week, dayOfWeek: a.dayOfWeek,
         dayName: DAY_NAMES[a.dayOfWeek] || 'Unknown',
-        calendarDate: calDate,
+        calendarDate: a.date || calDate,
+        scheduleType: a.scheduleType || 'planned', // organised | recurring | planned
         type: a.type, subType: a.subType, title: a.title,
         description: a.description, notes: a.notes,
         durationMins: a.durationMins, distanceKm: a.distanceKm,

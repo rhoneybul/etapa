@@ -341,8 +341,43 @@ function buildPlanFromActivities(activities, goal, config) {
     }
   }
 
+  // ── Stamp each activity with its actual calendar date ──
+  planActivities.forEach(a => {
+    const offset = (a.week - 1) * 7 + (a.dayOfWeek ?? 0);
+    const d = new Date(planMonday);
+    d.setDate(d.getDate() + offset);
+    a.date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    a.dayName = DAY_NAMES[a.dayOfWeek] ? DAY_NAMES[a.dayOfWeek].charAt(0).toUpperCase() + DAY_NAMES[a.dayOfWeek].slice(1) : null;
+    if (!a.scheduleType) {
+      if (a.isOneOff) a.scheduleType = 'organised';
+      else if (a.isRecurring) a.scheduleType = 'recurring';
+      else a.scheduleType = 'planned';
+    }
+  });
+
+  // ── Resolve conflicts: organised > recurring > planned ──
+  const priorityOrder = { organised: 0, recurring: 1, planned: 2 };
+  const dayMap = {};
+  planActivities.forEach(a => {
+    const key = `${a.week}-${a.dayOfWeek}`;
+    if (!dayMap[key]) dayMap[key] = [];
+    dayMap[key].push(a);
+  });
+  const toRemove = new Set();
+  Object.values(dayMap).forEach(dayActs => {
+    if (dayActs.length <= 1) return;
+    dayActs.sort((a, b) => (priorityOrder[a.scheduleType] ?? 2) - (priorityOrder[b.scheduleType] ?? 2));
+    const topPriority = dayActs[0];
+    for (let i = 1; i < dayActs.length; i++) {
+      if (dayActs[i].type === topPriority.type) {
+        toRemove.add(dayActs[i].id);
+      }
+    }
+  });
+  const finalActivities = planActivities.filter(a => !toRemove.has(a.id));
+
   // Sort activities by week then day
-  planActivities.sort((a, b) => a.week !== b.week ? a.week - b.week : a.dayOfWeek - b.dayOfWeek);
+  finalActivities.sort((a, b) => a.week !== b.week ? a.week - b.week : a.dayOfWeek - b.dayOfWeek);
 
   return {
     id: planId,
@@ -353,7 +388,7 @@ function buildPlanFromActivities(activities, goal, config) {
     startDate: startDateStr,
     weeks: maxWeeks,
     currentWeek: 1,
-    activities: planActivities,
+    activities: finalActivities,
     createdAt: new Date().toISOString(),
   };
 }

@@ -32,6 +32,7 @@ export default function CalendarScreen({ navigation, route }) {
   const [filterPlanId, setFilterPlanId] = useState(null); // null = all
   const [reviewMode, setReviewMode] = useState(!!pendingChanges); // true when reviewing coach changes
   const [movingActivity, setMovingActivity] = useState(null); // { activity, planId, planStartDate } when moving
+  const [actionActivity, setActionActivity] = useState(null); // { activity, planId } when action bar is shown
 
   // Inline coach chat during review
   const [reviewMessages, setReviewMessages] = useState([]); // { role, content }
@@ -228,43 +229,31 @@ export default function CalendarScreen({ navigation, route }) {
     setTimeout(() => reviewScrollRef.current?.scrollToEnd({ animated: true }), 100);
   }, [reviewInput, reviewSending, reviewMessages, pendingChanges, plans, goals, planConfigs, navigation]);
 
-  // Long-press an activity — show move/delete options
+  // Long-press an activity — show inline action bar
   const handleActivityLongPress = useCallback((activity, planId) => {
-    Alert.alert(activity.title, null, [
-      {
-        text: 'Move to another day',
-        onPress: () => {
-          const plan = plans.find(p => p.id === planId);
-          if (!plan?.startDate) return;
-          setMovingActivity({ activity, planId, planStartDate: plan.startDate });
-          setSelectedDate(null);
-        },
-      },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          Alert.alert('Delete activity?', `Remove "${activity.title}" from your plan?`, [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Delete',
-              style: 'destructive',
-              onPress: async () => {
-                const allPlans = await getPlans();
-                const plan = allPlans.find(p => p.id === planId);
-                if (!plan) return;
-                plan.activities = (plan.activities || []).filter(a => a.id !== activity.id);
-                await savePlan(plan);
-                setSelectedDate(null);
-                load();
-              },
-            },
-          ]);
-        },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [plans, load]);
+    setActionActivity({ activity, planId });
+  }, []);
+
+  const handleActionMove = useCallback(() => {
+    if (!actionActivity) return;
+    const plan = plans.find(p => p.id === actionActivity.planId);
+    if (!plan?.startDate) return;
+    setMovingActivity({ activity: actionActivity.activity, planId: actionActivity.planId, planStartDate: plan.startDate });
+    setSelectedDate(null);
+    setActionActivity(null);
+  }, [actionActivity, plans]);
+
+  const handleActionDelete = useCallback(async () => {
+    if (!actionActivity) return;
+    const allPlans = await getPlans();
+    const plan = allPlans.find(p => p.id === actionActivity.planId);
+    if (!plan) return;
+    plan.activities = (plan.activities || []).filter(a => a.id !== actionActivity.activity.id);
+    await savePlan(plan);
+    setActionActivity(null);
+    setSelectedDate(null);
+    load();
+  }, [actionActivity, load]);
 
   // Tap a day cell while moving — place the activity on that day
   const handlePlaceActivity = useCallback(async (targetDate) => {
@@ -666,8 +655,8 @@ export default function CalendarScreen({ navigation, route }) {
           {selectedActivities.map(activity => (
             <TouchableOpacity
               key={activity.id}
-              style={[s.actCard, activity.type === 'strength' && s.actCardStrength, activity.completed && s.actCardDone]}
-              onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
+              style={[s.actCard, activity.type === 'strength' && s.actCardStrength, activity.completed && s.actCardDone, actionActivity?.activity?.id === activity.id && s.actCardActive]}
+              onPress={() => actionActivity ? setActionActivity(null) : navigation.navigate('ActivityDetail', { activityId: activity.id })}
               onLongPress={() => handleActivityLongPress(activity, activity._planId)}
               delayLongPress={400}
               activeOpacity={0.75}
@@ -688,8 +677,10 @@ export default function CalendarScreen({ navigation, route }) {
                       {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
                     </Text>
                   </View>
-                  {activity.completed && (
+                  {activity.completed ? (
                     <View style={s.checkDone}><Text style={s.checkMark}>{'\u2713'}</Text></View>
+                  ) : (
+                    <MaterialCommunityIcons name="dots-vertical" size={18} color={colors.textFaint} />
                   )}
                 </View>
               </View>
@@ -697,6 +688,27 @@ export default function CalendarScreen({ navigation, route }) {
           ))}
           <View style={{ height: 80 }} />
         </ScrollView>
+
+        {/* Activity action bar — shown on long-press */}
+        {actionActivity && !movingActivity && (
+          <View style={s.actionBar}>
+            <Text style={s.actionBarTitle} numberOfLines={1}>{actionActivity.activity.title}</Text>
+            <View style={s.actionBarBtns}>
+              <TouchableOpacity style={s.actionBarBtn} onPress={handleActionMove} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="calendar-arrow-right" size={20} color={colors.text} />
+                <Text style={s.actionBarBtnText}>Move</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.actionBarBtn, s.actionBarBtnDelete]} onPress={handleActionDelete} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="delete-outline" size={20} color="#EF4444" />
+                <Text style={[s.actionBarBtnText, { color: '#EF4444' }]}>Delete</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.actionBarBtn} onPress={() => setActionActivity(null)} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="close" size={20} color={colors.textMuted} />
+                <Text style={[s.actionBarBtnText, { color: colors.textMuted }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* Review mode bottom panel */}
         {reviewMode && changeDiff && (
@@ -953,4 +965,19 @@ const s = StyleSheet.create({
   moveBannerText: { flex: 1, fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: '#fff' },
   moveBannerCancel: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: 'rgba(255,255,255,0.7)' },
   dayCellDropTarget: { borderWidth: 1, borderColor: 'rgba(232,69,139,0.3)', borderStyle: 'dashed' },
+
+  // Activity action bar
+  actCardActive: { borderColor: colors.primary, borderWidth: 1.5 },
+  actionBar: {
+    paddingHorizontal: 16, paddingVertical: 12,
+    backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border,
+  },
+  actionBarTitle: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, marginBottom: 10 },
+  actionBarBtns: { flexDirection: 'row', gap: 10 },
+  actionBarBtn: {
+    flex: 1, alignItems: 'center', gap: 4, paddingVertical: 10, borderRadius: 12,
+    backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border,
+  },
+  actionBarBtnDelete: { borderColor: 'rgba(239,68,68,0.25)' },
+  actionBarBtnText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
 });

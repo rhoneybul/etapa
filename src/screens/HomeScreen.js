@@ -85,6 +85,7 @@ export default function HomeScreen({ navigation }) {
   const [stravaActivities, setStravaActivities] = useState([]);
   const [selectedDayIdx, setSelectedDayIdx] = useState(null); // tapped day in the week strip
   const [movingActivity, setMovingActivity] = useState(null); // { activity } when hold-to-move
+  const [actionActivity, setActionActivity] = useState(null); // { activity } when action bar shown
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const cachedPlanHash = useRef(null); // Track plan state to avoid unnecessary reloads
   const initialLoadDone = useRef(false);
@@ -551,39 +552,26 @@ export default function HomeScreen({ navigation }) {
 
   // Long-press an activity — show move/delete options
   const handleActivityLongPress = (activity) => {
-    Alert.alert(activity.title, null, [
-      {
-        text: 'Move to another day',
-        onPress: () => {
-          setMovingActivity({ activity });
-          setSelectedDayIdx(null);
-        },
-      },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          Alert.alert('Delete activity?', `Remove "${activity.title}" from your plan?`, [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Delete',
-              style: 'destructive',
-              onPress: async () => {
-                if (!activePlan) return;
-                const allPlans = await getPlans();
-                const plan = allPlans.find(p => p.id === activePlan.id);
-                if (!plan) return;
-                plan.activities = (plan.activities || []).filter(a => a.id !== activity.id);
-                await savePlan(plan);
-                setSelectedDayIdx(null);
-                load();
-              },
-            },
-          ]);
-        },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+    setActionActivity({ activity });
+  };
+
+  const handleActionMove = () => {
+    if (!actionActivity) return;
+    setMovingActivity({ activity: actionActivity.activity });
+    setSelectedDayIdx(null);
+    setActionActivity(null);
+  };
+
+  const handleActionDelete = async () => {
+    if (!actionActivity || !activePlan) return;
+    const allPlans = await getPlans();
+    const plan = allPlans.find(p => p.id === activePlan.id);
+    if (!plan) return;
+    plan.activities = (plan.activities || []).filter(a => a.id !== actionActivity.activity.id);
+    await savePlan(plan);
+    setActionActivity(null);
+    setSelectedDayIdx(null);
+    load();
   };
 
   // Place a moving activity on a target day (within current week)
@@ -983,8 +971,8 @@ export default function HomeScreen({ navigation }) {
               {selectedDayActivities.map(activity => (
                 <TouchableOpacity
                   key={activity.id}
-                  style={s.todayCard}
-                  onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
+                  style={[s.todayCard, actionActivity?.activity?.id === activity.id && s.todayCardActive]}
+                  onPress={() => actionActivity ? setActionActivity(null) : navigation.navigate('ActivityDetail', { activityId: activity.id })}
                   onLongPress={() => handleActivityLongPress(activity)}
                   delayLongPress={400}
                   activeOpacity={0.8}
@@ -1010,7 +998,7 @@ export default function HomeScreen({ navigation }) {
                   </View>
                   {activity.completed
                     ? <View style={s.doneBadge}><Text style={s.doneMark}>{'\u2713'}</Text></View>
-                    : <Text style={s.todayArrow}>{'\u203A'}</Text>
+                    : <MaterialCommunityIcons name="dots-vertical" size={18} color={colors.textFaint} style={{ paddingRight: 10 }} />
                   }
                 </TouchableOpacity>
               ))}
@@ -1048,8 +1036,8 @@ export default function HomeScreen({ navigation }) {
               {todayActivities.map(activity => (
                 <TouchableOpacity
                   key={activity.id}
-                  style={s.todayCard}
-                  onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
+                  style={[s.todayCard, actionActivity?.activity?.id === activity.id && s.todayCardActive]}
+                  onPress={() => actionActivity ? setActionActivity(null) : navigation.navigate('ActivityDetail', { activityId: activity.id })}
                   onLongPress={() => handleActivityLongPress(activity)}
                   delayLongPress={400}
                   activeOpacity={0.8}
@@ -1086,7 +1074,7 @@ export default function HomeScreen({ navigation }) {
                   </View>
                   {activity.completed
                     ? <View style={s.doneBadge}><Text style={s.doneMark}>{'\u2713'}</Text></View>
-                    : <Text style={s.todayArrow}>{'\u203A'}</Text>
+                    : <MaterialCommunityIcons name="dots-vertical" size={18} color={colors.textFaint} style={{ paddingRight: 10 }} />
                   }
                 </TouchableOpacity>
               ))}
@@ -1237,6 +1225,27 @@ export default function HomeScreen({ navigation }) {
           <View style={{ height: 40 }} />
           </>)}
         </ScrollView>
+
+        {/* Activity action bar — shown on long-press */}
+        {actionActivity && !movingActivity && (
+          <View style={s.actionBar}>
+            <Text style={s.actionBarTitle} numberOfLines={1}>{actionActivity.activity.title}</Text>
+            <View style={s.actionBarBtns}>
+              <TouchableOpacity style={s.actionBarBtn} onPress={handleActionMove} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="calendar-arrow-right" size={20} color={colors.text} />
+                <Text style={s.actionBarBtnText}>Move</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.actionBarBtn, s.actionBarBtnDelete]} onPress={handleActionDelete} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="delete-outline" size={20} color="#EF4444" />
+                <Text style={[s.actionBarBtnText, { color: '#EF4444' }]}>Delete</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.actionBarBtn} onPress={() => setActionActivity(null)} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="close" size={20} color={colors.textMuted} />
+                <Text style={[s.actionBarBtnText, { color: colors.textMuted }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </SafeAreaView>
       <UpgradePrompt
         visible={showUpgrade}
@@ -1608,6 +1617,21 @@ const s = StyleSheet.create({
   stravaRideLogo: {
     paddingRight: 14,
   },
+
+  // Activity action bar
+  todayCardActive: { borderColor: colors.primary, borderWidth: 1.5 },
+  actionBar: {
+    paddingHorizontal: 16, paddingVertical: 12,
+    backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border,
+  },
+  actionBarTitle: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, marginBottom: 10 },
+  actionBarBtns: { flexDirection: 'row', gap: 10 },
+  actionBarBtn: {
+    flex: 1, alignItems: 'center', gap: 4, paddingVertical: 10, borderRadius: 12,
+    backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border,
+  },
+  actionBarBtnDelete: { borderColor: 'rgba(239,68,68,0.25)' },
+  actionBarBtnText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
 
   // Moving mode
   moveBanner: {
