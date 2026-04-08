@@ -27,6 +27,16 @@ interface ComingSoonFeature {
   emoji: string;
 }
 
+interface CouponEntry {
+  enabled: boolean;
+  code: string;
+}
+
+interface CouponConfig {
+  starter: CouponEntry;
+  lifetime: CouponEntry;
+}
+
 interface ComingSoonConfig {
   enabled: boolean;
   showOnHome: boolean;
@@ -37,6 +47,11 @@ interface ComingSoonConfig {
 const TRIAL_DEFAULTS: TrialConfig = {
   days: 7,
   bannerMessage: "Subscribe to unlock full training access",
+};
+
+const COUPON_DEFAULTS: CouponConfig = {
+  starter:  { enabled: false, code: "" },
+  lifetime: { enabled: false, code: "" },
 };
 
 const COMING_SOON_DEFAULTS: ComingSoonConfig = {
@@ -71,12 +86,16 @@ export default function ConfigPage() {
   const [trialDaysText, setTrialDaysText] = useState("7");
   const [minVersion, setMinVersion] = useState<MinVersionConfig>(MIN_VERSION_DEFAULTS);
   const [comingSoon, setComingSoon] = useState<ComingSoonConfig>(COMING_SOON_DEFAULTS);
+  const [coupons, setCoupons] = useState<CouponConfig>(COUPON_DEFAULTS);
+  const [savingCoupons, setSavingCoupons] = useState(false);
+  const [savedCouponsFlash, setSavedCouponsFlash] = useState(false);
 
   // Saved (server) state — used to detect dirty
   const savedMaintenance = useRef<MaintenanceConfig>(maintenance);
   const savedTrial = useRef<TrialConfig>(trial);
   const savedMinVersion = useRef<MinVersionConfig>(minVersion);
   const savedComingSoon = useRef<ComingSoonConfig>(comingSoon);
+  const savedCoupons = useRef<CouponConfig>(coupons);
 
   // Saving / saved flash state
   const [savingMaintenance, setSavingMaintenance] = useState(false);
@@ -93,7 +112,8 @@ export default function ConfigPage() {
   const trialDirty = !isEqual(trial, savedTrial.current);
   const minVersionDirty = !isEqual(minVersion, savedMinVersion.current);
   const comingSoonDirty = !isEqual(comingSoon, savedComingSoon.current);
-  const anyDirty = maintenanceDirty || trialDirty || minVersionDirty || comingSoonDirty;
+  const couponsDirty = !isEqual(coupons, savedCoupons.current);
+  const anyDirty = maintenanceDirty || trialDirty || minVersionDirty || comingSoonDirty || couponsDirty;
 
   // Warn on page exit with unsaved changes
   const anyDirtyRef = useRef(anyDirty);
@@ -134,6 +154,11 @@ export default function ConfigPage() {
           const merged = { ...COMING_SOON_DEFAULTS, ...data.coming_soon };
           setComingSoon(merged);
           savedComingSoon.current = merged;
+        }
+        if (data.coupon_config) {
+          const merged = { ...COUPON_DEFAULTS, ...data.coupon_config };
+          setCoupons(merged);
+          savedCoupons.current = merged;
         }
       })
       .finally(() => setLoading(false));
@@ -202,6 +227,21 @@ export default function ConfigPage() {
       setTimeout(() => setSavedComingSoonFlash(false), 2500);
     } catch { /* ignore */ }
     setSavingComingSoon(false);
+  }
+
+  async function saveCoupons_() {
+    setSavingCoupons(true);
+    try {
+      await fetch("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "coupon_config", value: coupons }),
+      });
+      savedCoupons.current = { ...coupons };
+      setSavedCouponsFlash(true);
+      setTimeout(() => setSavedCouponsFlash(false), 2500);
+    } catch { /* ignore */ }
+    setSavingCoupons(false);
   }
 
   // ── Trial days input — free text that coerces to number on blur ────────────
@@ -513,6 +553,57 @@ export default function ConfigPage() {
           className="mt-4 px-4 py-2 bg-etapa-primary text-white text-sm font-medium rounded-lg hover:bg-etapa-primaryDark disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {savingComingSoon ? "Saving..." : savedComingSoonFlash ? "Saved!" : "Save Coming Soon"}
+        </button>
+      </div>
+
+      {/* Coupon Codes */}
+      <div className="bg-etapa-surface border border-etapa-border rounded-xl p-6">
+        <h2 className="text-sm font-semibold text-white mb-1">Coupon Codes</h2>
+        <p className="text-xs text-etapa-textMuted mb-4">
+          When enabled, users can enter a code on the paywall to get free access to that plan.
+          Redemptions are tracked and visible on the Payments page.
+        </p>
+
+        <div className="space-y-4">
+          {(["starter", "lifetime"] as const).map((plan) => (
+            <div key={plan} className="bg-etapa-surfaceLight border border-etapa-border rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-sm font-semibold text-white capitalize">{plan} coupon</p>
+                  <p className="text-xs text-etapa-textMuted mt-0.5">
+                    {plan === "lifetime" ? "Grants lifetime access" : "Grants 3 months of starter access"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setCoupons({ ...coupons, [plan]: { ...coupons[plan], enabled: !coupons[plan].enabled } })}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${coupons[plan].enabled ? "bg-etapa-primary" : "bg-etapa-border"}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${coupons[plan].enabled ? "translate-x-5" : ""}`} />
+                </button>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-etapa-textMuted block mb-1">Code</label>
+                <input
+                  type="text"
+                  value={coupons[plan].code}
+                  onChange={(e) => setCoupons({ ...coupons, [plan]: { ...coupons[plan], code: e.target.value.toUpperCase() } })}
+                  placeholder={plan === "lifetime" ? "e.g. LIFETIME2024" : "e.g. STARTER2024"}
+                  className="w-full px-3 py-2 bg-etapa-surface border border-etapa-border rounded-lg text-sm text-white font-mono placeholder-etapa-textFaint focus:outline-none focus:ring-2 focus:ring-etapa-primary uppercase"
+                />
+              </div>
+              {coupons[plan].enabled && !coupons[plan].code && (
+                <p className="text-xs text-amber-400 mt-2">⚠ Coupon is enabled but no code is set.</p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={saveCoupons_}
+          disabled={savingCoupons || !couponsDirty}
+          className="mt-4 px-4 py-2 bg-etapa-primary text-white text-sm font-medium rounded-lg hover:bg-etapa-primaryDark disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {savingCoupons ? "Saving..." : savedCouponsFlash ? "Saved!" : "Save Coupon Settings"}
         </button>
       </div>
     </div>

@@ -3,6 +3,10 @@ import { SCENARIOS, EDIT_SCENARIOS } from '@/lib/scenarios';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+// How many plan generations to run at the same time.
+// Keep at 5 to avoid hammering the AI API with rate limits.
+const CONCURRENCY = 5;
+
 const DAY_NAMES = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
 function addDays(dateString, n) {
@@ -276,6 +280,27 @@ async function generatePlan(serverUrl, authHeaders, scenario) {
   throw new Error('TIMEOUT after 120s');
 }
 
+/**
+ * Run tasks with a max concurrency limit.
+ * tasks: array of () => Promise<T>
+ * Returns results in the same order as tasks.
+ */
+async function runWithConcurrency(tasks, limit) {
+  const results = new Array(tasks.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < tasks.length) {
+      const i = nextIndex++;
+      results[i] = await tasks[i]();
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 export async function POST(req) {
   const { serverUrl, apiKey } = await req.json();
   if (!serverUrl) return new Response('Missing serverUrl', { status: 400 });
@@ -291,17 +316,17 @@ export async function POST(req) {
 
       const runStartedAt = new Date().toISOString();
       let totalPass = 0, totalFail = 0;
-      const results = [];
+      // Pre-allocate results array to preserve scenario order in final output
+      const results = new Array(SCENARIOS.length).fill(null);
 
-      send({ type: 'start', total: SCENARIOS.length, totalEdits: EDIT_SCENARIOS.length });
+      send({ type: 'start', total: SCENARIOS.length, totalEdits: EDIT_SCENARIOS.length, concurrency: CONCURRENCY });
 
-      // ── Run generation scenarios ──
-      for (let i = 0; i < SCENARIOS.length; i++) {
-        const scenario = SCENARIOS[i];
+      // ── Run generation scenarios in parallel (CONCURRENCY at a time) ──────────
+      const generationTasks = SCENARIOS.map((scenario, i) => async () => {
         send({ type: 'scenario-start', index: i, name: scenario.name });
 
         const scenarioStartTime = Date.now();
-        let result = {
+        const result = {
           name: scenario.name,
           pass: false,
           input: { goal: scenario.goal, config: scenario.config },
@@ -323,18 +348,14 @@ export async function POST(req) {
           result.warnings = warnings;
           result.stats = stats;
           result.pass = errors.length === 0;
-
-          if (result.pass) totalPass++;
-          else totalFail++;
-
         } catch (err) {
           result.durationMs = Date.now() - scenarioStartTime;
           result.error = err.message;
           result.errors = [err.message];
-          totalFail++;
         }
 
-        results.push(result);
+        results[i] = result;
+
         send({
           type: 'scenario-done',
           index: i,
@@ -345,30 +366,34 @@ export async function POST(req) {
           stats: result.stats,
           durationMs: result.durationMs,
         });
-      }
 
-      // ── Run edit scenarios ──
-      const editResults = [];
+        return result;
+      });
+
+      // ── Build edit tasks (each generates its own base plan independently) ──────
+      const editResults = new Array(EDIT_SCENARIOS.length).fill(null);
       let editPass = 0, editFail = 0;
-
-      // Use scenario index 0 (beginner) as the base for all edits
       const baseScenario = SCENARIOS[0];
 
-      for (let i = 0; i < EDIT_SCENARIOS.length; i++) {
-        const editScenario = EDIT_SCENARIOS[i];
+      const editTasks = EDIT_SCENARIOS.map((editScenario, i) => async () => {
         send({ type: 'edit-start', index: i, name: editScenario.name });
 
         const startTime = Date.now();
-        let result = { name: editScenario.name, pass: false, errors: [], durationMs: null };
+        const result = { name: editScenario.name, pass: false, errors: [], durationMs: null };
 
         try {
-          // Generate base plan
-          const plan = await generatePlan(serverUrl, authHeaders, baseScenario);
-          if (!plan || !plan.activities?.length) throw new Error('Base plan is empty');
+          // Each edit scenario generates its own independent base plan
+          let basePlan;
+          try {
+            basePlan = await generatePlan(serverUrl, authHeaders, baseScenario);
+            if (!basePlan || !basePlan.activities?.length) throw new Error('Base plan is empty');
+          } catch (err) {
+            throw new Error(`Base plan generation failed: ${err.message}`);
+          }
 
           if (editScenario.type === 'activity-edit') {
-            const target = plan.activities.find(a => a.week === 2 && a.type === 'ride')
-                        || plan.activities.find(a => a.type === 'ride');
+            const target = basePlan.activities.find(a => a.week === 2 && a.type === 'ride')
+                        || basePlan.activities.find(a => a.type === 'ride');
             if (!target) throw new Error('No ride activity found');
 
             const editRes = await fetch(`${serverUrl}/api/ai/edit-activity`, {
@@ -383,7 +408,6 @@ export async function POST(req) {
 
             if (!editRes.ok) throw new Error(`Edit API ${editRes.status}`);
             const editData = await editRes.json();
-            // Basic validation: response exists
             if (!editData) throw new Error('Edit returned null');
             result.pass = true;
 
@@ -392,7 +416,7 @@ export async function POST(req) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', ...authHeaders },
               body: JSON.stringify({
-                plan,
+                plan: basePlan,
                 goal: baseScenario.goal,
                 instruction: editScenario.instruction,
                 scope: editScenario.scope,
@@ -407,16 +431,13 @@ export async function POST(req) {
           }
 
           result.durationMs = Date.now() - startTime;
-          if (result.pass) editPass++;
-          else editFail++;
-
         } catch (err) {
           result.durationMs = Date.now() - startTime;
           result.errors = [err.message];
-          editFail++;
         }
 
-        editResults.push(result);
+        editResults[i] = result;
+
         send({
           type: 'edit-done',
           index: i,
@@ -425,22 +446,41 @@ export async function POST(req) {
           errors: result.errors,
           durationMs: result.durationMs,
         });
+
+        return result;
+      });
+
+      // ── Run generation and edit workflows fully in parallel ───────────────────
+      const [completedResults, completedEdits] = await Promise.all([
+        runWithConcurrency(generationTasks, CONCURRENCY),
+        runWithConcurrency(editTasks, CONCURRENCY),
+      ]);
+
+      for (const r of completedResults) {
+        if (r.pass) totalPass++;
+        else totalFail++;
+      }
+      for (const r of completedEdits) {
+        if (r.pass) editPass++;
+        else editFail++;
       }
 
-      // ── Final summary ──
-      const output = {
-        runAt: runStartedAt,
-        server: serverUrl,
-        totalScenarios: SCENARIOS.length,
-        passed: totalPass,
-        failed: totalFail,
-        results,
-        editResults,
-        editPassed: editPass,
-        editFailed: editFail,
-      };
+      // ── Final summary ──────────────────────────────────────────────────────────
+      send({
+        type: 'complete',
+        output: {
+          runAt: runStartedAt,
+          server: serverUrl,
+          totalScenarios: SCENARIOS.length,
+          passed: totalPass,
+          failed: totalFail,
+          results,
+          editResults,
+          editPassed: editPass,
+          editFailed: editFail,
+        },
+      });
 
-      send({ type: 'complete', output });
       controller.close();
     },
   });

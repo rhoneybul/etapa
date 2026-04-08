@@ -214,6 +214,26 @@ export async function restorePurchases() {
   return rcRestore();
 }
 
+// ── Coupon redemption ───────────────────────────────────────────────────────────
+
+/**
+ * Validate a coupon code against the backend (no side effects).
+ * @returns {{ valid: boolean, plan?: string, message: string }}
+ */
+export async function validateCoupon(code) {
+  const data = await authRequest('POST', '/api/coupons/validate', { code });
+  return data || { valid: false, message: 'Could not validate code' };
+}
+
+/**
+ * Redeem a coupon code — grants access and records the redemption.
+ * @returns {{ success: boolean, plan?: string, error?: string }}
+ */
+export async function redeemCoupon(code) {
+  const data = await authRequest('POST', '/api/coupons/redeem', { code });
+  return data || { success: false, error: 'Could not redeem coupon' };
+}
+
 // ── Starter plan flows ──────────────────────────────────────────────────────────
 
 /**

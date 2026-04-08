@@ -31,6 +31,7 @@ const { webhookHandler }  = require('./routes/stripe');
 const { revenueCatWebhookHandler } = require('./routes/revenueCatWebhook');
 const adminRouter         = require('./routes/admin');
 const stravaRouter        = require('./routes/strava');
+const couponsRouter       = require('./routes/coupons');
 
 const { authMiddleware } = require('./middleware/auth');
 
@@ -143,6 +144,7 @@ app.use('/api/preferences', authMiddleware, preferencesRouter);
 app.use('/api/app-config', appConfigRouter); // no auth — app checks before login
 app.use('/api/coach-checkin', coachCheckinRouter); // auth via CRON_SECRET or ADMIN_API_KEY
 app.use('/api/admin', adminRouter); // admin router has its own auth (API key or Supabase JWT)
+app.use('/api/coupons', authMiddleware, couponsRouter);
 app.use('/api/strava', stravaRouter); // no auth — Strava redirects browser here directly
 
 // ── Error handler ─────────────────────────────────────────────────────────────

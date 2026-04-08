@@ -1,6 +1,6 @@
 /**
  * Paywall screen — shown before plan generation.
- * Monthly: $9.99/mo · Annual: $79.99/yr (= $6.67/mo) · Lifetime: $149 · 1 week free trial.
+ * Monthly: £9.99/mo · Annual: £79.99/yr (= £6.67/mo) · Lifetime: £99.99 · Starter: £14.99 · 1 week free trial.
  *
  * On native (iOS/Android): fetches real prices from RevenueCat and purchases via IAP.
  * On web: uses hardcoded prices and Stripe Checkout.
@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, fontFamily } from '../theme';
-import { openCheckout, getSubscriptionOfferings, restorePurchases, getPrices } from '../services/subscriptionService';
+import { openCheckout, getSubscriptionOfferings, restorePurchases, getPrices, validateCoupon, redeemCoupon } from '../services/subscriptionService';
 import { isRevenueCatAvailable } from '../services/revenueCatService';
 import analytics from '../services/analyticsService';
 
@@ -100,6 +100,10 @@ export default function PaywallScreen({ navigation, route }) {
   const [restoring, setRestoring] = useState(false);
   const [plans, setPlans] = useState(() => buildPlans(null));
   const [serverPrices, setServerPrices] = useState(null);
+  const [couponCode, setCouponCode] = useState('');
+  const [couponState, setCouponState] = useState(null); // null | { valid, plan, message }
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [redeeming, setRedeeming] = useState(false);
 
   const isNative = Platform.OS !== 'web';
   // RevenueCat is only used on iOS — Android goes through Stripe for now
@@ -146,6 +150,43 @@ export default function PaywallScreen({ navigation, route }) {
       if (planId === 'lifetime') return id === 'lifetime' || id === '$rc_lifetime' || productId.includes('lifetime');
       return false;
     });
+  };
+
+  const handleCouponValidate = async (code) => {
+    if (!code.trim()) { setCouponState(null); return; }
+    setCouponLoading(true);
+    try {
+      const result = await validateCoupon(code.trim());
+      setCouponState(result);
+    } catch {
+      setCouponState({ valid: false, message: 'Could not validate code' });
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handleCouponRedeem = async () => {
+    if (!couponState?.valid) return;
+    setRedeeming(true);
+    try {
+      const result = await redeemCoupon(couponCode.trim());
+      if (result.success) {
+        analytics.capture?.('coupon_redeemed', { plan: result.plan, code: couponCode.trim().toUpperCase() });
+        Alert.alert(
+          'Access granted!',
+          result.plan === 'lifetime'
+            ? 'You now have lifetime access to Etapa. Enjoy!'
+            : 'You now have 3 months of Starter access. Enjoy!',
+          [{ text: 'Get started', onPress: () => navigation.replace(nextScreen, nextParams) }],
+        );
+      } else {
+        Alert.alert('Could not redeem', result.error || 'Please try again.');
+      }
+    } catch {
+      Alert.alert('Something went wrong', 'Please try again.');
+    } finally {
+      setRedeeming(false);
+    }
   };
 
   const handleSubscribe = async () => {
@@ -306,9 +347,9 @@ export default function PaywallScreen({ navigation, route }) {
         <View style={s.plans}>
           {Object.values(plans).map(p => {
             const isSelected = selected === p.id;
-            // Use RevenueCat price if available (native)
+            // Use hardcoded/server price for display; rcPkg is used only for the purchase transaction
             const rcPkg = hasRevenueCat ? findRcPackage(p.id) : null;
-            const displayPrice = rcPkg?.priceString || p.price;
+            const displayPrice = p.price;
 
             return (
               <TouchableOpacity
@@ -389,6 +430,41 @@ export default function PaywallScreen({ navigation, route }) {
             </View>
           </View>
         )}
+
+        {/* Coupon code */}
+        <View style={s.couponWrap}>
+          <Text style={s.couponLabel}>Have a coupon code?</Text>
+          <View style={s.couponRow}>
+            <TextInput
+              style={s.couponInput}
+              value={couponCode}
+              onChangeText={(t) => {
+                setCouponCode(t);
+                setCouponState(null);
+              }}
+              onBlur={() => handleCouponValidate(couponCode)}
+              placeholder="Enter code"
+              placeholderTextColor={colors.textFaint}
+              autoCapitalize="characters"
+              autoCorrect={false}
+            />
+            <TouchableOpacity
+              style={[s.couponBtn, (!couponState?.valid || redeeming) && s.couponBtnDisabled]}
+              onPress={handleCouponRedeem}
+              disabled={!couponState?.valid || redeeming}
+              activeOpacity={0.8}
+            >
+              <Text style={s.couponBtnText}>
+                {redeeming ? 'Applying...' : couponLoading ? '...' : 'Apply'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {couponState && (
+            <Text style={[s.couponMessage, couponState.valid ? s.couponMessageValid : s.couponMessageInvalid]}>
+              {couponState.message}
+            </Text>
+          )}
+        </View>
 
         <Text style={s.legal}>
           {plan.isLifetime
@@ -661,6 +737,60 @@ const s = StyleSheet.create({
     fontFamily: FF.light,
     color: '#86efac',
     lineHeight: 17,
+  },
+  couponWrap: {
+    marginBottom: 16,
+  },
+  couponLabel: {
+    fontSize: 12,
+    fontFamily: FF.medium,
+    color: colors.textMuted,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  couponRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  couponInput: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 14,
+    fontFamily: FF.medium,
+    color: colors.text,
+    letterSpacing: 1,
+  },
+  couponBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  couponBtnDisabled: {
+    opacity: 0.4,
+  },
+  couponBtnText: {
+    fontSize: 14,
+    fontFamily: FF.semibold,
+    color: '#fff',
+  },
+  couponMessage: {
+    fontSize: 12,
+    fontFamily: FF.regular,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  couponMessageValid: {
+    color: colors.good,
+  },
+  couponMessageInvalid: {
+    color: '#EF4444',
   },
   restoreBtn: {
     alignSelf: 'center',

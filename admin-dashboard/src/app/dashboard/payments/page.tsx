@@ -57,9 +57,20 @@ function formatDate(iso: string | null) {
   });
 }
 
+interface CouponRedemption {
+  id: string;
+  user_id: string;
+  user_email: string | null;
+  coupon_code: string;
+  plan: string;
+  redeemed_at: string;
+}
+
 export default function PaymentsPage() {
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
+  const [redemptions, setRedemptions] = useState<CouponRedemption[]>([]);
+  const [redemptionsLoading, setRedemptionsLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [refundTarget, setRefundTarget] = useState<Subscription | null>(null);
   const [refundAmount, setRefundAmount] = useState("");
@@ -76,6 +87,11 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     fetchData();
+    setRedemptionsLoading(true);
+    fetch("/api/coupons/redemptions")
+      .then((r) => r.json())
+      .then((data) => setRedemptions(Array.isArray(data) ? data : []))
+      .finally(() => setRedemptionsLoading(false));
   }, []);
 
   const openRefund = (sub: Subscription) => {
@@ -413,6 +429,49 @@ export default function PaymentsPage() {
           </div>
         </div>
       )}
+
+      {/* Coupon Redemptions */}
+      <div className="mt-8">
+        <h2 className="text-sm font-semibold text-white mb-3">Coupon Redemptions</h2>
+        {redemptionsLoading ? (
+          <div className="text-sm text-etapa-textMuted animate-pulse">Loading...</div>
+        ) : redemptions.length === 0 ? (
+          <div className="bg-etapa-surface border border-etapa-border rounded-xl p-6 text-center text-sm text-etapa-textMuted">
+            No coupon redemptions yet.
+          </div>
+        ) : (
+          <div className="bg-etapa-surface border border-etapa-border rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-etapa-border text-left">
+                  <th className="px-4 py-3 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">User</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">Code</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">Plan</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">Redeemed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {redemptions.map((r) => (
+                  <tr key={r.id} className="border-b border-etapa-border last:border-0 hover:bg-etapa-surfaceLight transition-colors">
+                    <td className="px-4 py-3 text-etapa-textMid">{r.user_email || r.user_id}</td>
+                    <td className="px-4 py-3 font-mono text-etapa-primary">{r.coupon_code}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                        r.plan === "lifetime"
+                          ? "bg-purple-900/30 text-purple-300 border border-purple-700/30"
+                          : "bg-etapa-primary/10 text-etapa-primary border border-etapa-primary/20"
+                      }`}>
+                        {r.plan}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-etapa-textMuted">{formatDate(r.redeemed_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
