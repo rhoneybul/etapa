@@ -3,7 +3,7 @@
     "name": "Etapa",
     "slug": "etapa",
     "scheme": "etapa",
-    "version": "0.71.0",
+    "version": "0.72.0",
     "orientation": "portrait",
     "icon": "./assets/icons/ios/AppIcon-1024.png",
     "userInterfaceStyle": "dark",
@@ -45,7 +45,6 @@
     },
     "plugins": [
       "expo-web-browser",
-      "react-native-purchases",
       "expo-font",
       "expo-apple-authentication",
       [
@@ -63,6 +62,7 @@
         }
       ],
       "./plugins/withSwiftConcurrency",
+      "./plugins/withInAppPurchase",
       "@sentry/react-native"
     ],
     "extra": {
