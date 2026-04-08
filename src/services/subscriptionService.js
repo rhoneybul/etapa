@@ -150,39 +150,28 @@ export async function getSubscriptionOfferings() {
  * @returns {{ success: boolean, cancelled?: boolean, error?: string }}
  */
 export async function openCheckout(plan, rcPackage = null, promoCode = null) {
-  // ── Native: use RevenueCat ────────────────────────────────────────────────
-  if (isRevenueCatAvailable() && rcPackage) {
+  const isNative = Platform.OS !== 'web';
+
+  // ── Native (iOS/Android): MUST use RevenueCat / App Store IAP ─────────────
+  if (isNative) {
+    if (!isRevenueCatAvailable()) {
+      throw new Error('In-app purchases are not available. Please restart the app and try again.');
+    }
+    if (!rcPackage) {
+      throw new Error('This plan is not available for purchase right now. Please try again later.');
+    }
     const result = await purchasePackage(rcPackage);
     return result;
   }
 
-  // ── Web / fallback: use Stripe Checkout ───────────────────────────────────
-  const isWeb = Platform.OS === 'web';
-  const redirectBase = isWeb
-    ? `${window.location.origin}/stripe`
-    : 'etapa://stripe';
+  // ── Web: use Stripe Checkout ──────────────────────────────────────────────
+  const redirectBase = `${window.location.origin}/stripe`;
 
   const data = await authRequest('POST', '/api/stripe/create-checkout-session', { plan, redirectBase, promoCode });
   if (!data?.url) throw new Error('Could not create checkout session. Please try again.');
 
-  if (isWeb) {
-    window.location.href = data.url;
-    return { success: false }; // App will detect return via checkStripeReturn()
-  }
-
-  // Native fallback (no RevenueCat package) — open Stripe in browser
-  const result = await WebBrowser.openAuthSessionAsync(data.url, 'etapa://stripe');
-
-  if (result.type === 'success' && result.url?.includes('stripe/success')) {
-    const params = new URLSearchParams(result.url.split('?')[1] || '');
-    const sessionId = params.get('session_id');
-    if (sessionId) {
-      await authRequest('POST', '/api/stripe/verify-session', { sessionId });
-    }
-    return { success: true };
-  }
-
-  return { success: false };
+  window.location.href = data.url;
+  return { success: false }; // App will detect return via checkStripeReturn()
 }
 
 /**
@@ -203,30 +192,25 @@ export async function restorePurchases() {
  * Returns { success, refundAmount, daysRemaining } on success, { success: false } on cancel.
  */
 export async function upgradeStarter() {
-  const isWeb = Platform.OS === 'web';
-  const redirectBase = isWeb
-    ? `${window.location.origin}/stripe`
-    : 'etapa://stripe';
+  const isNative = Platform.OS !== 'web';
 
-  const data = await authRequest('POST', '/api/stripe/upgrade-starter', { redirectBase });
-  if (!data?.url) throw new Error('Could not start upgrade. Please try again.');
-
-  if (isWeb) {
-    window.location.href = data.url;
+  // On native, upgrade must go through IAP — direct to App Store subscriptions
+  if (isNative) {
+    const { Linking } = require('react-native');
+    if (Platform.OS === 'ios') {
+      await Linking.openURL('https://apps.apple.com/account/subscriptions');
+    } else {
+      await Linking.openURL('https://play.google.com/store/account/subscriptions');
+    }
     return { success: false };
   }
 
-  const result = await WebBrowser.openAuthSessionAsync(data.url, 'etapa://stripe');
+  // On web, use Stripe
+  const redirectBase = `${window.location.origin}/stripe`;
+  const data = await authRequest('POST', '/api/stripe/upgrade-starter', { redirectBase });
+  if (!data?.url) throw new Error('Could not start upgrade. Please try again.');
 
-  if (result.type === 'success' && result.url?.includes('stripe/success')) {
-    const params = new URLSearchParams(result.url.split('?')[1] || '');
-    const sessionId = params.get('session_id');
-    if (sessionId) {
-      await authRequest('POST', '/api/stripe/verify-session', { sessionId });
-    }
-    return { success: true, refundAmount: data.refundAmount, daysRemaining: data.daysRemaining };
-  }
-
+  window.location.href = data.url;
   return { success: false };
 }
 
@@ -262,18 +246,24 @@ export async function refundLifetime() {
  * settings instead — the app should direct them there.
  */
 export async function openBillingPortal() {
-  const isWeb = Platform.OS === 'web';
-  const returnUrl = isWeb ? `${window.location.origin}` : 'etapa://settings';
+  const isNative = Platform.OS !== 'web';
 
-  const data = await authRequest('POST', '/api/stripe/create-portal-session', { returnUrl });
-  if (!data?.url) throw new Error('Could not open billing portal. Please try again.');
-
-  if (isWeb) {
-    window.location.href = data.url;
+  // On native, direct users to the App Store / Play Store subscription management
+  if (isNative) {
+    const { Linking } = require('react-native');
+    if (Platform.OS === 'ios') {
+      await Linking.openURL('https://apps.apple.com/account/subscriptions');
+    } else {
+      await Linking.openURL('https://play.google.com/store/account/subscriptions');
+    }
     return;
   }
 
-  await WebBrowser.openBrowserAsync(data.url);
+  // On web, open Stripe billing portal
+  const returnUrl = `${window.location.origin}`;
+  const data = await authRequest('POST', '/api/stripe/create-portal-session', { returnUrl });
+  if (!data?.url) throw new Error('Could not open billing portal. Please try again.');
+  window.location.href = data.url;
 }
 
 // ── Web return handler ──────────────────────────────────────────────────────────

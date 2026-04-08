@@ -207,19 +207,18 @@ export default function PaywallScreen({ navigation, route }) {
 
   const plan = plans[selected];
 
-  // Holding screen — shown when user dismisses the paywall but has no subscription
+  // Holding screen — shown when user dismisses the paywall (no subscription).
+  // Does NOT show prices or purchase CTAs — Apple rejects re-prompting after a decline.
   if (showHolding) {
     return (
       <View style={s.container}>
         {/* Dummy training plan background */}
         <View style={s.holdingBg}>
-          {/* Week header */}
           <View style={s.holdingWeekHeader}>
             <View style={s.holdingWeekHeaderDot} />
             <View style={s.holdingWeekHeaderBar} />
             <View style={s.holdingWeekHeaderBadge} />
           </View>
-          {/* Session rows */}
           {DUMMY_PLAN.map((session, i) => (
             <View key={i} style={s.holdingBgRow}>
               <View style={s.holdingDayLabel} />
@@ -233,7 +232,6 @@ export default function PaywallScreen({ navigation, route }) {
           ))}
         </View>
 
-        {/* Gradient overlay — lighter at top so plan peeks through, dark at bottom */}
         <LinearGradient
           colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.93)', 'rgba(0,0,0,0.98)']}
           locations={[0, 0.3, 0.6, 1]}
@@ -247,50 +245,12 @@ export default function PaywallScreen({ navigation, route }) {
             resizeMode="contain"
           />
 
-          <Text style={s.holdingTitle}>Your plan is waiting</Text>
+          <Text style={s.holdingTitle}>Welcome to Etapa</Text>
           <Text style={s.holdingSubtitle}>
-            Unlock AI-powered training plans, coach chat,{'\n'}and progress tracking.
+            AI-powered cycling training plans,{'\n'}personalised to your goals.
           </Text>
 
-          {/* Plan pricing summary */}
-          <View style={s.holdingPlansRow}>
-            <View style={s.holdingPlanPill}>
-              <Text style={s.holdingPlanPillLabel}>Monthly</Text>
-              <Text style={s.holdingPlanPillPrice}>{plans.monthly.price}<Text style={s.holdingPlanPillPer}>/mo</Text></Text>
-            </View>
-            <View style={[s.holdingPlanPill, s.holdingPlanPillHighlight]}>
-              <Text style={[s.holdingPlanPillLabel, { color: colors.primary }]}>Annual</Text>
-              <Text style={[s.holdingPlanPillPrice, { color: colors.primary }]}>{plans.annual.price}<Text style={s.holdingPlanPillPer}>/mo</Text></Text>
-              <View style={s.holdingPlanPillBadge}><Text style={s.holdingPlanPillBadgeText}>POPULAR</Text></View>
-            </View>
-            <View style={s.holdingPlanPill}>
-              <Text style={s.holdingPlanPillLabel}>Lifetime</Text>
-              <Text style={s.holdingPlanPillPrice}>{plans.lifetime.price}</Text>
-            </View>
-          </View>
-          <Text style={s.holdingTrialNote}>1 week free trial on all subscription plans</Text>
-
-          {/* Lifetime savings callout — informational, not a button */}
-          <View style={s.holdingSavingsRow}>
-            <Text style={s.holdingSavingsText}>Lifetime access · {plans.lifetime.price} one-time</Text>
-            <View style={s.holdingSavingsBadge}>
-              <Text style={s.holdingSavingsBadgeText}>SAVE $100</Text>
-            </View>
-          </View>
-
-          {/* Primary CTA */}
-          <TouchableOpacity
-            style={s.holdingPrimaryBtn}
-            onPress={() => {
-              navigation.replace('GoalSetup', { requirePaywall: true });
-            }}
-            activeOpacity={0.85}
-          >
-            <Text style={s.holdingPrimaryBtnText}>Create your plan</Text>
-            <Text style={s.holdingPrimaryBtnSub}>Start your free trial</Text>
-          </TouchableOpacity>
-
-          {/* New to cycling — prominent warm card */}
+          {/* New to cycling — non-purchase entry point */}
           <TouchableOpacity
             style={s.holdingNewCyclistBtn}
             onPress={() => {
@@ -302,7 +262,7 @@ export default function PaywallScreen({ navigation, route }) {
               <View style={s.holdingNewCyclistAccent} />
               <View style={s.holdingNewCyclistText}>
                 <Text style={s.holdingNewCyclistTitle}>New to cycling?</Text>
-                <Text style={s.holdingNewCyclistSub}>We'll build your first plan from scratch</Text>
+                <Text style={s.holdingNewCyclistSub}>Explore our beginner program</Text>
               </View>
               <Text style={s.holdingNewCyclistArrow}>{'\u2192'}</Text>
             </View>

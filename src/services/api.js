@@ -50,6 +50,7 @@ async function request(method, path, body) {
 export const api = {
   users: {
     me: () => request('GET', '/api/users/me'),
+    deleteAccount: () => request('DELETE', '/api/users/me'),
   },
 
   goals: {

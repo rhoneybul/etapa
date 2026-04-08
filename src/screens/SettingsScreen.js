@@ -242,6 +242,52 @@ export default function SettingsScreen({ navigation }) {
     }
   };
 
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete your account?',
+      'This will permanently delete your account, all training plans, and all associated data. This action cannot be undone.\n\nIf you have an active subscription, please cancel it first via Settings > Manage Plan or through the App Store.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: () => {
+            // Second confirmation
+            Alert.alert(
+              'Are you sure?',
+              'This is permanent. All your data will be deleted.',
+              [
+                { text: 'Keep My Account', style: 'cancel' },
+                {
+                  text: 'Yes, Delete Everything',
+                  style: 'destructive',
+                  onPress: async () => {
+                    setDeleting(true);
+                    try {
+                      await api.users.deleteAccount();
+                      analytics.capture?.('account_deleted');
+                      analytics.reset();
+                      await logoutRevenueCat().catch(() => {});
+                      await clearUserData();
+                      await signOut();
+                      navigation.replace('SignIn');
+                    } catch (err) {
+                      Alert.alert('Error', err?.message || 'Could not delete account. Please try again or contact support@getetapa.com.');
+                    } finally {
+                      setDeleting(false);
+                    }
+                  },
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
+  };
+
   const handleSignOut = async () => {
     analytics.events.signedOut();
     analytics.reset();
@@ -436,7 +482,7 @@ export default function SettingsScreen({ navigation }) {
                 <View style={s.rowLeft}>
                   <View>
                     <Text style={[s.rowTitle, { color: colors.primary }]}>{portalLoading ? 'Opening...' : 'Cancel Subscription'}</Text>
-                    <Text style={s.rowSub}>Cancel your plan via Stripe</Text>
+                    <Text style={s.rowSub}>Manage in App Store or Stripe</Text>
                   </View>
                 </View>
                 <Text style={s.chevron}>{'\u203A'}</Text>
@@ -493,7 +539,7 @@ export default function SettingsScreen({ navigation }) {
                 <View style={s.rowLeft}>
                   <View>
                     <Text style={[s.rowTitle, { color: colors.primary }]}>{portalLoading ? 'Opening...' : 'Cancel Subscription'}</Text>
-                    <Text style={s.rowSub}>Cancel your plan via Stripe</Text>
+                    <Text style={s.rowSub}>Manage in App Store or Stripe</Text>
                   </View>
                 </View>
                 <Text style={s.chevron}>›</Text>
@@ -658,6 +704,18 @@ export default function SettingsScreen({ navigation }) {
               <Text style={[s.rowTitle, { color: colors.primary }]}>Sign out</Text>
             </View>
             <Text style={s.chevron}>{'\u203A'}</Text>
+          </TouchableOpacity>
+          <View style={s.divider} />
+          <TouchableOpacity style={s.row} onPress={handleDeleteAccount} disabled={deleting}>
+            <View style={s.rowLeft}>
+              <View>
+                <Text style={[s.rowTitle, { color: '#EF4444' }]}>
+                  {deleting ? 'Deleting...' : 'Delete Account'}
+                </Text>
+                <Text style={s.rowSub}>Permanently remove all your data</Text>
+              </View>
+            </View>
+            <Text style={[s.chevron, { color: 'rgba(239,68,68,0.35)' }]}>{'\u203A'}</Text>
           </TouchableOpacity>
         </View>
 
