@@ -341,23 +341,53 @@ CRITICAL: These are real rides the athlete does EVERY week (e.g. club rides, gro
 - Factor their training load into the weekly total — they count towards the athlete's weekly volume.`;
   }
 
-  // One-off planned rides
+  // ── Compute plan Monday for accurate date calculations ──
+  // dayOfWeek=0 always means Monday, so we snap to the Monday of the start week.
+  let planMondayForPrompt;
+  if (config.startDate) {
+    const sdParts = config.startDate.split('T')[0].split('-').map(Number);
+    const planStart = new Date(sdParts[0], sdParts[1] - 1, sdParts[2], 12, 0, 0);
+    const jsDay = planStart.getDay();
+    const mondayOff = jsDay === 0 ? -6 : -(jsDay - 1);
+    planMondayForPrompt = new Date(planStart);
+    planMondayForPrompt.setDate(planMondayForPrompt.getDate() + mondayOff);
+  } else {
+    // Default: next Monday
+    const now = new Date();
+    const dow = now.getDay();
+    const daysUntilMon = dow === 0 ? 1 : dow === 1 ? 0 : 8 - dow;
+    planMondayForPrompt = new Date(now);
+    planMondayForPrompt.setDate(planMondayForPrompt.getDate() + daysUntilMon);
+    planMondayForPrompt.setHours(12, 0, 0, 0);
+  }
+  const planMondayStr = `${planMondayForPrompt.getFullYear()}-${String(planMondayForPrompt.getMonth() + 1).padStart(2, '0')}-${String(planMondayForPrompt.getDate()).padStart(2, '0')}`;
+  const dayNamesForCalc = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+  // One-off planned rides — pre-compute exact week/dayOfWeek so the LLM doesn't need to calculate
   let oneOffRidesNote = '';
   if (oneOffRides && oneOffRides.length > 0) {
     const rideDescs = oneOffRides.map(r => {
-      const parts = [r.date];
+      if (!r.date) return null;
+      const ooParts = r.date.split('T')[0].split('-').map(Number);
+      const ooDate = new Date(ooParts[0], ooParts[1] - 1, ooParts[2], 12, 0, 0);
+      const diffDays = Math.round((ooDate - planMondayForPrompt) / (1000 * 60 * 60 * 24));
+      const ooWeek = Math.floor(diffDays / 7) + 1;
+      const ooDayOfWeek = diffDays % 7;
+      const ooDayName = dayNamesForCalc[ooDayOfWeek] || '?';
+
+      const parts = [`${r.date} (${ooDayName}) → week=${ooWeek}, dayOfWeek=${ooDayOfWeek}`];
       if (r.durationMins) parts.push(`${r.durationMins} min`);
       if (r.distanceKm) parts.push(`${r.distanceKm} km`);
       if (r.elevationM) parts.push(`${r.elevationM}m elevation`);
       if (r.notes) parts.push(`"${r.notes}"`);
       return `- ${parts.join(', ')}`;
-    });
+    }).filter(Boolean);
     oneOffRidesNote = `
-## Planned one-off rides (specific dates)
+## Planned one-off rides (specific dates) — EXACT positions pre-computed
 ${rideDescs.join('\n')}
 CRITICAL: These are specific rides on exact dates that the athlete has committed to.
-- Calculate which week number and day these fall on based on the plan start date.
-- Include these rides in the plan on their exact date.
+- The week and dayOfWeek values above are ALREADY CALCULATED — use them EXACTLY as given. Do NOT recalculate.
+- Include these rides in the plan at the exact week and dayOfWeek specified above.
 - Build the surrounding days to prepare for and recover from these rides (especially if they are long/hard).
 - Taper training load in the days before big planned rides.
 - Reduce training load on the day after to allow recovery.`;
@@ -407,7 +437,7 @@ ${goal.targetElevation ? `- Target elevation: ${goal.targetElevation} m` : ''}
 ${goal.targetTime ? `- Target finish time: ${goal.targetTime} hours` : ''}
 ${goal.targetDate ? `- Event/target date: ${goal.targetDate}` : ''}
 - Today's date: ${new Date().toISOString().split('T')[0]} (${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()]})
-- Plan start date: ${config.startDate ? config.startDate.split('T')[0] : 'next Monday'} (this is a MONDAY — Week 1 Day 0)
+- Plan Monday (Week 1, Day 0): ${planMondayStr} (all dayOfWeek values are relative to this Monday)
 - Current year: ${new Date().getFullYear()}
 
 ## Plan structure
@@ -1274,7 +1304,6 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
     // Use YYYY-MM-DD date string to avoid timezone shifts between client/server
     let startDateStr;
     if (config.startDate) {
-      // config.startDate may be YYYY-MM-DD or full ISO — extract date part safely
       startDateStr = config.startDate.split('T')[0];
     } else {
       const now = new Date();
@@ -1287,6 +1316,16 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
       const d = String(startDate.getDate()).padStart(2, '0');
       startDateStr = `${y}-${m}-${d}`;
     }
+
+    // ── Snap plan start to Monday for date calculations ──
+    const sdParts = startDateStr.split('-').map(Number);
+    const planStartDate = new Date(sdParts[0], sdParts[1] - 1, sdParts[2], 12, 0, 0);
+    const jsDayStart = planStartDate.getDay();
+    const mondayOff = jsDayStart === 0 ? -6 : -(jsDayStart - 1);
+    const planMonday = new Date(planStartDate);
+    planMonday.setDate(planMonday.getDate() + mondayOff);
+    const planMondayStr = `${planMonday.getFullYear()}-${String(planMonday.getMonth() + 1).padStart(2, '0')}-${String(planMonday.getDate()).padStart(2, '0')}`;
+    const dayNamesArr = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
     const planId = `plan_${crypto.randomBytes(8).toString('hex')}`;
     const activities = rawActivities.map((a, i) => ({
@@ -1308,16 +1347,98 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
       stravaData: null,
     }));
 
+    // ── Deterministically inject one-off rides at exact positions ──
+    // The LLM may place them on wrong days, so we remove any LLM-generated
+    // oneoff rides and re-inject at the correct week/dayOfWeek.
+    const oneOffRides = config.oneOffRides || [];
+    if (oneOffRides.length > 0) {
+      for (const oo of oneOffRides) {
+        if (!oo.date) continue;
+        const ooParts = oo.date.split('T')[0].split('-').map(Number);
+        const ooDate = new Date(ooParts[0], ooParts[1] - 1, ooParts[2], 12, 0, 0);
+        const diffDays = Math.round((ooDate - planMonday) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0) continue;
+        const ooWeek = Math.floor(diffDays / 7) + 1;
+        const ooDayOfWeek = diffDays % 7;
+        if (ooWeek > maxWeeks) continue;
+
+        // Remove any LLM-generated activity on this day tagged as oneoff
+        for (let i = activities.length - 1; i >= 0; i--) {
+          if (activities[i].week === ooWeek && activities[i].dayOfWeek === ooDayOfWeek && activities[i].subType === 'oneoff') {
+            activities.splice(i, 1);
+          }
+        }
+
+        activities.push({
+          id: `act_${crypto.randomBytes(6).toString('hex')}_oo`,
+          planId,
+          week: ooWeek,
+          dayOfWeek: ooDayOfWeek,
+          type: 'ride',
+          subType: 'oneoff',
+          title: oo.notes ? `Planned: ${oo.notes}` : 'Planned Ride',
+          description: oo.notes || 'A specific ride you have planned for this date.',
+          notes: oo.elevationM ? `${oo.elevationM}m elevation` : null,
+          durationMins: oo.durationMins || 60,
+          distanceKm: oo.distanceKm || null,
+          elevationM: oo.elevationM || null,
+          effort: 'moderate',
+          completed: false,
+          completedAt: null,
+          isOneOff: true,
+          oneOffDate: oo.date,
+          stravaActivityId: null,
+          stravaData: null,
+        });
+      }
+    }
+
+    // ── Stamp each activity with date, dayName, scheduleType ──
+    activities.forEach(a => {
+      const offset = (a.week - 1) * 7 + (a.dayOfWeek ?? 0);
+      const d = new Date(planMonday);
+      d.setDate(d.getDate() + offset);
+      a.date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      a.dayName = dayNamesArr[a.dayOfWeek] ? dayNamesArr[a.dayOfWeek].charAt(0).toUpperCase() + dayNamesArr[a.dayOfWeek].slice(1) : null;
+      if (!a.scheduleType) {
+        if (a.isOneOff) a.scheduleType = 'organised';
+        else if (a.isRecurring) a.scheduleType = 'recurring';
+        else a.scheduleType = 'planned';
+      }
+    });
+
+    // ── Resolve conflicts: organised > recurring > planned ──
+    const priorityOrder = { organised: 0, recurring: 1, planned: 2 };
+    const dayMap = {};
+    activities.forEach(a => {
+      const key = `${a.week}-${a.dayOfWeek}`;
+      if (!dayMap[key]) dayMap[key] = [];
+      dayMap[key].push(a);
+    });
+    const toRemoveIds = new Set();
+    Object.values(dayMap).forEach(dayActs => {
+      if (dayActs.length <= 1) return;
+      dayActs.sort((x, y) => (priorityOrder[x.scheduleType] ?? 2) - (priorityOrder[y.scheduleType] ?? 2));
+      const top = dayActs[0];
+      for (let i = 1; i < dayActs.length; i++) {
+        if (dayActs[i].type === top.type) toRemoveIds.add(dayActs[i].id);
+      }
+    });
+    const finalActivities = activities.filter(a => !toRemoveIds.has(a.id));
+
+    // Sort by week then day
+    finalActivities.sort((a, b) => a.week !== b.week ? a.week - b.week : a.dayOfWeek - b.dayOfWeek);
+
     const plan = {
       id: planId,
       goalId: goal.id,
       configId: config.id,
       name: goal.planName || null,
       status: 'active',
-      startDate: startDateStr,
+      startDate: planMondayStr,
       weeks: config.weeks || 8,
       currentWeek: 1,
-      activities,
+      activities: finalActivities,
       createdAt: new Date().toISOString(),
     };
 

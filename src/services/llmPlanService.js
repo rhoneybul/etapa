@@ -385,7 +385,7 @@ function buildPlanFromActivities(activities, goal, config) {
     configId: config.id,
     name: goal.planName || null,
     status: 'active',
-    startDate: startDateStr,
+    startDate: `${planMonday.getFullYear()}-${String(planMonday.getMonth() + 1).padStart(2, '0')}-${String(planMonday.getDate()).padStart(2, '0')}`,
     weeks: maxWeeks,
     currentWeek: 1,
     activities: finalActivities,
