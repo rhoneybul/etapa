@@ -150,40 +150,16 @@ export async function getSubscriptionOfferings() {
  * @returns {{ success: boolean, cancelled?: boolean, error?: string }}
  */
 export async function openCheckout(plan, rcPackage = null, promoCode = null) {
-  // ── iOS: use RevenueCat / App Store IAP ───────────────────────────────────
+  // ── iOS: must use RevenueCat / App Store IAP (Apple requirement) ──────────
   if (Platform.OS === 'ios') {
-    // Prefer RevenueCat, but if offerings/packages aren't configured yet,
-    // fall back to Stripe Checkout so development isn't blocked.
-    if (isRevenueCatAvailable() && rcPackage) {
-      const result = await purchasePackage(rcPackage);
-      return result;
+    if (!isRevenueCatAvailable()) {
+      return { success: false, error: 'In-app purchases are not available. Please try again later.' };
     }
-
-    const redirectBase = 'etapa://stripe';
-    const data = await authRequest('POST', '/api/stripe/create-checkout-session', { plan, redirectBase, promoCode });
-    if (!data?.url) throw new Error('Could not create checkout session. Please try again.');
-
-    const result = await WebBrowser.openAuthSessionAsync(data.url, 'etapa://stripe/success');
-
-    if (result.type !== 'success') {
-      // User closed the browser without completing payment
-      return { success: false, cancelled: true };
+    if (!rcPackage) {
+      return { success: false, error: 'This plan is not yet available for purchase. Please try again later.' };
     }
-
-    // Extract session_id from the deep link and verify with the server
-    try {
-      const url = new URL(result.url);
-      const sessionId = url.searchParams.get('session_id');
-      if (!sessionId) return { success: false, error: 'No session ID returned' };
-
-      const verified = await authRequest('POST', '/api/stripe/verify-session', { sessionId });
-      if (verified?.ok) {
-        return { success: true };
-      }
-      return { success: false, error: 'Payment could not be verified. Please restore purchases or contact support.' };
-    } catch {
-      return { success: false, error: 'Something went wrong verifying your payment.' };
-    }
+    const result = await purchasePackage(rcPackage);
+    return result;
   }
 
   // ── Android: use Stripe Checkout via in-app browser ───────────────────────
@@ -289,7 +265,7 @@ export async function upgradeStarter() {
 
 /**
  * Requests a full refund for the starter plan.
- * Only available within 2 weeks of the plan start date.
+ * Only available within 16 days of the plan start date.
  * Returns { ok, refundedAmount } on success.
  */
 export async function refundStarter(planStartDate) {
@@ -301,7 +277,7 @@ export async function refundStarter(planStartDate) {
 
 /**
  * Requests a full refund for the lifetime plan.
- * Only available within 7 days of purchase.
+ * Only available within 16 days of purchase.
  * Returns { ok, refundedAmount } on success.
  */
 export async function refundLifetime() {

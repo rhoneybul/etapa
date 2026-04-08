@@ -8,7 +8,7 @@
  *   - Pay now (price fetched from Stripe) → full access immediately
  *   - Pay when it starts → plan is generated but locked until payment
  * Supports Stripe promo/discount codes.
- * Full refund available within first 2 weeks of plan start date.
+ * Full refund available within first 16 days of purchase.
  */
 import React, { useState, useEffect } from 'react';
 import {
@@ -228,7 +228,7 @@ export default function BeginnerProgramScreen({ navigation }) {
                 <Text style={s.promoBadgeText}>{promoResult.label}</Text>
               </View>
             )}
-            <Text style={s.priceRefund}>Full refund within 2 weeks of starting</Text>
+            <Text style={s.priceRefund}>16-day full refund guarantee</Text>
           </View>
 
           {/* Promo code */}

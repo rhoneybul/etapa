@@ -186,25 +186,23 @@ export default function SettingsScreen({ navigation }) {
     );
   };
 
-  // Check if lifetime purchase is within 7-day refund window
+  // Check if lifetime purchase is within 16-day refund window
   const isWithinLifetimeRefundWindow = () => {
     if (subscription?.plan !== 'lifetime') return false;
-    // Use currentPeriodEnd existence as a proxy — if they have lifetime, check created
-    // We'll check server-side too, but hide the button after ~7 days client-side
     const purchaseDate = subscription.createdAt ? new Date(subscription.createdAt) : null;
     if (!purchaseDate) return true; // Show by default, server will enforce the real window
     const daysSince = Math.floor((new Date() - purchaseDate) / (1000 * 60 * 60 * 24));
-    return daysSince <= 7;
+    return daysSince <= 16;
   };
 
-  // Check if starter plan is within 2-week refund window
+  // Check if starter plan is within 16-day refund window
   const isRefundEligible = (() => {
     if (!starterPlan?.startDate || subscription?.plan !== 'starter') return false;
     const sp = starterPlan.startDate.split('T')[0].split('-');
     const startDate = new Date(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]), 12, 0, 0);
     const now = new Date();
     const daysSinceStart = Math.round((now - startDate) / (1000 * 60 * 60 * 24));
-    return daysSinceStart <= 14;
+    return daysSinceStart <= 16;
   })();
 
   const handleTogglePushNotifications = async (value) => {
@@ -470,7 +468,7 @@ export default function SettingsScreen({ navigation }) {
                   <View style={s.rowLeft}>
                     <View>
                       <Text style={[s.rowTitle, { color: colors.primary }]}>Request Refund</Text>
-                      <Text style={s.rowSub}>Full {starterPriceLabel || ''} refund · available for first 2 weeks</Text>
+                      <Text style={s.rowSub}>Full {starterPriceLabel || ''} refund · available for first 16 days</Text>
                     </View>
                   </View>
                   <Text style={s.chevron}>{'\u203A'}</Text>
@@ -509,7 +507,7 @@ export default function SettingsScreen({ navigation }) {
                   <View style={s.rowLeft}>
                     <View>
                       <Text style={[s.rowTitle, { color: colors.primary }]}>Request Refund</Text>
-                      <Text style={s.rowSub}>7-day money-back guarantee</Text>
+                      <Text style={s.rowSub}>16-day full refund guarantee</Text>
                     </View>
                   </View>
                   <Text style={s.chevron}>›</Text>

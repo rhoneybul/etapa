@@ -269,7 +269,7 @@ router.post('/create-checkout-session', async (req, res) => {
       sessionConfig.mode = 'payment';
       if (isLifetime) {
         sessionConfig.payment_intent_data = {
-          description: 'Etapa Lifetime Access — One-time payment. Your coach, forever. 7-day money-back guarantee.',
+          description: 'Etapa Lifetime Access — One-time payment. Your coach, forever. 16-day full refund guarantee.',
         };
       }
     } else {
@@ -511,8 +511,8 @@ router.post('/upgrade-starter', async (req, res) => {
 });
 
 // ── POST /api/stripe/refund-starter ─────────────────────────────────────────
-// Full refund if within 2 weeks of plan start date. Plan is deactivated.
-const REFUND_WINDOW_DAYS = 14;
+// Full refund if within 16 days of plan start date. Plan is deactivated.
+const REFUND_WINDOW_DAYS = 16;
 
 router.post('/refund-starter', async (req, res) => {
   const stripe = getStripe();
@@ -537,7 +537,7 @@ router.post('/refund-starter', async (req, res) => {
       return res.status(404).json({ error: 'No active starter plan found' });
     }
 
-    // 2. Check refund window — within 14 days of plan start date
+    // 2. Check refund window — within 16 days of plan start date
     const startDate = planStartDate ? new Date(planStartDate) : new Date(starterRow.created_at);
     const now = new Date();
     const daysSinceStart = Math.floor((now - startDate) / (1000 * 60 * 60 * 24));
@@ -582,8 +582,8 @@ router.post('/refund-starter', async (req, res) => {
 });
 
 // ── POST /api/stripe/refund-lifetime ────────────────────────────────────────
-// Full refund if within 7 days of purchase. Lifetime access is revoked.
-const LIFETIME_REFUND_WINDOW_DAYS = 7;
+// Full refund if within 16 days of purchase. Lifetime access is revoked.
+const LIFETIME_REFUND_WINDOW_DAYS = 16;
 
 router.post('/refund-lifetime', async (req, res) => {
   const stripe = getStripe();
@@ -607,7 +607,7 @@ router.post('/refund-lifetime', async (req, res) => {
       return res.status(404).json({ error: 'No active lifetime plan found' });
     }
 
-    // 2. Check refund window — within 7 days of purchase
+    // 2. Check refund window — within 16 days of purchase
     const purchaseDate = new Date(lifetimeRow.created_at);
     const now = new Date();
     const daysSincePurchase = Math.floor((now - purchaseDate) / (1000 * 60 * 60 * 24));

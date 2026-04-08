@@ -1071,6 +1071,52 @@ router.post('/refund', async (req, res, next) => {
   }
 });
 
+// ── DELETE /api/admin/subscriptions/:id — delete a subscription record ───────
+// Cancels the Stripe subscription (if active) and removes the row from the DB.
+router.delete('/subscriptions/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: 'Subscription ID is required' });
+
+    // Get the subscription record
+    const { data: sub, error: subErr } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (subErr || !sub) return res.status(404).json({ error: 'Subscription not found' });
+
+    // If there's an active Stripe subscription, cancel it first
+    const stripe = getStripe();
+    if (stripe && sub.stripe_customer_id && !['canceled', 'refunded', 'expired'].includes(sub.status)) {
+      try {
+        // Only attempt cancel for recurring subscriptions (not one-time purchases like starter/lifetime)
+        if (!['starter', 'lifetime'].includes(sub.plan)) {
+          await stripe.subscriptions.cancel(id);
+        }
+      } catch (stripeErr) {
+        // Log but don't block deletion — the Stripe sub may already be gone
+        console.warn('[admin] Stripe cancel during delete:', stripeErr.message);
+      }
+    }
+
+    // Delete the subscription record from the database
+    const { error: deleteErr } = await supabase
+      .from('subscriptions')
+      .delete()
+      .eq('id', id);
+
+    if (deleteErr) throw deleteErr;
+
+    console.log(`[admin] Deleted subscription ${id} (user: ${sub.user_id}, plan: ${sub.plan})`);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[admin] Delete subscription error:', err);
+    next(err);
+  }
+});
+
 // ── DELETE /api/admin/users/:id — hard-delete a user and all their data ──────
 router.delete('/users/:id', async (req, res, next) => {
   try {

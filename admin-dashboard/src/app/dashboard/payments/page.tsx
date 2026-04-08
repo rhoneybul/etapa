@@ -76,6 +76,9 @@ export default function PaymentsPage() {
   const [refundAmount, setRefundAmount] = useState("");
   const [refunding, setRefunding] = useState(false);
   const [refundError, setRefundError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Subscription | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const fetchData = () => {
     setLoading(true);
@@ -135,6 +138,27 @@ export default function PaymentsPage() {
       setRefundError("Network error — please try again");
     } finally {
       setRefunding(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const res = await fetch(`/api/payments/${deleteTarget.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        setDeleteError(data.error || "Delete failed");
+      } else {
+        setDeleteTarget(null);
+        fetchData();
+      }
+    } catch {
+      setDeleteError("Network error — please try again");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -207,14 +231,22 @@ export default function PaymentsPage() {
                     </td>
                     <td className="px-4 py-3 text-xs text-etapa-textMid">{formatDate(sub.createdAt)}</td>
                     <td className="px-4 py-3">
-                      {sub.totalPaid > 0 && sub.status !== "refunded" && (
+                      <div className="flex items-center gap-3">
+                        {sub.totalPaid > 0 && sub.status !== "refunded" && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openRefund(sub); }}
+                            className="text-xs text-red-500 hover:text-red-400 transition-colors"
+                          >
+                            Refund
+                          </button>
+                        )}
                         <button
-                          onClick={(e) => { e.stopPropagation(); openRefund(sub); }}
+                          onClick={(e) => { e.stopPropagation(); setDeleteTarget(sub); setDeleteError(null); }}
                           className="text-xs text-red-500 hover:text-red-400 transition-colors"
                         >
-                          Refund
+                          Delete
                         </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                   {expanded === sub.id && (
@@ -318,16 +350,22 @@ export default function PaymentsPage() {
                   </p>
                 )}
               </button>
-              {sub.totalPaid > 0 && sub.status !== "refunded" && (
-                <div className="px-4 pb-3">
+              <div className="px-4 pb-3 flex items-center gap-3">
+                {sub.totalPaid > 0 && sub.status !== "refunded" && (
                   <button
                     onClick={() => openRefund(sub)}
                     className="text-xs text-red-500 hover:text-red-400 transition-colors"
                   >
                     Refund
                   </button>
-                </div>
-              )}
+                )}
+                <button
+                  onClick={() => { setDeleteTarget(sub); setDeleteError(null); }}
+                  className="text-xs text-red-500 hover:text-red-400 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
               {expanded === sub.id && (
                 <div className="px-4 pb-4 border-t border-etapa-border pt-3">
                   <span className="text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Payment History</span>
@@ -430,6 +468,50 @@ export default function PaymentsPage() {
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setDeleteTarget(null)}>
+          <div
+            className="bg-etapa-surface border border-etapa-border rounded-xl p-6 w-full max-w-md mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-semibold text-white mb-1">Delete Subscription</h2>
+            <p className="text-sm text-etapa-textMid mb-4">
+              {deleteTarget.userName} &middot; {deleteTarget.plan} plan
+            </p>
+
+            <div className="bg-red-900/20 border border-red-900/40 rounded-lg p-3 mb-4">
+              <p className="text-xs font-medium text-red-400">
+                This will permanently remove this subscription record from the database.
+                {!["canceled", "refunded", "expired"].includes(deleteTarget.status) && (
+                  <> The active Stripe subscription will also be cancelled.</>
+                )}
+              </p>
+            </div>
+
+            {deleteError && (
+              <p className="text-xs text-red-400 mb-3">{deleteError}</p>
+            )}
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 text-sm text-etapa-textMid hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+              >
+                {deleting ? "Deleting..." : "Delete Subscription"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Coupon Redemptions */}
       <div className="mt-8">
         <h2 className="text-sm font-semibold text-white mb-3">Coupon Redemptions</h2>
@@ -440,36 +522,112 @@ export default function PaymentsPage() {
             No coupon redemptions yet.
           </div>
         ) : (
-          <div className="bg-etapa-surface border border-etapa-border rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-etapa-border text-left">
-                  <th className="px-4 py-3 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">User</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">Code</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">Plan</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">Redeemed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {redemptions.map((r) => (
-                  <tr key={r.id} className="border-b border-etapa-border last:border-0 hover:bg-etapa-surfaceLight transition-colors">
-                    <td className="px-4 py-3 text-etapa-textMid">{r.user_email || r.user_id}</td>
-                    <td className="px-4 py-3 font-mono text-etapa-primary">{r.coupon_code}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                        r.plan === "lifetime"
-                          ? "bg-purple-900/30 text-purple-300 border border-purple-700/30"
-                          : "bg-etapa-primary/10 text-etapa-primary border border-etapa-primary/20"
-                      }`}>
-                        {r.plan}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-etapa-textMuted">{formatDate(r.redeemed_at)}</td>
+          <>
+            {/* Summary by user */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <StatCard label="Total Redemptions" value={redemptions.length} />
+              <StatCard label="Unique Users" value={new Set(redemptions.map(r => r.user_id)).size} />
+              <StatCard label="Lifetime Codes" value={redemptions.filter(r => r.plan === "lifetime").length} />
+              <StatCard label="Starter Codes" value={redemptions.filter(r => r.plan !== "lifetime").length} />
+            </div>
+
+            {/* Per-user breakdown */}
+            <div className="bg-etapa-surface border border-etapa-border rounded-xl overflow-hidden mb-4">
+              <div className="px-4 py-3 border-b border-etapa-border">
+                <span className="text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">Usage by User</span>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-etapa-border text-left">
+                    <th className="px-4 py-2 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">User</th>
+                    <th className="px-4 py-2 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">Codes Used</th>
+                    <th className="px-4 py-2 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">Plans</th>
+                    <th className="px-4 py-2 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">Last Redeemed</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {Object.values(
+                    redemptions.reduce((acc, r) => {
+                      const key = r.user_id;
+                      if (!acc[key]) {
+                        acc[key] = {
+                          userId: r.user_id,
+                          email: r.user_email,
+                          codes: [] as string[],
+                          plans: new Set<string>(),
+                          lastRedeemed: r.redeemed_at,
+                          count: 0,
+                        };
+                      }
+                      acc[key].codes.push(r.coupon_code);
+                      acc[key].plans.add(r.plan);
+                      acc[key].count++;
+                      if (r.user_email) acc[key].email = r.user_email;
+                      if (r.redeemed_at > acc[key].lastRedeemed) acc[key].lastRedeemed = r.redeemed_at;
+                      return acc;
+                    }, {} as Record<string, { userId: string; email: string | null; codes: string[]; plans: Set<string>; lastRedeemed: string; count: number }>)
+                  )
+                    .sort((a, b) => b.count - a.count)
+                    .map((u) => (
+                      <tr key={u.userId} className="border-b border-etapa-border last:border-0 hover:bg-etapa-surfaceLight transition-colors">
+                        <td className="px-4 py-2 text-etapa-textMid text-xs">{u.email || u.userId}</td>
+                        <td className="px-4 py-2">
+                          <span className="text-white font-medium text-xs">{u.count}</span>
+                          <span className="text-etapa-textFaint text-xs ml-2">{u.codes.join(", ")}</span>
+                        </td>
+                        <td className="px-4 py-2">
+                          {Array.from(u.plans).map((plan) => (
+                            <span key={plan} className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mr-1 ${
+                              plan === "lifetime"
+                                ? "bg-purple-900/30 text-purple-300 border border-purple-700/30"
+                                : "bg-etapa-primary/10 text-etapa-primary border border-etapa-primary/20"
+                            }`}>
+                              {plan}
+                            </span>
+                          ))}
+                        </td>
+                        <td className="px-4 py-2 text-etapa-textMuted text-xs">{formatDate(u.lastRedeemed)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Full redemption log */}
+            <div className="bg-etapa-surface border border-etapa-border rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-etapa-border">
+                <span className="text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">All Redemptions</span>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-etapa-border text-left">
+                    <th className="px-4 py-3 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">User</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">Code</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">Plan</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">Redeemed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {redemptions.map((r) => (
+                    <tr key={r.id} className="border-b border-etapa-border last:border-0 hover:bg-etapa-surfaceLight transition-colors">
+                      <td className="px-4 py-3 text-etapa-textMid">{r.user_email || r.user_id}</td>
+                      <td className="px-4 py-3 font-mono text-etapa-primary">{r.coupon_code}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          r.plan === "lifetime"
+                            ? "bg-purple-900/30 text-purple-300 border border-purple-700/30"
+                            : "bg-etapa-primary/10 text-etapa-primary border border-etapa-primary/20"
+                        }`}>
+                          {r.plan}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-etapa-textMuted">{formatDate(r.redeemed_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>
