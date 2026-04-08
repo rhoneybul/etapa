@@ -17,5 +17,5 @@ export async function middleware(req) {
 
 export const config = {
   // Only protect page routes — exclude all API/auth routes and static assets
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!api|auth|_next/static|_next/image|favicon.ico).*)'],
 };
