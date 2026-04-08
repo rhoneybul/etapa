@@ -1294,7 +1294,7 @@ function getDayDateStr(startDateStr, week, dayIdx) {
 const HIT = { top: 8, bottom: 8, left: 8, right: 8 };
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
+  container: { flex: 1, backgroundColor: colors.bg, maxWidth: 500, width: '100%', alignSelf: 'center' },
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingLogoWrap: {
     width: 80, height: 80, borderRadius: 22, overflow: 'hidden',
