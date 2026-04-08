@@ -643,6 +643,194 @@ const EDIT_SCENARIOS = [
       return errors;
     },
   },
+
+  // ─── 5. Add a strength session on a specific day ───
+  {
+    name: 'Edit plan — add strength session on Wednesday',
+    baseScenario: {
+      goal: { id: 'eg5', goalType: 'improve', cyclingType: 'road', planName: 'Add Strength Test' },
+      config: {
+        id: 'ec5', daysPerWeek: 3, weeks: 6, trainingTypes: ['outdoor'],
+        availableDays: ['monday', 'wednesday', 'friday'], fitnessLevel: 'intermediate',
+        startDate: '2026-04-06',
+      },
+    },
+    edit: {
+      instruction: 'Add a 45-minute strength/gym session every Wednesday for the remaining weeks.',
+      scope: 'remaining',
+      currentWeek: 2,
+    },
+    validate: (originalPlan, editedActivities) => {
+      const errors = [];
+      if (!editedActivities || editedActivities.length === 0) {
+        errors.push('No edited activities returned');
+        return errors;
+      }
+      // Should have at least some strength sessions
+      const strengthActs = editedActivities.filter(a => a.type === 'strength');
+      if (strengthActs.length === 0) {
+        errors.push('No strength sessions found after asking to add them');
+      }
+      // Strength sessions should exist on Wednesdays (dayOfWeek=2)
+      const wednesdayStrength = strengthActs.filter(a => a.dayOfWeek === 2);
+      if (wednesdayStrength.length === 0 && strengthActs.length > 0) {
+        // Check by date too
+        const wedByDate = strengthActs.filter(a => a.date && getDayOfWeekName(a.date).toLowerCase() === 'wednesday');
+        if (wedByDate.length === 0) {
+          errors.push('Strength sessions added but none on Wednesday as requested');
+        }
+      }
+      // Duration should be roughly 45 mins as requested
+      for (const s of strengthActs) {
+        if (s.durationMins && (s.durationMins < 30 || s.durationMins > 75)) {
+          errors.push(`Strength session "${s.title}" has duration ${s.durationMins}min — asked for 45min`);
+        }
+      }
+      // All activities should still have valid fields
+      for (const a of editedActivities) {
+        if (!a.type) errors.push(`Activity "${a.title}" missing type`);
+      }
+      return errors;
+    },
+  },
+
+  // ─── 6. Move the long ride to Saturday ───
+  {
+    name: 'Edit plan — move long ride to Saturday',
+    baseScenario: {
+      goal: { id: 'eg6', goalType: 'distance', cyclingType: 'road', targetDistance: 100, planName: 'Move Long Ride Test' },
+      config: {
+        id: 'ec6', daysPerWeek: 4, weeks: 8, trainingTypes: ['outdoor'],
+        availableDays: ['tuesday', 'thursday', 'saturday', 'sunday'], fitnessLevel: 'intermediate',
+        startDate: '2026-04-06',
+      },
+    },
+    edit: {
+      instruction: 'Move my long ride each week to Saturday. I prefer doing my longest ride on Saturdays.',
+      scope: 'remaining',
+      currentWeek: 2,
+    },
+    validate: (originalPlan, editedActivities) => {
+      const errors = [];
+      if (!editedActivities || editedActivities.length === 0) {
+        errors.push('No edited activities returned');
+        return errors;
+      }
+      // Saturday = dayOfWeek 5
+      // Find the longest ride each week and check it's on Saturday
+      const weekMap = {};
+      for (const a of editedActivities) {
+        if (a.type !== 'ride') continue;
+        if (!weekMap[a.week]) weekMap[a.week] = [];
+        weekMap[a.week].push(a);
+      }
+      let saturdayLongCount = 0;
+      let totalWeeksChecked = 0;
+      for (const [week, rides] of Object.entries(weekMap)) {
+        if (rides.length === 0) continue;
+        totalWeeksChecked++;
+        const longest = rides.reduce((a, b) => ((a.distanceKm || 0) > (b.distanceKm || 0) ? a : b));
+        if (longest.dayOfWeek === 5) saturdayLongCount++;
+      }
+      // At least half the weeks should have their longest ride on Saturday
+      if (totalWeeksChecked > 0 && saturdayLongCount < totalWeeksChecked * 0.5) {
+        errors.push(`Only ${saturdayLongCount}/${totalWeeksChecked} weeks have the longest ride on Saturday — asked to move it there`);
+      }
+      return errors;
+    },
+  },
+
+  // ─── 7. Single activity edit — change ride to indoor trainer ───
+  {
+    name: 'Edit single activity — swap to indoor trainer',
+    baseScenario: {
+      goal: { id: 'eg7', goalType: 'improve', cyclingType: 'road', planName: 'Indoor Swap Test' },
+      config: {
+        id: 'ec7', daysPerWeek: 3, weeks: 6, trainingTypes: ['outdoor'],
+        availableDays: ['monday', 'wednesday', 'saturday'], fitnessLevel: 'intermediate',
+        startDate: '2026-04-06',
+      },
+    },
+    editActivity: {
+      instruction: 'I can\'t ride outside today because of rain. Convert this to an indoor trainer session with the same effort level but slightly shorter.',
+    },
+    validate: (originalActivity, result) => {
+      const errors = [];
+      if (!result) {
+        errors.push('No result returned');
+        return errors;
+      }
+      if (!result.answer) {
+        errors.push('Missing answer field');
+      }
+      if (result.updatedActivity) {
+        const updated = result.updatedActivity;
+        // Should still be a ride
+        if (updated.type !== 'ride') {
+          errors.push(`Expected ride type, got "${updated.type}"`);
+        }
+        // Title or description should mention indoor/trainer/turbo
+        const combined = `${updated.title || ''} ${updated.description || ''} ${updated.subType || ''}`.toLowerCase();
+        if (!combined.includes('indoor') && !combined.includes('trainer') && !combined.includes('turbo') && !combined.includes('zwift')) {
+          errors.push('Updated activity doesn\'t mention indoor/trainer — should reflect the swap');
+        }
+        // Duration should be same or shorter
+        const origDuration = originalActivity.durationMins || 45;
+        if (updated.durationMins && updated.durationMins > origDuration + 5) {
+          errors.push(`Expected same or shorter duration: original=${origDuration}min, updated=${updated.durationMins}min`);
+        }
+      } else {
+        errors.push('updatedActivity is null — expected an edit to indoor');
+      }
+      return errors;
+    },
+  },
+
+  // ─── 8. Edit plan — add a recovery ride after every hard session ───
+  {
+    name: 'Edit plan — add recovery after hard days',
+    baseScenario: {
+      goal: { id: 'eg8', goalType: 'improve', cyclingType: 'road', planName: 'Recovery Edit Test' },
+      config: {
+        id: 'ec8', daysPerWeek: 4, weeks: 6, trainingTypes: ['outdoor'],
+        availableDays: ['monday', 'tuesday', 'thursday', 'saturday'], fitnessLevel: 'intermediate',
+        startDate: '2026-04-06',
+      },
+    },
+    edit: {
+      instruction: 'After every interval or hard effort ride, please schedule a short easy recovery spin the next day (30 minutes, easy effort).',
+      scope: 'remaining',
+      currentWeek: 2,
+    },
+    validate: (originalPlan, editedActivities) => {
+      const errors = [];
+      if (!editedActivities || editedActivities.length === 0) {
+        errors.push('No edited activities returned');
+        return errors;
+      }
+      // Should have some recovery rides
+      const recoveryActs = editedActivities.filter(a =>
+        a.effort === 'recovery' || a.effort === 'easy' ||
+        (a.subType && a.subType.toLowerCase().includes('recovery'))
+      );
+      if (recoveryActs.length === 0) {
+        errors.push('No recovery/easy rides found after requesting them');
+      }
+      // Count hard efforts — there should be at least some recovery rides relative to hard rides
+      const hardActs = editedActivities.filter(a =>
+        a.effort === 'hard' || a.effort === 'max' || a.subType === 'intervals'
+      );
+      if (hardActs.length > 0 && recoveryActs.length === 0) {
+        errors.push(`${hardActs.length} hard sessions but zero recovery rides — asked for recovery after each hard day`);
+      }
+      // All activities should have valid fields
+      for (const a of editedActivities) {
+        if (!a.type) errors.push(`Activity "${a.title}" missing type`);
+        if (!a.week) errors.push(`Activity "${a.title}" missing week`);
+      }
+      return errors;
+    },
+  },
 ];
 
 // ── Validation checks ───────────────────────────────────────────────────────
@@ -791,6 +979,121 @@ function validate(plan, scenario) {
       errors.push(`Recurring "${rr.notes || rr.day}" not in any week`);
     } else if (rrActs.length < plan.weeks * 0.5) {
       warnings.push(`Recurring "${rr.notes || rr.day}" only in ${rrActs.length}/${plan.weeks} weeks`);
+    }
+  }
+
+  // ── Plan covers exactly the configured number of weeks ──
+  // Every week from 1 to plan.weeks should have at least 1 activity
+  const weeksWithActivities = new Set(acts.map(a => a.week));
+  const configuredWeeks = config.weeks || plan.weeks;
+  if (plan.weeks !== configuredWeeks) {
+    errors.push(`Plan weeks (${plan.weeks}) does not match configured weeks (${configuredWeeks})`);
+  }
+  const emptyWeeks = [];
+  for (let w = 1; w <= plan.weeks; w++) {
+    if (!weeksWithActivities.has(w)) emptyWeeks.push(w);
+  }
+  if (emptyWeeks.length > 0) {
+    errors.push(`${emptyWeeks.length} empty weeks with zero activities: [${emptyWeeks.join(', ')}]`);
+  }
+
+  // ── No massive volume spikes week-to-week ──
+  // Weekly ride distance should not increase by more than 30% vs the previous non-deload week
+  // (we allow 30% to account for the return from deload weeks)
+  const weeklyRideKm = [];
+  for (let w = 1; w <= plan.weeks; w++) {
+    const weekRides = acts.filter(a => a.week === w && a.type === 'ride');
+    weeklyRideKm.push(weekRides.reduce((s, a) => s + (a.distanceKm || 0), 0));
+  }
+  for (let w = 1; w < weeklyRideKm.length; w++) {
+    const prev = weeklyRideKm[w - 1];
+    const curr = weeklyRideKm[w];
+    if (prev > 20 && curr > prev * 1.35) {
+      // Check if previous week was a deload (significantly lower than the one before it)
+      const isReturnFromDeload = w >= 2 && weeklyRideKm[w - 2] > 0 && weeklyRideKm[w - 1] < weeklyRideKm[w - 2] * 0.8;
+      if (!isReturnFromDeload) {
+        warnings.push(`Volume spike: week ${w} → ${w + 1}: ${Math.round(prev)}km → ${Math.round(curr)}km (+${Math.round((curr / prev - 1) * 100)}%)`);
+      }
+    }
+  }
+
+  // ── Not too many consecutive hard days (overtraining / injury risk) ──
+  // No more than 2 hard/max effort rides in a row without a recovery/easy day
+  const sortedActs = [...acts].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  let consecutiveHard = 0;
+  let lastDate = null;
+  for (const a of sortedActs) {
+    if (!a.date || a.type !== 'ride') continue;
+    // Only count consecutive calendar days
+    if (lastDate && a.date !== lastDate) {
+      const dayGap = Math.round((new Date(a.date + 'T12:00:00') - new Date(lastDate + 'T12:00:00')) / 86400000);
+      if (dayGap > 1) consecutiveHard = 0; // rest day between — reset
+    }
+    if (a.effort === 'hard' || a.effort === 'max' || a.subType === 'intervals') {
+      consecutiveHard++;
+      if (consecutiveHard > 2) {
+        warnings.push(`${consecutiveHard} consecutive hard rides ending "${a.title}" (week ${a.week}) — overtraining risk`);
+      }
+    } else {
+      consecutiveHard = 0;
+    }
+    lastDate = a.date;
+  }
+
+  // ── Total weekly sessions should not vastly exceed daysPerWeek ──
+  // Allow +1 for strength sessions on cycling days, but flag if way over
+  for (let w = 1; w <= plan.weeks; w++) {
+    const weekActs = acts.filter(a => a.week === w);
+    const maxExpected = (config.daysPerWeek || 3) + 2; // allow some overhead for strength + recurring
+    if (weekActs.length > maxExpected) {
+      warnings.push(`Week ${w} has ${weekActs.length} sessions (config says ${config.daysPerWeek}/week) — possibly too many`);
+    }
+  }
+
+  // ── Deload / rest weeks for plans 8+ weeks ──
+  // Every 3-4 weeks there should be a noticeably lighter week (at least 20% less volume)
+  if (plan.weeks >= 8 && weeklyRideKm.length >= 8) {
+    // Check that at least one week in every 4-week block (after the first block) is lighter
+    let hasAnyDeload = false;
+    for (let w = 2; w < weeklyRideKm.length; w++) {
+      // Compare to the average of the 2 weeks before
+      const avgPrev = (weeklyRideKm[w - 1] + weeklyRideKm[w - 2]) / 2;
+      if (avgPrev > 10 && weeklyRideKm[w] < avgPrev * 0.8) {
+        hasAnyDeload = true;
+        break;
+      }
+    }
+    // Also count taper weeks (last 1-2 weeks with reduced volume) as deloads
+    if (!hasAnyDeload && weeklyRideKm.length >= 3) {
+      const lastWeekKm = weeklyRideKm[weeklyRideKm.length - 1];
+      const peakKm = Math.max(...weeklyRideKm.slice(0, -2));
+      if (peakKm > 10 && lastWeekKm < peakKm * 0.7) hasAnyDeload = true;
+    }
+    if (!hasAnyDeload) {
+      warnings.push(`No deload/rest week detected in ${plan.weeks}-week plan — recovery weeks help prevent injury and allow adaptation`);
+    }
+  }
+
+  // ── Beginner "Get Into Cycling" plans: final ride should approach target distance ──
+  if (goal.goalType === 'beginner' || (goal.goalType === 'distance' && config.fitnessLevel === 'beginner')) {
+    const targetDist = goal.targetDistance || 40; // beginner default is ~40km
+    const lastWeekRides = acts.filter(a => a.week === plan.weeks && a.type === 'ride');
+    const longestLastWeek = Math.max(...lastWeekRides.map(a => a.distanceKm || 0), 0);
+    // The second-to-last week might have the "graduation ride" if last week is taper
+    const penultimateRides = acts.filter(a => a.week === plan.weeks - 1 && a.type === 'ride');
+    const longestPenultimate = Math.max(...penultimateRides.map(a => a.distanceKm || 0), 0);
+    const longestFinalRide = Math.max(longestLastWeek, longestPenultimate);
+    if (longestFinalRide < targetDist * 0.6) {
+      warnings.push(`Beginner plan: longest ride in final weeks is ${Math.round(longestFinalRide)}km but target is ${targetDist}km — should build closer to goal`);
+    }
+  }
+
+  // ── For distance/race goals: peak ride should approach target distance ──
+  if (goal.targetDistance && (goal.goalType === 'race' || goal.goalType === 'distance')) {
+    const allRideDistances = acts.filter(a => a.type === 'ride').map(a => a.distanceKm || 0);
+    const peakRide = Math.max(...allRideDistances, 0);
+    if (peakRide < goal.targetDistance * 0.65) {
+      warnings.push(`Peak ride is ${Math.round(peakRide)}km but event target is ${goal.targetDistance}km — should reach at least 70-85% in training`);
     }
   }
 
