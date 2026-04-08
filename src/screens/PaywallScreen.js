@@ -2,8 +2,8 @@
  * Paywall screen — shown before plan generation.
  * Monthly: £9.99/mo · Annual: £79.99/yr (= £6.67/mo) · Lifetime: £99.99 · Starter: £14.99 · 1 week free trial.
  *
- * On native (iOS/Android): fetches real prices from RevenueCat and purchases via IAP.
- * On web: uses hardcoded prices and Stripe Checkout.
+ * Prices are fetched from the server (configured via the admin console).
+ * Hardcoded defaults below are only used as a last-resort offline fallback.
  */
 import React, { useState, useEffect } from 'react';
 import {
@@ -18,39 +18,41 @@ import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
 
-// Fallback plan metadata (prices will be overwritten by server data)
+// Plan display metadata — prices come from the server (admin console).
+// The defaultPrice / defaultSub / defaultTrialLine values are only used
+// as an offline fallback if the server can't be reached.
 const PLAN_META = {
   lifetime: {
     id: 'lifetime',
     label: 'Lifetime',
-    fallbackPrice: '£99.99',
+    defaultPrice: '£99.99',
     per: '',
-    fallbackSub: 'One-time payment · Forever yours',
+    defaultSub: 'One-time payment · Forever yours',
     badge: 'LAUNCH SPECIAL',
-    fallbackTrialLine: '7-day money-back guarantee',
+    defaultTrialLine: '7-day money-back guarantee',
     isLifetime: true,
   },
   annual: {
     id: 'annual',
     label: 'Annual',
-    fallbackPrice: '£6.67',
+    defaultPrice: '£6.67',
     per: '/mo',
-    fallbackSub: 'Billed £79.99/year',
+    defaultSub: 'Billed £79.99/year',
     badge: 'MOST POPULAR',
-    fallbackTrialLine: 'then £79.99/year',
+    defaultTrialLine: 'then £79.99/year',
   },
   monthly: {
     id: 'monthly',
     label: 'Monthly',
-    fallbackPrice: '£9.99',
+    defaultPrice: '£9.99',
     per: '/mo',
-    fallbackSub: 'Billed monthly',
+    defaultSub: 'Billed monthly',
     badge: null,
-    fallbackTrialLine: 'then £9.99/month',
+    defaultTrialLine: 'then £9.99/month',
   },
 };
 
-/** Build display PLANS from server prices + fallback metadata */
+/** Build display plans from server prices (admin-configured), with offline defaults */
 function buildPlans(serverPrices) {
   const plans = {};
   for (const [key, meta] of Object.entries(PLAN_META)) {
@@ -59,17 +61,17 @@ function buildPlans(serverPrices) {
       plans[key] = {
         ...meta,
         price: sp.perMonth || sp.formatted,
-        sub: sp.billedLabel || meta.fallbackSub,
+        sub: sp.billedLabel || meta.defaultSub,
         trialLine: meta.isLifetime
           ? '7-day money-back guarantee'
           : sp.interval === 'year'
             ? `then ${sp.formatted}/year`
             : sp.interval === 'month'
               ? `then ${sp.formatted}/month`
-              : meta.fallbackTrialLine,
+              : meta.defaultTrialLine,
       };
     } else {
-      plans[key] = { ...meta, price: meta.fallbackPrice, sub: meta.fallbackSub, trialLine: meta.fallbackTrialLine };
+      plans[key] = { ...meta, price: meta.defaultPrice, sub: meta.defaultSub, trialLine: meta.defaultTrialLine };
     }
   }
   return plans;
@@ -366,7 +368,7 @@ export default function PaywallScreen({ navigation, route }) {
             // Use hardcoded/server price for display; rcPkg is used only for the purchase transaction
             const rcPkg = hasRevenueCat ? findRcPackage(p.id) : null;
             const couponMakesFree = couponState?.valid && couponState.plan === p.id;
-            const originalPrice = serverPrices?.[p.id]?.formatted || p.fallbackPrice || p.price;
+            const originalPrice = serverPrices?.[p.id]?.formatted || p.defaultPrice || p.price;
             const displayPrice = couponMakesFree ? '£0.00' : p.price;
             const displayPer = couponMakesFree ? null : p.per;
 

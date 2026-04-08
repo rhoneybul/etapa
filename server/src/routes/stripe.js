@@ -42,57 +42,65 @@ const STARTER_ACCESS_DAYS = 90;
 // Lifetime plan = one-time payment, access until 2099
 const LIFETIME_END = '2099-12-31T23:59:59.000Z';
 
-// ── GET /api/stripe/prices ──────────────────────────────────────────────────
-// Returns live prices from Stripe so the app never hardcodes amounts.
-router.get('/prices', async (req, res) => {
-  const stripe = getStripe();
-  if (!stripe) {
-    // Dev fallback — return sensible defaults
-    return res.json({
-      monthly:  { amount: 999,  currency: 'gbp', formatted: '£9.99',  interval: 'month', billedLabel: 'Billed monthly' },
-      annual:   { amount: 7999, currency: 'gbp', formatted: '£79.99', interval: 'year', perMonth: '£6.67', billedLabel: 'Billed £79.99/year' },
-      lifetime: { amount: 9999, currency: 'gbp', formatted: '£99.99', interval: null },
-      starter:  { amount: 1499, currency: 'gbp', formatted: '£14.99', interval: null },
-    });
+// ── Default prices (used when no pricing_config is set in the admin console) ──
+const DEFAULT_PRICES = {
+  monthly:  { amount: 999,  currency: 'gbp', formatted: '£9.99',  interval: 'month', billedLabel: 'Billed monthly' },
+  annual:   { amount: 7999, currency: 'gbp', formatted: '£79.99', interval: 'year',  perMonth: '£6.67', billedLabel: 'Billed £79.99/year' },
+  lifetime: { amount: 9999, currency: 'gbp', formatted: '£99.99', interval: null },
+  starter:  { amount: 1499, currency: 'gbp', formatted: '£14.99', interval: null },
+};
+
+/**
+ * Build a price entry from an amount (in pence) and interval.
+ * Used to compute formatted strings from admin-configured amounts.
+ */
+function buildPriceEntry(amount, currency, interval) {
+  const sym = currency === 'usd' ? '$' : currency === 'gbp' ? '£' : currency === 'eur' ? '€' : currency.toUpperCase() + ' ';
+  const formatted = `${sym}${(amount / 100).toFixed(2)}`;
+  const entry = { amount, currency, formatted, interval };
+  if (interval === 'year') {
+    entry.perMonth = `${sym}${(amount / 100 / 12).toFixed(2)}`;
+    entry.billedLabel = `Billed ${formatted}/year`;
   }
+  if (interval === 'month') {
+    entry.billedLabel = 'Billed monthly';
+  }
+  return entry;
+}
 
+// ── GET /api/stripe/prices ──────────────────────────────────────────────────
+// Returns prices from remote config (admin console), falling back to defaults.
+// Prices are configured in the admin dashboard under Remote Config > Pricing.
+router.get('/prices', async (req, res) => {
   try {
-    const prices = PRICES();
-    const ids = Object.entries(prices).filter(([, v]) => v);
+    // Try to load admin-configured prices from app_config
+    const { data } = await supabase
+      .from('app_config')
+      .select('value')
+      .eq('key', 'pricing_config')
+      .single();
 
-    const results = {};
-    await Promise.all(ids.map(async ([plan, priceId]) => {
-      try {
-        const price = await stripe.prices.retrieve(priceId, { expand: ['product'] });
-        const amount = price.unit_amount;
-        const currency = price.currency;
-        const symbol = currency === 'usd' ? '$' : currency === 'gbp' ? '£' : currency === 'eur' ? '€' : currency.toUpperCase() + ' ';
-        const formatted = `${symbol}${(amount / 100).toFixed(2)}`;
-        const interval = price.recurring?.interval || null;
+    if (data?.value) {
+      const cfg = data.value;
+      const currency = cfg.currency || 'gbp';
+      const results = {};
 
-        const entry = { amount, currency, formatted, interval };
+      if (cfg.monthly)  results.monthly  = buildPriceEntry(cfg.monthly,  currency, 'month');
+      if (cfg.annual)   results.annual   = buildPriceEntry(cfg.annual,   currency, 'year');
+      if (cfg.lifetime) results.lifetime = buildPriceEntry(cfg.lifetime, currency, null);
+      if (cfg.starter)  results.starter  = buildPriceEntry(cfg.starter,  currency, null);
 
-        // For annual plans, calculate per-month cost
-        if (interval === 'year') {
-          entry.perMonth = `${symbol}${(amount / 100 / 12).toFixed(2)}`;
-          entry.billedLabel = `Billed ${formatted}/year`;
-        }
-        if (interval === 'month') {
-          entry.billedLabel = `Billed monthly`;
-        }
+      res.set('Cache-Control', 'public, max-age=3600');
+      return res.json(results);
+    }
 
-        results[plan] = entry;
-      } catch (err) {
-        console.error(`Failed to fetch price for ${plan}:`, err.message);
-      }
-    }));
-
-    // Cache for 1 hour
+    // No admin config set — return hardcoded defaults
     res.set('Cache-Control', 'public, max-age=3600');
-    res.json(results);
+    res.json(DEFAULT_PRICES);
   } catch (err) {
-    console.error('Stripe prices error:', err);
-    res.status(500).json({ error: 'Failed to fetch prices' });
+    console.error('Prices error:', err);
+    // Always return something so the app isn't blocked
+    res.json(DEFAULT_PRICES);
   }
 });
 

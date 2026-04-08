@@ -22,6 +22,14 @@ interface MinVersionConfig {
   androidUrl: string;
 }
 
+interface PricingConfig {
+  currency: string;
+  monthly: number;   // amount in pence/cents
+  annual: number;
+  lifetime: number;
+  starter: number;
+}
+
 interface ComingSoonFeature {
   text: string;
   emoji: string;
@@ -52,6 +60,14 @@ const TRIAL_DEFAULTS: TrialConfig = {
 const COUPON_DEFAULTS: CouponConfig = {
   starter:  { enabled: false, code: "" },
   lifetime: { enabled: false, code: "" },
+};
+
+const PRICING_DEFAULTS: PricingConfig = {
+  currency: "gbp",
+  monthly: 999,    // £9.99
+  annual: 7999,    // £79.99
+  lifetime: 9999,  // £99.99
+  starter: 1499,   // £14.99
 };
 
 const COMING_SOON_DEFAULTS: ComingSoonConfig = {
@@ -86,6 +102,12 @@ export default function ConfigPage() {
   const [trialDaysText, setTrialDaysText] = useState("7");
   const [minVersion, setMinVersion] = useState<MinVersionConfig>(MIN_VERSION_DEFAULTS);
   const [comingSoon, setComingSoon] = useState<ComingSoonConfig>(COMING_SOON_DEFAULTS);
+  const [pricing, setPricing] = useState<PricingConfig>(PRICING_DEFAULTS);
+  const [pricingDisplay, setPricingDisplay] = useState({
+    monthly: "9.99", annual: "79.99", lifetime: "99.99", starter: "14.99",
+  });
+  const [savingPricing, setSavingPricing] = useState(false);
+  const [savedPricingFlash, setSavedPricingFlash] = useState(false);
   const [coupons, setCoupons] = useState<CouponConfig>(COUPON_DEFAULTS);
   const [savingCoupons, setSavingCoupons] = useState(false);
   const [savedCouponsFlash, setSavedCouponsFlash] = useState(false);
@@ -95,6 +117,7 @@ export default function ConfigPage() {
   const savedTrial = useRef<TrialConfig>(trial);
   const savedMinVersion = useRef<MinVersionConfig>(minVersion);
   const savedComingSoon = useRef<ComingSoonConfig>(comingSoon);
+  const savedPricing = useRef<PricingConfig>(pricing);
   const savedCoupons = useRef<CouponConfig>(coupons);
 
   // Saving / saved flash state
@@ -112,8 +135,9 @@ export default function ConfigPage() {
   const trialDirty = !isEqual(trial, savedTrial.current);
   const minVersionDirty = !isEqual(minVersion, savedMinVersion.current);
   const comingSoonDirty = !isEqual(comingSoon, savedComingSoon.current);
+  const pricingDirty = !isEqual(pricing, savedPricing.current);
   const couponsDirty = !isEqual(coupons, savedCoupons.current);
-  const anyDirty = maintenanceDirty || trialDirty || minVersionDirty || comingSoonDirty || couponsDirty;
+  const anyDirty = maintenanceDirty || trialDirty || minVersionDirty || comingSoonDirty || pricingDirty || couponsDirty;
 
   // Warn on page exit with unsaved changes
   const anyDirtyRef = useRef(anyDirty);
@@ -154,6 +178,17 @@ export default function ConfigPage() {
           const merged = { ...COMING_SOON_DEFAULTS, ...data.coming_soon };
           setComingSoon(merged);
           savedComingSoon.current = merged;
+        }
+        if (data.pricing_config) {
+          const merged = { ...PRICING_DEFAULTS, ...data.pricing_config };
+          setPricing(merged);
+          setPricingDisplay({
+            monthly: (merged.monthly / 100).toFixed(2),
+            annual: (merged.annual / 100).toFixed(2),
+            lifetime: (merged.lifetime / 100).toFixed(2),
+            starter: (merged.starter / 100).toFixed(2),
+          });
+          savedPricing.current = merged;
         }
         if (data.coupon_config) {
           const merged = { ...COUPON_DEFAULTS, ...data.coupon_config };
@@ -227,6 +262,36 @@ export default function ConfigPage() {
       setTimeout(() => setSavedComingSoonFlash(false), 2500);
     } catch { /* ignore */ }
     setSavingComingSoon(false);
+  }
+
+  const handlePriceChange = useCallback((plan: keyof typeof pricingDisplay, val: string) => {
+    setPricingDisplay((d) => ({ ...d, [plan]: val }));
+    const parsed = Math.round(parseFloat(val) * 100);
+    if (!isNaN(parsed) && parsed >= 0) {
+      setPricing((p) => ({ ...p, [plan]: parsed }));
+    }
+  }, []);
+
+  const handlePriceBlur = useCallback((plan: keyof typeof pricingDisplay) => {
+    const parsed = parseFloat(pricingDisplay[plan]);
+    const clamped = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+    setPricingDisplay((d) => ({ ...d, [plan]: clamped.toFixed(2) }));
+    setPricing((p) => ({ ...p, [plan]: Math.round(clamped * 100) }));
+  }, [pricingDisplay]);
+
+  async function savePricing_() {
+    setSavingPricing(true);
+    try {
+      await fetch("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "pricing_config", value: pricing }),
+      });
+      savedPricing.current = { ...pricing };
+      setSavedPricingFlash(true);
+      setTimeout(() => setSavedPricingFlash(false), 2500);
+    } catch { /* ignore */ }
+    setSavingPricing(false);
   }
 
   async function saveCoupons_() {
@@ -318,6 +383,57 @@ export default function ConfigPage() {
           className="mt-4 px-4 py-2 bg-etapa-primary text-white text-sm font-medium rounded-lg hover:bg-etapa-primaryDark disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {savingTrial ? "Saving..." : savedTrialFlash ? "Saved!" : "Save Trial Settings"}
+        </button>
+      </div>
+
+      {/* Pricing */}
+      <div className="bg-etapa-surface border border-etapa-border rounded-xl p-6">
+        <h2 className="text-sm font-semibold text-white mb-1">Pricing</h2>
+        <p className="text-xs text-etapa-textMuted mb-4">
+          Set the prices shown on the paywall and used for in-app purchases.
+          Amounts are in GBP. Changes take effect immediately.
+        </p>
+
+        <div className="grid grid-cols-2 gap-4">
+          {([
+            { key: "monthly" as const,  label: "Monthly",  hint: "/month" },
+            { key: "annual" as const,   label: "Annual",   hint: "/year" },
+            { key: "lifetime" as const, label: "Lifetime", hint: "one-time" },
+            { key: "starter" as const,  label: "Starter",  hint: "one-time" },
+          ]).map(({ key, label, hint }) => (
+            <div key={key}>
+              <label className="text-xs font-medium text-etapa-textMuted block mb-1">
+                {label} <span className="text-etapa-textFaint">({hint})</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-etapa-textMuted">£</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={pricingDisplay[key]}
+                  onChange={(e) => handlePriceChange(key, e.target.value)}
+                  onBlur={() => handlePriceBlur(key)}
+                  className="w-full pl-7 pr-3 py-2 bg-etapa-surfaceLight border border-etapa-border rounded-lg text-sm text-white font-mono focus:outline-none focus:ring-2 focus:ring-etapa-primary"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {pricing.annual >= pricing.lifetime && (
+          <div className="bg-amber-900/20 border border-amber-900/40 rounded-lg p-3 mt-4">
+            <p className="text-xs font-medium text-amber-400">
+              Annual price is equal to or higher than lifetime — users may not see value in the annual plan.
+            </p>
+          </div>
+        )}
+
+        <button
+          onClick={savePricing_}
+          disabled={savingPricing || !pricingDirty}
+          className="mt-4 px-4 py-2 bg-etapa-primary text-white text-sm font-medium rounded-lg hover:bg-etapa-primaryDark disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {savingPricing ? "Saving..." : savedPricingFlash ? "Saved!" : "Save Prices"}
         </button>
       </div>
 
