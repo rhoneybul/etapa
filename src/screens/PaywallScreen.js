@@ -1,6 +1,6 @@
 /**
  * Paywall screen — shown before plan generation.
- * Monthly: $9.99/mo · Annual: $99/yr (= $8.25/mo) · Lifetime: $149 · 1 week free trial.
+ * Monthly: $9.99/mo · Annual: $79.99/yr (= $6.67/mo) · Lifetime: $149 · 1 week free trial.
  *
  * On native (iOS/Android): fetches real prices from RevenueCat and purchases via IAP.
  * On web: uses hardcoded prices and Stripe Checkout.
@@ -23,31 +23,30 @@ const PLAN_META = {
   lifetime: {
     id: 'lifetime',
     label: 'Lifetime',
-    fallbackPrice: '$149',
+    fallbackPrice: '£99.99',
     per: '',
     fallbackSub: 'One-time payment · Forever yours',
     badge: 'LAUNCH SPECIAL',
     fallbackTrialLine: '7-day money-back guarantee',
-    originalPrice: '$249',
     isLifetime: true,
   },
   annual: {
     id: 'annual',
     label: 'Annual',
-    fallbackPrice: '$8.25',
+    fallbackPrice: '£6.67',
     per: '/mo',
-    fallbackSub: 'Billed $99/year',
+    fallbackSub: 'Billed £79.99/year',
     badge: 'MOST POPULAR',
-    fallbackTrialLine: 'then $99/year',
+    fallbackTrialLine: 'then £79.99/year',
   },
   monthly: {
     id: 'monthly',
     label: 'Monthly',
-    fallbackPrice: '$9.99',
+    fallbackPrice: '£9.99',
     per: '/mo',
     fallbackSub: 'Billed monthly',
     badge: null,
-    fallbackTrialLine: 'then $9.99/month',
+    fallbackTrialLine: 'then £9.99/month',
   },
 };
 
@@ -103,7 +102,8 @@ export default function PaywallScreen({ navigation, route }) {
   const [serverPrices, setServerPrices] = useState(null);
 
   const isNative = Platform.OS !== 'web';
-  const hasRevenueCat = isNative && isRevenueCatAvailable();
+  // RevenueCat is only used on iOS — Android goes through Stripe for now
+  const hasRevenueCat = Platform.OS === 'ios' && isRevenueCatAvailable();
 
   // Where to go after successful subscription (default: Home)
   const nextScreen = route?.params?.nextScreen || 'Home';
@@ -394,7 +394,7 @@ export default function PaywallScreen({ navigation, route }) {
           {plan.isLifetime
             ? 'Lifetime access is a one-time purchase with no recurring charges. Full refund available within 7 days of purchase.\n'
             : 'Cancel anytime before your free trial ends and you won\'t be charged.\n'}
-          Prices in USD.
+          Prices in GBP.
         </Text>
 
         {hasRevenueCat && (

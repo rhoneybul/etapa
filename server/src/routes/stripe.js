@@ -49,10 +49,10 @@ router.get('/prices', async (req, res) => {
   if (!stripe) {
     // Dev fallback — return sensible defaults
     return res.json({
-      monthly:  { amount: 999,   currency: 'usd', formatted: '$9.99',  interval: 'month' },
-      annual:   { amount: 9900,  currency: 'usd', formatted: '$99.00', interval: 'year', perMonth: '$8.25' },
-      lifetime: { amount: 14900, currency: 'usd', formatted: '$149.00', interval: null },
-      starter:  { amount: 3999,  currency: 'usd', formatted: '$39.99', interval: null },
+      monthly:  { amount: 999,  currency: 'gbp', formatted: '£9.99',  interval: 'month', billedLabel: 'Billed monthly' },
+      annual:   { amount: 7999, currency: 'gbp', formatted: '£79.99', interval: 'year', perMonth: '£6.67', billedLabel: 'Billed £79.99/year' },
+      lifetime: { amount: 9999, currency: 'gbp', formatted: '£99.99', interval: null },
+      starter:  { amount: 1499, currency: 'gbp', formatted: '£14.99', interval: null },
     });
   }
 
@@ -66,7 +66,7 @@ router.get('/prices', async (req, res) => {
         const price = await stripe.prices.retrieve(priceId, { expand: ['product'] });
         const amount = price.unit_amount;
         const currency = price.currency;
-        const symbol = currency === 'usd' ? '$' : currency.toUpperCase() + ' ';
+        const symbol = currency === 'usd' ? '$' : currency === 'gbp' ? '£' : currency === 'eur' ? '€' : currency.toUpperCase() + ' ';
         const formatted = `${symbol}${(amount / 100).toFixed(2)}`;
         const interval = price.recurring?.interval || null;
 
@@ -424,7 +424,7 @@ router.post('/upgrade-starter', async (req, res) => {
     const now = new Date();
     const periodEnd = new Date(starterRow.current_period_end);
     const daysRemaining = Math.max(0, Math.ceil((periodEnd - now) / (1000 * 60 * 60 * 24)));
-    const starterPriceCents = 3999; // $39.99 base (may be discounted via promo)
+    const starterPriceCents = 1499; // £14.99 base (may be discounted via promo)
     const refundCents = Math.round((daysRemaining / STARTER_ACCESS_DAYS) * starterPriceCents);
 
     // 3. Issue pro-rata refund on the original payment intent

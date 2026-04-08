@@ -5,13 +5,10 @@ export async function middleware(req) {
   // Skip auth in development
   if (process.env.NODE_ENV === 'development') return NextResponse.next();
 
-  // Skip auth routes
-  if (req.nextUrl.pathname.startsWith('/api/auth')) return NextResponse.next();
-
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   if (!token) {
     const signInUrl = new URL('/api/auth/signin', req.url);
-    signInUrl.searchParams.set('callbackUrl', req.url);
+    signInUrl.searchParams.set('callbackUrl', req.nextUrl.pathname);
     return NextResponse.redirect(signInUrl);
   }
 
@@ -19,5 +16,6 @@ export async function middleware(req) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  // Only protect page routes — exclude all API/auth routes and static assets
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
 };
