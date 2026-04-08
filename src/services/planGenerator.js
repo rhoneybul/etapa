@@ -508,7 +508,164 @@ export function generatePlan(goal, config) {
       }
     }
   });
-  const finalActivities = activities.filter(a => !toRemove.has(a.id));
+  let finalActivities = activities.filter(a => !toRemove.has(a.id));
+
+  // ── Recovery & preparation around organised rides ──
+  // For each organised ride: soften the day before (opener/easy) and
+  // convert the day after to a recovery session.
+  const organisedRides = finalActivities.filter(a => a.scheduleType === 'organised');
+  for (const org of organisedRides) {
+    const orgOffset = (org.week - 1) * 7 + (org.dayOfWeek ?? 0);
+    const dayBeforeOffset = orgOffset - 1;
+    const dayAfterOffset = orgOffset + 1;
+
+    // Day before: soften any hard/interval/tempo session to an easy opener
+    if (dayBeforeOffset >= 0) {
+      const beforeWeek = Math.floor(dayBeforeOffset / 7) + 1;
+      const beforeDay = dayBeforeOffset % 7;
+      finalActivities = finalActivities.map(a => {
+        if (a.week === beforeWeek && a.dayOfWeek === beforeDay && a.type === 'ride' && a.scheduleType === 'planned') {
+          if (a.effort === 'hard' || a.subType === 'intervals' || a.subType === 'tempo') {
+            return {
+              ...a,
+              title: 'Opener',
+              subType: 'intervals',
+              effort: 'moderate',
+              description: 'Short ride with a few sharp efforts to open the legs before your event. Keep it short and snappy.',
+              durationMins: Math.min(a.durationMins || 45, 40),
+              distanceKm: a.distanceKm ? Math.min(a.distanceKm, 20) : null,
+              notes: `Reduced to prepare for ${org.title} tomorrow.`,
+            };
+          }
+        }
+        return a;
+      });
+    }
+
+    // Day after: convert any planned ride to a recovery session
+    if (dayAfterOffset < weeks * 7) {
+      const afterWeek = Math.floor(dayAfterOffset / 7) + 1;
+      const afterDay = dayAfterOffset % 7;
+      if (afterWeek <= weeks) {
+        finalActivities = finalActivities.map(a => {
+          if (a.week === afterWeek && a.dayOfWeek === afterDay && a.type === 'ride' && a.scheduleType === 'planned') {
+            return {
+              ...a,
+              title: 'Recovery Ride',
+              subType: 'recovery',
+              effort: 'recovery',
+              description: 'Very easy spin. Keep heart rate low. Active recovery only.',
+              durationMins: Math.min(a.durationMins || 30, 30),
+              distanceKm: a.distanceKm ? Math.min(a.distanceKm, 15) : null,
+              notes: `Recovery after ${org.title}.`,
+            };
+          }
+          return a;
+        });
+      }
+    }
+  }
+
+  // ── Recovery & preparation around the goal event ──
+  if (goal.targetDate) {
+    const tp2 = goal.targetDate.split('T')[0].split('-').map(Number);
+    const eventDate2 = new Date(tp2[0], tp2[1] - 1, tp2[2], 12, 0, 0);
+    const eventOffset = Math.round((eventDate2 - planMonday) / (1000 * 60 * 60 * 24));
+
+    // Day before event: should be an opener
+    const openerOffset = eventOffset - 1;
+    if (openerOffset >= 0) {
+      const openerWeek = Math.floor(openerOffset / 7) + 1;
+      const openerDay = openerOffset % 7;
+      if (openerWeek <= weeks) {
+        finalActivities = finalActivities.map(a => {
+          if (a.week === openerWeek && a.dayOfWeek === openerDay && a.type === 'ride' && a.scheduleType === 'planned') {
+            if (a.effort !== 'recovery') {
+              return {
+                ...a,
+                title: 'Opener',
+                subType: 'intervals',
+                effort: 'moderate',
+                description: 'Short ride with a few sharp efforts to open the legs before your event. Keep it short and snappy.',
+                durationMins: Math.min(a.durationMins || 30, 35),
+                distanceKm: a.distanceKm ? Math.min(a.distanceKm, 15) : null,
+                notes: 'Pre-event opener — stay fresh, trust your training!',
+              };
+            }
+          }
+          return a;
+        });
+      }
+    }
+
+    // Two days before event: convert hard sessions to recovery
+    const restOffset = eventOffset - 2;
+    if (restOffset >= 0) {
+      const restWeek = Math.floor(restOffset / 7) + 1;
+      const restDay = restOffset % 7;
+      if (restWeek <= weeks) {
+        finalActivities = finalActivities.map(a => {
+          if (a.week === restWeek && a.dayOfWeek === restDay && a.type === 'ride' && a.scheduleType === 'planned') {
+            if (a.effort === 'hard' || a.subType === 'intervals') {
+              return {
+                ...a,
+                title: 'Recovery Ride',
+                subType: 'recovery',
+                effort: 'recovery',
+                description: 'Very easy spin. Keep heart rate low. Active recovery only.',
+                durationMins: Math.min(a.durationMins || 30, 30),
+                distanceKm: a.distanceKm ? Math.min(a.distanceKm, 12) : null,
+                notes: 'Rest up — your event is in 2 days.',
+              };
+            }
+          }
+          return a;
+        });
+      }
+    }
+  }
+
+  // ── Beginner plan: inject a full target-distance ride in the final week ──
+  // If the goal has a targetDistance and no targetDate (beginner program), replace
+  // the longest ride in the last week with a full-distance goal ride.
+  if (goal.targetDistance && !goal.targetDate) {
+    const lastWeekRides = finalActivities.filter(a => a.week === weeks && a.type === 'ride');
+    if (lastWeekRides.length > 0) {
+      // Find the longest ride (by distance or duration) in the final week
+      const longest = lastWeekRides.reduce((best, r) => {
+        const rDist = r.distanceKm || 0;
+        const bDist = best.distanceKm || 0;
+        return rDist > bDist || (rDist === bDist && (r.durationMins || 0) > (best.durationMins || 0)) ? r : best;
+      }, lastWeekRides[0]);
+
+      // Estimate duration: ~25 km/h average for beginners → rough mins
+      const goalDist = goal.targetDistance;
+      const estimatedMins = Math.round((goalDist / 22) * 60); // ~22 km/h beginner pace
+
+      const idx = finalActivities.findIndex(a => a.id === longest.id);
+      if (idx >= 0) {
+        finalActivities[idx] = {
+          ...finalActivities[idx],
+          title: `Goal Ride — ${goalDist} km`,
+          subType: 'endurance',
+          effort: 'moderate',
+          description: `This is it — your ${goalDist} km goal ride! Everything you've done over the past ${weeks} weeks has been building to this. Ride at a comfortable pace, fuel well, and enjoy every kilometre.`,
+          durationMins: estimatedMins,
+          distanceKm: goalDist,
+          notes: 'Your goal ride! Take it steady, stay fuelled, and enjoy the achievement.',
+        };
+      }
+    }
+  }
+
+  // Re-stamp dates after modifications
+  finalActivities.forEach(a => {
+    const offset = (a.week - 1) * 7 + (a.dayOfWeek ?? 0);
+    const d = new Date(planMonday);
+    d.setDate(d.getDate() + offset);
+    a.date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    a.dayName = DAY_NAMES[a.dayOfWeek] ? DAY_NAMES[a.dayOfWeek].charAt(0).toUpperCase() + DAY_NAMES[a.dayOfWeek].slice(1) : null;
+  });
 
   return {
     id: uid(),

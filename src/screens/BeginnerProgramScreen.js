@@ -46,11 +46,8 @@ const GOAL_OPTIONS = [
   },
 ];
 
-const DAYS_OPTIONS = [
-  { key: 2, label: '2 days', sub: 'Perfect to start. Easy and manageable.' },
-  { key: 3, label: '3 days', sub: 'A great balance of riding and rest.' },
-  { key: 4, label: '4 days', sub: 'For those who want to build quickly.' },
-];
+// Suggest days-per-week based on goal distance (used as default on scheduling screen)
+const SUGGESTED_DAYS = { habit: 2, endurance: 3, century: 3 };
 
 const TIPS = [
   {
@@ -88,7 +85,6 @@ const BIKE_TYPES = [
 
 export default function BeginnerProgramScreen({ navigation }) {
   const [goalOption, setGoalOption] = useState(null); // key from GOAL_OPTIONS
-  const [daysPerWeek, setDaysPerWeek] = useState(null);
   const [bikeType, setBikeType] = useState('road');
   const [showTips, setShowTips] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
@@ -147,13 +143,14 @@ export default function BeginnerProgramScreen({ navigation }) {
       planName: `Get into Cycling — ${chosen.label}`,
     });
 
-    analytics.capture?.('beginner_program_started', { daysPerWeek, paymentStatus, goalOption });
+    const suggestedDays = SUGGESTED_DAYS[goalOption] || 3;
+    analytics.capture?.('beginner_program_started', { suggestedDays, paymentStatus, goalOption });
 
     navigation.replace('PlanConfig', {
       goal,
       beginnerDefaults: {
         fitnessLevel: 'beginner',
-        daysPerWeek,
+        daysPerWeek: suggestedDays,
         weeks: 12,
         paymentStatus, // 'paid' | 'pending'
       },
@@ -311,28 +308,6 @@ export default function BeginnerProgramScreen({ navigation }) {
             </View>
           </View>
 
-          {/* Days per week selector */}
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>How many days can you ride?</Text>
-            <Text style={s.sectionSub}>Don't worry — you can always adjust later</Text>
-            <View style={s.daysOptions}>
-              {DAYS_OPTIONS.map(opt => {
-                const isSelected = daysPerWeek === opt.key;
-                return (
-                  <TouchableOpacity
-                    key={opt.key}
-                    style={[s.dayCard, isSelected && s.dayCardSelected]}
-                    onPress={() => setDaysPerWeek(opt.key)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[s.dayLabel, isSelected && s.dayLabelSelected]}>{opt.label}</Text>
-                    <Text style={[s.daySub, isSelected && s.daySubSelected]}>{opt.sub}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-
           {/* Bike type selector */}
           <View style={s.section}>
             <Text style={s.sectionTitle}>What bike will you ride?</Text>
@@ -380,9 +355,9 @@ export default function BeginnerProgramScreen({ navigation }) {
         {/* CTAs — two options */}
         <View style={s.ctaWrap}>
           <TouchableOpacity
-            style={[s.ctaBtn, (!daysPerWeek || !goalOption || purchasing) && s.ctaBtnDisabled]}
+            style={[s.ctaBtn, (!goalOption || purchasing) && s.ctaBtnDisabled]}
             onPress={handlePayNow}
-            disabled={!daysPerWeek || !goalOption || purchasing}
+            disabled={!goalOption || purchasing}
             activeOpacity={0.85}
           >
             {purchasing ? (
@@ -396,9 +371,9 @@ export default function BeginnerProgramScreen({ navigation }) {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[s.ctaBtnSecondary, (!daysPerWeek || !goalOption || purchasing) && s.ctaBtnDisabled]}
+            style={[s.ctaBtnSecondary, (!goalOption || purchasing) && s.ctaBtnDisabled]}
             onPress={handlePayLater}
-            disabled={!daysPerWeek || !goalOption || purchasing}
+            disabled={!goalOption || purchasing}
             activeOpacity={0.8}
           >
             <Text style={s.ctaTextSecondary}>Set up now, pay when it starts</Text>

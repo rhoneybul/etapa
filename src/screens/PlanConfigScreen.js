@@ -8,6 +8,7 @@
 import React, { useState } from 'react';
 import { View, ScrollView, Text, TouchableOpacity, StyleSheet, TextInput, Alert } from 'react-native';
 import { colors, fontFamily } from '../theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import WizardShell, { CheckCard } from '../components/WizardShell';
 import { savePlanConfig } from '../services/storageService';
 import { suggestWeeks } from '../services/planGenerator';
@@ -1120,16 +1121,14 @@ export default function PlanConfigScreen({ navigation, route }) {
                   </Text>
                   <Text style={s.coachBio} numberOfLines={selected ? undefined : 2}>{coach.bio}</Text>
                   <View style={s.coachBadgeRow}>
-                    <View style={[s.coachLevelBadge, {
-                      backgroundColor: coach.level === 'beginner' ? 'rgba(232,69,139,0.12)'
-                        : coach.level === 'intermediate' ? 'rgba(232,69,139,0.12)'
-                        : 'rgba(239,68,68,0.12)'
-                    }]}>
-                      <Text style={[s.coachLevelText, {
-                        color: coach.level === 'beginner' ? '#E8458B'
-                          : coach.level === 'intermediate' ? '#E8458B'
-                          : '#EF4444'
-                      }]}>
+                    <View style={s.coachLevelBadge}>
+                      <MaterialCommunityIcons
+                        name={coach.level === 'beginner' ? 'bike' : coach.level === 'intermediate' ? 'speedometer-medium' : 'speedometer'}
+                        size={12}
+                        color={colors.textMuted}
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text style={s.coachLevelText}>
                         {coach.level === 'beginner' ? 'Great for beginners'
                           : coach.level === 'intermediate' ? 'Intermediate+'
                           : 'Advanced+'}
@@ -1523,8 +1522,8 @@ const s = StyleSheet.create({
   coachTaglineSelected: { color: colors.primary },
   coachBio: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 17, marginTop: 4 },
   coachBadgeRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
-  coachLevelBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  coachLevelText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold },
+  coachLevelBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  coachLevelText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted },
   coachQuote: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, fontStyle: 'italic', marginTop: 6, lineHeight: 17 },
   coachCheck: {
     width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primary,

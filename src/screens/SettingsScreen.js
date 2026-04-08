@@ -378,10 +378,6 @@ export default function SettingsScreen({ navigation }) {
         <Text style={s.sectionLabel}>COACHING</Text>
         <View style={s.card}>
           <TouchableOpacity style={s.row} onPress={() => {
-            if (!subscription?.active) {
-              goPaywall({ fromHome: true, nextScreen: 'Home' });
-              return;
-            }
             navigation.navigate('ChangeCoach');
           }}>
             <View style={s.rowLeft}>
