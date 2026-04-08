@@ -152,14 +152,38 @@ export async function getSubscriptionOfferings() {
 export async function openCheckout(plan, rcPackage = null, promoCode = null) {
   // ── iOS: use RevenueCat / App Store IAP ───────────────────────────────────
   if (Platform.OS === 'ios') {
-    if (!isRevenueCatAvailable()) {
-      throw new Error('In-app purchases are not available. Please restart the app and try again.');
+    // Prefer RevenueCat, but if offerings/packages aren't configured yet,
+    // fall back to Stripe Checkout so development isn't blocked.
+    if (isRevenueCatAvailable() && rcPackage) {
+      const result = await purchasePackage(rcPackage);
+      return result;
     }
-    if (!rcPackage) {
-      throw new Error('This plan is not available for purchase right now. Please try again later.');
+
+    const redirectBase = 'etapa://stripe';
+    const data = await authRequest('POST', '/api/stripe/create-checkout-session', { plan, redirectBase, promoCode });
+    if (!data?.url) throw new Error('Could not create checkout session. Please try again.');
+
+    const result = await WebBrowser.openAuthSessionAsync(data.url, 'etapa://stripe/success');
+
+    if (result.type !== 'success') {
+      // User closed the browser without completing payment
+      return { success: false, cancelled: true };
     }
-    const result = await purchasePackage(rcPackage);
-    return result;
+
+    // Extract session_id from the deep link and verify with the server
+    try {
+      const url = new URL(result.url);
+      const sessionId = url.searchParams.get('session_id');
+      if (!sessionId) return { success: false, error: 'No session ID returned' };
+
+      const verified = await authRequest('POST', '/api/stripe/verify-session', { sessionId });
+      if (verified?.ok) {
+        return { success: true };
+      }
+      return { success: false, error: 'Payment could not be verified. Please restore purchases or contact support.' };
+    } catch {
+      return { success: false, error: 'Something went wrong verifying your payment.' };
+    }
   }
 
   // ── Android: use Stripe Checkout via in-app browser ───────────────────────

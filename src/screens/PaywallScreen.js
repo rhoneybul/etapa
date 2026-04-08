@@ -7,7 +7,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, ScrollView, Image, Platform,
+  View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, ScrollView, Image, Platform, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -190,10 +190,26 @@ export default function PaywallScreen({ navigation, route }) {
   };
 
   const handleSubscribe = async () => {
+    const couponAppliesToSelected = couponState?.valid && couponState.plan === selected;
     setLoading(true);
-    analytics.capture?.('paywall_subscribe_tapped', { plan: selected, source: hasRevenueCat ? 'revenuecat' : 'stripe' });
+    analytics.capture?.('paywall_subscribe_tapped', {
+      plan: selected,
+      source: couponAppliesToSelected ? 'coupon' : (hasRevenueCat ? 'revenuecat' : 'stripe'),
+    });
 
     try {
+      // If a coupon grants this exact plan for free, don't open Stripe/RevenueCat at all.
+      if (couponAppliesToSelected) {
+        const result = await redeemCoupon(couponCode.trim());
+        if (result?.success) {
+          analytics.capture?.('subscription_started', { plan: selected, source: 'coupon' });
+          navigation.replace(nextScreen, nextParams);
+        } else {
+          Alert.alert('Could not apply code', result?.error || 'Please try again.');
+        }
+        return;
+      }
+
       // On native, try to use RevenueCat package for the purchase
       const rcPkg = hasRevenueCat ? findRcPackage(selected) : null;
       const result = await openCheckout(selected, rcPkg?._package || null);
@@ -349,7 +365,10 @@ export default function PaywallScreen({ navigation, route }) {
             const isSelected = selected === p.id;
             // Use hardcoded/server price for display; rcPkg is used only for the purchase transaction
             const rcPkg = hasRevenueCat ? findRcPackage(p.id) : null;
-            const displayPrice = p.price;
+            const couponMakesFree = couponState?.valid && couponState.plan === p.id;
+            const originalPrice = serverPrices?.[p.id]?.formatted || p.fallbackPrice || p.price;
+            const displayPrice = couponMakesFree ? '£0.00' : p.price;
+            const displayPer = couponMakesFree ? null : p.per;
 
             return (
               <TouchableOpacity
@@ -381,11 +400,11 @@ export default function PaywallScreen({ navigation, route }) {
 
                   {/* Price */}
                   <View style={s.priceWrap}>
-                    {p.originalPrice && !rcPkg && (
-                      <Text style={s.priceOriginal}>{p.originalPrice}</Text>
+                    {couponMakesFree && !rcPkg && (
+                      <Text style={s.priceOriginal}>{originalPrice}</Text>
                     )}
                     <Text style={[s.priceMain, isSelected && s.priceMainSelected]}>{displayPrice}</Text>
-                    {!rcPkg && p.per ? <Text style={s.pricePer}>{p.per}</Text> : null}
+                    {!rcPkg && displayPer ? <Text style={s.pricePer}>{displayPer}</Text> : null}
                   </View>
                 </View>
               </TouchableOpacity>
@@ -450,7 +469,15 @@ export default function PaywallScreen({ navigation, route }) {
             />
             <TouchableOpacity
               style={[s.couponBtn, (!couponState?.valid || redeeming) && s.couponBtnDisabled]}
-              onPress={handleCouponRedeem}
+              onPress={() => {
+                if (!couponState?.valid) return;
+                if (couponState.plan && couponState.plan !== selected) {
+                  const planLabel = couponState.plan === 'lifetime' ? 'Lifetime' : 'Starter';
+                  Alert.alert('Code valid', `This code applies to the ${planLabel} plan. Select it above to continue.`);
+                  return;
+                }
+                handleSubscribe();
+              }}
               disabled={!couponState?.valid || redeeming}
               activeOpacity={0.8}
             >

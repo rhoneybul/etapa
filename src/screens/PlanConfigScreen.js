@@ -5,7 +5,7 @@
  *  Step 3: Build your week — session counts, day placement, AND other training
  *  Step 4: Duration (if no target date) & start date
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, ScrollView, Text, TouchableOpacity, StyleSheet, TextInput, Alert } from 'react-native';
 import { colors, fontFamily } from '../theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -144,6 +144,19 @@ export default function PlanConfigScreen({ navigation, route }) {
   const [planWeeks, setPlanWeeks] = useState(
     adjustmentDefaults?.weeks || beginnerDefaults?.weeks || null
   );
+
+  // If there's no target date, we show a suggested duration pill as "selected".
+  // Ensure `planWeeks` is actually set so Continue enables without extra taps.
+  useEffect(() => {
+    if (step !== 4) return;
+    if (beginnerDefaults) return;
+    if (goal?.targetDate) return;
+    if (planWeeks) return;
+
+    const raw = suggestWeeks(goal, fitnessLevel, getChosenStartDate());
+    const weeks = (typeof raw === 'number' && !isNaN(raw) && raw > 0) ? raw : 8;
+    setPlanWeeks(weeks);
+  }, [step, beginnerDefaults, goal?.targetDate, planWeeks, goal, fitnessLevel, startDateChoice, customStartDate]);
 
   // Step 3: session counts per cycling type
   const [sessionCounts, setSessionCounts] = useState(
