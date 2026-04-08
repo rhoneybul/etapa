@@ -140,6 +140,8 @@ export function getActivityIcon(activityOrCtKey) {
     if (a.subType === 'indoor' || a.title?.toLowerCase().includes('indoor')) return 'bike-stationary';
     return 'bike';
   }
+  // Cross-training activity types (run, swim, yoga, etc.) — use their dedicated icon
+  if (a.type && CT_ICONS[a.type]) return CT_ICONS[a.type];
   return 'bike';
 }
 

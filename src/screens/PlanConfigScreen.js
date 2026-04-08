@@ -19,11 +19,11 @@ import analytics from '../services/analyticsService';
 const FF = fontFamily;
 const TOTAL_STEPS = 5;
 
-const FITNESS_LEVEL_COLORS = {
-  beginner:     '#E8458B',
-  intermediate: '#E8458B',
-  advanced:     '#EF4444',
-  expert:       '#DC2626',
+const FITNESS_LEVEL_ICONS = {
+  beginner:     { name: 'bike', size: 22 },
+  intermediate: { name: 'speedometer-medium', size: 22 },
+  advanced:     { name: 'speedometer', size: 22 },
+  expert:       { name: 'trophy', size: 22 },
 };
 
 const FITNESS_LEVELS = [
@@ -556,7 +556,13 @@ export default function PlanConfigScreen({ navigation, route }) {
               activeOpacity={0.7}
             >
               <View style={s.levelRow}>
-                <View style={[s.levelIndicator, { backgroundColor: FITNESS_LEVEL_COLORS[fl.key] || colors.primary }]} />
+                <View style={[s.levelIconWrap, fitnessLevel === fl.key && s.levelIconWrapSelected]}>
+                  <MaterialCommunityIcons
+                    name={FITNESS_LEVEL_ICONS[fl.key].name}
+                    size={FITNESS_LEVEL_ICONS[fl.key].size}
+                    color={fitnessLevel === fl.key ? colors.primary : colors.textMuted}
+                  />
+                </View>
                 <View style={s.levelTextWrap}>
                   <Text style={[s.levelLabel, fitnessLevel === fl.key && s.levelLabelSelected]}>{fl.label}</Text>
                   <Text style={s.levelDesc}>{fl.description}</Text>
@@ -1266,8 +1272,14 @@ const s = StyleSheet.create({
     borderWidth: 1.5, borderColor: colors.border,
   },
   levelCardSelected: { borderColor: colors.primary, backgroundColor: colors.surfaceLight },
-  levelRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  levelIndicator: { width: 4, height: 36, borderRadius: 2 },
+  levelRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  levelIconWrap: {
+    width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+  },
+  levelIconWrapSelected: {
+    backgroundColor: 'rgba(232,69,139,0.1)', borderColor: colors.primary,
+  },
   levelTextWrap: { flex: 1 },
   levelLabel: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
   levelLabelSelected: { color: colors.primary },

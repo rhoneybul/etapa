@@ -497,7 +497,7 @@ function runLocalTests() {
 
 // ── API evaluation mode ─────────────────────────────────────────────────────
 
-async function runApiTests(serverUrl, apiKey) {
+async function runApiTests(serverUrl, apiKey, outputPath) {
   console.log('\n═══════════════════════════════════════════════════════════════');
   console.log(`  ETAPA PLAN GENERATOR — API EVALUATION (${serverUrl})`);
   console.log('═══════════════════════════════════════════════════════════════\n');
@@ -506,9 +506,23 @@ async function runApiTests(serverUrl, apiKey) {
 
   let totalPass = 0, totalFail = 0;
   const results = [];
+  const runStartedAt = new Date().toISOString();
 
   for (const scenario of SCENARIOS) {
     process.stdout.write(`▶ [API] ${scenario.name}... `);
+    const scenarioStartTime = Date.now();
+    let result = {
+      name: scenario.name,
+      pass: false,
+      input: { goal: scenario.goal, config: scenario.config },
+      plan: null,
+      errors: [],
+      warnings: [],
+      stats: null,
+      durationMs: null,
+      error: null,
+    };
+
     try {
       const startRes = await fetch(`${serverUrl}/api/ai/generate-plan-async`, {
         method: 'POST',
@@ -517,12 +531,17 @@ async function runApiTests(serverUrl, apiKey) {
       });
 
       if (!startRes.ok) {
+        const body = await startRes.text().catch(() => '');
         console.log(`❌ FAIL (${startRes.status})`);
+        result.error = `HTTP ${startRes.status}: ${body}`;
+        result.durationMs = Date.now() - scenarioStartTime;
         totalFail++;
+        results.push(result);
         continue;
       }
 
       const { jobId } = await startRes.json();
+      result.jobId = jobId;
       let plan = null;
       for (let i = 0; i < 120; i++) {
         await new Promise(r => setTimeout(r, 1000));
@@ -534,11 +553,25 @@ async function runApiTests(serverUrl, apiKey) {
         if (i % 10 === 0 && i > 0) process.stdout.write('.');
       }
 
-      if (!plan) { console.log(`❌ TIMEOUT`); totalFail++; continue; }
+      result.durationMs = Date.now() - scenarioStartTime;
 
+      if (!plan) {
+        console.log(`❌ TIMEOUT`);
+        result.error = 'TIMEOUT after 120s';
+        totalFail++;
+        results.push(result);
+        continue;
+      }
+
+      result.plan = plan;
       const { errors, warnings, stats } = validate(plan, scenario);
+      result.errors = errors;
+      result.warnings = warnings;
+      result.stats = stats;
+      result.pass = errors.length === 0;
+
       if (errors.length === 0) {
-        console.log(`✅ PASS (${stats.totalActivities} acts)`);
+        console.log(`✅ PASS (${stats.totalActivities} acts, ${(result.durationMs / 1000).toFixed(1)}s)`);
         totalPass++;
       } else {
         console.log(`❌ FAIL`);
@@ -546,14 +579,33 @@ async function runApiTests(serverUrl, apiKey) {
         totalFail++;
       }
       warnings.forEach(w => console.log(`   ⚠ ${w}`));
-      results.push({ name: scenario.name, pass: errors.length === 0, errors, warnings, stats });
     } catch (err) {
+      result.durationMs = Date.now() - scenarioStartTime;
+      result.error = err.message;
       console.log(`💥 ${err.message}`);
       totalFail++;
     }
+
+    results.push(result);
   }
 
   console.log(`\n  API RESULTS: ${totalPass}/${SCENARIOS.length} passed, ${totalFail} failed\n`);
+
+  // Write full results to JSON
+  const output = {
+    runAt: runStartedAt,
+    server: serverUrl,
+    totalScenarios: SCENARIOS.length,
+    passed: totalPass,
+    failed: totalFail,
+    results,
+  };
+
+  const outFile = outputPath || `tests/api-results-${runStartedAt.replace(/[:.]/g, '-').slice(0, 19)}.json`;
+  const fs = await import('fs');
+  fs.writeFileSync(outFile, JSON.stringify(output, null, 2));
+  console.log(`  📄 Full results saved to ${outFile}\n`);
+
   return totalFail === 0;
 }
 
@@ -562,15 +614,18 @@ async function runApiTests(serverUrl, apiKey) {
 const args = process.argv.slice(2);
 const apiIdx = args.indexOf('--api');
 const keyIdx = args.indexOf('--key');
+const outIdx = args.indexOf('--output');
 
 const localOk = runLocalTests();
 
 if (apiIdx >= 0 && args[apiIdx + 1]) {
   const apiKey = keyIdx >= 0 ? args[keyIdx + 1] : null;
-  await runApiTests(args[apiIdx + 1], apiKey);
+  const outputPath = outIdx >= 0 ? args[outIdx + 1] : null;
+  await runApiTests(args[apiIdx + 1], apiKey, outputPath);
 } else {
-  console.log('\nTip: Run with --api http://localhost:3000 to also test server-side LLM generation');
-  console.log('     Add --key YOUR_TEST_API_KEY to authenticate against production\n');
+  console.log('\nTip: Run with --api http://localhost:3001 to also test server-side LLM generation');
+  console.log('     Add --key YOUR_TEST_API_KEY to authenticate against production');
+  console.log('     Add --output results.json to save full plans to a file\n');
 }
 
 process.exit(localOk ? 0 : 1);
