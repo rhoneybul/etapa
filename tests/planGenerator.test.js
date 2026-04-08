@@ -6,8 +6,11 @@
  * Run local tests:
  *   node --import ./tests/loader.mjs tests/planGenerator.test.js
  *
- * Run local + API tests:
- *   node --import ./tests/loader.mjs tests/planGenerator.test.js --api http://localhost:3000
+ * Run local + API tests (local server):
+ *   node --import ./tests/loader.mjs tests/planGenerator.test.js --api http://localhost:3001
+ *
+ * Run against production (requires TEST_API_KEY set on server):
+ *   node --import ./tests/loader.mjs tests/planGenerator.test.js --api https://etapa-production.up.railway.app --key YOUR_TEST_API_KEY
  */
 
 import { generatePlan, suggestWeeks } from '../src/services/planGenerator.js';
@@ -494,10 +497,12 @@ function runLocalTests() {
 
 // ── API evaluation mode ─────────────────────────────────────────────────────
 
-async function runApiTests(serverUrl) {
+async function runApiTests(serverUrl, apiKey) {
   console.log('\n═══════════════════════════════════════════════════════════════');
   console.log(`  ETAPA PLAN GENERATOR — API EVALUATION (${serverUrl})`);
   console.log('═══════════════════════════════════════════════════════════════\n');
+
+  const authHeaders = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
 
   let totalPass = 0, totalFail = 0;
   const results = [];
@@ -507,7 +512,7 @@ async function runApiTests(serverUrl) {
     try {
       const startRes = await fetch(`${serverUrl}/api/ai/generate-plan-async`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ goal: scenario.goal, config: scenario.config }),
       });
 
@@ -521,7 +526,7 @@ async function runApiTests(serverUrl) {
       let plan = null;
       for (let i = 0; i < 120; i++) {
         await new Promise(r => setTimeout(r, 1000));
-        const pollRes = await fetch(`${serverUrl}/api/ai/plan-job/${jobId}`);
+        const pollRes = await fetch(`${serverUrl}/api/ai/plan-job/${jobId}`, { headers: authHeaders });
         if (!pollRes.ok) continue;
         const pollData = await pollRes.json();
         if (pollData.status === 'completed') { plan = pollData.plan; break; }
@@ -556,13 +561,16 @@ async function runApiTests(serverUrl) {
 
 const args = process.argv.slice(2);
 const apiIdx = args.indexOf('--api');
+const keyIdx = args.indexOf('--key');
 
 const localOk = runLocalTests();
 
 if (apiIdx >= 0 && args[apiIdx + 1]) {
-  await runApiTests(args[apiIdx + 1]);
+  const apiKey = keyIdx >= 0 ? args[keyIdx + 1] : null;
+  await runApiTests(args[apiIdx + 1], apiKey);
 } else {
-  console.log('\nTip: Run with --api http://localhost:3000 to also test server-side LLM generation\n');
+  console.log('\nTip: Run with --api http://localhost:3000 to also test server-side LLM generation');
+  console.log('     Add --key YOUR_TEST_API_KEY to authenticate against production\n');
 }
 
 process.exit(localOk ? 0 : 1);

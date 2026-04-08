@@ -16,6 +16,19 @@ function getSupabase() {
 }
 
 async function authMiddleware(req, res, next) {
+  // Allow TEST_API_KEY for plan generation endpoints only (e.g. automated test suites)
+  const testKey = process.env.TEST_API_KEY;
+  if (testKey) {
+    const authHeader = req.headers.authorization;
+    if (authHeader === `Bearer ${testKey}`) {
+      const isTestRoute = req.path.startsWith('/generate-plan-async') || req.path.startsWith('/plan-job/');
+      if (isTestRoute) {
+        req.user = { id: 'test-runner', email: 'test@etapa.app' };
+        return next();
+      }
+    }
+  }
+
   const supabase = getSupabase();
   if (!supabase) {
     return res.status(503).json({ error: 'Auth service not configured' });
