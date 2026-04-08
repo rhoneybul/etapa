@@ -15,118 +15,138 @@
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 
   /* ── Header ── */
-  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }
-  .header h1 { font-size: 18px; font-weight: 600; }
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }
+  .header h1 { font-size: 16px; font-weight: 600; white-space: nowrap; }
   .header h1 span { color: var(--pink); }
-  .header .stats { margin-left: auto; display: flex; gap: 16px; font-size: 13px; }
-  .header .stats .stat { padding: 4px 12px; border-radius: 6px; background: var(--surface2); }
+  .header .stats { margin-left: auto; display: flex; gap: 10px; font-size: 12px; }
+  .header .stats .stat { padding: 3px 10px; border-radius: 5px; background: var(--surface2); }
   .stat.pass { color: var(--green); } .stat.fail { color: var(--red); } .stat.warn { color: var(--orange); }
 
   /* ── File loader ── */
-  .loader { padding: 16px 24px; background: var(--surface2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; font-size: 13px; }
-  .loader label { cursor: pointer; padding: 6px 14px; border-radius: 6px; background: var(--pink); color: white; font-weight: 500; transition: .15s; }
+  .loader { padding: 10px 20px; background: var(--surface2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; font-size: 12px; }
+  .loader label { cursor: pointer; padding: 5px 12px; border-radius: 5px; background: var(--pink); color: white; font-weight: 500; transition: .15s; font-size: 12px; }
   .loader label:hover { filter: brightness(1.15); }
   .loader input { display: none; }
   .loader .filename { color: var(--muted); }
 
-  /* ── Tabs ── */
-  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--surface); padding: 0 24px; }
-  .tab { padding: 10px 20px; font-size: 13px; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; color: var(--muted); transition: .15s; }
-  .tab:hover { color: var(--text); } .tab.active { color: var(--pink); border-color: var(--pink); }
+  /* ── Main layout ── */
+  .main { display: flex; height: calc(100vh - 90px); overflow: hidden; }
 
-  /* ── Content ── */
-  .content { padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+  /* ── Sidebar — scenario list ── */
+  .sidebar { width: 320px; min-width: 320px; border-right: 1px solid var(--border); overflow-y: auto; background: var(--bg); }
+  .sidebar-header { padding: 12px 16px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); z-index: 10; }
+  .scenario-item { padding: 10px 16px; cursor: pointer; border-bottom: 1px solid var(--border); transition: .1s; display: flex; align-items: flex-start; gap: 10px; }
+  .scenario-item:hover { background: var(--surface); }
+  .scenario-item.selected { background: var(--surface); border-left: 3px solid var(--pink); }
+  .scenario-item .num { font-size: 11px; color: var(--muted); min-width: 22px; padding-top: 2px; }
+  .scenario-item .info { flex: 1; min-width: 0; }
+  .scenario-item .name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .scenario-item .meta { font-size: 11px; color: var(--muted); margin-top: 2px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .scenario-item .badge { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 3px; }
+  .badge.pass { background: rgba(52,211,153,.15); color: var(--green); }
+  .badge.fail { background: rgba(248,113,113,.15); color: var(--red); }
+  .badge.warn { background: rgba(251,191,36,.15); color: var(--orange); }
+  .badge.pending { background: rgba(136,136,160,.1); color: var(--muted); }
 
-  /* ── Scenario list ── */
-  .scenario-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
-  .scenario-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; cursor: pointer; transition: .15s; position: relative; }
-  .scenario-card:hover { border-color: var(--pink); transform: translateY(-1px); }
-  .scenario-card.selected { border-color: var(--pink); box-shadow: 0 0 0 1px var(--pink); }
-  .scenario-card .num { position: absolute; top: 10px; right: 12px; font-size: 11px; color: var(--muted); }
-  .scenario-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 6px; padding-right: 30px; }
-  .scenario-card .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
-  .tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: var(--surface2); color: var(--muted); }
-  .tag.fitness-beginner { color: var(--green); border: 1px solid rgba(52,211,153,.3); }
-  .tag.fitness-intermediate { color: var(--blue); border: 1px solid rgba(59,130,246,.3); }
-  .tag.fitness-advanced { color: var(--orange); border: 1px solid rgba(251,191,36,.3); }
-  .tag.fitness-expert { color: var(--pink); border: 1px solid rgba(232,69,139,.3); }
-  .tag.ct { color: var(--purple); border: 1px solid rgba(167,139,250,.3); }
-  .tag.recurring { color: var(--orange); border: 1px solid rgba(251,191,36,.3); }
-  .tag.organised { color: var(--blue); border: 1px solid rgba(59,130,246,.3); }
-  .tag.strength { color: var(--red); border: 1px solid rgba(248,113,113,.3); }
+  /* ── Detail area ── */
+  .detail { flex: 1; overflow-y: auto; padding: 0; }
+  .detail-inner { max-width: 1200px; margin: 0 auto; padding: 20px 24px; }
 
-  .scenario-card .result-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 10px; border-radius: 4px; margin-top: 6px; }
-  .result-badge.pass { background: rgba(52,211,153,.15); color: var(--green); }
-  .result-badge.fail { background: rgba(248,113,113,.15); color: var(--red); }
-  .result-badge.pending { background: rgba(136,136,160,.15); color: var(--muted); }
+  /* ── Scenario title bar ── */
+  .scenario-title-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .scenario-title-bar h2 { font-size: 18px; font-weight: 600; }
+  .scenario-title-bar .badge { font-size: 12px; padding: 3px 10px; }
 
-  /* ── Detail panel ── */
-  .detail-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-top: 16px; overflow: hidden; }
-  .detail-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
-  .detail-header h2 { font-size: 16px; }
-  .detail-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); padding: 0 20px; background: var(--surface2); }
-  .detail-tab { padding: 8px 16px; font-size: 12px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--muted); }
-  .detail-tab:hover { color: var(--text); } .detail-tab.active { color: var(--pink); border-color: var(--pink); }
-  .detail-content { padding: 16px 20px; }
-
-  /* ── Input view ── */
-  .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media (max-width: 800px) { .input-grid { grid-template-columns: 1fr; } }
-  .input-section { background: var(--surface2); border-radius: 8px; padding: 12px 16px; }
-  .input-section h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 8px; }
-  .input-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; border-bottom: 1px solid rgba(45,45,61,.5); }
+  /* ── Input summary cards ── */
+  .input-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .input-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .input-card h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin-bottom: 8px; font-weight: 600; }
+  .input-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; border-bottom: 1px solid rgba(45,45,61,.4); }
   .input-row:last-child { border: none; }
   .input-row .label { color: var(--muted); }
-  .input-row .value { font-weight: 500; }
+  .input-row .value { font-weight: 500; text-align: right; max-width: 60%; }
 
-  /* ── Stats view ── */
-  .stat-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin-bottom: 16px; }
-  .stat-card { background: var(--surface2); border-radius: 8px; padding: 12px; text-align: center; }
-  .stat-card .num { font-size: 24px; font-weight: 700; color: var(--pink); }
-  .stat-card .label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  /* ── Stats bar ── */
+  .stats-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .stat-pill { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; text-align: center; min-width: 80px; }
+  .stat-pill .n { font-size: 20px; font-weight: 700; color: var(--pink); }
+  .stat-pill .l { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; }
 
-  /* ── Errors/warnings ── */
+  /* ── Errors & warnings ── */
+  .msg-section { margin-bottom: 16px; }
+  .msg-section h4 { font-size: 12px; font-weight: 600; margin-bottom: 6px; }
   .msg-list { list-style: none; }
-  .msg-list li { padding: 6px 10px; font-size: 13px; border-radius: 6px; margin-bottom: 4px; }
+  .msg-list li { padding: 5px 10px; font-size: 12px; border-radius: 5px; margin-bottom: 3px; }
   .msg-list li.error { background: rgba(248,113,113,.1); color: var(--red); }
   .msg-list li.warning { background: rgba(251,191,36,.1); color: var(--orange); }
   .msg-list li::before { margin-right: 6px; }
   .msg-list li.error::before { content: "✗"; } .msg-list li.warning::before { content: "⚠"; }
 
+  /* ── Section headers ── */
+  .section-header { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; margin-top: 4px; display: flex; align-items: center; gap: 8px; }
+  .section-header::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
   /* ── Plan calendar ── */
-  .plan-calendar { overflow-x: auto; }
-  .week-row { display: flex; gap: 4px; margin-bottom: 4px; align-items: stretch; min-height: 48px; }
-  .week-label { width: 56px; min-width: 56px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); font-weight: 600; }
-  .day-cell { flex: 1; min-width: 100px; background: var(--surface2); border-radius: 6px; padding: 4px 6px; font-size: 10px; position: relative; border: 1px solid transparent; cursor: default; transition: .1s; }
-  .day-cell:hover { border-color: var(--border); }
-  .day-cell .day-name { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 9px; }
-  .day-cell .act-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
-  .day-cell .act-meta { color: var(--muted); font-size: 9px; }
-  .day-cell.empty { opacity: .3; }
+  .plan-calendar { overflow-x: auto; margin-bottom: 20px; }
+  .cal-header-row { display: flex; gap: 3px; margin-bottom: 3px; }
+  .cal-header-row .wk { width: 44px; min-width: 44px; }
+  .cal-header { flex: 1; min-width: 110px; text-align: center; font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; padding: 4px 0; }
+
+  .week-row { display: flex; gap: 3px; margin-bottom: 3px; align-items: stretch; min-height: 54px; }
+  .week-label { width: 44px; min-width: 44px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); font-weight: 600; background: var(--surface); border-radius: 6px; }
+  .day-cell { flex: 1; min-width: 110px; background: var(--surface); border-radius: 6px; padding: 5px 7px; font-size: 10px; border: 1px solid transparent; cursor: default; transition: .1s; position: relative; }
+  .day-cell:hover { border-color: var(--border); z-index: 5; }
+  .day-cell .act-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 1px; font-size: 11px; }
+  .day-cell .act-meta { color: var(--muted); font-size: 10px; }
+  .day-cell .act-badges { display: flex; gap: 3px; margin-top: 2px; }
+  .act-badge { font-size: 9px; padding: 0 4px; border-radius: 3px; font-weight: 600; }
+  .day-cell.empty { opacity: .25; }
   .day-cell.ride { border-left: 3px solid var(--blue); }
   .day-cell.strength { border-left: 3px solid var(--red); }
-  .day-cell.organised { border-left: 3px solid var(--orange); }
-  .day-cell.recurring { border-left: 3px solid var(--purple); }
+  .day-cell.organised { border-left: 3px solid var(--orange); background: rgba(251,191,36,.05); }
+  .day-cell.recurring { border-left: 3px solid var(--purple); background: rgba(167,139,250,.05); }
   .day-cell.recovery { border-left: 3px solid var(--green); }
-  .day-header-row { display: flex; gap: 4px; margin-bottom: 4px; }
-  .day-header-row .week-label { }
-  .day-header { flex: 1; min-width: 100px; text-align: center; font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+  .day-cell.cross-training { border-left: 3px solid var(--purple); opacity: .55; }
 
-  /* ── Activity tooltip ── */
-  .tooltip { display: none; position: fixed; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; max-width: 320px; z-index: 200; box-shadow: 0 8px 32px rgba(0,0,0,.5); font-size: 12px; }
+  /* ── Volume chart ── */
+  .volume-chart { display: flex; gap: 2px; align-items: end; height: 80px; margin-bottom: 20px; }
+  .vol-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .vol-bar { width: 100%; border-radius: 3px 3px 0 0; min-width: 8px; transition: .2s; }
+  .vol-bar:hover { filter: brightness(1.3); }
+  .vol-label { font-size: 9px; color: var(--muted); }
+  .vol-value { font-size: 9px; color: var(--muted); }
+
+  /* ── Legend ── */
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+  /* ── Tooltip ── */
+  .tooltip { display: none; position: fixed; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; max-width: 340px; z-index: 200; box-shadow: 0 8px 32px rgba(0,0,0,.6); font-size: 12px; }
   .tooltip.show { display: block; }
   .tooltip h4 { font-size: 13px; margin-bottom: 6px; }
   .tooltip .desc { color: var(--muted); margin-bottom: 6px; line-height: 1.4; }
   .tooltip .meta-row { display: flex; justify-content: space-between; padding: 2px 0; }
   .tooltip .meta-row .k { color: var(--muted); } .tooltip .meta-row .v { font-weight: 500; }
 
-  /* ── JSON viewer ── */
-  .json-view { background: var(--surface2); border-radius: 8px; padding: 12px 16px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; max-height: 500px; overflow: auto; white-space: pre-wrap; word-break: break-all; color: var(--muted); line-height: 1.5; }
-
   /* ── No data ── */
   .no-data { text-align: center; padding: 60px 20px; color: var(--muted); }
   .no-data .icon { font-size: 48px; margin-bottom: 12px; }
-  .no-data p { font-size: 14px; max-width: 400px; margin: 0 auto; line-height: 1.5; }
+
+  /* ── JSON ── */
+  .json-view { background: var(--surface2); border-radius: 8px; padding: 12px 16px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; max-height: 400px; overflow: auto; white-space: pre-wrap; word-break: break-all; color: var(--muted); line-height: 1.5; }
+
+  /* ── Tag ── */
+  .tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--surface2); color: var(--muted); display: inline-block; }
+  .tag.green { color: var(--green); } .tag.blue { color: var(--blue); } .tag.orange { color: var(--orange); }
+  .tag.pink { color: var(--pink); } .tag.purple { color: var(--purple); } .tag.red { color: var(--red); }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .main { flex-direction: column; height: auto; }
+    .sidebar { width: 100%; min-width: 0; max-height: 250px; border-right: none; border-bottom: 1px solid var(--border); }
+    .detail { overflow: visible; }
+  }
 </style>
 </head>
 <body>
@@ -141,14 +161,11 @@
   <span class="filename" id="fileName">No results loaded — showing test inputs only</span>
 </div>
 
-<div class="tabs">
-  <div class="tab active" data-tab="scenarios" onclick="switchTab('scenarios')">Scenarios (30)</div>
-  <div class="tab" data-tab="summary" onclick="switchTab('summary')">Summary</div>
-  <div class="tab" data-tab="calendar" onclick="switchTab('calendar')">Plan Calendar</div>
-  <div class="tab" data-tab="json" onclick="switchTab('json')">Raw JSON</div>
+<div class="main">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="detail" id="detail"></div>
 </div>
 
-<div class="content" id="content"></div>
 <div class="tooltip" id="tooltip"></div>
 
 <script>
@@ -189,8 +206,6 @@ const SCENARIOS = [
 // ── State ──
 let apiResults = null;
 let selectedIdx = 0;
-let currentTab = 'scenarios';
-let detailTab = 'input';
 
 // ── File loader ──
 document.getElementById('fileInput').addEventListener('change', e => {
@@ -199,38 +214,22 @@ document.getElementById('fileInput').addEventListener('change', e => {
   document.getElementById('fileName').textContent = file.name;
   const reader = new FileReader();
   reader.onload = ev => {
-    try {
-      apiResults = JSON.parse(ev.target.result);
-      render();
-    } catch (err) { alert('Invalid JSON: ' + err.message); }
+    try { apiResults = JSON.parse(ev.target.result); render(); }
+    catch (err) { alert('Invalid JSON: ' + err.message); }
   };
   reader.readAsText(file);
 });
 
-// ── Tab switching ──
-function switchTab(tab) {
-  currentTab = tab;
-  document.querySelectorAll('.tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-  render();
-}
+function selectScenario(idx) { selectedIdx = idx; render(); }
+function getResult(idx) { return apiResults?.results?.[idx] || null; }
 
-function switchDetailTab(tab) {
-  detailTab = tab;
+// ── Render all ──
+function render() {
+  renderHeaderStats();
+  renderSidebar();
   renderDetail();
 }
 
-function selectScenario(idx) {
-  selectedIdx = idx;
-  render();
-}
-
-// ── Get result for scenario index ──
-function getResult(idx) {
-  if (!apiResults || !apiResults.results) return null;
-  return apiResults.results[idx] || null;
-}
-
-// ── Header stats ──
 function renderHeaderStats() {
   const el = document.getElementById('headerStats');
   if (!apiResults) { el.innerHTML = '<span class="stat" style="color:var(--muted)">No results loaded</span>'; return; }
@@ -244,324 +243,295 @@ function renderHeaderStats() {
   `;
 }
 
-// ── Render ──
-function render() {
-  renderHeaderStats();
-  const el = document.getElementById('content');
-  if (currentTab === 'scenarios') renderScenarios(el);
-  else if (currentTab === 'summary') renderSummary(el);
-  else if (currentTab === 'calendar') renderCalendar(el);
-  else if (currentTab === 'json') renderJson(el);
-}
-
-// ── Scenarios tab ──
-function renderScenarios(el) {
-  let html = '<div class="scenario-grid">';
+// ── Sidebar ──
+function renderSidebar() {
+  const el = document.getElementById('sidebar');
+  let html = `<div class="sidebar-header">Scenarios (${SCENARIOS.length})</div>`;
   SCENARIOS.forEach((s, i) => {
     const r = getResult(i);
-    const tags = buildTags(s);
-    const badge = r ? (r.pass ? '<span class="result-badge pass">PASS</span>' : '<span class="result-badge fail">FAIL</span>') : '<span class="result-badge pending">NO DATA</span>';
-    const stats = r?.stats ? ` · ${r.stats.totalActivities} acts` : '';
-    const dur = r?.durationMs ? ` · ${(r.durationMs/1000).toFixed(1)}s` : '';
-    html += `<div class="scenario-card ${i===selectedIdx?'selected':''}" onclick="selectScenario(${i})">
-      <span class="num">#${i+1}</span>
-      <h3>${s.name}</h3>
-      <div class="tags">${tags}</div>
-      ${badge}<span style="font-size:11px;color:var(--muted)">${stats}${dur}</span>
+    const warnCount = r?.warnings?.length || 0;
+    let badgeHtml = '';
+    if (r) {
+      if (!r.pass) badgeHtml = '<span class="badge fail">FAIL</span>';
+      else if (warnCount > 0) badgeHtml = `<span class="badge warn">WARN ${warnCount}</span>`;
+      else badgeHtml = '<span class="badge pass">PASS</span>';
+    } else {
+      badgeHtml = '<span class="badge pending">—</span>';
+    }
+    const acts = r?.stats?.totalActivities ? `${r.stats.totalActivities} acts` : '';
+    const dur = r?.durationMs ? `${(r.durationMs/1000).toFixed(1)}s` : '';
+    const metaParts = [acts, dur].filter(Boolean).join(' · ');
+
+    html += `<div class="scenario-item ${i===selectedIdx?'selected':''}" onclick="selectScenario(${i})">
+      <span class="num">${i+1}</span>
+      <div class="info">
+        <div class="name">${esc(s.name)}</div>
+        <div class="meta">${badgeHtml} ${metaParts ? `<span>${metaParts}</span>` : ''}</div>
+      </div>
     </div>`;
   });
-  html += '</div>';
-
-  // Detail panel
-  html += renderDetailPanel();
   el.innerHTML = html;
-
-  // Re-bind detail tabs
-  document.querySelectorAll('.detail-tab').forEach(t => {
-    t.addEventListener('click', () => switchDetailTab(t.dataset.tab));
-  });
 }
 
-function buildTags(s) {
-  const tags = [];
-  tags.push(`<span class="tag fitness-${s.config.fitnessLevel}">${s.config.fitnessLevel}</span>`);
-  tags.push(`<span class="tag">${s.config.weeks}w / ${s.config.daysPerWeek}d</span>`);
-  if (s.goal.goalType !== 'improve') tags.push(`<span class="tag">${s.goal.goalType}</span>`);
-  if (s.goal.cyclingType === 'ebike') tags.push(`<span class="tag" style="color:var(--green)">e-bike</span>`);
-  if (s.config.recurringRides?.length) tags.push(`<span class="tag recurring">${s.config.recurringRides.length} recurring</span>`);
-  if (s.config.oneOffRides?.length) tags.push(`<span class="tag organised">${s.config.oneOffRides.length} organised</span>`);
-  if (s.config.trainingTypes?.includes('strength')) tags.push(`<span class="tag strength">strength</span>`);
-  const ct = s.config.crossTrainingDays;
-  if (ct && Object.keys(ct).length > 0) {
-    const acts = [...new Set(Object.values(ct))];
-    tags.push(`<span class="tag ct">${acts.join(', ')}</span>`);
-  }
-  if (s.goal.targetDistance) tags.push(`<span class="tag">${s.goal.targetDistance}km</span>`);
-  if (s.goal.targetElevation) tags.push(`<span class="tag">${s.goal.targetElevation}m elev</span>`);
-  return tags.join('');
-}
-
-// ── Detail panel ──
-function renderDetailPanel() {
+// ── Detail pane ──
+function renderDetail() {
+  const el = document.getElementById('detail');
   const s = SCENARIOS[selectedIdx];
   const r = getResult(selectedIdx);
-  const hasResult = !!r;
-  const hasPlan = r?.plan?.activities?.length > 0;
-
-  let tabs = `<div class="detail-tab ${detailTab==='input'?'active':''}" data-tab="input">Input</div>`;
-  if (hasResult) tabs += `<div class="detail-tab ${detailTab==='result'?'active':''}" data-tab="result">Result</div>`;
-  if (hasPlan) tabs += `<div class="detail-tab ${detailTab==='plan'?'active':''}" data-tab="plan">Plan View</div>`;
-  tabs += `<div class="detail-tab ${detailTab==='raw'?'active':''}" data-tab="raw">Raw</div>`;
-
-  let content = '';
-  if (detailTab === 'input') content = renderInputDetail(s);
-  else if (detailTab === 'result' && hasResult) content = renderResultDetail(r);
-  else if (detailTab === 'plan' && hasPlan) content = renderPlanDetail(r.plan, s);
-  else if (detailTab === 'raw') content = `<div class="json-view">${escHtml(JSON.stringify(hasResult ? r : s, null, 2))}</div>`;
-  else content = renderInputDetail(s);
-
-  return `<div class="detail-panel">
-    <div class="detail-header"><h2>#${selectedIdx+1} ${s.name}</h2></div>
-    <div class="detail-tabs">${tabs}</div>
-    <div class="detail-content">${content}</div>
-  </div>`;
-}
-
-function renderInputDetail(s) {
   const g = s.goal, c = s.config;
-  let goalRows = '';
-  goalRows += row('Goal Type', g.goalType);
-  goalRows += row('Cycling Type', g.cyclingType);
-  if (g.eventName) goalRows += row('Event', g.eventName);
-  if (g.targetDistance) goalRows += row('Target Distance', g.targetDistance + ' km');
-  if (g.targetElevation) goalRows += row('Target Elevation', g.targetElevation + ' m');
-  if (g.targetTime) goalRows += row('Target Time', g.targetTime + ' hours');
-  if (g.targetDate) goalRows += row('Target Date', g.targetDate);
-  goalRows += row('Plan Name', g.planName || '—');
+  const hasPlan = r?.plan?.activities?.length > 0;
+  const warnCount = r?.warnings?.length || 0;
+  const errCount = r?.errors?.length || 0;
 
-  let configRows = '';
-  configRows += row('Fitness Level', c.fitnessLevel);
-  configRows += row('Days/Week', c.daysPerWeek);
-  configRows += row('Weeks', c.weeks);
-  configRows += row('Start Date', c.startDate);
-  configRows += row('Training Types', c.trainingTypes?.join(', '));
-  configRows += row('Available Days', c.availableDays?.join(', '));
-  if (c.longRideDay) configRows += row('Long Ride Day', c.longRideDay);
+  // Badge
+  let badgeHtml = '';
+  if (r) {
+    if (!r.pass) badgeHtml = '<span class="badge fail" style="font-size:13px;padding:4px 12px">FAIL</span>';
+    else if (warnCount > 0) badgeHtml = `<span class="badge warn" style="font-size:13px;padding:4px 12px">WARN (${warnCount})</span>`;
+    else badgeHtml = '<span class="badge pass" style="font-size:13px;padding:4px 12px">PASS</span>';
+  }
 
-  let extras = '';
+  let html = '<div class="detail-inner">';
+
+  // ── Title ──
+  html += `<div class="scenario-title-bar">
+    <h2>#${selectedIdx+1} ${esc(s.name)}</h2>
+    ${badgeHtml}
+    ${r?.durationMs ? `<span style="font-size:12px;color:var(--muted);margin-left:auto">${(r.durationMs/1000).toFixed(1)}s</span>` : ''}
+  </div>`;
+
+  // ── Input cards ──
+  html += '<div class="section-header">Inputs</div>';
+  html += '<div class="input-strip">';
+
+  // Goal card
+  html += '<div class="input-card"><h4>Goal</h4>';
+  html += row('Type', g.goalType);
+  html += row('Cycling', g.cyclingType);
+  if (g.eventName) html += row('Event', g.eventName);
+  if (g.targetDistance) html += row('Distance', g.targetDistance + ' km');
+  if (g.targetElevation) html += row('Elevation', g.targetElevation + ' m');
+  if (g.targetTime) html += row('Time', g.targetTime + ' hrs');
+  if (g.targetDate) html += row('Event Date', g.targetDate);
+  html += '</div>';
+
+  // Config card
+  html += '<div class="input-card"><h4>Config</h4>';
+  html += row('Fitness', c.fitnessLevel);
+  html += row('Days/week', c.daysPerWeek);
+  html += row('Weeks', c.weeks);
+  html += row('Start', c.startDate);
+  html += row('Training', c.trainingTypes?.join(', '));
+  html += row('Days', c.availableDays?.map(d => d.slice(0,3)).join(', '));
+  if (c.longRideDay) html += row('Long ride', c.longRideDay);
+  html += '</div>';
+
+  // Recurring rides
   if (c.recurringRides?.length) {
-    extras += '<div class="input-section"><h4>Recurring Rides</h4>';
-    c.recurringRides.forEach(r => {
-      extras += row(r.notes || r.day, `${r.day} · ${r.durationMins}min · ${r.distanceKm||'?'}km`);
+    html += '<div class="input-card"><h4>Recurring Rides</h4>';
+    c.recurringRides.forEach(rr => {
+      html += row(rr.notes || rr.day, `${rr.day} · ${rr.durationMins}min · ${rr.distanceKm||'?'}km`);
     });
-    extras += '</div>';
-  }
-  if (c.oneOffRides?.length) {
-    extras += '<div class="input-section"><h4>Organised Rides</h4>';
-    c.oneOffRides.forEach(r => {
-      extras += row(r.notes || r.date, `${r.date} · ${r.durationMins}min · ${r.distanceKm||'?'}km`);
-    });
-    extras += '</div>';
-  }
-  if (c.crossTrainingDays && Object.keys(c.crossTrainingDays).length) {
-    extras += '<div class="input-section"><h4>Cross-Training</h4>';
-    Object.entries(c.crossTrainingDays).forEach(([d, a]) => { extras += row(d, a); });
-    extras += '</div>';
-  }
-
-  return `<div class="input-grid">
-    <div class="input-section"><h4>Goal</h4>${goalRows}</div>
-    <div class="input-section"><h4>Config</h4>${configRows}</div>
-  </div>${extras ? '<div style="margin-top:12px">' + extras + '</div>' : ''}`;
-}
-
-function renderResultDetail(r) {
-  let html = '';
-  if (r.stats) {
-    html += '<div class="stat-cards">';
-    html += statCard(r.stats.totalActivities, 'Total');
-    html += statCard(r.stats.rides, 'Rides');
-    html += statCard(r.stats.strength, 'Strength');
-    html += statCard(r.stats.organised, 'Organised');
-    html += statCard(r.stats.recurring, 'Recurring');
-    html += statCard(r.stats.planned, 'Planned');
-    html += statCard(r.stats.recovery, 'Recovery');
-    html += statCard(r.stats.weeks, 'Weeks');
     html += '</div>';
   }
-  if (r.durationMs) html += `<p style="font-size:13px;color:var(--muted);margin-bottom:12px">Generated in ${(r.durationMs/1000).toFixed(1)}s</p>`;
 
-  if (r.errors?.length) {
-    html += '<h4 style="font-size:13px;margin-bottom:6px;color:var(--red)">Errors</h4><ul class="msg-list">';
-    r.errors.forEach(e => { html += `<li class="error">${escHtml(e)}</li>`; });
-    html += '</ul>';
+  // Organised rides
+  if (c.oneOffRides?.length) {
+    html += '<div class="input-card"><h4>Organised Rides</h4>';
+    c.oneOffRides.forEach(oo => {
+      html += row(oo.notes || oo.date, `${oo.date} · ${oo.durationMins}min · ${oo.distanceKm||'?'}km`);
+    });
+    html += '</div>';
   }
-  if (r.warnings?.length) {
-    html += '<h4 style="font-size:13px;margin:12px 0 6px;color:var(--orange)">Warnings</h4><ul class="msg-list">';
-    r.warnings.forEach(w => { html += `<li class="warning">${escHtml(w)}</li>`; });
-    html += '</ul>';
+
+  // Cross-training
+  if (c.crossTrainingDays && Object.keys(c.crossTrainingDays).length) {
+    html += '<div class="input-card"><h4>Cross-Training</h4>';
+    Object.entries(c.crossTrainingDays).forEach(([d, a]) => { html += row(d, a); });
+    html += '</div>';
   }
-  if (!r.errors?.length && !r.warnings?.length) {
-    html += '<p style="color:var(--green);font-size:14px;padding:20px 0;text-align:center">No errors or warnings</p>';
+  html += '</div>'; // end input-strip
+
+  // ── Errors & warnings ──
+  if (errCount > 0 || warnCount > 0) {
+    html += '<div class="msg-section">';
+    if (errCount > 0) {
+      html += `<h4 style="color:var(--red)">Errors (${errCount})</h4><ul class="msg-list">`;
+      r.errors.forEach(e => { html += `<li class="error">${esc(e)}</li>`; });
+      html += '</ul>';
+    }
+    if (warnCount > 0) {
+      html += `<h4 style="color:var(--orange);${errCount?'margin-top:10px':''}">Warnings (${warnCount})</h4><ul class="msg-list">`;
+      r.warnings.forEach(w => { html += `<li class="warning">${esc(w)}</li>`; });
+      html += '</ul>';
+    }
+    html += '</div>';
   }
-  return html;
+
+  // ── Plan results ──
+  if (hasPlan) {
+    // Stats bar
+    html += '<div class="section-header">Results</div>';
+    html += '<div class="stats-bar">';
+    const st = r.stats;
+    html += pill(st.totalActivities, 'Total');
+    html += pill(st.rides, 'Rides');
+    html += pill(st.strength, 'Strength');
+    html += pill(st.organised, 'Organised');
+    html += pill(st.recurring, 'Recurring');
+    html += pill(st.recovery, 'Recovery');
+    html += pill(st.weeks, 'Weeks');
+    html += '</div>';
+
+    // Legend
+    html += '<div class="legend">';
+    html += legendItem('var(--blue)', 'Ride');
+    html += legendItem('var(--green)', 'Recovery');
+    html += legendItem('var(--red)', 'Strength');
+    html += legendItem('var(--orange)', 'Organised');
+    html += legendItem('var(--purple)', 'Recurring / Cross-training');
+    html += '</div>';
+
+    // Calendar
+    html += '<div class="section-header">Plan Calendar</div>';
+    html += renderCalendar(r.plan, s);
+
+    // Volume chart
+    html += '<div class="section-header" style="margin-top:20px">Weekly Volume</div>';
+    html += renderVolumeChart(r.plan);
+  } else if (!r) {
+    html += '<div class="no-data" style="padding:40px"><div class="icon">📋</div><p>Load an API results JSON to see the generated plan. Run tests with <code>--output results.json</code></p></div>';
+  } else {
+    html += '<div class="no-data" style="padding:40px"><div class="icon">⚠️</div><p>No plan data in results for this scenario.</p></div>';
+  }
+
+  // Raw JSON toggle
+  html += `<details style="margin-top:20px"><summary style="font-size:12px;color:var(--muted);cursor:pointer;padding:8px 0">Raw JSON</summary>`;
+  html += `<div class="json-view">${esc(JSON.stringify(r || s, null, 2))}</div></details>`;
+
+  html += '</div>'; // end detail-inner
+  el.innerHTML = html;
+  el.scrollTop = 0;
 }
 
-function renderPlanDetail(plan, scenario) {
-  if (!plan?.activities?.length) return '<div class="no-data"><p>No plan data</p></div>';
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+// ── Calendar renderer ──
+function renderCalendar(plan, scenario) {
+  if (!plan?.activities?.length) return '';
+  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const dayFull = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
   let html = '<div class="plan-calendar">';
-  html += '<div class="day-header-row"><div class="week-label"></div>';
-  days.forEach(d => { html += `<div class="day-header">${d}</div>`; });
+
+  // Header
+  html += '<div class="cal-header-row"><div class="wk"></div>';
+  dayNames.forEach(d => { html += `<div class="cal-header">${d}</div>`; });
   html += '</div>';
 
   for (let w = 1; w <= plan.weeks; w++) {
     html += `<div class="week-row"><div class="week-label">W${w}</div>`;
     for (let d = 0; d < 7; d++) {
-      const act = plan.activities.find(a => a.week === w && a.dayOfWeek === d);
-      if (act) {
-        const cls = act.scheduleType === 'organised' ? 'organised' : act.scheduleType === 'recurring' ? 'recurring' : act.effort === 'recovery' || act.subType === 'recovery' ? 'recovery' : act.type === 'strength' ? 'strength' : 'ride';
+      // Multiple activities on same day
+      const acts = plan.activities.filter(a => a.week === w && a.dayOfWeek === d);
+      if (acts.length > 0) {
+        const act = acts[0]; // primary
+        const cls = act.scheduleType === 'organised' ? 'organised'
+          : act.scheduleType === 'recurring' ? 'recurring'
+          : (act.effort === 'recovery' || act.subType === 'recovery') ? 'recovery'
+          : act.type === 'strength' ? 'strength' : 'ride';
+        const effortBadge = act.effort ? `<span class="act-badge" style="background:${effortColor(act.effort)};color:#000">${act.effort}</span>` : '';
+        const typeBadge = act.subType ? `<span class="act-badge" style="background:var(--surface);color:var(--muted)">${act.subType}</span>` : '';
+
         html += `<div class="day-cell ${cls}" onmouseenter="showTooltip(event, ${selectedIdx}, ${w}, ${d})" onmouseleave="hideTooltip()">
-          <div class="day-name">${days[d]}</div>
-          <div class="act-title">${escHtml(act.title||'')}</div>
-          <div class="act-meta">${act.durationMins||'?'}min${act.distanceKm ? ' · '+act.distanceKm+'km' : ''}</div>
+          <div class="act-title">${esc(act.title||'Session')}</div>
+          <div class="act-meta">${act.durationMins||'?'}min${act.distanceKm ? ' · '+act.distanceKm+'km' : ''}${act.elevationM ? ' · '+act.elevationM+'m' : ''}</div>
+          <div class="act-badges">${effortBadge}${typeBadge}</div>
+          ${acts.length > 1 ? `<div style="font-size:9px;color:var(--orange);margin-top:2px">+${acts.length-1} more</div>` : ''}
         </div>`;
       } else {
-        // Check for cross-training
-        const dayName = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'][d];
-        const ct = scenario.config.crossTrainingDays?.[dayName];
+        // Cross-training?
+        const ct = scenario.config.crossTrainingDays?.[dayFull[d]];
         if (ct) {
-          html += `<div class="day-cell" style="border-left:3px solid var(--purple);opacity:.6"><div class="day-name">${days[d]}</div><div class="act-title" style="color:var(--purple)">${ct}</div><div class="act-meta">cross-training</div></div>`;
+          html += `<div class="day-cell cross-training">
+            <div class="act-title" style="color:var(--purple)">${esc(ct)}</div>
+            <div class="act-meta">cross-training</div>
+          </div>`;
         } else {
-          html += `<div class="day-cell empty"><div class="day-name">${days[d]}</div></div>`;
+          html += `<div class="day-cell empty"></div>`;
         }
       }
     }
     html += '</div>';
   }
   html += '</div>';
+  return html;
+}
 
-  // Volume chart
-  html += '<div style="margin-top:20px"><h4 style="font-size:13px;margin-bottom:8px;color:var(--muted)">Weekly Volume (km)</h4>';
+function renderVolumeChart(plan) {
   const weekKms = [];
   for (let w = 1; w <= plan.weeks; w++) {
     weekKms.push(Math.round(plan.activities.filter(a => a.week === w).reduce((s, a) => s + (a.distanceKm || 0), 0)));
   }
   const maxKm = Math.max(...weekKms, 1);
-  html += '<div style="display:flex;gap:3px;align-items:end;height:80px">';
+  let html = '<div class="volume-chart">';
   weekKms.forEach((km, i) => {
-    const h = Math.max(2, (km / maxKm) * 70);
-    html += `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="font-size:9px;color:var(--muted)">${km}</div><div style="width:100%;height:${h}px;background:var(--pink);border-radius:3px 3px 0 0;min-width:8px"></div><div style="font-size:9px;color:var(--muted)">W${i+1}</div></div>`;
+    const h = Math.max(3, (km / maxKm) * 65);
+    const color = km === 0 ? 'var(--surface2)' : 'var(--pink)';
+    html += `<div class="vol-bar-wrap">
+      <div class="vol-value">${km}</div>
+      <div class="vol-bar" style="height:${h}px;background:${color}"></div>
+      <div class="vol-label">W${i+1}</div>
+    </div>`;
   });
-  html += '</div></div>';
-
-  return html;
-}
-
-// ── Summary tab ──
-function renderSummary(el) {
-  if (!apiResults) {
-    el.innerHTML = '<div class="no-data"><div class="icon">📊</div><p>Load an API results JSON file to see the summary. Run your tests with <code>--output results.json</code> to generate one.</p></div>';
-    return;
-  }
-  let html = '<div class="stat-cards" style="margin-bottom:20px">';
-  html += statCard(apiResults.totalScenarios, 'Total', '--text');
-  html += statCard(apiResults.passed, 'Passed', '--green');
-  html += statCard(apiResults.failed, 'Failed', '--red');
-  const totalW = apiResults.results.reduce((s, r) => s + (r.warnings?.length || 0), 0);
-  html += statCard(totalW, 'Warnings', '--orange');
-  const avgDur = apiResults.results.filter(r => r.durationMs).reduce((s, r) => s + r.durationMs, 0) / Math.max(1, apiResults.results.filter(r => r.durationMs).length);
-  html += statCard((avgDur/1000).toFixed(1) + 's', 'Avg Time', '--muted');
   html += '</div>';
-
-  // Table
-  html += '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;border-bottom:1px solid var(--border)">';
-  html += '<th style="padding:8px">#</th><th style="padding:8px">Scenario</th><th style="padding:8px">Result</th><th style="padding:8px">Acts</th><th style="padding:8px">Rides</th><th style="padding:8px">Str</th><th style="padding:8px">Rec</th><th style="padding:8px">Org</th><th style="padding:8px">Time</th><th style="padding:8px">Errors</th>';
-  html += '</tr></thead><tbody>';
-  apiResults.results.forEach((r, i) => {
-    const bg = r.pass ? '' : 'background:rgba(248,113,113,.05)';
-    html += `<tr style="border-bottom:1px solid var(--border);cursor:pointer;${bg}" onclick="selectScenario(${i});switchTab('scenarios')">`;
-    html += `<td style="padding:6px 8px;color:var(--muted)">${i+1}</td>`;
-    html += `<td style="padding:6px 8px">${escHtml(r.name)}</td>`;
-    html += `<td style="padding:6px 8px;color:var(${r.pass?'--green':'--red'})">${r.pass?'PASS':'FAIL'}</td>`;
-    html += `<td style="padding:6px 8px">${r.stats?.totalActivities||'—'}</td>`;
-    html += `<td style="padding:6px 8px">${r.stats?.rides??'—'}</td>`;
-    html += `<td style="padding:6px 8px">${r.stats?.strength??'—'}</td>`;
-    html += `<td style="padding:6px 8px">${r.stats?.recurring??'—'}</td>`;
-    html += `<td style="padding:6px 8px">${r.stats?.organised??'—'}</td>`;
-    html += `<td style="padding:6px 8px;color:var(--muted)">${r.durationMs ? (r.durationMs/1000).toFixed(1)+'s' : '—'}</td>`;
-    html += `<td style="padding:6px 8px;color:var(--red)">${r.errors?.length||0}</td>`;
-    html += '</tr>';
-  });
-  html += '</tbody></table>';
-  el.innerHTML = html;
-}
-
-// ── Calendar tab (all plans stacked) ──
-function renderCalendar(el) {
-  if (!apiResults) {
-    el.innerHTML = '<div class="no-data"><div class="icon">📅</div><p>Load an API results JSON file to see the plan calendar view.</p></div>';
-    return;
-  }
-  let html = '';
-  apiResults.results.forEach((r, i) => {
-    if (!r.plan?.activities?.length) return;
-    html += `<div style="margin-bottom:24px;cursor:pointer" onclick="selectScenario(${i});switchTab('scenarios');detailTab='plan';render()">`;
-    html += `<h3 style="font-size:14px;margin-bottom:8px"><span style="color:var(${r.pass?'--green':'--red'})">${r.pass?'✓':'✗'}</span> #${i+1} ${escHtml(r.name)} <span style="font-size:11px;color:var(--muted)">(${r.plan.activities.length} activities)</span></h3>`;
-    // Mini bar per week
-    const days = 7;
-    html += '<div style="display:flex;gap:2px;flex-wrap:wrap">';
-    for (let w = 1; w <= r.plan.weeks; w++) {
-      const acts = r.plan.activities.filter(a => a.week === w);
-      const km = Math.round(acts.reduce((s, a) => s + (a.distanceKm || 0), 0));
-      html += `<div style="width:${Math.max(20, 100/r.plan.weeks)}%;background:var(--surface);border-radius:4px;padding:3px 4px;font-size:9px;display:flex;gap:1px">`;
-      for (let d = 0; d < days; d++) {
-        const act = acts.find(a => a.dayOfWeek === d);
-        const color = act ? (act.type === 'strength' ? 'var(--red)' : act.scheduleType === 'recurring' ? 'var(--purple)' : act.scheduleType === 'organised' ? 'var(--orange)' : act.effort === 'recovery' ? 'var(--green)' : 'var(--blue)') : 'var(--surface2)';
-        html += `<div style="flex:1;height:8px;background:${color};border-radius:2px" title="W${w} ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][d]}${act?' — '+act.title:''}"></div>`;
-      }
-      html += '</div>';
-    }
-    html += '</div></div>';
-  });
-  if (!html) html = '<div class="no-data"><div class="icon">📅</div><p>No plans with activities found in the results.</p></div>';
-  el.innerHTML = html;
-}
-
-// ── JSON tab ──
-function renderJson(el) {
-  const data = apiResults || { scenarios: SCENARIOS };
-  el.innerHTML = `<div class="json-view">${escHtml(JSON.stringify(data, null, 2))}</div>`;
+  return html;
 }
 
 // ── Tooltip ──
 function showTooltip(ev, sIdx, week, day) {
   const r = getResult(sIdx);
   if (!r?.plan?.activities) return;
-  const act = r.plan.activities.find(a => a.week === week && a.dayOfWeek === day);
-  if (!act) return;
+  const acts = r.plan.activities.filter(a => a.week === week && a.dayOfWeek === day);
+  if (acts.length === 0) return;
   const tip = document.getElementById('tooltip');
-  tip.innerHTML = `<h4>${escHtml(act.title||'Session')}</h4>
-    <div class="desc">${escHtml(act.description||'')}</div>
-    <div class="meta-row"><span class="k">Type</span><span class="v">${act.type} / ${act.subType||'—'}</span></div>
-    <div class="meta-row"><span class="k">Effort</span><span class="v">${act.effort||'—'}</span></div>
-    <div class="meta-row"><span class="k">Duration</span><span class="v">${act.durationMins||'?'} min</span></div>
-    <div class="meta-row"><span class="k">Distance</span><span class="v">${act.distanceKm ? act.distanceKm + ' km' : '—'}</span></div>
-    <div class="meta-row"><span class="k">Schedule</span><span class="v">${act.scheduleType||'—'}</span></div>
-    ${act.notes ? '<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);color:var(--muted);font-size:11px">'+escHtml(act.notes)+'</div>' : ''}`;
+  let html = '';
+  acts.forEach((act, i) => {
+    if (i > 0) html += '<hr style="border:none;border-top:1px solid var(--border);margin:8px 0">';
+    html += `<h4>${esc(act.title||'Session')}</h4>
+      ${act.description ? `<div class="desc">${esc(act.description)}</div>` : ''}
+      <div class="meta-row"><span class="k">Type</span><span class="v">${act.type}${act.subType ? ' / '+act.subType : ''}</span></div>
+      <div class="meta-row"><span class="k">Effort</span><span class="v">${act.effort||'—'}</span></div>
+      <div class="meta-row"><span class="k">Duration</span><span class="v">${act.durationMins||'?'} min</span></div>
+      <div class="meta-row"><span class="k">Distance</span><span class="v">${act.distanceKm ? act.distanceKm+' km' : '—'}</span></div>
+      ${act.elevationM ? `<div class="meta-row"><span class="k">Elevation</span><span class="v">${act.elevationM} m</span></div>` : ''}
+      <div class="meta-row"><span class="k">Schedule</span><span class="v">${act.scheduleType||'planned'}</span></div>
+      ${act.date ? `<div class="meta-row"><span class="k">Date</span><span class="v">${act.date}</span></div>` : ''}
+      ${act.notes ? '<div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border);color:var(--muted);font-size:11px">'+esc(act.notes)+'</div>' : ''}`;
+  });
+  tip.innerHTML = html;
   tip.classList.add('show');
-  const rect = tip.getBoundingClientRect();
-  let x = ev.clientX + 12, y = ev.clientY + 12;
-  if (x + rect.width > window.innerWidth) x = ev.clientX - rect.width - 12;
-  if (y + rect.height > window.innerHeight) y = ev.clientY - rect.height - 12;
-  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  // Position
+  requestAnimationFrame(() => {
+    const rect = tip.getBoundingClientRect();
+    let x = ev.clientX + 14, y = ev.clientY + 14;
+    if (x + rect.width > window.innerWidth - 10) x = ev.clientX - rect.width - 14;
+    if (y + rect.height > window.innerHeight - 10) y = ev.clientY - rect.height - 14;
+    tip.style.left = Math.max(4, x) + 'px';
+    tip.style.top = Math.max(4, y) + 'px';
+  });
 }
 function hideTooltip() { document.getElementById('tooltip').classList.remove('show'); }
 
 // ── Helpers ──
-function row(label, value) { return `<div class="input-row"><span class="label">${escHtml(label)}</span><span class="value">${escHtml(String(value??'—'))}</span></div>`; }
-function statCard(num, label, colorVar) { return `<div class="stat-card"><div class="num" ${colorVar?`style="color:var(${colorVar})"`:''}">${num}</div><div class="label">${label}</div></div>`; }
-function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function row(label, value) { return `<div class="input-row"><span class="label">${esc(label)}</span><span class="value">${esc(String(value??'—'))}</span></div>`; }
+function pill(num, label) { return `<div class="stat-pill"><div class="n">${num}</div><div class="l">${label}</div></div>`; }
+function legendItem(color, label) { return `<div class="legend-item"><div class="legend-dot" style="background:${color}"></div>${label}</div>`; }
+function effortColor(e) {
+  if (e === 'recovery' || e === 'easy') return 'var(--green)';
+  if (e === 'moderate') return 'var(--blue)';
+  if (e === 'hard') return 'var(--orange)';
+  if (e === 'max') return 'var(--red)';
+  return 'var(--surface2)';
+}
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // ── Init ──
 render();

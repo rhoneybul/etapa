@@ -1129,7 +1129,8 @@ function runLocalTests() {
       const { errors, warnings, stats } = validate(plan, scenario);
 
       if (errors.length === 0) {
-        console.log(`✅ PASS (${stats.totalActivities} acts, ${stats.organised} org, ${stats.recurring} rec)`);
+        const warnTag = warnings.length > 0 ? ` ⚠ ${warnings.length} warning${warnings.length > 1 ? 's' : ''}` : '';
+        console.log(`✅ PASS (${stats.totalActivities} acts, ${stats.organised} org, ${stats.recurring} rec)${warnTag}`);
         totalPass++;
       } else {
         console.log(`❌ FAIL`);
@@ -1152,17 +1153,18 @@ function runLocalTests() {
   console.log(`  RESULTS: ${totalPass} passed, ${totalFail} failed, ${totalWarn} warnings`);
   console.log('═══════════════════════════════════════════════════════════════\n');
 
-  console.log('Scenario                                            | Result | Acts | Org | Rec | Plan | Recov');
-  console.log('----------------------------------------------------|--------|------|-----|-----|------|------');
+  console.log('Scenario                                            | Result | Acts | Org | Rec | Plan | Recov | Warn');
+  console.log('----------------------------------------------------|--------|------|-----|-----|------|-------|-----');
   for (const r of results) {
     const nm = r.name.substring(0, 51).padEnd(51);
-    const rs = r.pass ? ' PASS ' : ' FAIL ';
+    const rs = r.pass ? (r.warnings.length > 0 ? ' WARN ' : ' PASS ') : ' FAIL ';
     const a = String(r.stats.totalActivities || 0).padStart(4);
     const o = String(r.stats.organised || 0).padStart(3);
     const rc = String(r.stats.recurring || 0).padStart(3);
     const p = String(r.stats.planned || 0).padStart(4);
     const rv = String(r.stats.recovery || 0).padStart(4);
-    console.log(`${nm} | ${rs} | ${a} | ${o} | ${rc} | ${p} | ${rv}`);
+    const w = r.warnings.length > 0 ? String(r.warnings.length).padStart(4) : '   -';
+    console.log(`${nm} | ${rs} | ${a} | ${o} | ${rc} | ${p} | ${rv} | ${w}`);
   }
 
   return totalFail === 0;
@@ -1244,7 +1246,8 @@ async function runApiTests(serverUrl, apiKey, outputPath) {
       result.pass = errors.length === 0;
 
       if (errors.length === 0) {
-        console.log(`✅ PASS (${stats.totalActivities} acts, ${(result.durationMs / 1000).toFixed(1)}s)`);
+        const warnTag = warnings.length > 0 ? ` ⚠ ${warnings.length} warning${warnings.length > 1 ? 's' : ''}` : '';
+        console.log(`✅ PASS (${stats.totalActivities} acts, ${(result.durationMs / 1000).toFixed(1)}s)${warnTag}`);
         totalPass++;
       } else {
         console.log(`❌ FAIL`);
@@ -1262,7 +1265,8 @@ async function runApiTests(serverUrl, apiKey, outputPath) {
     results.push(result);
   }
 
-  console.log(`\n  API RESULTS: ${totalPass}/${SCENARIOS.length} passed, ${totalFail} failed\n`);
+  const totalWarn = results.reduce((s, r) => s + (r.warnings?.length || 0), 0);
+  console.log(`\n  API RESULTS: ${totalPass}/${SCENARIOS.length} passed, ${totalFail} failed, ${totalWarn} warnings\n`);
 
   // Write full results to JSON
   const output = {
@@ -1412,15 +1416,7 @@ async function runEditTests(serverUrl, apiKey, outputPath) {
 
   console.log(`\n  EDIT RESULTS: ${totalPass}/${EDIT_SCENARIOS.length} passed, ${totalFail} failed\n`);
 
-  // Save results
-  if (outputPath) {
-    const fs = await import('fs');
-    const editOutFile = outputPath.replace('.json', '-edits.json');
-    fs.writeFileSync(editOutFile, JSON.stringify({ results }, null, 2));
-    console.log(`  📄 Edit results saved to ${editOutFile}\n`);
-  }
-
-  return totalFail === 0;
+  return { passed: totalPass, failed: totalFail, results };
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
@@ -1436,10 +1432,31 @@ const localOk = runLocalTests();
 if (apiIdx >= 0 && args[apiIdx + 1]) {
   const apiKey = keyIdx >= 0 ? args[keyIdx + 1] : null;
   const outputPath = outIdx >= 0 ? args[outIdx + 1] : null;
-  await runApiTests(args[apiIdx + 1], apiKey, outputPath);
+  const apiOk = await runApiTests(args[apiIdx + 1], apiKey, outputPath);
 
+  let editSummary = null;
   if (!skipEdits) {
-    await runEditTests(args[apiIdx + 1], apiKey, outputPath);
+    editSummary = await runEditTests(args[apiIdx + 1], apiKey, outputPath);
+  }
+
+  // Consolidate everything into one output file
+  if (outputPath) {
+    const fs = await import('fs');
+    // Re-read the api results file that was already written
+    let combined;
+    try {
+      combined = JSON.parse(fs.readFileSync(outputPath, 'utf-8'));
+    } catch {
+      combined = { runAt: new Date().toISOString(), server: args[apiIdx + 1], results: [] };
+    }
+    // Merge edit results in
+    if (editSummary) {
+      combined.editResults = editSummary.results;
+      combined.editPassed = editSummary.passed;
+      combined.editFailed = editSummary.failed;
+    }
+    fs.writeFileSync(outputPath, JSON.stringify(combined, null, 2));
+    console.log(`  📄 Combined results (scenarios + edits) saved to ${outputPath}\n`);
   }
 } else {
   console.log('\nTip: Run with --api http://localhost:3001 to also test server-side LLM generation');
