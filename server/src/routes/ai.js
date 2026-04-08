@@ -124,6 +124,8 @@ router.post('/generate-plan', async (req, res) => {
   try {
     const prompt = buildPlanPrompt(goal, config);
     const systemWithCoach = COACH_SYSTEM_PROMPT + getCoachPromptBlock(config.coachId);
+    const estimatedActs = (config.weeks || 8) * (config.daysPerWeek || 3);
+    const planMaxTokens = Math.min(16384, Math.max(8192, estimatedActs * 120));
 
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -134,7 +136,7 @@ router.post('/generate-plan', async (req, res) => {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 8192,
+        max_tokens: planMaxTokens,
         system: systemWithCoach,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -334,11 +336,12 @@ function buildPlanPrompt(goal, config) {
 ## Organised/recurring rides (the athlete has FIXED weekly rides)
 ${rideDescs.join('\n')}
 CRITICAL: These are real rides the athlete does EVERY week (e.g. club rides, group rides, commutes).
-- You MUST include these rides in the plan on their specified days.
-- Build the rest of the plan AROUND these fixed rides — don't schedule other hard sessions on the same day or adjacent days.
-- Use the distance/duration/elevation provided to set appropriate values for these sessions.
-- Mark these in the plan with their notes if provided (e.g. "Club Ride" or "Group Ride").
-- Factor their training load into the weekly total — they count towards the athlete's weekly volume.`;
+You do NOT need to generate these — they will be automatically injected into the plan.
+However, you MUST account for them when planning the rest of the week:
+- Do NOT schedule other sessions on the same day as a recurring ride.
+- Do NOT schedule hard sessions on the day before or after a recurring ride — use easy/recovery rides instead.
+- Factor their training load into the weekly total — they count towards the athlete's weekly volume.
+- If a recurring ride is on the same day as an organised ride in a given week, the organised ride takes priority that week.`;
   }
 
   // ── Compute plan Monday for accurate date calculations ──
@@ -405,14 +408,77 @@ CRITICAL: These are specific rides on exact dates that the athlete has committed
       })
       .filter(Boolean);
     if (entries.length > 0) {
+      // Build activity-specific guidance so the AI understands the impact of each
+      const activityGuidance = [];
+      const allActivities = Object.values(ctSource).flat().filter(Boolean).map(a => a.toLowerCase());
+      const uniqueActivities = [...new Set(allActivities)];
+
+      const ACTIVITY_PROFILES = {
+        running: {
+          impact: 'HIGH leg stress',
+          detail: 'Running is high-impact and heavily loads quads, calves, and connective tissue — the same muscle groups used in cycling. Scheduling a hard cycling session the day after a run significantly increases injury risk (shin splints, IT band, knee issues). Always follow a running day with an easy/recovery cycling day or rest. Never pair running with hard interval cycling on the same or adjacent days.',
+        },
+        rowing: {
+          impact: 'HIGH full-body stress',
+          detail: 'Rowing is a full-body endurance exercise that heavily taxes the back, legs, and core. It creates significant fatigue in the posterior chain (hamstrings, glutes, lower back), which overlaps with cycling demands. Schedule only easy/recovery rides the day after rowing. Avoid pairing rowing days with hill repeat or tempo cycling sessions.',
+        },
+        swimming: {
+          impact: 'LOW-MODERATE upper body / cardio',
+          detail: 'Swimming is low-impact and primarily works the upper body and cardiovascular system. It\'s one of the best cross-training options for cyclists because it provides active recovery for the legs while building aerobic fitness. Easy/moderate cycling can follow swimming without much injury risk, but avoid stacking a hard swim with a hard ride on the same day.',
+        },
+        yoga: {
+          impact: 'LOW recovery/flexibility',
+          detail: 'Yoga is excellent active recovery that improves flexibility, core stability, and mental focus. It does NOT add significant training stress. Cycling sessions can be scheduled normally around yoga days — no special recovery needed. Yoga on a rest day is a great option.',
+        },
+        pilates: {
+          impact: 'LOW-MODERATE core stress',
+          detail: 'Pilates focuses on core strength and stability, which directly supports cycling power transfer. Similar to yoga, it doesn\'t heavily load the legs. Normal cycling sessions can follow pilates, though a very intense pilates session may warrant an easy ride the next day.',
+        },
+        'core workout': {
+          impact: 'LOW-MODERATE core stress',
+          detail: 'Core work (planks, bridges, leg raises) supports cycling posture and power transfer. It creates moderate fatigue in the trunk but minimal leg stress. Normal cycling training can continue around core days without special recovery adjustments.',
+        },
+        gym: {
+          impact: 'HIGH if leg-focused',
+          detail: 'Gym/weight training varies widely. If it includes heavy leg work (squats, deadlifts, leg press), treat it like a high-stress session — follow with an easy/recovery ride and never pair with hard cycling. If it\'s upper-body only, treat it like swimming (minimal cycling impact).',
+        },
+        'weight training': {
+          impact: 'HIGH if leg-focused',
+          detail: 'Weight training with squats, deadlifts, or leg press creates significant muscle damage in cycling-relevant muscles. Always follow with 1-2 days of easy/recovery cycling. Never schedule interval or tempo rides the day after heavy leg weights.',
+        },
+        hiking: {
+          impact: 'MODERATE leg stress',
+          detail: 'Hiking loads the legs (especially downhill eccentric stress on quads) and can cause significant fatigue. Schedule easy rides the day after long hikes. Short, flat hikes are lower stress and can be treated like an easy active recovery day.',
+        },
+        'cross-training': {
+          impact: 'MODERATE (varies)',
+          detail: 'General cross-training adds training stress. Without knowing the specific activity, assume moderate leg involvement. Schedule easier cycling sessions on adjacent days and factor the extra load into weekly volume calculations.',
+        },
+      };
+
+      for (const act of uniqueActivities) {
+        // Try exact match then partial match
+        const profile = ACTIVITY_PROFILES[act]
+          || Object.entries(ACTIVITY_PROFILES).find(([k]) => act.includes(k))?.[1]
+          || ACTIVITY_PROFILES['cross-training'];
+        activityGuidance.push(`### ${act.charAt(0).toUpperCase() + act.slice(1)} — ${profile.impact}\n${profile.detail}`);
+      }
+
       crossTrainingNote = `
 ## Cross-training (non-cycling activities the athlete already does)
 ${entries.join('\n')}
-IMPORTANT: These activities add training stress. Factor them into recovery planning:
-- Days after hard cross-training should have easier cycling sessions
-- Total weekly training load (cycling + cross-training) must not exceed safe limits
-- Do NOT schedule hard cycling sessions on cross-training days or the day after intense cross-training
-- Multiple activities on the same day means higher cumulative fatigue — plan accordingly`;
+
+CRITICAL — INJURY PREVENTION: The athlete does these activities in ADDITION to cycling. Each activity type has different implications for cycling recovery and injury risk. You MUST account for these when planning cycling sessions:
+
+${activityGuidance.join('\n\n')}
+
+### General cross-training rules:
+- Do NOT schedule hard cycling sessions (intervals, tempo, hill repeats) on the same day as HIGH-impact cross-training
+- The day AFTER a HIGH-impact cross-training day (running, rowing, heavy gym) should be an easy/recovery cycling day or a rest day
+- LOW-impact activities (yoga, swimming, pilates) can coexist with normal cycling training
+- Total weekly training stress = cycling + ALL cross-training. Keep the combined load sustainable
+- When in doubt, err on the side of easier cycling around cross-training days — preventing injury is more important than maximising training volume
+- In the notes for sessions adjacent to cross-training days, mention why the effort level was chosen (e.g. "Easy spin — recovery after yesterday's run")`;
     }
   }
 
@@ -461,10 +527,11 @@ ${oneOffRidesNote}
 
 ### Periodisation
 ${hasTargetDate ? `
-- The plan MUST end on or before the event date (${goal.targetDate}).
+- The plan MUST end BEFORE the event date (${goal.targetDate}). The LAST activity in the plan must be at least 1 day before the event. No activities should have a date on or after ${goal.targetDate}.
 - Phase breakdown: Base (40%) → Build (30%) → Peak (15%) → Taper (15%)
 - Taper: volume drops 40–50%, maintain some intensity. Last week: just an opener ride + recovery.
-- The athlete must arrive at the event date FRESH and PREPARED, not exhausted.` : `
+- The athlete must arrive at the event date FRESH and PREPARED, not exhausted.
+- VERIFY: count the weeks from the plan start date. Week ${weeks} must end before ${goal.targetDate}.` : `
 - Phase breakdown: Base (45%) → Build (35%) → Peak (20%)
 - No taper needed — steady improvement.`}
 
@@ -535,20 +602,28 @@ Since this is a general improvement plan, the athlete should see these outcomes 
 Include a motivating note in the final week's activities about what they've achieved.` : ''}
 
 ## Output format
-Return ONLY a JSON array. Each activity object:
+Return ONLY a JSON array of activity objects. No markdown, no code fences, no explanation — just the raw JSON array starting with [ and ending with ].
+
+Example ride activity:
 {"week":1,"dayOfWeek":0,"type":"ride","subType":"endurance","title":"Endurance Ride","description":"Zone 2 steady state...","notes":"Base phase — building aerobic engine","durationMins":45,"distanceKm":18,"effort":"easy"}
+
+Example strength activity (MUST be included if training types include strength):
+{"week":1,"dayOfWeek":1,"type":"strength","subType":null,"title":"Core & Legs","description":"Squats, lunges, planks, glute bridges — 3 sets of 12 each","notes":"Base phase — building supporting muscles","durationMins":30,"distanceKm":null,"effort":"moderate"}
 
 Field rules:
 - dayOfWeek: 0=Monday, 1=Tuesday, ..., 6=Sunday
-- type: "ride" or "strength" — use the EXACT type. Strength sessions must have type "strength".
+- type: MUST be exactly "ride" or "strength". If the session involves weights, bodyweight exercises, core work, or gym work, type MUST be "strength".
 - subType: "endurance", "tempo", "intervals", "recovery", "indoor", or null for strength
 - effort: "easy", "moderate", "hard", "recovery", or "max"
-- distanceKm: calculated from duration × rider's average speed. Must be realistic.
+- distanceKm: calculated from duration × rider's average speed. Must be realistic. Set to null for strength sessions.
 - durationMins: appropriate for the rider's level. Beginners: 30–75 min. Intermediate: 45–120 min.
 - notes: include phase label, coaching context, and any cross-training considerations
-- Strength sessions should NOT have distanceKm set (use null)
 - For taper weeks, add "(Taper)" to the title
 - For deload weeks, add "(Deload)" to the title
+
+${config.trainingTypes?.includes('strength') ? `STRENGTH SESSIONS REQUIRED: The athlete has requested strength training. You MUST include at least 1 strength session per week (type: "strength"). These should complement the cycling — focus on legs, core, and stability. Strength sessions do not count towards the cycling session limit.` : ''}
+
+IMPORTANT: Do NOT include recurring rides in your output — they are automatically added. Only generate planned training sessions and strength sessions. The available days listed above are the days you should schedule sessions on, EXCLUDING days that have a recurring ride (since those are auto-injected).
 
 Return ONLY the JSON array, no other text.`;
 }
@@ -1252,6 +1327,10 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
     const prompt = buildPlanPrompt(goal, config);
     const systemWithCoach = COACH_SYSTEM_PROMPT + getCoachPromptBlock(config.coachId);
 
+    // Scale max_tokens based on plan size — long plans (20+ weeks, 5+ days) need more output room
+    const estimatedActivities = (config.weeks || 8) * (config.daysPerWeek || 3);
+    const planMaxTokens = Math.min(16384, Math.max(8192, estimatedActivities * 120));
+
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -1261,7 +1340,7 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 8192,
+        max_tokens: planMaxTokens,
         system: systemWithCoach,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -1393,6 +1472,53 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
       }
     }
 
+    // ── Deterministically inject recurring rides into every week ──
+    // Like one-off rides, recurring rides are too important to leave to LLM chance.
+    // We inject them at the correct day each week, then let the conflict resolver
+    // handle weeks where an organised ride takes priority on the same day.
+    const recurringRides = config.recurringRides || [];
+    const dayNamesLowerForRR = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    if (recurringRides.length > 0) {
+      for (const rr of recurringRides) {
+        const rrDayOfWeek = dayNamesLowerForRR.indexOf(rr.day?.toLowerCase());
+        if (rrDayOfWeek < 0) continue;
+        for (let w = 1; w <= maxWeeks; w++) {
+          // Check if LLM already generated something with isRecurring for this slot
+          const existing = activities.find(a => a.week === w && a.dayOfWeek === rrDayOfWeek && a.isRecurring);
+          if (existing) continue;
+
+          // Remove any LLM-generated planned ride on this day (we're replacing it)
+          for (let i = activities.length - 1; i >= 0; i--) {
+            if (activities[i].week === w && activities[i].dayOfWeek === rrDayOfWeek && activities[i].type === 'ride' && !activities[i].isOneOff) {
+              activities.splice(i, 1);
+            }
+          }
+
+          activities.push({
+            id: `act_${crypto.randomBytes(6).toString('hex')}_rr`,
+            planId,
+            week: w,
+            dayOfWeek: rrDayOfWeek,
+            type: 'ride',
+            subType: 'endurance',
+            title: rr.notes || 'Recurring Ride',
+            description: rr.notes ? `${rr.notes} — weekly recurring ride` : 'Weekly recurring ride',
+            notes: rr.elevationM ? `${rr.elevationM}m elevation` : null,
+            durationMins: rr.durationMins || 60,
+            distanceKm: rr.distanceKm || null,
+            elevationM: rr.elevationM || null,
+            effort: 'moderate',
+            completed: false,
+            completedAt: null,
+            isRecurring: true,
+            recurringRideId: rr.id,
+            stravaActivityId: null,
+            stravaData: null,
+          });
+        }
+      }
+    }
+
     // ── Stamp each activity with date, dayName, scheduleType ──
     activities.forEach(a => {
       const offset = (a.week - 1) * 7 + (a.dayOfWeek ?? 0);
@@ -1424,7 +1550,13 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
         if (dayActs[i].type === top.type) toRemoveIds.add(dayActs[i].id);
       }
     });
-    const finalActivities = activities.filter(a => !toRemoveIds.has(a.id));
+    let finalActivities = activities.filter(a => !toRemoveIds.has(a.id));
+
+    // ── Remove activities on or after the event date ──
+    if (goal.targetDate) {
+      const eventDateStr = goal.targetDate.split('T')[0];
+      finalActivities = finalActivities.filter(a => !a.date || a.date < eventDateStr);
+    }
 
     // Sort by week then day
     finalActivities.sort((a, b) => a.week !== b.week ? a.week - b.week : a.dayOfWeek - b.dayOfWeek);

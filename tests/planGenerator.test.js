@@ -318,6 +318,331 @@ const SCENARIOS = [
       crossTrainingDays: { thursday: 'yoga', friday: 'core workout' },
     },
   },
+
+  // ─── 19. Beginner "Get Into Cycling" program ───
+  {
+    name: 'Beginner Get Into Cycling - 12 weeks',
+    goal: {
+      id: 'g19', goalType: 'beginner', cyclingType: 'road', planName: 'Get Into Cycling',
+    },
+    config: {
+      id: 'c19', daysPerWeek: 3, weeks: 12, trainingTypes: ['outdoor'],
+      availableDays: ['tuesday', 'thursday', 'saturday'], fitnessLevel: 'beginner',
+      startDate: '2026-04-06',
+    },
+  },
+
+  // ─── 20. Strength-heavy plan (ensure strength sessions appear) ───
+  {
+    name: 'Intermediate with strength focus - 8 weeks',
+    goal: {
+      id: 'g20', goalType: 'improve', cyclingType: 'road', planName: 'Strength Builder',
+    },
+    config: {
+      id: 'c20', daysPerWeek: 4, weeks: 8, trainingTypes: ['outdoor', 'strength'],
+      availableDays: ['monday', 'wednesday', 'friday', 'sunday'], fitnessLevel: 'intermediate',
+      startDate: '2026-04-06',
+      crossTrainingDays: { tuesday: 'running', thursday: 'swimming' },
+    },
+  },
+
+  // ─── 21. Short race plan with tight deadline (6 weeks, should taper) ───
+  {
+    name: 'Short race plan - 6 weeks with taper',
+    goal: {
+      id: 'g21', goalType: 'race', cyclingType: 'road', eventName: '50k TT',
+      targetDistance: 50, targetDate: '2026-05-18', planName: '50k TT Prep',
+    },
+    config: {
+      id: 'c21', daysPerWeek: 4, weeks: 6, trainingTypes: ['outdoor'],
+      availableDays: ['tuesday', 'wednesday', 'friday', 'sunday'], fitnessLevel: 'advanced',
+      startDate: '2026-04-06',
+    },
+  },
+
+  // ─── 22. E-bike with elevation target ───
+  {
+    name: 'E-bike intermediate with elevation goal',
+    goal: {
+      id: 'g22', goalType: 'distance', cyclingType: 'ebike', eventName: 'Peak District Loop',
+      targetDistance: 100, targetElevation: 2000, targetDate: '2026-07-12',
+      planName: 'E-Bike Peak District',
+    },
+    config: {
+      id: 'c22', daysPerWeek: 3, weeks: 12, trainingTypes: ['outdoor'],
+      availableDays: ['wednesday', 'saturday', 'sunday'], fitnessLevel: 'intermediate',
+      startDate: '2026-04-13', longRideDay: 'sunday',
+    },
+  },
+
+  // ─── 23. Recurring rides + strength + cross-training (all features) ───
+  {
+    name: 'All features: recurring + strength + cross-training - 10 weeks',
+    goal: {
+      id: 'g23', goalType: 'race', cyclingType: 'road', eventName: 'Century Ride',
+      targetDistance: 160, targetDate: '2026-06-21', planName: 'Century All-In',
+    },
+    config: {
+      id: 'c23', daysPerWeek: 5, weeks: 10, trainingTypes: ['outdoor', 'indoor', 'strength'],
+      availableDays: ['monday', 'tuesday', 'thursday', 'saturday', 'sunday'],
+      fitnessLevel: 'advanced', startDate: '2026-04-13', longRideDay: 'sunday',
+      recurringRides: [
+        { id: 'rr6', day: 'saturday', durationMins: 120, distanceKm: 55, notes: 'Weekend Club Ride' },
+      ],
+      crossTrainingDays: { wednesday: 'yoga', friday: 'running' },
+    },
+  },
+
+  // ─── 24. 3 days/week beginner with target time ───
+  {
+    name: 'Beginner with target time - 80km in 5 hours',
+    goal: {
+      id: 'g24', goalType: 'distance', cyclingType: 'road',
+      targetDistance: 80, targetTime: 5, targetDate: '2026-07-05',
+      planName: '80k Target',
+    },
+    config: {
+      id: 'c24', daysPerWeek: 3, weeks: 12, trainingTypes: ['outdoor'],
+      availableDays: ['tuesday', 'thursday', 'sunday'], fitnessLevel: 'beginner',
+      startDate: '2026-04-06',
+    },
+  },
+
+  // ─── 25. Heavy running cross-training (high injury risk) ───
+  {
+    name: 'Cross-training: running 3x/week + cycling (injury prevention)',
+    goal: {
+      id: 'g25', goalType: 'improve', cyclingType: 'road', planName: 'Runner-Cyclist Plan',
+    },
+    config: {
+      id: 'c25', daysPerWeek: 4, weeks: 8, trainingTypes: ['outdoor'],
+      availableDays: ['monday', 'wednesday', 'friday', 'sunday'], fitnessLevel: 'intermediate',
+      startDate: '2026-04-06',
+      crossTrainingDays: { tuesday: 'running', thursday: 'running', saturday: 'running' },
+    },
+  },
+
+  // ─── 26. Rowing + swimming cross-training ───
+  {
+    name: 'Cross-training: rowing + swimming (mixed impact)',
+    goal: {
+      id: 'g26', goalType: 'race', cyclingType: 'road', eventName: 'Sprint Triathlon',
+      targetDistance: 40, targetDate: '2026-06-28', planName: 'Tri Bike Prep',
+    },
+    config: {
+      id: 'c26', daysPerWeek: 3, weeks: 10, trainingTypes: ['outdoor', 'strength'],
+      availableDays: ['monday', 'wednesday', 'saturday'], fitnessLevel: 'advanced',
+      startDate: '2026-04-13',
+      crossTrainingDays: { tuesday: 'rowing', thursday: 'swimming', friday: 'running' },
+    },
+  },
+
+  // ─── 27. Yoga + pilates (low impact — should not restrict cycling) ───
+  {
+    name: 'Cross-training: yoga + pilates (low impact, no restrictions)',
+    goal: {
+      id: 'g27', goalType: 'improve', cyclingType: 'road', planName: 'Balanced Wellness',
+    },
+    config: {
+      id: 'c27', daysPerWeek: 4, weeks: 8, trainingTypes: ['outdoor'],
+      availableDays: ['monday', 'tuesday', 'thursday', 'saturday'], fitnessLevel: 'intermediate',
+      startDate: '2026-04-06',
+      crossTrainingDays: { wednesday: 'yoga', friday: 'pilates', sunday: 'yoga' },
+    },
+  },
+
+  // ─── 28. Gym/weight training + running (highest combined stress) ───
+  {
+    name: 'Cross-training: gym + running (max stress combo)',
+    goal: {
+      id: 'g28', goalType: 'distance', cyclingType: 'road',
+      targetDistance: 100, targetDate: '2026-07-19', planName: 'Ironman Bike Leg',
+    },
+    config: {
+      id: 'c28', daysPerWeek: 4, weeks: 12, trainingTypes: ['outdoor'],
+      availableDays: ['monday', 'tuesday', 'thursday', 'saturday'], fitnessLevel: 'advanced',
+      startDate: '2026-04-13', longRideDay: 'saturday',
+      crossTrainingDays: { wednesday: 'weight training', friday: 'running', sunday: 'hiking' },
+    },
+  },
+
+  // ─── 29. Multi-activity per day cross-training ───
+  {
+    name: 'Cross-training: multi-activity days (high cumulative fatigue)',
+    goal: {
+      id: 'g29', goalType: 'improve', cyclingType: 'road', planName: 'Multi-Sport Plan',
+    },
+    config: {
+      id: 'c29', daysPerWeek: 3, weeks: 8, trainingTypes: ['outdoor'],
+      availableDays: ['monday', 'wednesday', 'saturday'], fitnessLevel: 'intermediate',
+      startDate: '2026-04-06',
+      crossTrainingDays: { tuesday: 'running', thursday: 'swimming', friday: 'rowing', sunday: 'hiking' },
+      crossTrainingDaysFull: {
+        tuesday: ['running', 'core workout'],
+        thursday: ['swimming', 'yoga'],
+        friday: ['rowing'],
+        sunday: ['hiking'],
+      },
+    },
+  },
+
+  // ─── 30. Recurring ride + running on adjacent days (stress combo) ───
+  {
+    name: 'Cross-training + recurring ride: running day before club ride',
+    goal: {
+      id: 'g30', goalType: 'improve', cyclingType: 'road', planName: 'Multi-Sport Club',
+    },
+    config: {
+      id: 'c30', daysPerWeek: 4, weeks: 8, trainingTypes: ['outdoor'],
+      availableDays: ['monday', 'tuesday', 'thursday', 'saturday'], fitnessLevel: 'intermediate',
+      startDate: '2026-04-06',
+      recurringRides: [
+        { id: 'rr7', day: 'saturday', durationMins: 120, distanceKm: 50, notes: 'Club Ride' },
+      ],
+      crossTrainingDays: { wednesday: 'running', friday: 'running', sunday: 'yoga' },
+    },
+  },
+];
+
+// ── Edit/mutation test scenarios ─────────────────────────────────────────────
+// These test plan edit and activity edit endpoints.
+// Each defines a base plan scenario to generate first, then edits to apply + validate.
+
+const EDIT_SCENARIOS = [
+  {
+    name: 'Make plan easier — reduce volume',
+    // Use a simple beginner plan as the base
+    baseScenario: {
+      goal: { id: 'eg1', goalType: 'improve', cyclingType: 'road', planName: 'Edit Test Base' },
+      config: {
+        id: 'ec1', daysPerWeek: 3, weeks: 6, trainingTypes: ['outdoor'],
+        availableDays: ['monday', 'wednesday', 'friday'], fitnessLevel: 'intermediate',
+        startDate: '2026-04-06',
+      },
+    },
+    edit: {
+      instruction: 'Make the plan easier — I\'m feeling tired. Reduce distances and effort levels.',
+      scope: 'remaining',
+      currentWeek: 2,
+    },
+    validate: (originalPlan, editedActivities) => {
+      const errors = [];
+      if (!editedActivities || editedActivities.length === 0) {
+        errors.push('No edited activities returned');
+        return errors;
+      }
+      // Edited activities should generally have lower distances/durations
+      const origWeek2Plus = originalPlan.activities.filter(a => a.week >= 2);
+      const origTotalKm = origWeek2Plus.reduce((s, a) => s + (a.distanceKm || 0), 0);
+      const editTotalKm = editedActivities.reduce((s, a) => s + (a.distanceKm || 0), 0);
+      if (editTotalKm >= origTotalKm) {
+        errors.push(`Expected reduced volume: original=${Math.round(origTotalKm)}km, edited=${Math.round(editTotalKm)}km`);
+      }
+      // All activities should still have valid fields
+      for (const a of editedActivities) {
+        if (!a.type) errors.push(`Activity "${a.title}" missing type`);
+        if (a.type === 'ride' && !a.distanceKm && a.distanceKm !== null) errors.push(`Ride "${a.title}" missing distanceKm`);
+      }
+      return errors;
+    },
+  },
+  {
+    name: 'Make plan harder — increase intensity',
+    baseScenario: {
+      goal: { id: 'eg2', goalType: 'improve', cyclingType: 'road', planName: 'Edit Test Harder' },
+      config: {
+        id: 'ec2', daysPerWeek: 3, weeks: 6, trainingTypes: ['outdoor'],
+        availableDays: ['tuesday', 'thursday', 'saturday'], fitnessLevel: 'intermediate',
+        startDate: '2026-04-06',
+      },
+    },
+    edit: {
+      instruction: 'I want more of a challenge. Add more interval sessions and increase distances.',
+      scope: 'remaining',
+      currentWeek: 3,
+    },
+    validate: (originalPlan, editedActivities) => {
+      const errors = [];
+      if (!editedActivities || editedActivities.length === 0) {
+        errors.push('No edited activities returned');
+        return errors;
+      }
+      // Edited activities should have higher total distance or more hard efforts
+      const origWeek3Plus = originalPlan.activities.filter(a => a.week >= 3);
+      const origHard = origWeek3Plus.filter(a => a.effort === 'hard' || a.subType === 'intervals').length;
+      const editHard = editedActivities.filter(a => a.effort === 'hard' || a.subType === 'intervals').length;
+      if (editHard < origHard) {
+        errors.push(`Expected more hard sessions: original=${origHard}, edited=${editHard}`);
+      }
+      return errors;
+    },
+  },
+  {
+    name: 'Edit single activity — make shorter',
+    baseScenario: {
+      goal: { id: 'eg3', goalType: 'improve', cyclingType: 'road', planName: 'Single Edit Test' },
+      config: {
+        id: 'ec3', daysPerWeek: 3, weeks: 6, trainingTypes: ['outdoor'],
+        availableDays: ['monday', 'wednesday', 'saturday'], fitnessLevel: 'beginner',
+        startDate: '2026-04-06',
+      },
+    },
+    editActivity: {
+      instruction: 'Make this session 30 minutes shorter',
+    },
+    validate: (originalActivity, result) => {
+      const errors = [];
+      if (!result) {
+        errors.push('No result returned');
+        return errors;
+      }
+      if (!result.answer) {
+        errors.push('Missing answer field in response');
+      }
+      if (result.updatedActivity) {
+        const orig = originalActivity.durationMins || 45;
+        const updated = result.updatedActivity.durationMins;
+        if (updated >= orig) {
+          errors.push(`Expected shorter duration: original=${orig}min, updated=${updated}min`);
+        }
+        if (result.updatedActivity.type !== originalActivity.type) {
+          errors.push(`Type changed from "${originalActivity.type}" to "${result.updatedActivity.type}"`);
+        }
+      } else {
+        errors.push('updatedActivity is null — expected an edit');
+      }
+      return errors;
+    },
+  },
+  {
+    name: 'Edit single activity — ask a question (should NOT modify)',
+    baseScenario: {
+      goal: { id: 'eg4', goalType: 'improve', cyclingType: 'road', planName: 'Question Test' },
+      config: {
+        id: 'ec4', daysPerWeek: 3, weeks: 6, trainingTypes: ['outdoor'],
+        availableDays: ['tuesday', 'thursday', 'sunday'], fitnessLevel: 'intermediate',
+        startDate: '2026-04-06',
+      },
+    },
+    editActivity: {
+      instruction: 'Why is this session here? What am I trying to achieve with it?',
+    },
+    validate: (_originalActivity, result) => {
+      const errors = [];
+      if (!result) {
+        errors.push('No result returned');
+        return errors;
+      }
+      if (!result.answer || result.answer.length < 10) {
+        errors.push(`Expected a coaching answer, got: "${result.answer}"`);
+      }
+      // A question should NOT modify the activity
+      if (result.updatedActivity !== null && result.updatedActivity !== undefined) {
+        errors.push('Question should return updatedActivity: null, but got an update');
+      }
+      return errors;
+    },
+  },
 ];
 
 // ── Validation checks ───────────────────────────────────────────────────────
@@ -413,6 +738,51 @@ function validate(plan, scenario) {
   // Weeks don't exceed plan.weeks
   const maxWeek = Math.max(...acts.map(a => a.week), 0);
   if (maxWeek > plan.weeks) errors.push(`Max week (${maxWeek}) exceeds plan.weeks (${plan.weeks})`);
+
+  // Cross-training injury risk: hard cycling should not be adjacent to high-impact cross-training
+  const HIGH_IMPACT_CT = ['running', 'rowing', 'weight training', 'gym', 'hiking', 'crossfit'];
+  const ctDays = config.crossTrainingDays || {};
+  const ctDaysFull = config.crossTrainingDaysFull || null;
+  const ctSource = ctDaysFull || ctDays;
+  if (ctSource && Object.keys(ctSource).length > 0) {
+    // Map dayName → list of activities
+    const ctMap = {};
+    for (const [day, act] of Object.entries(ctSource)) {
+      const activities = Array.isArray(act) ? act : [act];
+      ctMap[day.toLowerCase()] = activities.map(a => a.toLowerCase());
+    }
+
+    // Check if any high-impact cross-training day is followed by a hard cycling session
+    const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    for (const [ctDay, activities] of Object.entries(ctMap)) {
+      const hasHighImpact = activities.some(a => HIGH_IMPACT_CT.some(hi => a.includes(hi)));
+      if (!hasHighImpact) continue;
+
+      const ctDayIdx = dayOrder.indexOf(ctDay);
+      if (ctDayIdx < 0) continue;
+      const nextDayIdx = (ctDayIdx + 1) % 7;
+      const nextDayName = dayOrder[nextDayIdx];
+
+      // Find cycling activities on the day after this high-impact cross-training day
+      for (const a of acts) {
+        if (!a.date) continue;
+        const actDayName = getDayOfWeekName(a.date).toLowerCase();
+        if (actDayName === nextDayName && a.type === 'ride' && (a.effort === 'hard' || a.effort === 'max' || a.subType === 'intervals')) {
+          warnings.push(`Hard ride "${a.title}" (week ${a.week}, ${a.effort}/${a.subType}) scheduled day after ${ctDay} ${activities.join('+')} — injury risk`);
+        }
+      }
+    }
+  }
+
+  // Strength sessions should exist if training types include strength
+  if (config.trainingTypes?.includes('strength')) {
+    const strengthCount = acts.filter(a => a.type === 'strength').length;
+    if (strengthCount === 0) {
+      errors.push('Config includes strength training but zero strength sessions found');
+    } else if (strengthCount < plan.weeks * 0.5) {
+      warnings.push(`Only ${strengthCount} strength sessions across ${plan.weeks} weeks (expected ~1 per week)`);
+    }
+  }
 
   // Recurring rides appear in most weeks
   for (const rr of (config.recurringRides || [])) {
@@ -609,12 +979,154 @@ async function runApiTests(serverUrl, apiKey, outputPath) {
   return totalFail === 0;
 }
 
+// ── Edit/mutation API tests ─────────────────────────────────────────────────
+
+async function generatePlanViaApi(serverUrl, authHeaders, scenario) {
+  const startRes = await fetch(`${serverUrl}/api/ai/generate-plan-async`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    body: JSON.stringify({ goal: scenario.goal, config: scenario.config }),
+  });
+  if (!startRes.ok) throw new Error(`HTTP ${startRes.status}`);
+  const { jobId } = await startRes.json();
+
+  for (let i = 0; i < 120; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const pollRes = await fetch(`${serverUrl}/api/ai/plan-job/${jobId}`, { headers: authHeaders });
+    if (!pollRes.ok) continue;
+    const pollData = await pollRes.json();
+    if (pollData.status === 'completed') return pollData.plan;
+    if (pollData.status === 'failed') throw new Error(pollData.error);
+  }
+  throw new Error('TIMEOUT');
+}
+
+async function runEditTests(serverUrl, apiKey, outputPath) {
+  console.log('\n═══════════════════════════════════════════════════════════════');
+  console.log(`  ETAPA PLAN EDITOR — MUTATION TESTS (${serverUrl})`);
+  console.log('═══════════════════════════════════════════════════════════════\n');
+
+  const authHeaders = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
+  let totalPass = 0, totalFail = 0;
+  const results = [];
+
+  for (const scenario of EDIT_SCENARIOS) {
+    process.stdout.write(`▶ [EDIT] ${scenario.name}... `);
+    const startTime = Date.now();
+    let result = { name: scenario.name, pass: false, errors: [], durationMs: null };
+
+    try {
+      // Step 1: Generate the base plan
+      process.stdout.write('gen...');
+      const plan = await generatePlanViaApi(serverUrl, authHeaders, scenario.baseScenario);
+      if (!plan || !plan.activities || plan.activities.length === 0) {
+        throw new Error('Base plan generation returned empty plan');
+      }
+
+      if (scenario.editActivity) {
+        // ── Single activity edit test ──
+        // Pick the first ride activity from week 2 (or week 1 fallback)
+        const target = plan.activities.find(a => a.week === 2 && a.type === 'ride')
+                    || plan.activities.find(a => a.type === 'ride');
+        if (!target) throw new Error('No ride activity found in plan to edit');
+
+        process.stdout.write('edit...');
+        const editRes = await fetch(`${serverUrl}/api/ai/edit-activity`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
+          body: JSON.stringify({
+            activity: target,
+            goal: scenario.baseScenario.goal,
+            instruction: scenario.editActivity.instruction,
+          }),
+        });
+
+        if (!editRes.ok) {
+          const body = await editRes.text().catch(() => '');
+          throw new Error(`Edit API returned ${editRes.status}: ${body}`);
+        }
+
+        const editResult = await editRes.json();
+        const errors = scenario.validate(target, editResult);
+        result.errors = errors;
+        result.pass = errors.length === 0;
+        result.originalActivity = target;
+        result.editResult = editResult;
+
+      } else if (scenario.edit) {
+        // ── Plan-level edit test ──
+        process.stdout.write('edit...');
+        const editRes = await fetch(`${serverUrl}/api/ai/edit-plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
+          body: JSON.stringify({
+            plan,
+            goal: scenario.baseScenario.goal,
+            instruction: scenario.edit.instruction,
+            scope: scenario.edit.scope,
+            currentWeek: scenario.edit.currentWeek,
+          }),
+        });
+
+        if (!editRes.ok) {
+          const body = await editRes.text().catch(() => '');
+          throw new Error(`Edit API returned ${editRes.status}: ${body}`);
+        }
+
+        const { activities: editedActivities } = await editRes.json();
+        const errors = scenario.validate(plan, editedActivities);
+        result.errors = errors;
+        result.pass = errors.length === 0;
+        result.originalPlanStats = {
+          totalActivities: plan.activities.length,
+          totalKm: Math.round(plan.activities.reduce((s, a) => s + (a.distanceKm || 0), 0)),
+        };
+        result.editedStats = editedActivities ? {
+          totalActivities: editedActivities.length,
+          totalKm: Math.round(editedActivities.reduce((s, a) => s + (a.distanceKm || 0), 0)),
+        } : null;
+      }
+
+      result.durationMs = Date.now() - startTime;
+
+      if (result.pass) {
+        console.log(`✅ PASS (${(result.durationMs / 1000).toFixed(1)}s)`);
+        totalPass++;
+      } else {
+        console.log(`❌ FAIL`);
+        result.errors.forEach(e => console.log(`   ✗ ${e}`));
+        totalFail++;
+      }
+    } catch (err) {
+      result.durationMs = Date.now() - startTime;
+      result.errors = [err.message];
+      console.log(`💥 ${err.message}`);
+      totalFail++;
+    }
+
+    results.push(result);
+  }
+
+  console.log(`\n  EDIT RESULTS: ${totalPass}/${EDIT_SCENARIOS.length} passed, ${totalFail} failed\n`);
+
+  // Save results
+  if (outputPath) {
+    const fs = await import('fs');
+    const editOutFile = outputPath.replace('.json', '-edits.json');
+    fs.writeFileSync(editOutFile, JSON.stringify({ results }, null, 2));
+    console.log(`  📄 Edit results saved to ${editOutFile}\n`);
+  }
+
+  return totalFail === 0;
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
 const apiIdx = args.indexOf('--api');
 const keyIdx = args.indexOf('--key');
 const outIdx = args.indexOf('--output');
+const skipEdits = args.includes('--skip-edits');
 
 const localOk = runLocalTests();
 
@@ -622,10 +1134,15 @@ if (apiIdx >= 0 && args[apiIdx + 1]) {
   const apiKey = keyIdx >= 0 ? args[keyIdx + 1] : null;
   const outputPath = outIdx >= 0 ? args[outIdx + 1] : null;
   await runApiTests(args[apiIdx + 1], apiKey, outputPath);
+
+  if (!skipEdits) {
+    await runEditTests(args[apiIdx + 1], apiKey, outputPath);
+  }
 } else {
   console.log('\nTip: Run with --api http://localhost:3001 to also test server-side LLM generation');
   console.log('     Add --key YOUR_TEST_API_KEY to authenticate against production');
-  console.log('     Add --output results.json to save full plans to a file\n');
+  console.log('     Add --output results.json to save full plans to a file');
+  console.log('     Add --skip-edits to skip edit/mutation tests\n');
 }
 
 process.exit(localOk ? 0 : 1);
