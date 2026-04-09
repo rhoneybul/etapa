@@ -263,12 +263,9 @@ export default function PaywallScreen({ navigation, route }) {
   };
 
   const handleClose = () => {
-    // Always dismiss the paywall cleanly — never show a second offer screen (Apple 5.6).
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-    } else {
-      navigation.replace('Home');
-    }
+    // Dismiss the paywall and start the 7-day free preview.
+    // Navigate to the next screen (plan/Home) so the user can explore the app.
+    navigation.replace(nextScreen, { ...nextParams, freePreview: true });
   };
 
   const plan = plans[selected];

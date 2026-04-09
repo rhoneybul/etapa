@@ -12,12 +12,13 @@
  */
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Alert, TextInput,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Alert, TextInput, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { saveGoal } from '../services/storageService';
-import { isSubscribed, openCheckout, getPrices, validatePromo } from '../services/subscriptionService';
+import { isSubscribed, openCheckout, getPrices, validatePromo, getSubscriptionOfferings } from '../services/subscriptionService';
+import { isRevenueCatAvailable } from '../services/revenueCatService';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
@@ -93,6 +94,10 @@ export default function BeginnerProgramScreen({ navigation }) {
   const [promoInput, setPromoInput] = useState('');
   const [promoResult, setPromoResult] = useState(null); // { valid, promoId, label, discountedFormatted, ... }
   const [validatingPromo, setValidatingPromo] = useState(false);
+  const [rcOfferings, setRcOfferings] = useState(null); // RevenueCat packages (iOS only)
+
+  // RevenueCat is only used on iOS
+  const hasRevenueCat = Platform.OS === 'ios' && isRevenueCatAvailable();
 
   // Default promo code for the starter plan (auto-applied)
   const DEFAULT_STARTER_PROMO = 'promo_1TI5VkAmoVZFfAwUakin4FXz';
@@ -108,6 +113,14 @@ export default function BeginnerProgramScreen({ navigation }) {
       if (result?.valid) setPromoResult(result);
     }).catch(() => {});
   }, []);
+
+  // Fetch RevenueCat offerings on mount (iOS only)
+  useEffect(() => {
+    if (!hasRevenueCat) return;
+    getSubscriptionOfferings().then(offerings => {
+      if (offerings?.packages) setRcOfferings(offerings.packages);
+    }).catch(() => {});
+  }, [hasRevenueCat]);
 
   const displayPrice = promoResult?.valid ? promoResult.discountedFormatted : starterPrice.formatted;
   const hasDiscount = promoResult?.valid;
@@ -157,6 +170,16 @@ export default function BeginnerProgramScreen({ navigation }) {
     });
   };
 
+  /** Find the RevenueCat package for the starter plan */
+  const findStarterRcPackage = (packages) => {
+    if (!packages) return null;
+    return packages.find(pkg => {
+      const id = (pkg.identifier || '').toLowerCase();
+      const productId = (pkg.productId || '').toLowerCase();
+      return id === '$rc_starter' || id === 'starter' || productId.includes('starter');
+    });
+  };
+
   /** Pay now and proceed */
   const handlePayNow = async () => {
     // If already subscribed, skip payment
@@ -169,16 +192,36 @@ export default function BeginnerProgramScreen({ navigation }) {
     setPurchasing(true);
     try {
       const promoCode = promoResult?.valid ? promoResult.promoId : null;
-      const result = await openCheckout('starter', null, promoCode);
+
+      // On iOS, use RevenueCat for the purchase
+      let rcPkg = hasRevenueCat ? findStarterRcPackage(rcOfferings) : null;
+      if (hasRevenueCat && !rcPkg) {
+        // Retry fetching offerings if not loaded yet
+        try {
+          const offerings = await getSubscriptionOfferings();
+          if (offerings?.packages) {
+            setRcOfferings(offerings.packages);
+            rcPkg = findStarterRcPackage(offerings.packages);
+          }
+        } catch { /* proceed with rcPkg = null */ }
+      }
+
+      const result = await openCheckout('starter', rcPkg?._package || null, promoCode);
+      if (result.cancelled) {
+        // User cancelled — stay on screen silently
+        setPurchasing(false);
+        return;
+      }
       if (!result.success) {
         setPurchasing(false);
-        return; // User cancelled
+        Alert.alert('Something went wrong', result.error || 'Please try again.');
+        return;
       }
       setPurchasing(false);
       proceedToConfig('paid');
     } catch (err) {
       setPurchasing(false);
-      Alert.alert('Payment failed', 'Something went wrong. Please try again.');
+      Alert.alert('Payment failed', err.message || 'Something went wrong. Please try again.');
     }
   };
 
