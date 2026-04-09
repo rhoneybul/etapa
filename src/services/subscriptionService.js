@@ -153,10 +153,10 @@ export async function openCheckout(plan, rcPackage = null, promoCode = null) {
   // ── iOS: must use RevenueCat / App Store IAP (Apple requirement) ──────────
   if (Platform.OS === 'ios') {
     if (!isRevenueCatAvailable()) {
-      return { success: false, error: 'In-app purchases are not available. Please try again later.' };
+      return { success: false, error: 'In-app purchases are temporarily unavailable. Please check your connection and try again.' };
     }
     if (!rcPackage) {
-      return { success: false, error: 'This plan is not yet available for purchase. Please try again later.' };
+      return { success: false, error: 'Subscription products are loading. Please wait a moment and try again.' };
     }
     const result = await purchasePackage(rcPackage);
     return result;

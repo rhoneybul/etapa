@@ -7,10 +7,9 @@
  */
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, ScrollView, Image, Platform, TextInput,
+  View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, ScrollView, Image, Platform, TextInput, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { colors, fontFamily } from '../theme';
 import { openCheckout, getSubscriptionOfferings, restorePurchases, getPrices, validateCoupon, redeemCoupon } from '../services/subscriptionService';
 import { isRevenueCatAvailable } from '../services/revenueCatService';
@@ -35,9 +34,9 @@ const PLAN_META = {
   annual: {
     id: 'annual',
     label: 'Annual',
-    defaultPrice: '£6.67',
-    per: '/mo',
-    defaultSub: 'Billed £79.99/year',
+    defaultPrice: '£79.99',
+    per: '/yr',
+    defaultSub: '£6.67/mo',
     badge: 'MOST POPULAR',
     defaultTrialLine: 'then £79.99/year',
   },
@@ -52,16 +51,26 @@ const PLAN_META = {
   },
 };
 
-/** Build display plans from server prices (admin-configured), with offline defaults */
+/** Build display plans from server prices (admin-configured), with offline defaults.
+ *  Apple requires the billed amount to be the most prominent pricing element,
+ *  so annual shows £79.99/yr as the main price with £6.67/mo as the subtitle. */
 function buildPlans(serverPrices) {
   const plans = {};
   for (const [key, meta] of Object.entries(PLAN_META)) {
     const sp = serverPrices?.[key];
     if (sp) {
+      // For annual: main price = billed amount, sub = per-month equivalent
+      const price = sp.interval === 'year' ? sp.formatted : (sp.perMonth || sp.formatted);
+      const per = sp.interval === 'year' ? '/yr' : meta.per;
+      const sub = sp.interval === 'year' && sp.perMonth
+        ? `${sp.perMonth}/mo`
+        : (sp.billedLabel || meta.defaultSub);
+
       plans[key] = {
         ...meta,
-        price: sp.perMonth || sp.formatted,
-        sub: sp.billedLabel || meta.defaultSub,
+        price,
+        per,
+        sub,
         trialLine: meta.isLifetime
           ? '16-day full refund guarantee'
           : sp.interval === 'year'
@@ -76,17 +85,6 @@ function buildPlans(serverPrices) {
   }
   return plans;
 }
-
-// Dummy plan data for the holding screen background
-const DUMMY_PLAN = [
-  { day: 'MON', type: 'Easy Ride',   duration: '1h 00m', color: '#22C55E', barWidth: '60%' },
-  { day: 'TUE', type: 'Threshold',   duration: '1h 30m', color: '#F59E0B', barWidth: '78%' },
-  { day: 'WED', type: 'Rest',        duration: '',       color: '#6B7280', barWidth: '20%' },
-  { day: 'THU', type: 'Intervals',   duration: '1h 15m', color: '#EF4444', barWidth: '70%' },
-  { day: 'FRI', type: 'Easy Ride',   duration: '45 min', color: '#22C55E', barWidth: '48%' },
-  { day: 'SAT', type: 'Long Ride',   duration: '2h 30m', color: '#E8458B', barWidth: '88%' },
-  { day: 'SUN', type: 'Rest',        duration: '',       color: '#6B7280', barWidth: '18%' },
-];
 
 const FEATURES = [
   'AI-generated training plans',
@@ -114,9 +112,6 @@ export default function PaywallScreen({ navigation, route }) {
   // Where to go after successful subscription (default: Home)
   const nextScreen = route?.params?.nextScreen || 'Home';
   const nextParams = route?.params?.nextParams || {};
-  // fromHome = user has plans but no subscription
-  const fromHome = route?.params?.fromHome === true;
-  const [showHolding, setShowHolding] = useState(false);
 
   // Fetch live prices from server on mount
   useEffect(() => {
@@ -212,8 +207,25 @@ export default function PaywallScreen({ navigation, route }) {
         return;
       }
 
-      // On native, try to use RevenueCat package for the purchase
-      const rcPkg = hasRevenueCat ? findRcPackage(selected) : null;
+      // On native iOS, use RevenueCat package for the purchase.
+      // If offerings haven't loaded yet, retry fetching them before giving up.
+      let rcPkg = hasRevenueCat ? findRcPackage(selected) : null;
+      if (hasRevenueCat && !rcPkg) {
+        try {
+          const offerings = await getSubscriptionOfferings();
+          if (offerings?.packages) {
+            setRcOfferings(offerings.packages);
+            rcPkg = offerings.packages.find(pkg => {
+              const id = (pkg.identifier || '').toLowerCase();
+              const productId = (pkg.productId || '').toLowerCase();
+              if (selected === 'monthly') return id === '$rc_monthly' || productId.includes('monthly');
+              if (selected === 'annual') return id === '$rc_annual' || productId.includes('annual') || productId.includes('yearly');
+              if (selected === 'lifetime') return id === 'lifetime' || id === '$rc_lifetime' || productId.includes('lifetime');
+              return false;
+            });
+          }
+        } catch { /* proceed with rcPkg = null */ }
+      }
       const result = await openCheckout(selected, rcPkg?._package || null);
 
       if (result.cancelled) {
@@ -251,96 +263,15 @@ export default function PaywallScreen({ navigation, route }) {
   };
 
   const handleClose = () => {
-    if (fromHome) {
-      setShowHolding(true);
+    // Always dismiss the paywall cleanly — never show a second offer screen (Apple 5.6).
+    if (navigation.canGoBack()) {
+      navigation.goBack();
     } else {
-      // Go back to plan preview if we came from PlanReady, otherwise goBack safely.
-      // NEVER destroy the plan — the user may have just generated it.
-      if (navigation.canGoBack()) {
-        navigation.goBack();
-      } else {
-        navigation.replace('Home');
-      }
+      navigation.replace('Home');
     }
   };
 
   const plan = plans[selected];
-
-  // Holding screen — shown when user dismisses the paywall (no subscription).
-  // Does NOT show prices or purchase CTAs — Apple rejects re-prompting after a decline.
-  if (showHolding) {
-    return (
-      <View style={s.container}>
-        {/* Dummy training plan background */}
-        <View style={s.holdingBg}>
-          <View style={s.holdingWeekHeader}>
-            <View style={s.holdingWeekHeaderDot} />
-            <View style={s.holdingWeekHeaderBar} />
-            <View style={s.holdingWeekHeaderBadge} />
-          </View>
-          {DUMMY_PLAN.map((session, i) => (
-            <View key={i} style={s.holdingBgRow}>
-              <View style={s.holdingDayLabel} />
-              <View style={[s.holdingSessionPill, { backgroundColor: session.color + '55' }]} />
-              <View style={s.holdingBarGroup}>
-                <View style={[s.holdingBar, { width: session.barWidth, backgroundColor: session.color + '55' }]} />
-                {session.duration ? <View style={s.holdingBarSub} /> : null}
-              </View>
-              {session.duration ? <View style={s.holdingDurationTag} /> : null}
-            </View>
-          ))}
-        </View>
-
-        <LinearGradient
-          colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.93)', 'rgba(0,0,0,0.98)']}
-          locations={[0, 0.3, 0.6, 1]}
-          style={StyleSheet.absoluteFill}
-        />
-
-        <SafeAreaView style={s.holdingContent}>
-          <Image
-            source={require('../../assets/icon.png')}
-            style={s.holdingLogo}
-            resizeMode="contain"
-          />
-
-          <Text style={s.holdingTitle}>Welcome to Etapa</Text>
-          <Text style={s.holdingSubtitle}>
-            AI-powered cycling training plans,{'\n'}personalised to your goals.
-          </Text>
-
-          {/* New to cycling — non-purchase entry point */}
-          <TouchableOpacity
-            style={s.holdingNewCyclistBtn}
-            onPress={() => {
-              navigation.replace('BeginnerProgram');
-            }}
-            activeOpacity={0.8}
-          >
-            <View style={s.holdingNewCyclistInner}>
-              <View style={s.holdingNewCyclistAccent} />
-              <View style={s.holdingNewCyclistText}>
-                <Text style={s.holdingNewCyclistTitle}>New to cycling?</Text>
-                <Text style={s.holdingNewCyclistSub}>Explore our beginner program</Text>
-              </View>
-              <Text style={s.holdingNewCyclistArrow}>{'\u2192'}</Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Footer links */}
-          <View style={s.holdingFooter}>
-            <TouchableOpacity onPress={() => navigation.navigate('Feedback')} activeOpacity={0.7}>
-              <Text style={s.holdingFooterLink}>Send Feedback</Text>
-            </TouchableOpacity>
-            <Text style={s.holdingFooterDot}> · </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Settings')} activeOpacity={0.7}>
-              <Text style={s.holdingFooterLink}>Settings</Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      </View>
-    );
-  }
 
   return (
     <SafeAreaView style={s.container}>
@@ -499,6 +430,16 @@ export default function PaywallScreen({ navigation, route }) {
             : 'Cancel anytime before your free trial ends and you won\'t be charged.\n'}
           16-day full refund on all purchases. Prices in GBP.
         </Text>
+
+        <View style={s.legalLinks}>
+          <TouchableOpacity onPress={() => Linking.openURL('https://getetapa.com/terms.html')}>
+            <Text style={s.legalLink}>Terms of Use</Text>
+          </TouchableOpacity>
+          <Text style={s.legalLinkDot}> · </Text>
+          <TouchableOpacity onPress={() => Linking.openURL('https://getetapa.com/privacy.html')}>
+            <Text style={s.legalLink}>Privacy Policy</Text>
+          </TouchableOpacity>
+        </View>
 
         {hasRevenueCat && (
           <TouchableOpacity onPress={handleRestore} disabled={restoring} style={s.restoreBtn}>
@@ -736,6 +677,23 @@ const s = StyleSheet.create({
     color: colors.textMuted,
     lineHeight: 17,
   },
+  legalLinks: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  legalLink: {
+    fontSize: 11,
+    fontFamily: FF.regular,
+    color: colors.primary,
+    textDecorationLine: 'underline',
+  },
+  legalLinkDot: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
   guaranteeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -839,235 +797,5 @@ const s = StyleSheet.create({
     lineHeight: 17,
     marginTop: 16,
     paddingHorizontal: 8,
-  },
-
-  // Holding screen
-  holdingBg: {
-    position: 'absolute', top: 80, left: 20, right: 20, gap: 14,
-  },
-  holdingWeekHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6,
-  },
-  holdingWeekHeaderDot: {
-    width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary, opacity: 0.5,
-  },
-  holdingWeekHeaderBar: {
-    height: 10, width: '45%', borderRadius: 5, backgroundColor: colors.primary, opacity: 0.25,
-  },
-  holdingWeekHeaderBadge: {
-    height: 10, width: 56, borderRadius: 5, backgroundColor: colors.border, opacity: 0.35,
-  },
-  holdingBgRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-  },
-  holdingDayLabel: {
-    width: 32, height: 9, borderRadius: 4, backgroundColor: colors.border, opacity: 0.4,
-  },
-  holdingSessionPill: {
-    height: 22, width: 72, borderRadius: 6,
-  },
-  holdingBarGroup: {
-    flex: 1, gap: 5,
-  },
-  holdingBar: {
-    height: 9, borderRadius: 5,
-  },
-  holdingBarSub: {
-    height: 7, width: '55%', borderRadius: 4, backgroundColor: colors.border, opacity: 0.3,
-  },
-  holdingDurationTag: {
-    width: 44, height: 22, borderRadius: 6, backgroundColor: colors.border, opacity: 0.3,
-  },
-  holdingContent: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    paddingBottom: 32,
-  },
-  holdingLogo: {
-    width: 64, height: 64, borderRadius: 14, marginBottom: 20,
-  },
-  holdingTitle: {
-    fontSize: 26,
-    fontFamily: FF.semibold,
-    color: '#fff',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  holdingSubtitle: {
-    fontSize: 15,
-    fontFamily: FF.regular,
-    color: 'rgba(255,255,255,0.65)',
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 28,
-  },
-  // Lifetime savings callout — informational, not a button
-  holdingSavingsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 24,
-  },
-  holdingSavingsText: {
-    fontSize: 13,
-    fontFamily: FF.medium,
-    color: 'rgba(255,255,255,0.7)',
-  },
-  holdingSavingsBadge: {
-    backgroundColor: 'rgba(232,69,139,0.2)',
-    borderWidth: 1,
-    borderColor: 'rgba(232,69,139,0.45)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  holdingSavingsBadgeText: {
-    fontSize: 10,
-    fontFamily: FF.semibold,
-    color: '#4ade80',
-    letterSpacing: 0.8,
-  },
-  holdingPrimaryBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: 14,
-    paddingVertical: 18,
-    alignItems: 'center',
-    width: '100%',
-    marginBottom: 12,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 14,
-    elevation: 6,
-  },
-  holdingPrimaryBtnText: {
-    fontSize: 17,
-    fontFamily: FF.semibold,
-    color: '#fff',
-  },
-  holdingPrimaryBtnSub: {
-    fontSize: 12,
-    fontFamily: FF.light,
-    color: 'rgba(255,255,255,0.65)',
-    marginTop: 3,
-  },
-  // New to cycling — warm amber card
-  holdingNewCyclistBtn: {
-    width: '100%',
-    borderRadius: 14,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(232,69,139,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(232,69,139,0.35)',
-    marginBottom: 32,
-  },
-  holdingNewCyclistInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    gap: 0,
-  },
-  holdingNewCyclistAccent: {
-    width: 4,
-    height: '100%',
-    minHeight: 40,
-    borderRadius: 2,
-    backgroundColor: colors.primary,
-    marginRight: 14,
-  },
-  holdingNewCyclistText: {
-    flex: 1,
-  },
-  holdingNewCyclistTitle: {
-    fontSize: 16,
-    fontFamily: FF.semibold,
-    color: colors.primary,
-    marginBottom: 2,
-  },
-  holdingNewCyclistSub: {
-    fontSize: 12,
-    fontFamily: FF.regular,
-    color: 'rgba(255,255,255,0.55)',
-  },
-  holdingNewCyclistArrow: {
-    fontSize: 20,
-    color: colors.primary,
-    marginLeft: 8,
-  },
-  holdingFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  holdingFooterLink: {
-    fontSize: 13,
-    fontFamily: FF.medium,
-    color: 'rgba(255,255,255,0.4)',
-  },
-  holdingFooterDot: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.25)',
-  },
-
-  // Plan pricing summary pills
-  holdingPlansRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 10,
-    width: '100%',
-    justifyContent: 'center',
-  },
-  holdingPlanPill: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    gap: 2,
-  },
-  holdingPlanPillHighlight: {
-    backgroundColor: 'rgba(232,69,139,0.1)',
-    borderColor: 'rgba(232,69,139,0.3)',
-  },
-  holdingPlanPillLabel: {
-    fontSize: 10,
-    fontFamily: FF.semibold,
-    color: 'rgba(255,255,255,0.5)',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  holdingPlanPillPrice: {
-    fontSize: 15,
-    fontFamily: FF.semibold,
-    color: 'rgba(255,255,255,0.85)',
-  },
-  holdingPlanPillPer: {
-    fontSize: 11,
-    fontFamily: FF.regular,
-    color: 'rgba(255,255,255,0.45)',
-  },
-  holdingPlanPillBadge: {
-    backgroundColor: 'rgba(232,69,139,0.25)',
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    marginTop: 2,
-  },
-  holdingPlanPillBadgeText: {
-    fontSize: 8,
-    fontFamily: FF.semibold,
-    color: colors.primary,
-    letterSpacing: 0.5,
-  },
-  holdingTrialNote: {
-    fontSize: 11,
-    fontFamily: FF.regular,
-    color: 'rgba(255,255,255,0.35)',
-    marginBottom: 20,
-    textAlign: 'center',
   },
 });
