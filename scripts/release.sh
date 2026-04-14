@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Usage:
-#   ./scripts/release.sh          → bumps patch (0.7.2 → 0.7.3)
-#   ./scripts/release.sh minor    → bumps minor (0.7.2 → 0.8.0)
-#   ./scripts/release.sh major    → bumps major (0.7.2 → 1.0.0)
+#   ./scripts/release.sh          → bumps patch (0.85.0 → 0.85.1)
+#   ./scripts/release.sh minor    → bumps minor (0.85.0 → 0.86.0)
+#   ./scripts/release.sh major    → bumps major (0.85.0 → 1.0.0)
 #
-# app.json is the single source of truth for the version number.
-# eas.json uses appVersionSource: "local" so EAS reads it directly.
+# app.json holds the version (single source of truth).
+# eas.json uses appVersionSource: "remote" with autoIncrement: true
+# so EAS auto-increments the build number.
+# This script syncs the version to EAS remote before building.
 
 set -e
 
@@ -46,11 +48,19 @@ node -e "
 git add "$APP_JSON"
 git commit -m "chore: bump version to $NEW_VERSION"
 
+# Sync version to EAS remote for both platforms
+echo ""
+echo "Syncing version $NEW_VERSION to EAS remote..."
+echo ""
+echo "$NEW_VERSION" | npx eas build:version:set --platform ios
+echo "$NEW_VERSION" | npx eas build:version:set --platform android
+
 echo ""
 echo "Building + submitting to TestFlight (iOS)"
 echo ""
 
 # Build and auto-submit to TestFlight
+# autoIncrement: true will handle the build number
 npx eas build --platform ios --profile production --auto-submit
 
 echo ""

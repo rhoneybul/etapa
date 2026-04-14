@@ -3,7 +3,7 @@
     "name": "Etapa",
     "slug": "etapa",
     "scheme": "etapa",
-    "version": "0.9.0",
+    "version": "0.85.0",
     "orientation": "portrait",
     "icon": "./assets/icons/ios/AppIcon-1024.png",
     "userInterfaceStyle": "dark",
@@ -18,8 +18,7 @@
       "icon": "./assets/icons/ios/AppIcon-1024.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      },
-      "buildNumber": "3"
+      }
     },
     "android": {
       "adaptiveIcon": {
