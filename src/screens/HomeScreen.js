@@ -43,6 +43,18 @@ const SUGGEST_COLORS = {
   recovery:      '#64748B', // neutral slate
 };
 
+function getSuggestIcon(type) {
+  switch (type) {
+    case 'training':       return 'bike';
+    case 'strength':       return 'dumbbell';
+    case 'cross_training': return 'run';
+    case 'nutrition':      return 'food-apple';
+    case 'mental':         return 'brain';
+    case 'recovery':       return 'sleep';
+    default:               return 'star-four-points';
+  }
+}
+
 /**
  * Compute total plan distance and weekly hours from activities.
  */
@@ -451,10 +463,19 @@ export default function HomeScreen({ navigation }) {
     const now = new Date();
     now.setHours(12, 0, 0, 0);
     const diffDays = Math.floor((now - monday) / (1000 * 60 * 60 * 24));
+    // If the plan hasn't started yet, "today" isn't inside the plan timeline.
+    // In that case, treat the "go to today" control as "go to start".
     if (diffDays < 0) return 1;
     return Math.min(Math.floor(diffDays / 7) + 1, activePlan.weeks || 1);
   })();
-  const viewingToday = currentWeek === realTodayWeek;
+  const planHasStarted = (() => {
+    if (!activePlan?.startDate) return true;
+    const monday = snapToMonday(parseDateLocal(activePlan.startDate));
+    const now = new Date();
+    now.setHours(12, 0, 0, 0);
+    return now >= monday;
+  })();
+  const viewingToday = planHasStarted && currentWeek === realTodayWeek;
 
   // Today's activities always come from the real today's week
   const todayWeekActivities = viewingToday
@@ -867,13 +888,17 @@ export default function HomeScreen({ navigation }) {
               <View style={s.weekNavCenter}>
                 <Text style={s.weekLabel}>Week {currentWeek}/{activePlan.weeks}</Text>
                 <Text style={s.monthLabel}>{monthLabel}</Text>
-                {!viewingToday && (
+                {(!viewingToday && (planHasStarted ? currentWeek !== realTodayWeek : currentWeek !== 1)) && (
                   <TouchableOpacity
-                    onPress={() => setCurrentWeek(realTodayWeek)}
+                    onPress={() => {
+                      // If the plan hasn't started yet, jump to week 1 (plan start week).
+                      // Otherwise, jump to the actual week containing today's date.
+                      setCurrentWeek(planHasStarted ? realTodayWeek : 1);
+                    }}
                     hitSlop={HIT}
                     style={s.goTodayBtn}
                   >
-                    <Text style={s.goTodayText}>Go to today</Text>
+                    <Text style={s.goTodayText}>{planHasStarted ? 'Go to today' : 'Go to start'}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -1143,7 +1168,6 @@ export default function HomeScreen({ navigation }) {
                 <Text style={s.suggestSectionHint}>Tap to apply to your plan</Text>
               </View>
               {(activePlan.assessment.suggestions || activePlan.assessment.recommendations || []).map((sug, i) => {
-                const sugColor = SUGGEST_COLORS[sug.type] || '#64748B';
                 const appliedKey = sug.title || sug.text || '';
                 const isApplied = (activePlan.appliedSuggestions || []).includes(appliedKey);
                 return (
@@ -1160,7 +1184,11 @@ export default function HomeScreen({ navigation }) {
                       });
                     }}
                   >
-                    <View style={[s.suggestDot, { backgroundColor: isApplied ? '#64748B' : sugColor }]} />
+                    <MaterialCommunityIcons
+                      name={getSuggestIcon(sug.type)}
+                      size={16}
+                      color={isApplied ? colors.textMuted : colors.primary}
+                    />
                     <View style={s.suggestBody}>
                       <Text style={[s.suggestTitle, isApplied && s.suggestTitleApplied]}>{sug.title || sug.type}</Text>
                       <Text style={[s.suggestText, isApplied && s.suggestTextApplied]} numberOfLines={2}>{sug.text}</Text>

@@ -23,28 +23,30 @@ export const colors = {
   primaryLight: '#E8458B15', // rosa at ~8% opacity
   primaryDark:  '#C4306E',
 
-  // ── Secondary accent — deep blue ─────────────────────────────────────────
-  // Used for coach avatars, informational icons, cross-training, and any UI
-  // chrome that needs a colour but isn't a primary CTA.
-  secondary:      '#0369A1',
-  secondaryLight: '#0369A115',
-  secondaryDark:  '#025A88',
+  // ── Secondary accent — electric blue ─────────────────────────────────────
+  // Used for indoor rides, informational badges, coach avatars, and any UI
+  // chrome that needs colour but isn't a primary CTA.
+  // Subdued "steel blue" so it supports (not competes with) maglia rosa.
+  secondary:      '#4B6B8F',
+  secondaryLight: '#4B6B8F15',
+  secondaryMid:   '#3F5C7A',
+  secondaryDark:  '#334B63',
 
-  // ── Extended rosa palette ───────────────────────────────────────────────
-  rosa50:       '#FFF0F5',
-  rosa100:      '#FFD6E7',
-  rosa200:      '#FFB3D1',
-  rosa300:      '#FF80B3',
-  rosa400:      '#F2598E',
+  // ── Tertiary accent — teal ────────────────────────────────────────────────
+  // Use sparingly: cross-training, neutral informational chips.
+  // Sits between blue and green so it never competes with primary pink.
+  teal:           '#06B6D4',
+  tealLight:      '#06B6D415',
+  tealDark:       '#0891B2',
+
+  // ── Slate — neutral mid-tone between grey and blue ───────────────────────
+  slate:        '#64748B',
+  slateLight:   '#64748B15',
+
+  // ── Extended rosa (use sparingly — let surfaces breathe) ─────────────────
   rosa500:      '#E8458B',
   rosa600:      '#C4306E',
   rosa700:      '#9E2258',
-  rosa800:      '#7D1B46',
-  rosa900:      '#5C1434',
-
-  // ── Accent — cool slate for secondary ───────────────────────────────────
-  accent:       '#64748B',
-  accentLight:  '#64748B15',
 
   // ── Functional status ────────────────────────────────────────────────────
   good:         '#22C55E',

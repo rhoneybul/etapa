@@ -1,24 +1,20 @@
 /**
  * Get into Cycling — a friendly beginner program.
- * Simple setup: how many days per week do you want to ride?
- * Generates a 12-week beginner-friendly plan with tips on nutrition,
- * bike setup, gear, and building confidence.
  *
- * Payment options:
- *   - Pay now (price fetched from Stripe) → full access immediately
- *   - Pay when it starts → plan is generated but locked until payment
- * Supports Stripe promo/discount codes.
- * Full refund available within first 16 days of purchase.
+ * Stage 1 (this screen): user picks their goal distance and bike type,
+ * sees what's included, then taps Continue.
+ *
+ * Stage 2: PaywallScreen handles the subscription purchase. On success
+ * it navigates directly to PlanConfig with the goal pre-populated.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Alert, TextInput, Platform,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { saveGoal } from '../services/storageService';
-import { isSubscribed, openCheckout, getPrices, validatePromo, getSubscriptionOfferings } from '../services/subscriptionService';
-import { isRevenueCatAvailable } from '../services/revenueCatService';
+import { isSubscribed } from '../services/subscriptionService';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
@@ -85,155 +81,54 @@ const BIKE_TYPES = [
 ];
 
 export default function BeginnerProgramScreen({ navigation }) {
-  const [goalOption, setGoalOption] = useState(null); // key from GOAL_OPTIONS
+  const [goalOption, setGoalOption] = useState(null);
   const [bikeType, setBikeType] = useState('road');
   const [showTips, setShowTips] = useState(false);
-  const [purchasing, setPurchasing] = useState(false);
-  // Dynamic pricing
-  const [starterPrice, setStarterPrice] = useState({ formatted: '$39.99', amount: 3999 });
-  const [promoInput, setPromoInput] = useState('');
-  const [promoResult, setPromoResult] = useState(null); // { valid, promoId, label, discountedFormatted, ... }
-  const [validatingPromo, setValidatingPromo] = useState(false);
-  const [rcOfferings, setRcOfferings] = useState(null); // RevenueCat packages (iOS only)
+  const [continuing, setContinuing] = useState(false);
 
-  // RevenueCat is only used on iOS
-  const hasRevenueCat = Platform.OS === 'ios' && isRevenueCatAvailable();
-
-  // Default promo code for the starter plan (auto-applied)
-  const DEFAULT_STARTER_PROMO = 'promo_1TI5VkAmoVZFfAwUakin4FXz';
-
-  // Fetch live starter price + auto-apply default promo on mount
-  useEffect(() => {
-    getPrices().then(prices => {
-      if (prices?.starter) setStarterPrice(prices.starter);
-    }).catch(() => {});
-
-    // Auto-apply the default promo code
-    validatePromo(DEFAULT_STARTER_PROMO, 'starter').then(result => {
-      if (result?.valid) setPromoResult(result);
-    }).catch(() => {});
-  }, []);
-
-  // Fetch RevenueCat offerings on mount (iOS only)
-  useEffect(() => {
-    if (!hasRevenueCat) return;
-    getSubscriptionOfferings().then(offerings => {
-      if (offerings?.packages) setRcOfferings(offerings.packages);
-    }).catch(() => {});
-  }, [hasRevenueCat]);
-
-  const displayPrice = promoResult?.valid ? promoResult.discountedFormatted : starterPrice.formatted;
-  const hasDiscount = promoResult?.valid;
-
-  const handleApplyPromo = async () => {
-    const code = promoInput.trim();
-    if (!code) return;
-    setValidatingPromo(true);
+  /** Save goal then hand off to Paywall (or directly to PlanConfig if already subscribed) */
+  const handleContinue = async () => {
+    setContinuing(true);
     try {
-      const result = await validatePromo(code, 'starter');
-      setPromoResult(result);
-      if (!result?.valid) {
-        Alert.alert('Invalid code', result?.message || 'This promo code is not valid.');
+      const chosen = GOAL_OPTIONS.find(g => g.key === goalOption) || GOAL_OPTIONS[1];
+      const goal = await saveGoal({
+        cyclingType: bikeType,
+        goalType: 'beginner',
+        targetDistance: chosen.distance,
+        targetElevation: null,
+        targetTime: chosen.time,
+        targetDate: null,
+        eventName: null,
+        planName: `Get into Cycling — ${chosen.label}`,
+      });
+
+      const suggestedDays = SUGGESTED_DAYS[goalOption] || 3;
+      const planConfig = {
+        goal,
+        beginnerDefaults: {
+          fitnessLevel: 'beginner',
+          daysPerWeek: suggestedDays,
+          weeks: 12,
+        },
+      };
+
+      analytics.capture?.('beginner_program_goal_selected', { goalOption });
+
+      // Skip paywall if already subscribed
+      const subscribed = await isSubscribed();
+      if (subscribed) {
+        navigation.replace('PlanConfig', planConfig);
+        return;
       }
-    } catch {
-      Alert.alert('Error', 'Could not validate promo code. Please try again.');
+
+      // Hand off to the paywall — on success it navigates to PlanConfig
+      navigation.navigate('Paywall', {
+        nextScreen: 'PlanConfig',
+        nextParams: planConfig,
+      });
     } finally {
-      setValidatingPromo(false);
+      setContinuing(false);
     }
-  };
-
-  /** Proceed to PlanConfig with an optional paymentStatus flag */
-  const proceedToConfig = async (paymentStatus) => {
-    const chosen = GOAL_OPTIONS.find(g => g.key === goalOption) || GOAL_OPTIONS[1];
-    const goal = await saveGoal({
-      cyclingType: bikeType,
-      goalType: 'beginner',
-      targetDistance: chosen.distance,
-      targetElevation: null,
-      targetTime: chosen.time,
-      targetDate: null,
-      eventName: null,
-      planName: `Get into Cycling — ${chosen.label}`,
-    });
-
-    const suggestedDays = SUGGESTED_DAYS[goalOption] || 3;
-    analytics.capture?.('beginner_program_started', { suggestedDays, paymentStatus, goalOption });
-
-    navigation.replace('PlanConfig', {
-      goal,
-      beginnerDefaults: {
-        fitnessLevel: 'beginner',
-        daysPerWeek: suggestedDays,
-        weeks: 12,
-        paymentStatus, // 'paid' | 'pending'
-      },
-    });
-  };
-
-  /** Find the RevenueCat package for the starter plan */
-  const findStarterRcPackage = (packages) => {
-    if (!packages) return null;
-    return packages.find(pkg => {
-      const id = (pkg.identifier || '').toLowerCase();
-      const productId = (pkg.productId || '').toLowerCase();
-      return id === '$rc_starter' || id === 'starter' || productId.includes('starter');
-    });
-  };
-
-  /** Pay now and proceed */
-  const handlePayNow = async () => {
-    // If already subscribed, skip payment
-    const subscribed = await isSubscribed();
-    if (subscribed) {
-      proceedToConfig('paid');
-      return;
-    }
-
-    setPurchasing(true);
-    try {
-      const promoCode = promoResult?.valid ? promoResult.promoId : null;
-
-      // On iOS, use RevenueCat for the purchase
-      let rcPkg = hasRevenueCat ? findStarterRcPackage(rcOfferings) : null;
-      if (hasRevenueCat && !rcPkg) {
-        // Retry fetching offerings if not loaded yet
-        try {
-          const offerings = await getSubscriptionOfferings();
-          if (offerings?.packages) {
-            setRcOfferings(offerings.packages);
-            rcPkg = findStarterRcPackage(offerings.packages);
-          }
-        } catch { /* proceed with rcPkg = null */ }
-      }
-
-      const result = await openCheckout('starter', rcPkg?._package || null, promoCode);
-      if (result.cancelled) {
-        // User cancelled — stay on screen silently
-        setPurchasing(false);
-        return;
-      }
-      if (!result.success) {
-        setPurchasing(false);
-        Alert.alert('Something went wrong', result.error || 'Please try again.');
-        return;
-      }
-      setPurchasing(false);
-      proceedToConfig('paid');
-    } catch (err) {
-      setPurchasing(false);
-      Alert.alert('Payment failed', err.message || 'Something went wrong. Please try again.');
-    }
-  };
-
-  /** Skip payment — plan will be locked until they pay on start date */
-  const handlePayLater = async () => {
-    // If already subscribed, treat as paid
-    const subscribed = await isSubscribed();
-    if (subscribed) {
-      proceedToConfig('paid');
-      return;
-    }
-    proceedToConfig('pending');
   };
 
   return (
@@ -257,53 +152,6 @@ export default function BeginnerProgramScreen({ navigation }) {
               A 12-week program designed to get you riding regularly and loving it.{'\n'}
               No experience needed — just a bike and some enthusiasm.
             </Text>
-          </View>
-
-          {/* Price card */}
-          <View style={s.priceCard}>
-            {hasDiscount && (
-              <Text style={s.priceOriginal}>{starterPrice.formatted}</Text>
-            )}
-            <Text style={s.priceAmount}>{displayPrice}</Text>
-            <Text style={s.priceSub}>one-time · 3 months access</Text>
-            {hasDiscount && (
-              <View style={s.promoBadge}>
-                <Text style={s.promoBadgeText}>{promoResult.label}</Text>
-              </View>
-            )}
-            <Text style={s.priceRefund}>16-day full refund guarantee</Text>
-          </View>
-
-          {/* Promo code */}
-          <View style={s.promoSection}>
-            <Text style={s.promoLabel}>Have a promo code?</Text>
-            <View style={s.promoRow}>
-              <TextInput
-                style={s.promoInput}
-                placeholder="Enter code"
-                placeholderTextColor={colors.textMuted}
-                value={promoInput}
-                onChangeText={(t) => { setPromoInput(t); if (promoResult) setPromoResult(null); }}
-                autoCapitalize="characters"
-                autoCorrect={false}
-                editable={!validatingPromo}
-              />
-              <TouchableOpacity
-                style={[s.promoBtn, (!promoInput.trim() || validatingPromo) && { opacity: 0.4 }]}
-                onPress={handleApplyPromo}
-                disabled={!promoInput.trim() || validatingPromo}
-                activeOpacity={0.8}
-              >
-                {validatingPromo ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={s.promoBtnText}>Apply</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-            {promoResult?.valid && (
-              <Text style={s.promoSuccess}>{promoResult.label} applied!</Text>
-            )}
           </View>
 
           {/* What's included */}
@@ -395,32 +243,19 @@ export default function BeginnerProgramScreen({ navigation }) {
           <View style={{ height: 140 }} />
         </ScrollView>
 
-        {/* CTAs — two options */}
+        {/* CTA */}
         <View style={s.ctaWrap}>
           <TouchableOpacity
-            style={[s.ctaBtn, (!goalOption || purchasing) && s.ctaBtnDisabled]}
-            onPress={handlePayNow}
-            disabled={!goalOption || purchasing}
+            style={[s.ctaBtn, (!goalOption || continuing) && s.ctaBtnDisabled]}
+            onPress={handleContinue}
+            disabled={!goalOption || continuing}
             activeOpacity={0.85}
           >
-            {purchasing ? (
+            {continuing ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <>
-                <Text style={s.ctaText}>Pay now and get started</Text>
-                <Text style={s.ctaSub}>{displayPrice} · full access to your plan</Text>
-              </>
+              <Text style={s.ctaText}>Continue</Text>
             )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[s.ctaBtnSecondary, (!goalOption || purchasing) && s.ctaBtnDisabled]}
-            onPress={handlePayLater}
-            disabled={!goalOption || purchasing}
-            activeOpacity={0.8}
-          >
-            <Text style={s.ctaTextSecondary}>Set up now, pay when it starts</Text>
-            <Text style={s.ctaSubSecondary}>Preview your plan first</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -448,41 +283,6 @@ const s = StyleSheet.create({
   subtitle: {
     fontSize: 15, fontFamily: FF.regular, color: colors.textMid, lineHeight: 22,
   },
-
-  // Price card
-  priceCard: {
-    backgroundColor: colors.surface, borderRadius: 14, padding: 20,
-    borderWidth: 1, borderColor: colors.border, alignItems: 'center', marginBottom: 28,
-  },
-  priceAmount: { fontSize: 32, fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
-  priceOriginal: {
-    fontSize: 18, fontFamily: FF.regular, color: colors.textMuted,
-    textDecorationLine: 'line-through', marginBottom: 2,
-  },
-  priceSub: { fontSize: 13, fontFamily: FF.regular, color: colors.textMid, marginBottom: 6 },
-  promoBadge: {
-    backgroundColor: 'rgba(232,69,139,0.12)', borderRadius: 6,
-    paddingHorizontal: 10, paddingVertical: 4, marginBottom: 6,
-  },
-  promoBadgeText: { fontSize: 11, fontFamily: FF.semibold, color: '#E8458B', letterSpacing: 0.5 },
-  priceRefund: { fontSize: 12, fontFamily: FF.regular, color: '#E8458B' },
-
-  // Promo code
-  promoSection: { marginBottom: 28 },
-  promoLabel: { fontSize: 13, fontFamily: FF.medium, color: colors.textMid, marginBottom: 8 },
-  promoRow: { flexDirection: 'row', gap: 10 },
-  promoInput: {
-    flex: 1, backgroundColor: colors.surface, borderRadius: 10,
-    borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14,
-    paddingVertical: 12, fontSize: 14, fontFamily: FF.medium, color: colors.text,
-    letterSpacing: 1,
-  },
-  promoBtn: {
-    backgroundColor: '#E8458B', borderRadius: 10,
-    paddingHorizontal: 20, justifyContent: 'center', alignItems: 'center',
-  },
-  promoBtnText: { fontSize: 14, fontFamily: FF.semibold, color: '#fff' },
-  promoSuccess: { fontSize: 12, fontFamily: FF.medium, color: '#E8458B', marginTop: 6 },
 
   // Sections
   section: { marginBottom: 28 },
@@ -549,12 +349,4 @@ const s = StyleSheet.create({
   },
   ctaBtnDisabled: { opacity: 0.4 },
   ctaText: { fontSize: 16, fontFamily: FF.semibold, color: '#fff' },
-  ctaSub: { fontSize: 11, fontFamily: FF.light, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
-
-  ctaBtnSecondary: {
-    backgroundColor: 'transparent', borderRadius: 14, paddingVertical: 14,
-    alignItems: 'center', borderWidth: 1, borderColor: colors.border,
-  },
-  ctaTextSecondary: { fontSize: 14, fontFamily: FF.medium, color: colors.text },
-  ctaSubSecondary: { fontSize: 11, fontFamily: FF.light, color: colors.textMuted, marginTop: 2 },
 });

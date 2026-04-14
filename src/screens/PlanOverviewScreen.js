@@ -82,14 +82,15 @@ function getWeekFlags(weekVolumes, phases, plan) {
 }
 
 // Ride type colors for stacked bars
+// Keep the palette simple and brand-forward: pink family + neutral slate.
 const RIDE_TYPE_COLORS = {
-  endurance:  '#E8458B', // amber (primary)
-  tempo:      '#F59E0B', // lighter amber
-  intervals:  '#EF4444', // red
-  recovery:   '#64748B', // slate
-  indoor:     '#6366F1', // indigo
-  strength:   '#A855F7', // purple
-  other:      '#94A3B8', // muted
+  endurance:  colors.primary,
+  tempo:      colors.primaryDark,
+  intervals:  '#9E2258',      // deeper rosa (less "alarm" than red)
+  recovery:   '#64748B',      // slate
+  indoor:     colors.primary, // keep single family for simplicity
+  strength:   colors.primaryDark,
+  other:      '#94A3B8',
 };
 
 const RIDE_TYPE_LABELS = {

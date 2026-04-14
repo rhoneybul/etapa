@@ -19,8 +19,11 @@ export default function WizardShell({
   onBack,
   onClose,
   onContinue,
+  accentColor = colors.primary,
   continueLabel = 'Continue',
   continueDisabled = false,
+  skipLabel,
+  onSkip,
   children,
 }) {
   const pct = totalSteps > 0 ? (step / totalSteps) * 100 : 0;
@@ -35,7 +38,7 @@ export default function WizardShell({
           </TouchableOpacity>
 
           <View style={s.progressTrack}>
-            <View style={[s.progressFill, { width: `${pct}%` }]} />
+            <View style={[s.progressFill, { width: `${pct}%`, backgroundColor: accentColor }]} />
           </View>
 
           <TouchableOpacity onPress={onClose} style={s.topBtn} hitSlop={HIT}>
@@ -57,7 +60,7 @@ export default function WizardShell({
         {/* Bottom continue */}
         <View style={s.bottom}>
           <TouchableOpacity
-            style={[s.continueBtn, continueDisabled && s.continueBtnDisabled]}
+            style={[s.continueBtn, { backgroundColor: accentColor }, continueDisabled && s.continueBtnDisabled]}
             onPress={onContinue}
             disabled={continueDisabled}
             activeOpacity={0.85}
@@ -66,6 +69,11 @@ export default function WizardShell({
               {continueLabel}
             </Text>
           </TouchableOpacity>
+          {skipLabel && onSkip && (
+            <TouchableOpacity onPress={onSkip} style={s.skipBtn} activeOpacity={0.7}>
+              <Text style={s.skipText}>{skipLabel}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </SafeAreaView>
     </View>
@@ -132,7 +140,9 @@ const s = StyleSheet.create({
 
   content: { flex: 1, paddingHorizontal: 16 },
 
-  bottom: { paddingHorizontal: 24, paddingBottom: 12, paddingTop: 8 },
+  bottom: { paddingHorizontal: 24, paddingBottom: 12, paddingTop: 8, gap: 4 },
+  skipBtn: { alignItems: 'center', paddingVertical: 10 },
+  skipText: { fontSize: 14, fontFamily: FF.medium, color: colors.textMuted },
   continueBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
   continueBtnDisabled: { backgroundColor: colors.border },
   continueText: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },

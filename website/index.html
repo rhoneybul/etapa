@@ -555,7 +555,7 @@
         <a href="#how-it-works" class="btn-secondary">Learn More</a>
       </div>
       <div style="margin-top:24px;display:inline-flex;align-items:center;gap:8px;background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.25);border-radius:100px;padding:8px 18px;">
-        <span style="font-size:14px;color:#3B82F6;font-weight:500;">🚀 Launch special — <a href="#pricing" style="color:#3B82F6;text-decoration:underline;">Lifetime access from $149</a> · 7-day money-back guarantee</span>
+        <span style="font-size:14px;color:#3B82F6;font-weight:500;">🚀 Launch special — <a href="#pricing" style="color:#3B82F6;text-decoration:underline;">Lifetime access available</a> · 7-day free trial on all plans</span>
       </div>
     </div>
     <div class="hero-phones">
@@ -876,7 +876,7 @@
     <div class="pricing-header">
       <div class="section-label">Pricing</div>
       <h2>Simple, Transparent Plans</h2>
-      <p class="section-sub">Start with a free trial. Upgrade when you're ready — or lock in lifetime access at our launch price.</p>
+      <p class="section-sub">Start with a 7-day free trial. Upgrade when you're ready — or lock in lifetime access at our launch price.</p>
     </div>
 
     <div class="pricing-grid">
@@ -884,40 +884,39 @@
       <div class="pricing-card">
         <div class="pricing-plan-name">Monthly</div>
         <div class="pricing-price">
-          <span class="pricing-price-amount">$9.99</span>
+          <span class="pricing-price-amount" id="price-monthly">£9.99</span>
           <span class="pricing-price-per">/mo</span>
         </div>
-        <div class="pricing-sub">Billed monthly · Cancel anytime</div>
+        <div class="pricing-sub" id="sub-monthly">Billed monthly · Cancel anytime</div>
         <ul class="pricing-features">
           <li>AI-generated training plans</li>
           <li>Coach chat & real-time edits</li>
           <li>Progress tracking & calendar</li>
           <li>Multiple coaches to choose from</li>
-          <li>1 week free trial</li>
+          <li>7-day free trial included</li>
         </ul>
-        <a href="#" class="pricing-btn pricing-btn-default" onclick="event.preventDefault()">Start Free Trial</a>
+        <a href="#" class="pricing-btn pricing-btn-default" onclick="event.preventDefault()">Start 7-Day Free Trial</a>
       </div>
 
       <!-- Lifetime (featured) -->
       <div class="pricing-card featured">
-        <div class="pricing-badge">LAUNCH SPECIAL — 40% OFF</div>
+        <div class="pricing-badge">LAUNCH SPECIAL</div>
         <div class="pricing-plan-name">Lifetime</div>
-        <div class="pricing-price-original">$249</div>
         <div class="pricing-price">
-          <span class="pricing-price-amount">$149</span>
+          <span class="pricing-price-amount" id="price-lifetime">£99.99</span>
         </div>
-        <div class="pricing-sub">One-time payment · Yours forever</div>
+        <div class="pricing-sub" id="sub-lifetime">One-time payment · Yours forever</div>
         <ul class="pricing-features">
           <li>Everything in Monthly & Annual</li>
           <li>No recurring charges — ever</li>
           <li>Lock in access before prices rise</li>
           <li>All future features included</li>
           <li>Support an indie app</li>
-          <li>7-day money-back guarantee</li>
+          <li>16-day full refund guarantee</li>
         </ul>
         <a href="#" class="pricing-btn pricing-btn-featured" onclick="event.preventDefault()">Get Lifetime Access</a>
         <div style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:12px;">
-          <span style="font-size:12px;color:#E8458B;font-weight:400;">Full refund within 7 days, no questions asked</span>
+          <span style="font-size:12px;color:#E8458B;font-weight:400;">Full refund within 16 days, no questions asked</span>
         </div>
       </div>
 
@@ -926,23 +925,59 @@
         <div class="pricing-badge pricing-badge-popular">MOST POPULAR</div>
         <div class="pricing-plan-name">Annual</div>
         <div class="pricing-price">
-          <span class="pricing-price-amount">$6.67</span>
+          <span class="pricing-price-amount" id="price-annual-monthly">£6.67</span>
           <span class="pricing-price-per">/mo</span>
         </div>
-        <div class="pricing-sub">Billed $79.99/year · Save 33%</div>
+        <div class="pricing-sub" id="sub-annual">Billed £79.99/year · Save 33%</div>
         <ul class="pricing-features">
           <li>AI-generated training plans</li>
           <li>Coach chat & real-time edits</li>
           <li>Progress tracking & calendar</li>
           <li>Multiple coaches to choose from</li>
-          <li>1 week free trial</li>
+          <li>7-day free trial included</li>
         </ul>
-        <a href="#" class="pricing-btn pricing-btn-primary" onclick="event.preventDefault()">Start Free Trial</a>
+        <a href="#" class="pricing-btn pricing-btn-primary" onclick="event.preventDefault()">Start 7-Day Free Trial</a>
       </div>
     </div>
 
-    <p class="pricing-trial-note">All subscription plans include a 1-week free trial. Cancel anytime before it ends and you won't be charged. Lifetime access includes a 7-day money-back guarantee. Prices in USD.</p>
+    <p class="pricing-trial-note">All subscription plans include a 7-day free trial. Cancel anytime before it ends and you won't be charged. Lifetime access includes a 16-day full refund guarantee. Prices in GBP.</p>
   </section>
+
+  <script>
+    // Fetch live prices from the Etapa server and update the pricing section.
+    (function () {
+      const API = 'https://etapa.up.railway.app/api/public/prices';
+
+      fetch(API, { cache: 'no-store' })
+        .then(r => r.ok ? r.json() : null)
+        .then(prices => {
+          if (!prices) return;
+
+          // Monthly
+          if (prices.monthly) {
+            const el = document.getElementById('price-monthly');
+            if (el) el.textContent = prices.monthly.formatted;
+            const sub = document.getElementById('sub-monthly');
+            if (sub) sub.textContent = prices.monthly.billedLabel + ' · Cancel anytime';
+          }
+
+          // Annual — show per-month equivalent as headline, full price in sub
+          if (prices.annual) {
+            const elMo = document.getElementById('price-annual-monthly');
+            if (elMo && prices.annual.perMonth) elMo.textContent = prices.annual.perMonth;
+            const sub = document.getElementById('sub-annual');
+            if (sub) sub.textContent = 'Billed ' + prices.annual.formatted + '/year · Save 33%';
+          }
+
+          // Lifetime
+          if (prices.lifetime) {
+            const el = document.getElementById('price-lifetime');
+            if (el) el.textContent = prices.lifetime.formatted;
+          }
+        })
+        .catch(() => { /* keep static fallback values */ });
+    })();
+  </script>
 
   <!-- CTA -->
   <section class="cta">

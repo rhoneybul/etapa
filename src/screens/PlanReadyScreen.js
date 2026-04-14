@@ -16,20 +16,70 @@ import { assessPlan, editPlanWithLLM } from '../services/llmPlanService';
 import { isSubscribed } from '../services/subscriptionService';
 import { connectStrava, isStravaConnected, isStravaConfigured } from '../services/stravaService';
 import { convertDistance, distanceLabel } from '../utils/units';
+import { getSessionLabel } from '../utils/sessionLabels';
 import StravaLogo from '../components/StravaLogo';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const FF = fontFamily;
 
-const SUGGEST_COLORS = {
-  training: '#E8458B',
-  nutrition: '#22C55E',
-  strength: '#8B5CF6',
-  cross_training: '#06B6D4',
-  mental: '#3B82F6',
-  recovery: '#64748B',
-};
+function getSuggestIcon(type) {
+  switch (type) {
+    case 'training':       return 'bike';
+    case 'strength':       return 'dumbbell';
+    case 'cross_training': return 'run';
+    case 'nutrition':      return 'food-apple';
+    case 'mental':         return 'brain';
+    case 'recovery':       return 'sleep';
+    default:               return 'star-four-points';
+  }
+}
+
+function getBreakdownIcon(kind) {
+  switch (kind) {
+    case 'ride':     return 'bike';
+    case 'strength': return 'dumbbell';
+    case 'recovery': return 'sleep';
+    default:         return 'calendar-week';
+  }
+}
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+// ── Key thinking — derive session rationale from the plan itself ──────────────
+const SESSION_THINKING = {
+  Long:      (n) => ({ label: `${n} long ride${n > 1 ? 's' : ''} each week`,     reason: 'builds your aerobic engine and trains your body to sustain effort over distance' }),
+  Tempo:     (n) => ({ label: `${n} tempo session${n > 1 ? 's' : ''} each week`,  reason: 'pushes your lactate threshold so a sustained hard pace becomes more comfortable' }),
+  Intervals: (n) => ({ label: `${n} interval session${n > 1 ? 's' : ''} each week`,reason: 'develops raw power and VO₂ max — the engine behind your top-end speed' }),
+  Recovery:  (n) => ({ label: `${n} recovery ride${n > 1 ? 's' : ''} each week`,  reason: 'promotes blood flow and reduces fatigue so you adapt faster between harder sessions' }),
+  Indoor:    (n) => ({ label: `${n} indoor session${n > 1 ? 's' : ''} each week`,  reason: 'delivers precise, traffic-free training — consistent power, maximum efficiency' }),
+  Strength:  (n) => ({ label: `${n} strength session${n > 1 ? 's' : ''} each week`,reason: 'builds cycling-specific muscle and joint resilience so you can hold power for longer' }),
+  Hills:     (n) => ({ label: `${n} hill session${n > 1 ? 's' : ''} each week`,   reason: 'builds climbing strength and efficient technique for tougher terrain' }),
+  Easy:      (n) => ({ label: `${n} easy ride${n > 1 ? 's' : ''} each week`,      reason: 'keeps you aerobically active while recovering — the foundation of consistent progress' }),
+  Moderate:  (n) => ({ label: `${n} steady ride${n > 1 ? 's' : ''} each week`,    reason: 'accumulates aerobic volume at a pace you can sustain without accumulating excess fatigue' }),
+  Ride:      (n) => ({ label: `${n} ride${n > 1 ? 's' : ''} each week`,           reason: 'builds base fitness and time in the saddle at a sustainable pace' }),
+};
+const SESSION_COLORS = {
+  Long: colors.primary, Tempo: '#2563EB', Intervals: '#EF4444',
+  Recovery: '#64748B',  Indoor: '#3B82F6', Strength: '#2563EB',
+  Hills: '#F59E0B',     Easy: '#22C55E',   Moderate: '#E8458B', Ride: colors.primary,
+};
+
+function deriveKeyThinking(plan) {
+  if (!plan?.activities?.length) return [];
+  // Sample week 1 to understand the typical weekly pattern
+  const week1 = plan.activities.filter(a => a.week === 1 && a.type !== 'rest');
+  const groups = {};
+  week1.forEach(a => {
+    const label = a.type === 'strength' ? 'Strength' : getSessionLabel(a);
+    groups[label] = (groups[label] || 0) + 1;
+  });
+  return Object.entries(groups)
+    .filter(([label]) => SESSION_THINKING[label])
+    .map(([label, count]) => ({
+      ...(SESSION_THINKING[label](count)),
+      color: SESSION_COLORS[label] || colors.textMuted,
+    }));
+}
 
 function getWeekVolume(plan, weekNum) {
   const acts = getWeekActivities(plan, weekNum);
@@ -77,8 +127,9 @@ export default function PlanReadyScreen({ navigation, route }) {
         const g = goals.find(g => g.id === p.goalId) || null;
         setGoal(g);
 
-        // Use cached assessment if available, otherwise fetch
-        if (p.assessment && p.assessment.successChance) {
+        // Suggestions to improve (coach assessment) — keep the feature,
+        // but do not surface a readiness % / "success chance" score.
+        if (p.assessment && (p.assessment.summary || (p.assessment.suggestions || p.assessment.recommendations)?.length)) {
           setAssessment(p.assessment);
           Animated.timing(assessFade, { toValue: 1, duration: 500, useNativeDriver: true }).start();
         } else if (p.configId) {
@@ -86,7 +137,7 @@ export default function PlanReadyScreen({ navigation, route }) {
           const cfg = await getPlanConfig(p.configId);
           const result = await assessPlan(p, g, cfg);
           setLoadingAssessment(false);
-          if (result && result.successChance) {
+          if (result && (result.summary || (result.suggestions || result.recommendations)?.length)) {
             setAssessment(result);
             p.assessment = result;
             await savePlan(p);
@@ -187,18 +238,18 @@ export default function PlanReadyScreen({ navigation, route }) {
           <Animated.View style={[s.breakdownCard, { opacity: statsFade }]}>
             {totalRides > 0 && (
               <View style={s.breakdownRow}>
-                <View style={[s.breakdownDot, { backgroundColor: '#E8458B' }]} />
+                <MaterialCommunityIcons name={getBreakdownIcon('ride')} size={14} color={colors.primary} />
                 <Text style={s.breakdownLabel}>{totalRides} ride{totalRides !== 1 ? 's' : ''}</Text>
               </View>
             )}
             {totalStrength > 0 && (
               <View style={s.breakdownRow}>
-                <View style={[s.breakdownDot, { backgroundColor: '#8B5CF6' }]} />
+                <MaterialCommunityIcons name={getBreakdownIcon('strength')} size={14} color={colors.primary} />
                 <Text style={s.breakdownLabel}>{totalStrength} strength session{totalStrength !== 1 ? 's' : ''}</Text>
               </View>
             )}
             <View style={s.breakdownRow}>
-              <View style={[s.breakdownDot, { backgroundColor: '#64748B' }]} />
+              <MaterialCommunityIcons name={getBreakdownIcon('recovery')} size={14} color={colors.textMuted} />
               <Text style={s.breakdownLabel}>{Math.floor(plan.weeks / 4)} recovery week{Math.floor(plan.weeks / 4) !== 1 ? 's' : ''} built in</Text>
             </View>
           </Animated.View>
@@ -239,54 +290,53 @@ export default function PlanReadyScreen({ navigation, route }) {
             </View>
           </Animated.View>
 
-          {/* Coach assessment — loading state */}
+          {/* Key thinking — always derived from plan data, no LLM needed */}
+          {plan && (() => {
+            const thinking = deriveKeyThinking(plan);
+            if (!thinking.length) return null;
+            return (
+              <View style={s.assessCard}>
+                <Text style={s.assessTitle}>The thinking behind your plan</Text>
+                {thinking.map((item, i) => (
+                  <View key={i} style={s.thinkingRow}>
+                    <MaterialCommunityIcons
+                      name={getSuggestIcon((item.label || '').toLowerCase().includes('strength') ? 'strength'
+                        : (item.label || '').toLowerCase().includes('indoor') ? 'training'
+                          : (item.label || '').toLowerCase().includes('recovery') ? 'recovery'
+                            : 'training')}
+                      size={14}
+                      color={colors.textMid}
+                    />
+                    <View style={s.thinkingTextWrap}>
+                      <Text style={s.thinkingLabel}>{item.label}</Text>
+                      <Text style={s.thinkingReason}>{item.reason}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            );
+          })()}
+
+          {/* Coach assessment — no readiness % */}
           {loadingAssessment && !assessment && (
             <View style={s.assessCard}>
-              <Text style={s.assessTitle}>Coach's Assessment</Text>
+              <Text style={s.assessTitle}>Coach’s suggestions</Text>
               <View style={s.assessLoading}>
                 <ActivityIndicator color={colors.primary} size="small" />
-                <Text style={s.assessLoadingText}>Your coach is reviewing the plan...</Text>
+                <Text style={s.assessLoadingText}>Thinking of ways to level up…</Text>
               </View>
             </View>
           )}
 
-          {/* Coach assessment — loaded */}
           {assessment && (
             <Animated.View style={[s.assessCard, { opacity: assessFade }]}>
-              <Text style={s.assessTitle}>Coach's Assessment</Text>
+              <Text style={s.assessTitle}>Ways to level up</Text>
+              {assessment.summary ? <Text style={s.assessSummary}>{assessment.summary}</Text> : null}
 
-              {/* Success meter */}
-              <View style={s.assessMeter}>
-                <View style={s.assessMeterTrack}>
-                  <View style={[s.assessMeterFill, { width: `${assessment.successChance}%` }]} />
-                </View>
-                <Text style={s.assessPercent}>{assessment.successChance}%</Text>
-              </View>
-              <Text style={s.assessReadinessExplain}>
-                Readiness score — how well this plan matches your fitness level, available time, and goal. Based on training load progression, recovery balance, and periodisation.
-              </Text>
-              <Text style={s.assessSummary}>{assessment.summary}</Text>
-
-              {/* Strengths */}
-              {assessment.strengths?.length > 0 && (
-                <View style={s.assessSection}>
-                  <Text style={s.assessSectionTitle}>Strengths</Text>
-                  {assessment.strengths.map((str, i) => (
-                    <View key={i} style={s.assessRow}>
-                      <Text style={s.assessTick}>{'\u2713'}</Text>
-                      <Text style={s.assessText}>{str}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* Suggestions — concrete ways to improve, now tappable */}
               {(assessment.suggestions || assessment.recommendations)?.length > 0 && (
                 <View style={s.assessSection}>
-                  <Text style={s.assessSectionTitle}>Ways to level up</Text>
                   <Text style={s.assessSectionHint}>Tap a suggestion to apply it to your plan</Text>
                   {(assessment.suggestions || assessment.recommendations).map((sug, i) => {
-                    const sugColor = SUGGEST_COLORS[sug.type] || '#64748B';
                     const appliedKey = sug.title || sug.text || '';
                     const isApplied = (plan.appliedSuggestions || []).includes(appliedKey);
                     return (
@@ -304,7 +354,11 @@ export default function PlanReadyScreen({ navigation, route }) {
                         }}
                       >
                         <View style={s.suggestHeader}>
-                          <View style={[s.assessDot, { backgroundColor: isApplied ? '#64748B' : sugColor }]} />
+                          <MaterialCommunityIcons
+                            name={getSuggestIcon(sug.type)}
+                            size={16}
+                            color={isApplied ? colors.textMuted : colors.primary}
+                          />
                           <Text style={[s.suggestTitle, isApplied && s.suggestTitleApplied]}>{sug.title || sug.type}</Text>
                           {isApplied
                             ? <Text style={s.suggestAppliedLabel}>{'\u2713'} Applied</Text>
@@ -461,6 +515,7 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border,
   },
   breakdownRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  // Kept for compatibility with older layouts (now using icons).
   breakdownDot: { width: 8, height: 8, borderRadius: 4 },
   breakdownLabel: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid },
 
@@ -503,6 +558,14 @@ const s = StyleSheet.create({
   assessLoading: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   assessLoadingText: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
   assessReadinessExplain: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, lineHeight: 16, marginBottom: 10 },
+
+  // Key thinking rows
+  thinkingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 14 },
+  // Kept for compatibility with older layouts (now using icons).
+  thinkingDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4, flexShrink: 0 },
+  thinkingTextWrap: { flex: 1 },
+  thinkingLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 3 },
+  thinkingReason: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 19 },
   assessSectionHint: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginBottom: 10 },
   suggestCard: { backgroundColor: 'rgba(232,69,139,0.04)', borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(232,69,139,0.08)' },
   suggestCardApplied: { opacity: 0.45, backgroundColor: 'rgba(100,116,139,0.04)', borderColor: 'rgba(100,116,139,0.08)' },

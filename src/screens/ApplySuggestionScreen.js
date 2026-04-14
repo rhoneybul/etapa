@@ -2,7 +2,7 @@
  * ApplySuggestionScreen — full workflow for applying a "ways to level up" suggestion.
  * Flow: loading → show recommended change → pick day (if needed) → apply → show result → done/undo.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator,
 } from 'react-native';
@@ -11,6 +11,8 @@ import { colors, fontFamily } from '../theme';
 import { getPlan, getGoal, savePlan, getPlanConfig, getUserPrefs } from '../services/storageService';
 import { editPlanWithLLM } from '../services/llmPlanService';
 import { convertDistance, distanceLabel } from '../utils/units';
+import { getActivityIcon, getSessionLabel } from '../utils/sessionLabels';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const FF = fontFamily;
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -18,11 +20,23 @@ const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const SUGGEST_COLORS = {
   training: '#E8458B',
   nutrition: '#22C55E',
-  strength: '#8B5CF6',
+  strength: colors.secondaryMid,
   cross_training: '#06B6D4',
-  mental: '#3B82F6',
+  mental: colors.secondary,
   recovery: '#64748B',
 };
+
+function getSuggestIcon(type) {
+  switch (type) {
+    case 'training':       return 'bike';
+    case 'strength':       return 'dumbbell';
+    case 'cross_training': return 'run';
+    case 'nutrition':      return 'food-apple';
+    case 'mental':         return 'brain';
+    case 'recovery':       return 'sleep';
+    default:               return 'star-four-points';
+  }
+}
 
 // Steps: 'preview' → 'pickDay' (if needed) → 'applying' → 'done'
 export default function ApplySuggestionScreen({ navigation, route }) {
@@ -38,6 +52,29 @@ export default function ApplySuggestionScreen({ navigation, route }) {
   // All suggestion types benefit from day selection so the coach knows where to add/adjust sessions
   const needsDay = true;
   const sugColor = SUGGEST_COLORS[suggestion?.type] || '#64748B';
+
+  // Compute which week of the plan we're currently in, so we can show
+  // what's already scheduled on each day.
+  const currentWeekActivities = useMemo(() => {
+    if (!plan?.activities) return {};
+    const startDate = plan.startDate ? new Date(plan.startDate + 'T00:00:00') : null;
+    let weekNum = 1;
+    if (startDate) {
+      const today = new Date();
+      const diffDays = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
+      weekNum = Math.max(1, Math.min(Math.floor(diffDays / 7) + 1, plan.weeks || 52));
+    }
+    const byDay = {};
+    plan.activities
+      .filter(a => a.week === weekNum && a.type !== 'rest')
+      .forEach(a => {
+        if (a.dayOfWeek != null) {
+          if (!byDay[a.dayOfWeek]) byDay[a.dayOfWeek] = [];
+          byDay[a.dayOfWeek].push(a);
+        }
+      });
+    return byDay;
+  }, [plan]);
 
   useEffect(() => {
     getUserPrefs().then(p => setUnits(p.units || 'km')).catch(() => {});
@@ -133,7 +170,7 @@ export default function ApplySuggestionScreen({ navigation, route }) {
 
           <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 100 }}>
             <View style={s.suggestionCard}>
-              <View style={[s.suggestionDot, { backgroundColor: sugColor }]} />
+              <MaterialCommunityIcons name={getSuggestIcon(suggestion?.type)} size={18} color={colors.primary} style={{ marginBottom: 10 }} />
               <Text style={s.suggestionTitle}>{suggestion?.title}</Text>
               <Text style={s.suggestionText}>{suggestion?.text}</Text>
             </View>
@@ -146,15 +183,35 @@ export default function ApplySuggestionScreen({ navigation, route }) {
               <Text style={s.daySectionTitle}>Which day should this apply to?</Text>
               <Text style={s.daySectionHint}>Optional — your coach will decide if you skip this</Text>
               <View style={s.dayGrid}>
-                {DAY_NAMES.map((name, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    style={[s.dayBtn, selectedDay === idx && s.dayBtnSelected]}
-                    onPress={() => setSelectedDay(selectedDay === idx ? null : idx)}
-                  >
-                    <Text style={[s.dayBtnText, selectedDay === idx && s.dayBtnTextSelected]}>{name}</Text>
-                  </TouchableOpacity>
-                ))}
+                {DAY_NAMES.map((name, idx) => {
+                  const acts = currentWeekActivities[idx] || [];
+                  const isSelected = selectedDay === idx;
+                  const primaryAct = acts[0] || null;
+                  const sessionLabel = primaryAct ? getSessionLabel(primaryAct) : null;
+                  const iconName = primaryAct ? getActivityIcon(primaryAct) : null;
+                  return (
+                    <TouchableOpacity
+                      key={idx}
+                      style={[s.dayBtn, isSelected && s.dayBtnSelected, acts.length > 0 && !isSelected && s.dayBtnOccupied]}
+                      onPress={() => setSelectedDay(isSelected ? null : idx)}
+                    >
+                      <Text style={[s.dayBtnText, isSelected && s.dayBtnTextSelected]}>{name}</Text>
+                      {sessionLabel && (
+                        <View style={s.dayBtnMetaRow}>
+                          {iconName ? (
+                            <MaterialCommunityIcons name={iconName} size={12} color={colors.primary} style={{ marginTop: 1 }} />
+                          ) : null}
+                          <Text
+                            style={[s.dayBtnActivity, isSelected && s.dayBtnActivitySelected]}
+                            numberOfLines={1}
+                          >
+                            {sessionLabel}
+                          </Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
           </ScrollView>
@@ -281,12 +338,20 @@ const s = StyleSheet.create({
   daySectionHint: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginBottom: 12, textAlign: 'center' },
   dayGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
   dayBtn: {
-    backgroundColor: colors.surface, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16,
+    backgroundColor: colors.surface, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 10,
     borderWidth: 1, borderColor: colors.border, minWidth: 60, alignItems: 'center',
   },
   dayBtnSelected: { borderColor: colors.primary, backgroundColor: colors.primary + '18' },
-  dayBtnText: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  dayBtnOccupied: { borderColor: colors.border },
+  dayBtnText: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
   dayBtnTextSelected: { color: colors.primary },
+  dayBtnMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  dayBtnActivity: {
+    fontSize: 10, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.primary, textAlign: 'center',
+    maxWidth: 64,
+  },
+  dayBtnActivitySelected: { color: colors.primary },
 
   // CTA
   ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },

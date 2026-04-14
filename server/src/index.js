@@ -129,6 +129,44 @@ app.post('/api/account-deletion', async (req, res) => {
   }
 });
 
+// ── Public prices endpoint (no auth — used by website and app before login) ──
+// Returns the same pricing data as /api/stripe/prices but without a Bearer token.
+// Prices are sourced from the admin-configured pricing_config, falling back to defaults.
+app.get('/api/public/prices', async (req, res) => {
+  const DEFAULT_PRICES = {
+    monthly:  { amount: 999,  currency: 'gbp', formatted: '£9.99',  interval: 'month', perMonth: '£9.99',  billedLabel: 'Billed monthly',       trialDays: 7 },
+    annual:   { amount: 7999, currency: 'gbp', formatted: '£79.99', interval: 'year',  perMonth: '£6.67',  billedLabel: 'Billed £79.99/year',   trialDays: 7 },
+    lifetime: { amount: 9999, currency: 'gbp', formatted: '£99.99', interval: null,    perMonth: null,     billedLabel: 'One-time payment',      trialDays: 0 },
+  };
+
+  try {
+    const { supabase } = require('./lib/supabase');
+    const { data } = await supabase
+      .from('app_config')
+      .select('value')
+      .eq('key', 'pricing_config')
+      .single();
+
+    if (data?.value) {
+      const cfg = data.value;
+      const currency = cfg.currency || 'gbp';
+      const sym = currency === 'usd' ? '$' : currency === 'gbp' ? '£' : currency === 'eur' ? '€' : currency.toUpperCase() + ' ';
+      const fmt = (pence) => `${sym}${(pence / 100).toFixed(2)}`;
+      const results = {};
+
+      if (cfg.monthly)  results.monthly  = { amount: cfg.monthly,  currency, formatted: fmt(cfg.monthly),  interval: 'month', perMonth: fmt(cfg.monthly),          billedLabel: 'Billed monthly',                           trialDays: 7 };
+      if (cfg.annual)   results.annual   = { amount: cfg.annual,   currency, formatted: fmt(cfg.annual),   interval: 'year',  perMonth: fmt(cfg.annual / 12),       billedLabel: `Billed ${fmt(cfg.annual)}/year`,           trialDays: 7 };
+      if (cfg.lifetime) results.lifetime = { amount: cfg.lifetime, currency, formatted: fmt(cfg.lifetime), interval: null,    perMonth: null,                        billedLabel: 'One-time payment',                         trialDays: 0 };
+
+      res.set('Cache-Control', 'public, max-age=1800');
+      return res.json(Object.keys(results).length ? results : DEFAULT_PRICES);
+    }
+  } catch { /* fall through */ }
+
+  res.set('Cache-Control', 'public, max-age=1800');
+  res.json(DEFAULT_PRICES);
+});
+
 // ── Protected routes ──────────────────────────────────────────────────────────
 app.use('/api/users', authMiddleware, usersRouter);
 app.use('/api/goals', authMiddleware, goalsRouter);

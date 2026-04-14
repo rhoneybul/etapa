@@ -38,7 +38,7 @@ const PLAN_META = {
     per: '/yr',
     defaultSub: '£6.67/mo',
     badge: 'MOST POPULAR',
-    defaultTrialLine: 'then £79.99/year',
+    defaultTrialLine: '7-day free trial, then £79.99/year',
   },
   monthly: {
     id: 'monthly',
@@ -47,9 +47,63 @@ const PLAN_META = {
     per: '/mo',
     defaultSub: 'Billed monthly',
     badge: null,
-    defaultTrialLine: 'then £9.99/month',
+    defaultTrialLine: '7-day free trial, then £9.99/month',
   },
 };
+
+/** Format a trial period from RevenueCat's introPrice into a human-readable string.
+ *  Returns e.g. "7-day free trial" or "1-week free trial". */
+function formatTrialPeriod(introPrice) {
+  if (!introPrice || introPrice.price !== 0) return null; // not a free trial
+  const n = introPrice.periodNumberOfUnits || 0;
+  const unit = (introPrice.periodUnit || '').toLowerCase();
+  if (!n || !unit) return '7-day free trial';
+  if (unit === 'day')   return `${n}-day free trial`;
+  if (unit === 'week')  return n === 1 ? '1-week free trial' : `${n}-week free trial`;
+  if (unit === 'month') return n === 1 ? '1-month free trial' : `${n}-month free trial`;
+  return '7-day free trial';
+}
+
+/** Build display plans from RevenueCat offerings (native only).
+ *  Uses the App Store / Play Store priceString — always accurate and localised.
+ *  Also reads introPrice to show the correct trial period.
+ *  Falls back to hardcoded defaults for any plan not found in the offering. */
+function buildPlansFromRC(rcPackages) {
+  const findPkg = (key) => rcPackages?.find(p => {
+    const id = (p.identifier || '').toLowerCase();
+    const productId = (p.productId || '').toLowerCase();
+    if (key === 'monthly') return id === '$rc_monthly' || productId.includes('monthly');
+    if (key === 'annual') return id === '$rc_annual' || productId.includes('annual') || productId.includes('yearly');
+    if (key === 'lifetime') return id === 'lifetime' || id === '$rc_lifetime' || productId.includes('lifetime');
+    return false;
+  });
+
+  const plans = {};
+  for (const [key, meta] of Object.entries(PLAN_META)) {
+    const pkg = findPkg(key);
+    if (pkg) {
+      const trial = formatTrialPeriod(pkg.introPrice);
+      let sub = meta.defaultSub;
+      let trialLine = meta.defaultTrialLine;
+
+      if (key === 'annual') {
+        const monthlyAmount = pkg.price / 12;
+        const currencySymbol = (pkg.priceString || '').replace(/[\d.,\s]/g, '')[0] || '';
+        const monthlyStr = `${currencySymbol}${monthlyAmount.toFixed(2)}`;
+        sub = `${monthlyStr}/mo`;
+        trialLine = trial ? `${trial}, then ${pkg.priceString}/year` : `then ${pkg.priceString}/year`;
+      } else if (key === 'monthly') {
+        sub = 'Billed monthly';
+        trialLine = trial ? `${trial}, then ${pkg.priceString}/month` : `then ${pkg.priceString}/month`;
+      }
+
+      plans[key] = { ...meta, price: pkg.priceString, per: meta.per, sub, trialLine };
+    } else {
+      plans[key] = { ...meta, price: meta.defaultPrice, sub: meta.defaultSub, trialLine: meta.defaultTrialLine };
+    }
+  }
+  return plans;
+}
 
 /** Build display plans from server prices (admin-configured), with offline defaults.
  *  Apple requires the billed amount to be the most prominent pricing element,
@@ -113,22 +167,30 @@ export default function PaywallScreen({ navigation, route }) {
   const nextScreen = route?.params?.nextScreen || 'Home';
   const nextParams = route?.params?.nextParams || {};
 
-  // Fetch live prices from server on mount
+  // Fetch live prices from server on mount.
+  // On native, RevenueCat prices take priority for display — server prices are
+  // only stored here for coupon/promo calculations (e.g. showing the original price).
   useEffect(() => {
     getPrices().then(prices => {
       if (prices) {
         setServerPrices(prices);
-        setPlans(buildPlans(prices));
+        // Only drive the plan display from server prices on web (no RevenueCat)
+        if (!hasRevenueCat) {
+          setPlans(buildPlans(prices));
+        }
       }
     }).catch(() => {});
-  }, []);
+  }, [hasRevenueCat]);
 
-  // Fetch RevenueCat offerings on mount (native only)
+  // Fetch RevenueCat offerings on mount (native only).
+  // RC is the source of truth for displayed prices on native — prices come
+  // directly from the App Store / Play Store and are already localised.
   useEffect(() => {
     if (!hasRevenueCat) return;
     getSubscriptionOfferings().then(offerings => {
       if (offerings?.packages) {
         setRcOfferings(offerings.packages);
+        setPlans(buildPlansFromRC(offerings.packages));
       }
     }).catch(() => {});
   }, [hasRevenueCat]);
@@ -286,7 +348,7 @@ export default function PaywallScreen({ navigation, route }) {
         <View style={s.header}>
           <Text style={s.eyebrow}>ETAPA PELOTON</Text>
           <Text style={s.title}>Train smarter,{'\n'}start free.</Text>
-          <Text style={s.subtitle}>1 week free trial · No charge today</Text>
+          <Text style={s.subtitle}>7-day free trial · No charge today</Text>
         </View>
 
         {/* Plan cards */}
@@ -364,7 +426,7 @@ export default function PaywallScreen({ navigation, route }) {
           ) : (
             <>
               <Text style={s.ctaText}>
-                {plan.isLifetime ? 'Get lifetime access' : 'Try free for 1 week'}
+                {plan.isLifetime ? 'Get lifetime access' : 'Start 7-day free trial'}
               </Text>
               <Text style={s.ctaSub}>{plan.trialLine}</Text>
             </>
@@ -424,7 +486,7 @@ export default function PaywallScreen({ navigation, route }) {
         <Text style={s.legal}>
           {plan.isLifetime
             ? 'Lifetime access is a one-time purchase with no recurring charges.\n'
-            : 'Cancel anytime before your free trial ends and you won\'t be charged.\n'}
+            : 'Cancel anytime before your 7-day free trial ends and you won\'t be charged.\n'}
           16-day full refund on all purchases. Prices in GBP.
         </Text>
 
@@ -447,7 +509,7 @@ export default function PaywallScreen({ navigation, route }) {
         )}
 
         <Text style={s.aiDisclosure}>
-          {'\u2728'} All training plans and coaching are powered by AI (Anthropic Claude), drawing on established cycling training science. This is not medical advice — consult a doctor before starting any exercise programme.
+          All training plans and coaching are powered by AI (Anthropic Claude), drawing on established cycling training science. This is not medical advice — consult a doctor before starting any exercise programme.
         </Text>
       </ScrollView>
     </SafeAreaView>

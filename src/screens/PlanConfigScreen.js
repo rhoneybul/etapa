@@ -13,18 +13,35 @@ import WizardShell, { CheckCard } from '../components/WizardShell';
 import { savePlanConfig } from '../services/storageService';
 import { suggestWeeks } from '../services/planGenerator';
 import DatePicker from '../components/DatePicker';
-import { COACHES, DEFAULT_COACH_ID } from '../data/coaches';
+import { COACHES } from '../data/coaches';
 import analytics from '../services/analyticsService';
+import { getActivityIcon } from '../utils/sessionLabels';
 
 const FF = fontFamily;
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 7;
 
-const FITNESS_LEVEL_ICONS = {
-  beginner:     { name: 'bike', size: 22 },
-  intermediate: { name: 'speedometer-medium', size: 22 },
-  advanced:     { name: 'speedometer', size: 22 },
-  expert:       { name: 'trophy', size: 22 },
-};
+// Bars indicator: 1 bar = beginner … 4 bars = expert
+const LEVEL_BARS = { beginner: 1, intermediate: 2, advanced: 3, expert: 4 };
+function FitnessLevelBars({ level, selected }) {
+  const n = LEVEL_BARS[level] || 1;
+  return (
+    <View style={{ flexDirection: 'row', gap: 3, alignItems: 'flex-end' }}>
+      {[1, 2, 3, 4].map(i => (
+        <View
+          key={i}
+          style={{
+            width: 5,
+            height: 8 + i * 4,
+            borderRadius: 2,
+            backgroundColor: i <= n
+              ? (selected ? colors.primary : colors.textMid)
+              : (selected ? colors.primary + '30' : colors.border),
+          }}
+        />
+      ))}
+    </View>
+  );
+}
 
 const FITNESS_LEVELS = [
   {
@@ -54,7 +71,7 @@ const FITNESS_LEVELS = [
 ];
 
 const TRAINING_TYPES = [
-  { key: 'outdoor',  label: 'Outdoor rides',     short: 'Outdoor' },
+  { key: 'outdoor',  label: 'Outdoor rides',     short: 'Ride' },
   { key: 'indoor',   label: 'Indoor trainer',    short: 'Indoor' },
   { key: 'strength', label: 'Strength training', short: 'Strength' },
 ];
@@ -100,13 +117,15 @@ const DAYS = [
   { key: 'sunday',    short: 'SUN' },
 ];
 
+// Simplified palette: keep this screen to a single accent (alt pink)
+// to reduce the "rainbow" feel while retaining clear selection contrast.
 const TYPE_COLORS = {
-  outdoor:  '#E8458B',
-  indoor:   '#3B82F6',
-  strength: '#8B5CF6',
+  outdoor:  colors.primaryDark,
+  indoor:   colors.primaryDark,
+  strength: colors.primaryDark,
 };
 
-const CT_COLOR = '#06B6D4';
+const CT_COLOR = colors.primaryDark;
 
 const CYCLING_KEYS = TRAINING_TYPES.map(t => t.key);
 const isCyclingType = (key) => CYCLING_KEYS.includes(key);
@@ -132,7 +151,7 @@ export default function PlanConfigScreen({ navigation, route }) {
     weeks: existingConfig.weeks,
   } : null;
 
-  const [step, setStep] = useState(beginnerDefaults ? 3 : adjustmentDefaults ? 3 : 1); // Skip to day placement for adjustments
+  const [step, setStep] = useState(beginnerDefaults ? 3 : adjustmentDefaults ? 5 : 1); // adjustments skip to build week
   const [fitnessLevel, setFitnessLevel] = useState(
     adjustmentDefaults?.fitnessLevel || beginnerDefaults?.fitnessLevel || null
   );
@@ -148,7 +167,7 @@ export default function PlanConfigScreen({ navigation, route }) {
   // If there's no target date, we show a suggested duration pill as "selected".
   // Ensure `planWeeks` is actually set so Continue enables without extra taps.
   useEffect(() => {
-    if (step !== 4) return;
+    if (step !== 6) return;
     if (beginnerDefaults) return;
     if (goal?.targetDate) return;
     if (planWeeks) return;
@@ -171,8 +190,8 @@ export default function PlanConfigScreen({ navigation, route }) {
   // Currently selected activity type for tap-to-place
   const [selectedActivity, setSelectedActivity] = useState('outdoor');
 
-  // Coach selection
-  const [coachId, setCoachId] = useState(DEFAULT_COACH_ID);
+  // Coach selection — no default, user must make an explicit choice
+  const [coachId, setCoachId] = useState(null);
 
   // Activity search (for cross-training)
   const [activitySearch, setActivitySearch] = useState('');
@@ -185,17 +204,11 @@ export default function PlanConfigScreen({ navigation, route }) {
   const [showAddRecurring, setShowAddRecurring] = useState(false);
   const [recurringForm, setRecurringForm] = useState({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' });
 
-  // One-off planned rides (specific date, not recurring)
-  // Each: { id, date (ISO string), durationMins, distanceKm, elevationM, notes }
-  const [oneOffRides, setOneOffRides] = useState(
-    existingConfig?.oneOffRides || []
-  );
-  const [showAddOneOff, setShowAddOneOff] = useState(false);
-  const [oneOffForm, setOneOffForm] = useState({ date: '', durationMins: '', distanceKm: '', elevationM: '', notes: '' });
+  // One-off rides removed — pre-planned rides concept no longer shown in setup
 
-  // Long ride day — auto-detected from weekend assignments, user can override
+  // Long ride day — defaults to Saturday, user can override
   const [longRideDayOverride, setLongRideDayOverride] = useState(
-    existingConfig?.longRideDay || null
+    existingConfig?.longRideDay || 'saturday'
   );
 
   const toggleTrainingType = (type) => {
@@ -399,32 +412,6 @@ export default function PlanConfigScreen({ navigation, route }) {
     setRecurringRides(prev => prev.filter(r => r.id !== id));
   };
 
-  // ── One-off ride helpers ──
-  const addOneOffRide = () => {
-    if (!oneOffForm.date || !/^\d{4}-\d{2}-\d{2}$/.test(oneOffForm.date)) {
-      Alert.alert('Enter a date', 'Use YYYY-MM-DD format (e.g. 2026-04-09).');
-      return;
-    }
-    if (!oneOffForm.durationMins && !oneOffForm.distanceKm) {
-      Alert.alert('Add details', 'Enter at least a duration or distance.');
-      return;
-    }
-    const ride = {
-      id: Date.now().toString(36) + '_oo',
-      date: oneOffForm.date,
-      durationMins: oneOffForm.durationMins ? parseInt(oneOffForm.durationMins, 10) : null,
-      distanceKm: oneOffForm.distanceKm ? parseFloat(oneOffForm.distanceKm) : null,
-      elevationM: oneOffForm.elevationM ? parseInt(oneOffForm.elevationM, 10) : null,
-      notes: oneOffForm.notes || '',
-    };
-    setOneOffRides(prev => [...prev, ride]);
-    setOneOffForm({ date: '', durationMins: '', distanceKm: '', elevationM: '', notes: '' });
-    setShowAddOneOff(false);
-  };
-
-  const removeOneOffRide = (id) => {
-    setOneOffRides(prev => prev.filter(r => r.id !== id));
-  };
 
   // ── Long ride day — user must explicitly select ──
   const effectiveLongRideDay = longRideDayOverride || null;
@@ -480,13 +467,15 @@ export default function PlanConfigScreen({ navigation, route }) {
   const canContinue = () => {
     if (step === 1) return !!fitnessLevel;
     if (step === 2) return trainingTypes.length > 0;
-    if (step === 3) return !!effectiveLongRideDay && allPlaced;
-    if (step === 4) {
+    if (step === 3) return true; // organised rides are optional
+    if (step === 4) return !!effectiveLongRideDay;
+    if (step === 5) return allPlaced;
+    if (step === 6) {
       if (startDateChoice === 'custom' && !/^\d{4}-\d{2}-\d{2}$/.test(customStartDate)) return false;
       if (!goal.targetDate && !planWeeks) return false;
       return true;
     }
-    if (step === 5) return !!coachId;
+    if (step === 7) return !!coachId;
     return false;
   };
 
@@ -503,8 +492,9 @@ export default function PlanConfigScreen({ navigation, route }) {
         setDayActivities({});
         setSelectedActivity(trainingTypes[0] || 'outdoor');
       }
-      if (step === 3) analytics.events.configStepCompleted(3, { sessionsPerWeek: totalSessions, daysPlaced: Object.keys(dayActivities).length });
-      if (step === 4) analytics.events.configStepCompleted(4, { planWeeks, startDateChoice });
+      if (step === 5) analytics.events.configStepCompleted(3, { sessionsPerWeek: totalSessions, daysPlaced: Object.keys(dayActivities).length });
+      if (step === 6) analytics.events.configStepCompleted(4, { planWeeks, startDateChoice });
+      if (step === 7) analytics.events.configStepCompleted(5, { coachId });
       setStep(step + 1);
       return;
     }
@@ -531,7 +521,6 @@ export default function PlanConfigScreen({ navigation, route }) {
       crossTrainingDaysFull: crossTrainingDays,
       startDate: `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`,
       recurringRides,
-      oneOffRides,
       longRideDay: effectiveLongRideDay,
       ...(beginnerDefaults?.paymentStatus && { paymentStatus: beginnerDefaults.paymentStatus }),
       ...(adjustment && { adjustment, adjustmentData }),
@@ -570,11 +559,7 @@ export default function PlanConfigScreen({ navigation, route }) {
             >
               <View style={s.levelRow}>
                 <View style={[s.levelIconWrap, fitnessLevel === fl.key && s.levelIconWrapSelected]}>
-                  <MaterialCommunityIcons
-                    name={FITNESS_LEVEL_ICONS[fl.key].name}
-                    size={FITNESS_LEVEL_ICONS[fl.key].size}
-                    color={fitnessLevel === fl.key ? colors.primary : colors.textMuted}
-                  />
+                  <FitnessLevelBars level={fl.key} selected={fitnessLevel === fl.key} />
                 </View>
                 <View style={s.levelTextWrap}>
                   <Text style={[s.levelLabel, fitnessLevel === fl.key && s.levelLabelSelected]}>{fl.label}</Text>
@@ -608,46 +593,13 @@ export default function PlanConfigScreen({ navigation, route }) {
       );
     }
 
-    // ── Step 3: Build your week (unified activity placement) ────────────────
+    // ── Step 3: Organised rides ───────────────────────────────────────────────
     if (step === 3) {
-      const activeTypes = TRAINING_TYPES.filter(tt => trainingTypes.includes(tt.key));
-      const hasCrossTraining = Object.keys(crossTrainingDays).length > 0;
-
-      // Build the activity palette: cycling types (with remaining counts) + cross-training
-      const cyclingPalette = activeTypes.map(tt => ({
-        key: tt.key,
-        label: tt.short,
-        color: TYPE_COLORS[tt.key] || colors.primary,
-        isCycling: true,
-        target: sessionCounts[tt.key] || 0,
-        placed: placedByType[tt.key] || 0,
-      }));
-
-      // Get label for any activity key
-      const getActivityLabel = (key) => {
-        const tt = TRAINING_TYPES.find(t => t.key === key);
-        if (tt) return tt.short;
-        const ct = CROSS_TRAINING_TYPES.find(t => t.key === key);
-        return ct ? ct.label : key;
-      };
-      const getActivityColor = (key) => {
-        if (TYPE_COLORS[key]) return TYPE_COLORS[key];
-        return CT_COLOR;
-      };
-
-      // Count how many outdoor rides come from organised rides
-      const organisedOutdoorCount = recurringRides.length;
-
       return (
         <ScrollView showsVerticalScrollIndicator={false}>
-          {/* ── Organised rides (shown first) ── */}
           <View style={s.organisedSection}>
-            <View style={s.organisedHeader}>
-              <Text style={s.organisedHeading}>Organised rides</Text>
-              <Text style={s.organisedOptional}>optional</Text>
-            </View>
             <Text style={s.organisedHint}>
-              Got a regular group ride, club ride, or fixed session? Add it here and your plan will be built around it.
+              Got a regular group ride, club ride, or fixed session every week? Add it here and your plan will be built around it. You can skip this if you don't have any.
             </Text>
 
             {recurringRides.map(ride => (
@@ -688,46 +640,19 @@ export default function PlanConfigScreen({ navigation, route }) {
                 <View style={s.organisedFormInputRow}>
                   <View style={s.organisedFormInputGroup}>
                     <Text style={s.organisedFormInputLabel}>Duration</Text>
-                    <TextInput
-                      style={s.organisedFormInput}
-                      placeholder="mins"
-                      placeholderTextColor={colors.textFaint}
-                      keyboardType="numeric"
-                      value={recurringForm.durationMins}
-                      onChangeText={v => setRecurringForm(f => ({ ...f, durationMins: v }))}
-                    />
+                    <TextInput style={s.organisedFormInput} placeholder="mins" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={recurringForm.durationMins} onChangeText={v => setRecurringForm(f => ({ ...f, durationMins: v }))} />
                   </View>
                   <View style={s.organisedFormInputGroup}>
                     <Text style={s.organisedFormInputLabel}>Distance</Text>
-                    <TextInput
-                      style={s.organisedFormInput}
-                      placeholder="km"
-                      placeholderTextColor={colors.textFaint}
-                      keyboardType="numeric"
-                      value={recurringForm.distanceKm}
-                      onChangeText={v => setRecurringForm(f => ({ ...f, distanceKm: v }))}
-                    />
+                    <TextInput style={s.organisedFormInput} placeholder="km" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={recurringForm.distanceKm} onChangeText={v => setRecurringForm(f => ({ ...f, distanceKm: v }))} />
                   </View>
                   <View style={s.organisedFormInputGroup}>
                     <Text style={s.organisedFormInputLabel}>Elevation</Text>
-                    <TextInput
-                      style={s.organisedFormInput}
-                      placeholder="m"
-                      placeholderTextColor={colors.textFaint}
-                      keyboardType="numeric"
-                      value={recurringForm.elevationM}
-                      onChangeText={v => setRecurringForm(f => ({ ...f, elevationM: v }))}
-                    />
+                    <TextInput style={s.organisedFormInput} placeholder="m" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={recurringForm.elevationM} onChangeText={v => setRecurringForm(f => ({ ...f, elevationM: v }))} />
                   </View>
                 </View>
 
-                <TextInput
-                  style={s.organisedFormNotesInput}
-                  placeholder="Name or notes (e.g. 'Friday club ride with mates')"
-                  placeholderTextColor={colors.textFaint}
-                  value={recurringForm.notes}
-                  onChangeText={v => setRecurringForm(f => ({ ...f, notes: v }))}
-                />
+                <TextInput style={s.organisedFormNotesInput} placeholder="Name or notes (e.g. 'Friday club ride with mates')" placeholderTextColor={colors.textFaint} value={recurringForm.notes} onChangeText={v => setRecurringForm(f => ({ ...f, notes: v }))} />
 
                 <View style={s.organisedFormActions}>
                   <TouchableOpacity style={s.organisedFormCancelBtn} onPress={() => { setShowAddRecurring(false); setRecurringForm({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' }); }}>
@@ -741,146 +666,101 @@ export default function PlanConfigScreen({ navigation, route }) {
             ) : (
               <TouchableOpacity style={s.organisedAddTrigger} onPress={() => setShowAddRecurring(true)} activeOpacity={0.7}>
                 <Text style={s.organisedAddTriggerPlus}>+</Text>
-                <Text style={s.organisedAddTriggerText}>Add an organised ride</Text>
+                <Text style={s.organisedAddTriggerText}>Add a regular ride</Text>
               </TouchableOpacity>
             )}
           </View>
+        </ScrollView>
+      );
+    }
 
-          {/* ── One-off planned rides ── */}
-          <View style={s.organisedSection}>
-            <View style={s.organisedHeader}>
-              <Text style={s.organisedHeading}>Planned rides</Text>
-              <Text style={s.organisedOptional}>optional</Text>
-            </View>
-            <Text style={s.organisedHint}>
-              Got a specific ride on a set date? (e.g. sportive, big day out, charity ride). Add it and your coach will plan around it.
-            </Text>
-
-            {oneOffRides.map(ride => (
-              <View key={ride.id} style={s.organisedCard}>
-                <View style={s.organisedCardRow}>
-                  <View style={[s.organisedDayBadge, { backgroundColor: '#E8458B18' }]}>
-                    <Text style={[s.organisedDayBadgeText, { color: '#E8458B' }]}>
-                      {(() => {
-                        const [y, m, d] = ride.date.split('-').map(Number);
-                        const dt = new Date(y, m - 1, d);
-                        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                        return `${d} ${months[m - 1]}`;
-                      })()}
-                    </Text>
-                  </View>
-                  <View style={s.organisedCardDetails}>
-                    {ride.durationMins ? <Text style={s.organisedDetail}>{ride.durationMins} min</Text> : null}
-                    {ride.distanceKm ? <Text style={s.organisedDetail}>{ride.distanceKm} km</Text> : null}
-                    {ride.elevationM ? <Text style={s.organisedDetail}>{ride.elevationM}m elev</Text> : null}
-                  </View>
-                  <TouchableOpacity onPress={() => removeOneOffRide(ride.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Text style={s.organisedRemove}>{'\u00D7'}</Text>
-                  </TouchableOpacity>
-                </View>
-                {ride.notes ? <Text style={s.organisedNotes}>{ride.notes}</Text> : null}
-              </View>
-            ))}
-
-            {showAddOneOff ? (
-              <View style={s.organisedForm}>
-                <DatePicker
-                  label="Date"
-                  value={oneOffForm.date}
-                  onChange={v => setOneOffForm(f => ({ ...f, date: v }))}
-                />
-
-                <View style={s.organisedFormInputRow}>
-                  <View style={s.organisedFormInputGroup}>
-                    <Text style={s.organisedFormInputLabel}>Duration</Text>
-                    <TextInput
-                      style={s.organisedFormInput}
-                      placeholder="mins"
-                      placeholderTextColor={colors.textFaint}
-                      keyboardType="numeric"
-                      value={oneOffForm.durationMins}
-                      onChangeText={v => setOneOffForm(f => ({ ...f, durationMins: v }))}
-                    />
-                  </View>
-                  <View style={s.organisedFormInputGroup}>
-                    <Text style={s.organisedFormInputLabel}>Distance</Text>
-                    <TextInput
-                      style={s.organisedFormInput}
-                      placeholder="km"
-                      placeholderTextColor={colors.textFaint}
-                      keyboardType="numeric"
-                      value={oneOffForm.distanceKm}
-                      onChangeText={v => setOneOffForm(f => ({ ...f, distanceKm: v }))}
-                    />
-                  </View>
-                  <View style={s.organisedFormInputGroup}>
-                    <Text style={s.organisedFormInputLabel}>Elevation</Text>
-                    <TextInput
-                      style={s.organisedFormInput}
-                      placeholder="m"
-                      placeholderTextColor={colors.textFaint}
-                      keyboardType="numeric"
-                      value={oneOffForm.elevationM}
-                      onChangeText={v => setOneOffForm(f => ({ ...f, elevationM: v }))}
-                    />
-                  </View>
-                </View>
-
-                <TextInput
-                  style={s.organisedFormNotesInput}
-                  placeholder="Describe the ride (e.g. '200km sportive in the hills')"
-                  placeholderTextColor={colors.textFaint}
-                  value={oneOffForm.notes}
-                  onChangeText={v => setOneOffForm(f => ({ ...f, notes: v }))}
-                />
-
-                <View style={s.organisedFormActions}>
-                  <TouchableOpacity style={s.organisedFormCancelBtn} onPress={() => { setShowAddOneOff(false); setOneOffForm({ date: '', durationMins: '', distanceKm: '', elevationM: '', notes: '' }); }}>
-                    <Text style={s.organisedFormCancelText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={s.organisedFormAddBtn} onPress={addOneOffRide}>
-                    <Text style={s.organisedFormAddText}>Add ride</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <TouchableOpacity style={s.organisedAddTrigger} onPress={() => setShowAddOneOff(true)} activeOpacity={0.7}>
-                <Text style={s.organisedAddTriggerPlus}>+</Text>
-                <Text style={s.organisedAddTriggerText}>Add a planned ride</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* ── Long ride day — prominent step before the placement grid ── */}
-          <View style={s.divider} />
-          <Text style={s.placeLabel}>Select your day for your biggest ride</Text>
+    // ── Step 4: Long ride day ─────────────────────────────────────────────────
+    if (step === 4) {
+      return (
+        <ScrollView showsVerticalScrollIndicator={false}>
           <Text style={s.placeSub}>
-            Your coach will schedule your longest session here each week.
+            Which day will you do your longest ride each week? Your coach will schedule your biggest session here.
           </Text>
           <View style={s.longRideDayRow}>
             {DAYS.map(d => {
               const isSelected = effectiveLongRideDay === d.key;
+              // Highlight if a recurring ride is on this day
+              const hasRecurring = recurringRides.some(r => r.day === d.key);
               return (
                 <TouchableOpacity
                   key={d.key}
-                  style={[s.longRidePill, isSelected && s.longRidePillSelected]}
+                  style={[s.longRidePill, isSelected && s.longRidePillSelected, !isSelected && hasRecurring && s.longRidePillHint]}
                   onPress={() => handleSelectLongRideDay(d.key)}
                   activeOpacity={0.7}
                 >
                   <Text style={[s.longRidePillText, isSelected && s.longRidePillTextSelected]}>{d.short}</Text>
+                  {hasRecurring && !isSelected && <View style={s.longRidePillHintDot} />}
                 </TouchableOpacity>
               );
             })}
           </View>
+          {recurringRides.length > 0 && (
+            <Text style={s.longRideDayHint}>
+              Days with a dot already have a regular ride. You can pick the same day or a different one.
+            </Text>
+          )}
+        </ScrollView>
+      );
+    }
+
+    // ── Step 5: Build your week (unified activity placement) ──────────────────
+    if (step === 5) {
+      const activeTypes = TRAINING_TYPES.filter(tt => trainingTypes.includes(tt.key));
+      const hasCrossTraining = Object.keys(crossTrainingDays).length > 0;
+
+      // Build the activity palette: cycling types (with remaining counts) + cross-training
+      const cyclingPalette = activeTypes.map(tt => ({
+        key: tt.key,
+        label: tt.short,
+        color: TYPE_COLORS[tt.key] || colors.primary,
+        isCycling: true,
+        target: sessionCounts[tt.key] || 0,
+        placed: placedByType[tt.key] || 0,
+      }));
+
+      // Get label for any activity key
+      const getActivityLabel = (key) => {
+        const tt = TRAINING_TYPES.find(t => t.key === key);
+        if (tt) return tt.short;
+        const ct = CROSS_TRAINING_TYPES.find(t => t.key === key);
+        return ct ? ct.label : key;
+      };
+      const getActivityColor = (key) => {
+        if (TYPE_COLORS[key]) return TYPE_COLORS[key];
+        return CT_COLOR;
+      };
+
+      // Count how many outdoor rides come from organised rides
+      const organisedOutdoorCount = recurringRides.length;
+
+      return (
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Show a summary of organised rides + long ride day already set */}
+          {(recurringRides.length > 0 || effectiveLongRideDay) && (
+            <View style={s.buildWeekSummary}>
+              {recurringRides.length > 0 && (
+                <Text style={s.buildWeekSummaryText}>
+                  {recurringRides.length === 1
+                    ? `1 regular ride · ${DAYS.find(d => d.key === recurringRides[0].day)?.short}`
+                    : `${recurringRides.length} regular rides`}
+                </Text>
+              )}
+              {effectiveLongRideDay && (
+                <Text style={s.buildWeekSummaryText}>
+                  Long ride · {DAYS.find(d => d.key === effectiveLongRideDay)?.short}
+                </Text>
+              )}
+            </View>
+          )}
 
           {/* ── Activity palette ── */}
-          <View style={s.divider} />
-          <Text style={s.placeLabel}>Build your week</Text>
           <Text style={s.placeSub}>
-            Select an activity, then tap a day to place it. Tap a placed item to remove it. Place as many sessions as you like — you can stack multiple activities on one day.
-          </Text>
-          <Text style={s.placeSub}>
-            Place as many as you think you're capable of doing — and any other activities in your routine.
+            Select an activity, then tap a day to place it. Tap a placed item to remove it.
           </Text>
 
           {/* Search box for activities — above the palette */}
@@ -903,11 +783,11 @@ export default function PlanConfigScreen({ navigation, route }) {
               return (
                 <TouchableOpacity
                   key={cp.key}
-                  style={[s.palettePill, isSelected && s.palettePillSelected, isSelected && { borderColor: cp.color, backgroundColor: cp.color + '18' }]}
+                  style={[s.palettePill, isSelected && s.palettePillSelected, isSelected && { borderColor: cp.color, backgroundColor: cp.color + '30' }]}
                   onPress={() => setSelectedActivity(cp.key)}
                   activeOpacity={0.7}
                 >
-                  <View style={[s.paletteDot, { backgroundColor: cp.color }]} />
+                  <MaterialCommunityIcons name={getActivityIcon({ type: cp.key === 'strength' ? 'strength' : 'ride', subType: cp.key === 'indoor' ? 'indoor' : undefined, title: cp.key })} size={14} color={cp.color} />
                   <Text style={[s.paletteLabel, isSelected && { color: cp.color }]}>{cp.label}</Text>
                 </TouchableOpacity>
               );
@@ -927,11 +807,11 @@ export default function PlanConfigScreen({ navigation, route }) {
               return (
                 <TouchableOpacity
                   key={ct.key}
-                  style={[s.palettePill, isSelected && s.palettePillSelected, isSelected && { borderColor: CT_COLOR, backgroundColor: CT_COLOR + '18' }, isUsed && !isSelected && { borderColor: CT_COLOR + '66' }]}
+                  style={[s.palettePill, isSelected && s.palettePillSelected, isSelected && { borderColor: CT_COLOR, backgroundColor: CT_COLOR + '30' }, isUsed && !isSelected && { borderColor: CT_COLOR + '66' }]}
                   onPress={() => { setSelectedActivity(ct.key); setActivitySearch(''); }}
                   activeOpacity={0.7}
                 >
-                  <View style={[s.paletteDot, { backgroundColor: CT_COLOR }]} />
+                  <MaterialCommunityIcons name={getActivityIcon(ct.key)} size={14} color={CT_COLOR} />
                   <Text style={[s.paletteLabel, isSelected && { color: CT_COLOR }]}>{ct.label}</Text>
                 </TouchableOpacity>
               );
@@ -940,8 +820,14 @@ export default function PlanConfigScreen({ navigation, route }) {
 
           {/* Selected activity indicator */}
           {selectedActivity && (
-            <View style={[s.selectedIndicator, { borderColor: getActivityColor(selectedActivity) + '44' }]}>
-              <View style={[s.selectedIndicatorDot, { backgroundColor: getActivityColor(selectedActivity) }]} />
+            <View style={[s.selectedIndicator, { borderColor: getActivityColor(selectedActivity), backgroundColor: getActivityColor(selectedActivity) + '14' }]}>
+              <MaterialCommunityIcons
+                name={getActivityIcon(isCyclingType(selectedActivity)
+                  ? { type: selectedActivity === 'strength' ? 'strength' : 'ride', subType: selectedActivity === 'indoor' ? 'indoor' : undefined, title: selectedActivity }
+                  : selectedActivity)}
+                size={14}
+                color={getActivityColor(selectedActivity)}
+              />
               <Text style={[s.selectedIndicatorText, { color: getActivityColor(selectedActivity) }]}>
                 {getActivityLabel(selectedActivity)}
               </Text>
@@ -994,7 +880,13 @@ export default function PlanConfigScreen({ navigation, route }) {
                             onPress={(e) => { e.stopPropagation?.(); handleRemoveActivity(day.key, actKey); }}
                             activeOpacity={0.7}
                           >
-                            <View style={[s.stackDot, { backgroundColor: actColor }]} />
+                            <MaterialCommunityIcons
+                              name={getActivityIcon(isCyclingType(actKey)
+                                ? { type: actKey === 'strength' ? 'strength' : 'ride', subType: actKey === 'indoor' ? 'indoor' : undefined, title: actKey }
+                                : actKey)}
+                              size={12}
+                              color={actColor}
+                            />
                             <Text style={[s.stackLabel, { color: actColor }]} numberOfLines={1}>{displayLabel}</Text>
                             <Text style={[s.stackRemove, { color: actColor }]}>{'\u00D7'}</Text>
                           </TouchableOpacity>
@@ -1024,8 +916,8 @@ export default function PlanConfigScreen({ navigation, route }) {
       );
     }
 
-    // ── Step 4: Duration + start date ──────────────────────────────────────
-    if (step === 4) {
+    // ── Step 6: Duration + start date ──────────────────────────────────────
+    if (step === 6) {
       const hasTargetDate = !!goal.targetDate;
       const rawWeeks = planWeeks || suggestWeeks(goal, fitnessLevel, getChosenStartDate());
       const effectiveWeeks = (typeof rawWeeks === 'number' && !isNaN(rawWeeks) && rawWeeks > 0) ? rawWeeks : 8;
@@ -1112,8 +1004,8 @@ export default function PlanConfigScreen({ navigation, route }) {
       );
     }
 
-    // ── Step 5: Choose your coach ────────────────────────────────────────────
-    if (step === 5) {
+    // ── Step 7: Choose your coach ────────────────────────────────────────────
+    if (step === 7) {
       return (
         <ScrollView showsVerticalScrollIndicator={false}>
           {COACHES.map(coach => {
@@ -1141,14 +1033,9 @@ export default function PlanConfigScreen({ navigation, route }) {
                   <Text style={s.coachBio} numberOfLines={selected ? undefined : 2}>{coach.bio}</Text>
                   <View style={s.coachBadgeRow}>
                     <View style={s.coachLevelBadge}>
-                      <MaterialCommunityIcons
-                        name={coach.level === 'beginner' ? 'bike' : coach.level === 'intermediate' ? 'speedometer-medium' : 'speedometer'}
-                        size={12}
-                        color={colors.textMuted}
-                        style={{ marginRight: 4 }}
-                      />
-                      <Text style={s.coachLevelText}>
-                        {coach.level === 'beginner' ? 'Great for beginners'
+                      <FitnessLevelBars level={coach.level} selected={selected} />
+                      <Text style={[s.coachLevelText, selected && { color: colors.primary }]}>
+                        {coach.level === 'beginner' ? 'Beginner friendly'
                           : coach.level === 'intermediate' ? 'Intermediate+'
                           : 'Advanced+'}
                       </Text>
@@ -1170,6 +1057,7 @@ export default function PlanConfigScreen({ navigation, route }) {
         </ScrollView>
       );
     }
+
   };
 
   // ── Date helpers ──────────────────────────────────────────────────────────
@@ -1248,17 +1136,21 @@ export default function PlanConfigScreen({ navigation, route }) {
   const titles = {
     1: 'What\'s your current level?',
     2: 'What types of training?',
-    3: 'Plan your week',
-    4: goal.targetDate ? 'When should it start?' : 'Duration & start date',
-    5: 'Choose your coach',
+    3: 'Any regular rides?',
+    4: 'Your longest ride day',
+    5: 'Build your week',
+    6: goal.targetDate ? 'When should it start?' : 'Duration & start date',
+    7: 'Choose your coach',
   };
 
   const subtitles = {
     1: 'Be honest \u2014 this helps us set realistic targets',
     2: 'Choose as many as you like',
-    3: 'Add any fixed rides, set session counts, and place them on days',
-    4: goal.targetDate ? 'Pick a start date for your training plan' : 'How long and when to begin',
-    5: 'Pick a coaching personality that fits your style',
+    3: 'Group ride, club session, or anything else you do every week',
+    4: 'Your coach will schedule your longest ride here each week',
+    5: 'Tap a day to place sessions. Stack as many as you like.',
+    6: goal.targetDate ? 'Pick a start date for your training plan' : 'How long and when to begin',
+    7: 'Pick a coaching personality that fits your style',
   };
 
   return (
@@ -1272,6 +1164,8 @@ export default function PlanConfigScreen({ navigation, route }) {
       onContinue={handleContinue}
       continueLabel={step === TOTAL_STEPS ? 'Generate my plan' : 'Continue'}
       continueDisabled={!canContinue()}
+      skipLabel={step === 3 ? 'Skip — I don\'t have regular rides' : undefined}
+      onSkip={step === 3 ? () => setStep(4) : undefined}
     >
       {renderStep()}
     </WizardShell>
@@ -1331,7 +1225,7 @@ const s = StyleSheet.create({
   divider: { height: 1, backgroundColor: colors.border, marginVertical: 16 },
   placeLabel: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4, marginHorizontal: 4 },
   placeStatus: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, marginBottom: 14, marginHorizontal: 4 },
-  placeStatusOk: { color: '#E8458B' },
+  placeStatusOk: { color: colors.secondary },
   placeStatusPending: { color: colors.primary },
 
   // ── Activity palette ─────────────────────────────────────────────────────
@@ -1343,7 +1237,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
     backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border,
   },
-  palettePillSelected: { transform: [{ scale: 1.05 }] },
+  palettePillSelected: { transform: [{ scale: 1.05 }], borderWidth: 2 },
   paletteDot: { width: 6, height: 6, borderRadius: 3 },
   paletteLabel: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
   paletteBadge: { width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginLeft: 2 },
@@ -1378,7 +1272,7 @@ const s = StyleSheet.create({
     paddingVertical: 8, paddingHorizontal: 4,
   },
   dayShort: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
-  dayScheduledTag: { fontSize: 8, fontWeight: '600', fontFamily: FF.semibold, color: '#E8458B', letterSpacing: 0.3, marginBottom: 3, textTransform: 'uppercase' },
+  dayScheduledTag: { fontSize: 8, fontWeight: '600', fontFamily: FF.semibold, color: colors.secondary, letterSpacing: 0.3, marginBottom: 3, textTransform: 'uppercase' },
   dayRecurringName: { fontSize: 8, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, marginBottom: 3, textAlign: 'center', paddingHorizontal: 2 },
   dayStack: { width: '100%', alignItems: 'center', gap: 3 },
   stackPill: {
@@ -1392,7 +1286,7 @@ const s = StyleSheet.create({
   dayEmptyPlus: { fontSize: 22, color: colors.primary, fontWeight: '500', marginTop: 4 },
   dayHint: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, textAlign: 'center', marginTop: 4, marginBottom: 8 },
 
-  counterHintDone: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: '#E8458B', marginTop: 1 },
+  counterHintDone: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: colors.secondary, marginTop: 1 },
 
   // Cross-training info note
   crossTrainNote: {
@@ -1406,6 +1300,7 @@ const s = StyleSheet.create({
   sectionHeading: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
   sectionHint: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginBottom: 12, lineHeight: 19 },
 
+
   // ── Long ride day ──────────────────────────────────────────────────────
   longRideSection: { marginTop: 16 },
   longRideCard: {
@@ -1414,16 +1309,38 @@ const s = StyleSheet.create({
   },
   longRideCardTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
   longRideCardHint: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginBottom: 12, lineHeight: 19 },
-  longRideDayRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  longRideDayRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 12,
+  },
   longRideDayScroll: { marginTop: 4 },
   longRidePill: {
-    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, marginRight: 8,
-    backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border,
+    width: 68,
+    paddingVertical: 18, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.surface, borderWidth: 2, borderColor: colors.border,
   },
-  longRidePillSelected: { borderColor: colors.primary, backgroundColor: colors.primary + '14' },
-  longRidePillText: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMid },
-  longRidePillTextSelected: { color: colors.primary },
+  longRidePillSelected: {
+    borderColor: colors.primary, backgroundColor: colors.primary,
+    shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35, shadowRadius: 8, elevation: 4,
+  },
+  longRidePillHint: { borderColor: colors.primary + '66', backgroundColor: colors.primary + '08' },
+  longRidePillText: { fontSize: 13, fontWeight: '700', fontFamily: FF.semibold, color: colors.textMid, letterSpacing: 0.5 },
+  longRidePillTextSelected: { color: '#fff' },
+  longRidePillHintDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary, marginTop: 4 },
   longRideAutoTag: { fontSize: 9, fontWeight: '500', fontFamily: FF.medium, color: colors.textFaint, textAlign: 'center', marginTop: 2 },
+  longRideDayHint: { fontSize: 12, fontFamily: FF.regular, color: colors.textMuted, marginTop: 12, lineHeight: 17 },
+
+  // Build week summary strip
+  buildWeekSummary: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 16 },
+  buildWeekSummaryText: {
+    fontSize: 12, fontFamily: FF.medium, color: colors.primary,
+    backgroundColor: colors.primary + '14', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 4, overflow: 'hidden',
+  },
 
   // ── Organised rides ─────────────────────────────────────────────────
   organisedSection: { marginTop: 20, marginBottom: 8 },
@@ -1492,7 +1409,7 @@ const s = StyleSheet.create({
   durationPillText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
   durationPillTextActive: { color: colors.primary, fontWeight: '600' },
   beginnerDurationBadge: { alignSelf: 'flex-start', backgroundColor: 'rgba(232,69,139,0.12)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, marginBottom: 16 },
-  beginnerDurationText: { fontSize: 14, fontFamily: FF.semibold, color: '#E8458B' },
+  beginnerDurationText: { fontSize: 14, fontFamily: FF.semibold, color: colors.secondary },
 
   // ── Start date ─────────────────────────────────────────────────────────────
   startDateOption: {
@@ -1515,7 +1432,7 @@ const s = StyleSheet.create({
     marginTop: 6, alignSelf: 'flex-start',
     backgroundColor: 'rgba(232,69,139,0.12)', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8,
   },
-  recommendText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: '#E8458B' },
+  recommendText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.secondary },
 
   customDateWrap: { marginTop: 8, marginBottom: 8 },
   customDateHint: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 6, marginHorizontal: 4 },
@@ -1547,8 +1464,8 @@ const s = StyleSheet.create({
   coachTaglineSelected: { color: colors.primary },
   coachBio: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 17, marginTop: 4 },
   coachBadgeRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
-  coachLevelBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  coachLevelText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted },
+  coachLevelBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.bg, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  coachLevelText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, letterSpacing: 0.3 },
   coachQuote: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, fontStyle: 'italic', marginTop: 6, lineHeight: 17 },
   coachCheck: {
     width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primary,

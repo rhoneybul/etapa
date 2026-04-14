@@ -47,13 +47,13 @@ const RIDE_TEMPLATES = {
     subType: 'endurance',
     title: 'Long Ride',
     effort: 'easy',
-    description: 'Your longest ride of the week. Steady effort, practice fueling and pacing.',
+    description: 'Your longest ride of the week. Steady effort, focus on pacing.',
   },
   racePrep: {
     subType: 'tempo',
     title: 'Race-Pace Effort',
     effort: 'moderate',
-    description: 'Practice at your target race pace. Work on fueling strategy and pacing.',
+    description: 'Practice at your target race pace. Work on pacing.',
   },
   opener: {
     subType: 'intervals',
@@ -484,6 +484,8 @@ export function generatePlan(goal, config) {
       else a.scheduleType = 'planned';
     }
   });
+
+  // (Removed) Time off ranges filtering — kept the setup flow simple.
 
   // ── Resolve conflicts: organised > recurring > planned ──
   // If two activities land on the same day, remove the lower-priority one.

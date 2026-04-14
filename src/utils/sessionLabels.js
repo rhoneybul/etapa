@@ -5,6 +5,8 @@
  * and a colour that encodes its intensity at a glance.
  */
 
+import { colors } from '../theme';
+
 // ── Colour palette ──────────────────────────────────────────────────────────
 export const SESSION_COLORS = {
   easy:       '#22C55E', // green
@@ -12,8 +14,8 @@ export const SESSION_COLORS = {
   hard:       '#EF4444', // red
   max:        '#DC2626', // deep red
   recovery:   '#64748B', // slate
-  strength:   '#8B5CF6', // purple
-  indoor:     '#3B82F6', // blue
+  strength:   colors.secondaryMid, // steel blue
+  indoor:     colors.secondary,    // steel blue
   rest:       '#64748B', // slate
 };
 
@@ -146,7 +148,7 @@ export function getActivityIcon(activityOrCtKey) {
 }
 
 // ── Cross-training ──────────────────────────────────────────────────────────
-export const CROSS_TRAINING_COLOR = '#2563A0'; // unified blue
+export const CROSS_TRAINING_COLOR = colors.secondaryDark; // unified steel blue
 
 const CT_LABELS = {
   run: 'Run', trail_run: 'Trail Run', walk: 'Walk', hike: 'Hike',

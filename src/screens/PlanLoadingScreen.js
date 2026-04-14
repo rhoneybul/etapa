@@ -294,7 +294,7 @@ export default function PlanLoadingScreen({ navigation, route }) {
               <Text style={s.previewTitle}>Sessions being planned</Text>
               {previewActivities.map((a, i) => (
                 <View key={a.id || i} style={s.previewRow}>
-                  <View style={[s.previewDot, { backgroundColor: a.type === 'strength' ? '#8B5CF6' : colors.primary }]} />
+                  <View style={[s.previewDot, { backgroundColor: a.type === 'strength' ? '#2563EB' : colors.primary }]} />
                   <View style={s.previewContent}>
                     <Text style={s.previewName} numberOfLines={1}>{a.title}</Text>
                     <Text style={s.previewMeta}>

@@ -278,20 +278,7 @@ export default function WeekViewScreen({ navigation, route }) {
           </View>
         )}
 
-        {/* Compact coach assessment */}
-        {plan.assessment && week === 1 && (
-          <TouchableOpacity
-            style={s.assessBanner}
-            onPress={() => navigation.navigate('PlanOverview', { planId: plan.id })}
-            activeOpacity={0.8}
-          >
-            <View style={s.assessBannerLeft}>
-              <Text style={s.assessBannerChance}>{plan.assessment.successChance}%</Text>
-              <Text style={s.assessBannerLabel}>success</Text>
-            </View>
-            <Text style={s.assessBannerText} numberOfLines={2}>{plan.assessment.summary}</Text>
-          </TouchableOpacity>
-        )}
+        {/* Plan assessment removed (readiness % card) */}
 
         {/* Background adjusting banner */}
         {adjustingInBackground && (
