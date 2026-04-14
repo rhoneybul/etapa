@@ -1,6 +1,6 @@
 /**
  * Paywall screen — shown before plan generation.
- * Monthly: £9.99/mo · Annual: £79.99/yr (= £6.67/mo) · Lifetime: £99.99 · Starter: £14.99 · 1 week free trial.
+ * Monthly: £7.99/mo · Annual: £49.99/yr (= £4.17/mo) · Lifetime: £99.99 · Starter: £14.99 · 1 week free trial.
  *
  * Prices are fetched from the server (configured via the admin console).
  * Hardcoded defaults below are only used as a last-resort offline fallback.
@@ -21,6 +21,16 @@ const FF = fontFamily;
 // The defaultPrice / defaultSub / defaultTrialLine values are only used
 // as an offline fallback if the server can't be reached.
 const PLAN_META = {
+  starter: {
+    id: 'starter',
+    label: 'Starter',
+    defaultPrice: '£14.99',
+    per: '',
+    defaultSub: 'One-time payment · 3 months access',
+    badge: null,
+    defaultTrialLine: 'One-time payment · No recurring charges',
+    isStarter: true,
+  },
   lifetime: {
     id: 'lifetime',
     label: 'Lifetime',
@@ -34,20 +44,20 @@ const PLAN_META = {
   annual: {
     id: 'annual',
     label: 'Annual',
-    defaultPrice: '£79.99',
+    defaultPrice: '£49.99',
     per: '/yr',
-    defaultSub: '£6.67/mo',
+    defaultSub: '£4.17/mo',
     badge: 'MOST POPULAR',
-    defaultTrialLine: '7-day free trial, then £79.99/year',
+    defaultTrialLine: '7-day free trial, then £49.99/year',
   },
   monthly: {
     id: 'monthly',
     label: 'Monthly',
-    defaultPrice: '£9.99',
+    defaultPrice: '£7.99',
     per: '/mo',
     defaultSub: 'Billed monthly',
     badge: null,
-    defaultTrialLine: '7-day free trial, then £9.99/month',
+    defaultTrialLine: '7-day free trial, then £7.99/month',
   },
 };
 

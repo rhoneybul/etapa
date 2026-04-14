@@ -44,8 +44,8 @@ const LIFETIME_END = '2099-12-31T23:59:59.000Z';
 
 // ── Default prices (used when no pricing_config is set in the admin console) ──
 const DEFAULT_PRICES = {
-  monthly:  { amount: 999,  currency: 'gbp', formatted: '£9.99',  interval: 'month', billedLabel: 'Billed monthly' },
-  annual:   { amount: 7999, currency: 'gbp', formatted: '£79.99', interval: 'year',  perMonth: '£6.67', billedLabel: 'Billed £79.99/year' },
+  monthly:  { amount: 799,  currency: 'gbp', formatted: '£7.99',  interval: 'month', billedLabel: 'Billed monthly' },
+  annual:   { amount: 4999, currency: 'gbp', formatted: '£49.99', interval: 'year',  perMonth: '£4.17', billedLabel: 'Billed £49.99/year' },
   lifetime: { amount: 9999, currency: 'gbp', formatted: '£99.99', interval: null },
   starter:  { amount: 1499, currency: 'gbp', formatted: '£14.99', interval: null },
 };
