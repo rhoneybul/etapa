@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 # Usage:
-#   ./scripts/release.sh          → bumps patch (1.0.0 → 1.0.1)
-#   ./scripts/release.sh minor    → bumps minor (1.0.0 → 1.1.0)
-#   ./scripts/release.sh major    → bumps major (1.0.0 → 2.0.0)
+#   ./scripts/release.sh          → bumps patch (0.7.2 → 0.7.3)
+#   ./scripts/release.sh minor    → bumps minor (0.7.2 → 0.8.0)
+#   ./scripts/release.sh major    → bumps major (0.7.2 → 1.0.0)
+#
+# app.json is the single source of truth for the version number.
+# eas.json uses appVersionSource: "local" so EAS reads it directly.
 
 set -e
 
 BUMP=${1:-patch}
 APP_JSON="$(cd "$(dirname "$0")/.." && pwd)/app.json"
 
-# Read current version
+# Read current version from app.json (single source of truth)
 CURRENT=$(node -p "require('$APP_JSON').expo.version")
 echo "Current version: $CURRENT"
 
@@ -44,15 +47,18 @@ git add "$APP_JSON"
 git commit -m "chore: bump version to $NEW_VERSION"
 
 echo ""
-echo "Building + submitting to test flight"
+echo "Building + submitting to TestFlight (iOS)"
 echo ""
 
 # Build and auto-submit to TestFlight
 npx eas build --platform ios --profile production --auto-submit
 
 echo ""
-echo "Building + submitting to play store"
+echo "Building + submitting to Play Store (Android)"
 echo ""
 
-# Build and auto-submit to TestFlight
+# Build and auto-submit to Play Store
 npx eas build --platform android --profile production --auto-submit
+
+echo ""
+echo "✅ Released $NEW_VERSION"
