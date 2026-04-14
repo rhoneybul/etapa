@@ -150,8 +150,8 @@ export async function getSubscriptionOfferings() {
  * @returns {{ success: boolean, cancelled?: boolean, error?: string }}
  */
 export async function openCheckout(plan, rcPackage = null, promoCode = null) {
-  // ── iOS: must use RevenueCat / App Store IAP (Apple requirement) ──────────
-  if (Platform.OS === 'ios') {
+  // ── Native (iOS & Android): use RevenueCat / App Store / Play Store IAP ──
+  if (Platform.OS === 'ios' || Platform.OS === 'android') {
     if (!isRevenueCatAvailable()) {
       return { success: false, error: 'In-app purchases are temporarily unavailable. Please check your connection and try again.' };
     }
@@ -160,37 +160,6 @@ export async function openCheckout(plan, rcPackage = null, promoCode = null) {
     }
     const result = await purchasePackage(rcPackage);
     return result;
-  }
-
-  // ── Android: use Stripe Checkout via in-app browser ───────────────────────
-  // Uses the same openAuthSessionAsync pattern as Strava OAuth — the browser
-  // intercepts the etapa://stripe/success deep link and returns it to the app.
-  if (Platform.OS === 'android') {
-    const redirectBase = 'etapa://stripe';
-    const data = await authRequest('POST', '/api/stripe/create-checkout-session', { plan, redirectBase, promoCode });
-    if (!data?.url) throw new Error('Could not create checkout session. Please try again.');
-
-    const result = await WebBrowser.openAuthSessionAsync(data.url, 'etapa://stripe/success');
-
-    if (result.type !== 'success') {
-      // User closed the browser without completing payment
-      return { success: false, cancelled: true };
-    }
-
-    // Extract session_id from the deep link and verify with the server
-    try {
-      const url = new URL(result.url);
-      const sessionId = url.searchParams.get('session_id');
-      if (!sessionId) return { success: false, error: 'No session ID returned' };
-
-      const verified = await authRequest('POST', '/api/stripe/verify-session', { sessionId });
-      if (verified?.ok) {
-        return { success: true };
-      }
-      return { success: false, error: 'Payment could not be verified. Please restore purchases or contact support.' };
-    } catch {
-      return { success: false, error: 'Something went wrong verifying your payment.' };
-    }
   }
 
   // ── Web: use Stripe Checkout ──────────────────────────────────────────────

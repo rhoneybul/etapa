@@ -106,8 +106,8 @@ export default function PaywallScreen({ navigation, route }) {
   const [redeeming, setRedeeming] = useState(false);
 
   const isNative = Platform.OS !== 'web';
-  // RevenueCat is only used on iOS — Android goes through Stripe for now
-  const hasRevenueCat = Platform.OS === 'ios' && isRevenueCatAvailable();
+  // RevenueCat handles native purchases on both iOS and Android
+  const hasRevenueCat = isNative && isRevenueCatAvailable();
 
   // Where to go after successful subscription (default: Home)
   const nextScreen = route?.params?.nextScreen || 'Home';

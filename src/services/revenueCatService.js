@@ -25,7 +25,8 @@ if (Platform.OS !== 'web') {
 
 // ── Configuration ──────────────────────────────────────────────────────────────
 
-const RC_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY || 'test_DqQuhwGTMtAqxndAxlWKFSzvDYH';
+const RC_IOS_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY || 'test_DqQuhwGTMtAqxndAxlWKFSzvDYH';
+const RC_ANDROID_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY || 'YOUR_GOOGLE_PLAY_RC_KEY';
 const ENTITLEMENT_ID = 'pro';
 
 let isConfigured = false;
@@ -38,12 +39,8 @@ export async function configureRevenueCat(userId) {
   if (!PURCHASES_AVAILABLE || isConfigured) return;
 
   try {
-    if (Platform.OS === 'ios') {
-      Purchases.configure({ apiKey: RC_API_KEY, appUserID: userId || null });
-    } else if (Platform.OS === 'android') {
-      // Use the same key if you have a single RC project, or swap for a Google-specific key
-      Purchases.configure({ apiKey: RC_API_KEY, appUserID: userId || null });
-    }
+    const apiKey = Platform.OS === 'ios' ? RC_IOS_API_KEY : RC_ANDROID_API_KEY;
+    Purchases.configure({ apiKey, appUserID: userId || null });
     isConfigured = true;
     console.log('[RevenueCat] Configured for', Platform.OS);
   } catch (err) {

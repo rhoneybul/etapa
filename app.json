@@ -18,7 +18,8 @@
       "icon": "./assets/icons/ios/AppIcon-1024.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "buildNumber": "2"
     },
     "android": {
       "adaptiveIcon": {
