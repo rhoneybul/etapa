@@ -34,14 +34,22 @@ esac
 NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 echo "New version:     $NEW_VERSION"
 
-# Write new version into app.json
+# Write new version + bump native build numbers into app.json
 node -e "
   const fs = require('fs');
   const path = '$APP_JSON';
   const json = JSON.parse(fs.readFileSync(path, 'utf8'));
   json.expo.version = '$NEW_VERSION';
+  // Bump Android versionCode (required by Google Play for every submission)
+  const oldVC = json.expo.android.versionCode || 0;
+  json.expo.android.versionCode = oldVC + 1;
+  // Bump iOS buildNumber to stay in sync
+  const oldBN = parseInt(json.expo.ios.buildNumber || '0', 10);
+  json.expo.ios.buildNumber = String(oldBN + 1);
   fs.writeFileSync(path, JSON.stringify(json, null, 2) + '\n');
   console.log('app.json updated');
+  console.log('  android.versionCode: ' + oldVC + ' → ' + json.expo.android.versionCode);
+  console.log('  ios.buildNumber:     ' + oldBN + ' → ' + json.expo.ios.buildNumber);
 "
 
 # Commit the bump
