@@ -49,7 +49,7 @@ let _pricesCacheTime = 0;
 const PRICES_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 /**
- * Fetch live prices from the server (Stripe).
+ * Fetch live prices from the server (app-configured pricing).
  * Cached for 1 hour in memory.
  * Returns { monthly, annual, lifetime, starter } with amount, formatted, etc.
  */
@@ -59,7 +59,9 @@ export async function getPrices(forceRefresh = false) {
     return _pricesCache;
   }
 
-  const data = await authRequest('GET', '/api/stripe/prices');
+  // Public endpoint so pricing does not depend on Stripe.
+  // Sourced from app_config.pricing_config (server-side), with sensible defaults.
+  const data = await authRequest('GET', '/api/public/prices');
   if (data && !data.error) {
     _pricesCache = data;
     _pricesCacheTime = now;

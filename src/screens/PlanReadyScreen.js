@@ -58,10 +58,19 @@ const SESSION_THINKING = {
   Moderate:  (n) => ({ label: `${n} steady ride${n > 1 ? 's' : ''} each week`,    reason: 'accumulates aerobic volume at a pace you can sustain without accumulating excess fatigue' }),
   Ride:      (n) => ({ label: `${n} ride${n > 1 ? 's' : ''} each week`,           reason: 'builds base fitness and time in the saddle at a sustainable pace' }),
 };
+// Simplified to the core palette only: pink for rides, blue for indoor/strength, slate for recovery.
+// No amber, no green — keeps the screen calm and on-brand.
 const SESSION_COLORS = {
-  Long: colors.primary, Tempo: '#2563EB', Intervals: '#EF4444',
-  Recovery: '#64748B',  Indoor: '#3B82F6', Strength: '#2563EB',
-  Hills: '#F59E0B',     Easy: '#22C55E',   Moderate: '#E8458B', Ride: colors.primary,
+  Long:      colors.primary,
+  Tempo:     colors.primary,
+  Intervals: colors.primary,
+  Hills:     colors.primary,
+  Easy:      colors.primary,
+  Moderate:  colors.primary,
+  Ride:      colors.primary,
+  Indoor:    colors.secondary,
+  Strength:  colors.secondary,
+  Recovery:  colors.slate,
 };
 
 function deriveKeyThinking(plan) {
@@ -234,86 +243,79 @@ export default function PlanReadyScreen({ navigation, route }) {
             </View>
           </Animated.View>
 
-          {/* Breakdown */}
-          <Animated.View style={[s.breakdownCard, { opacity: statsFade }]}>
-            {totalRides > 0 && (
-              <View style={s.breakdownRow}>
-                <MaterialCommunityIcons name={getBreakdownIcon('ride')} size={14} color={colors.primary} />
-                <Text style={s.breakdownLabel}>{totalRides} ride{totalRides !== 1 ? 's' : ''}</Text>
-              </View>
-            )}
-            {totalStrength > 0 && (
-              <View style={s.breakdownRow}>
-                <MaterialCommunityIcons name={getBreakdownIcon('strength')} size={14} color={colors.primary} />
-                <Text style={s.breakdownLabel}>{totalStrength} strength session{totalStrength !== 1 ? 's' : ''}</Text>
-              </View>
-            )}
-            <View style={s.breakdownRow}>
-              <MaterialCommunityIcons name={getBreakdownIcon('recovery')} size={14} color={colors.textMuted} />
-              <Text style={s.breakdownLabel}>{Math.floor(plan.weeks / 4)} recovery week{Math.floor(plan.weeks / 4) !== 1 ? 's' : ''} built in</Text>
-            </View>
-          </Animated.View>
-
-          {/* Mini volume chart */}
-          <Animated.View style={[s.chartCard, { opacity: chartFade }]}>
-            <Text style={s.chartTitle}>Weekly volume build-up</Text>
-            <View style={s.chartArea}>
-              {weekVolumes.map((v, i) => {
-                const h = maxKm > 0 ? Math.max(4, (v.totalKm / maxKm) * 80) : 4;
-                const isDeload = (i + 1) % 4 === 0;
-                return (
-                  <View key={i} style={s.chartCol}>
-                    <View style={[
-                      s.chartBar,
-                      { height: h },
-                      isDeload && s.chartBarDeload,
-                    ]} />
-                  </View>
-                );
-              })}
-            </View>
-            {/* Date labels along x-axis */}
-            <View style={s.chartDateRow}>
-              {weekVolumes.map((_, i) => {
-                const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                const weekStart = new Date(start);
-                weekStart.setDate(weekStart.getDate() + i * 7);
-                // Show label for first, last, and every ~4 weeks
-                const showLabel = i === 0 || i === plan.weeks - 1 || (i > 0 && i < plan.weeks - 1 && (i + 1) % 4 === 0);
-                const label = `${weekStart.getDate()} ${months[weekStart.getMonth()]}`;
-                return (
-                  <View key={i} style={s.chartDateCol}>
-                    {showLabel ? <Text style={s.chartDateLabel}>{label}</Text> : null}
-                  </View>
-                );
-              })}
-            </View>
-          </Animated.View>
-
-          {/* Key thinking — always derived from plan data, no LLM needed */}
+          {/* ── The thinking behind your plan ──────────────────────────────
+              One consolidated card: intro (from/to), session rationales,
+              recovery weeks, and the weekly volume chart. */}
           {plan && (() => {
             const thinking = deriveKeyThinking(plan);
-            if (!thinking.length) return null;
+            const deloadWeeks = Math.floor(plan.weeks / 4);
+            const goalDist = goal?.targetDistance ? `${goal.targetDistance} ${distanceLabel(units)}` : null;
+            // Intro: what the plan builds from and to
+            let intro;
+            if (goalDist) {
+              intro = `Over ${plan.weeks} weeks, this plan builds from your current fitness toward your ${goalDist} goal — balancing hard work with the recovery your body needs to adapt.`;
+            } else {
+              intro = `Over ${plan.weeks} weeks, this plan progresses your fitness gradually — balancing hard work with the recovery your body needs to adapt.`;
+            }
             return (
-              <View style={s.assessCard}>
+              <Animated.View style={[s.assessCard, { opacity: statsFade }]}>
                 <Text style={s.assessTitle}>The thinking behind your plan</Text>
+                <Text style={s.thinkingIntro}>{intro}</Text>
+
                 {thinking.map((item, i) => (
                   <View key={i} style={s.thinkingRow}>
-                    <MaterialCommunityIcons
-                      name={getSuggestIcon((item.label || '').toLowerCase().includes('strength') ? 'strength'
-                        : (item.label || '').toLowerCase().includes('indoor') ? 'training'
-                          : (item.label || '').toLowerCase().includes('recovery') ? 'recovery'
-                            : 'training')}
-                      size={14}
-                      color={colors.textMid}
-                    />
+                    <View style={[s.thinkingDot, { backgroundColor: item.color }]} />
                     <View style={s.thinkingTextWrap}>
                       <Text style={s.thinkingLabel}>{item.label}</Text>
                       <Text style={s.thinkingReason}>{item.reason}</Text>
                     </View>
                   </View>
                 ))}
-              </View>
+
+                {/* Recovery weeks as a first-class factor */}
+                {deloadWeeks > 0 && (
+                  <View style={s.thinkingRow}>
+                    <View style={[s.thinkingDot, { backgroundColor: colors.slate }]} />
+                    <View style={s.thinkingTextWrap}>
+                      <Text style={s.thinkingLabel}>
+                        {deloadWeeks} recovery week{deloadWeeks !== 1 ? 's' : ''} built in
+                      </Text>
+                      <Text style={s.thinkingReason}>
+                        every fourth week drops the volume — your body adapts and absorbs the training gains
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Volume chart — stays visible, inside the same pane */}
+                <View style={s.chartDivider} />
+                <Text style={s.chartTitle}>Weekly volume build-up</Text>
+                <View style={s.chartArea}>
+                  {weekVolumes.map((v, i) => {
+                    const h = maxKm > 0 ? Math.max(4, (v.totalKm / maxKm) * 80) : 4;
+                    const isDeload = (i + 1) % 4 === 0;
+                    return (
+                      <View key={i} style={s.chartCol}>
+                        <View style={[s.chartBar, { height: h }, isDeload && s.chartBarDeload]} />
+                      </View>
+                    );
+                  })}
+                </View>
+                <View style={s.chartDateRow}>
+                  {weekVolumes.map((_, i) => {
+                    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                    const weekStart = new Date(start);
+                    weekStart.setDate(weekStart.getDate() + i * 7);
+                    const showLabel = i === 0 || i === plan.weeks - 1 || (i > 0 && i < plan.weeks - 1 && (i + 1) % 4 === 0);
+                    const label = `${weekStart.getDate()} ${months[weekStart.getMonth()]}`;
+                    return (
+                      <View key={i} style={s.chartDateCol}>
+                        {showLabel ? <Text style={s.chartDateLabel}>{label}</Text> : null}
+                      </View>
+                    );
+                  })}
+                </View>
+              </Animated.View>
             );
           })()}
 
@@ -563,6 +565,8 @@ const s = StyleSheet.create({
   thinkingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 14 },
   // Kept for compatibility with older layouts (now using icons).
   thinkingDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4, flexShrink: 0 },
+  thinkingIntro: { fontSize: 13, fontFamily: FF.regular, color: colors.textMid, lineHeight: 20, marginBottom: 16 },
+  chartDivider: { height: 1, backgroundColor: colors.border, marginTop: 4, marginBottom: 16 },
   thinkingTextWrap: { flex: 1 },
   thinkingLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 3 },
   thinkingReason: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 19 },

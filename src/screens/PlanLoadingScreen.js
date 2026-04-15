@@ -204,8 +204,7 @@ export default function PlanLoadingScreen({ navigation, route }) {
       coachId: config.coachId,
     });
 
-    handleProgress('Plan ready!');
-    await new Promise(r => setTimeout(r, 500));
+    // Navigate straight to PlanReady — no "Plan ready!" flash in between
     if (mountedRef.current) {
       navigation.replace('PlanReady', { planId: plan.id, requirePaywall: !!requirePaywall });
     }

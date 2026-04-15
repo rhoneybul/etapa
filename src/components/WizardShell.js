@@ -6,6 +6,7 @@
 import React from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, SafeAreaView,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { colors, fontFamily } from '../theme';
 
@@ -29,7 +30,10 @@ export default function WizardShell({
   const pct = totalSteps > 0 ? (step / totalSteps) * 100 : 0;
 
   return (
-    <View style={s.container}>
+    <KeyboardAvoidingView
+      style={s.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <SafeAreaView style={s.safe}>
         {/* Top bar: back, progress, close */}
         <View style={s.topBar}>
@@ -76,7 +80,7 @@ export default function WizardShell({
           )}
         </View>
       </SafeAreaView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

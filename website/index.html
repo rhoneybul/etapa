@@ -433,6 +433,104 @@
       font-size: 13px; color: #555; font-weight: 300;
     }
 
+    /* ── Beginner program ── */
+    .beginner {
+      padding: 120px 48px;
+      border-top: 1px solid #111;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .beginner-wrap {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
+    }
+    .beginner-left .beginner-badge {
+      display: inline-block;
+      background: rgba(232,69,139,0.12);
+      border: 1px solid rgba(232,69,139,0.25);
+      border-radius: 100px;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #E8458B;
+      letter-spacing: 0.8px;
+      margin-bottom: 20px;
+    }
+    .beginner h2 {
+      font-size: 44px; font-weight: 700; line-height: 1.15;
+      margin-bottom: 20px;
+    }
+    .beginner-lead {
+      font-size: 17px; color: #aaa; font-weight: 300; line-height: 1.6;
+      margin-bottom: 28px;
+    }
+    .beginner-goals {
+      display: flex; gap: 10px; margin-bottom: 32px; flex-wrap: wrap;
+    }
+    .beginner-goal {
+      background: #0a0a0a; border: 1px solid #222;
+      border-radius: 12px; padding: 14px 18px;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .beginner-goal-km {
+      font-size: 20px; font-weight: 700; color: #E8458B;
+    }
+    .beginner-goal-label {
+      font-size: 12px; color: #888; font-weight: 400;
+    }
+    .beginner-features {
+      list-style: none; display: flex; flex-direction: column; gap: 14px;
+    }
+    .beginner-features li {
+      display: flex; align-items: flex-start; gap: 12px;
+      font-size: 15px; color: #bbb; font-weight: 300; line-height: 1.5;
+    }
+    .beginner-features li::before {
+      content: '✓'; color: #E8458B; font-weight: 700; font-size: 14px;
+      flex-shrink: 0; margin-top: 2px;
+    }
+    .beginner-right {
+      background: linear-gradient(180deg, rgba(232,69,139,0.06) 0%, #0a0a0a 60%);
+      border: 1px solid rgba(232,69,139,0.2);
+      border-radius: 24px;
+      padding: 48px 36px;
+      position: relative;
+      overflow: hidden;
+    }
+    .beginner-right-label {
+      font-size: 11px; font-weight: 600; letter-spacing: 1.2px;
+      color: #E8458B; text-transform: uppercase; margin-bottom: 12px;
+    }
+    .beginner-right h3 {
+      font-size: 28px; font-weight: 700; margin-bottom: 10px;
+    }
+    .beginner-right-sub {
+      font-size: 15px; color: #888; font-weight: 300; line-height: 1.6;
+      margin-bottom: 28px;
+    }
+    .beginner-weeks {
+      display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;
+      margin-bottom: 24px;
+    }
+    .beginner-week {
+      aspect-ratio: 1;
+      background: rgba(232,69,139,0.1);
+      border: 1px solid rgba(232,69,139,0.2);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 600; color: #E8458B;
+    }
+    .beginner-included {
+      font-size: 13px; color: #999; font-weight: 300;
+      padding-top: 20px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .beginner-included strong {
+      color: #E8458B; font-weight: 600;
+    }
+
     /* ── CTA ── */
     .cta {
       padding: 120px 48px;
@@ -493,6 +591,11 @@
       .coach-list { align-items: center; }
       .coaches-visual .phone:nth-child(2) { display: none; }
 
+      .beginner { padding: 80px 24px; }
+      .beginner-wrap { grid-template-columns: 1fr; gap: 40px; }
+      .beginner h2 { font-size: 36px; }
+      .beginner-goals { justify-content: center; }
+
       .showcase { padding: 80px 0; }
       .showcase-scroll { padding: 0 24px; }
 
@@ -525,8 +628,8 @@
     </a>
     <div class="nav-links">
       <a href="#how-it-works">How It Works</a>
+      <a href="#beginner">Get into Cycling</a>
       <a href="#features">Features</a>
-      <a href="#ai">AI & Science</a>
       <a href="#coaches">Coaches</a>
       <a href="#pricing">Pricing</a>
       <a href="support.html">Support</a>
@@ -820,6 +923,97 @@
     </div>
   </section>
 
+  <!-- Get into Cycling — Beginner Program -->
+  <section class="beginner" id="beginner">
+    <div class="beginner-wrap">
+      <div class="beginner-left">
+        <div class="beginner-badge">BEGINNER FRIENDLY</div>
+        <h2>Get into<br><span style="color:#E8458B">Cycling</span></h2>
+        <p class="beginner-lead">
+          Never trained before? No problem. Our 12-week beginner program is designed to get you riding regularly and loving it. No experience needed — just a bike and some enthusiasm.
+        </p>
+
+        <div class="beginner-goals">
+          <div class="beginner-goal">
+            <span class="beginner-goal-km">25 km</span>
+            <span class="beginner-goal-label">Build a habit</span>
+          </div>
+          <div class="beginner-goal">
+            <span class="beginner-goal-km">50 km</span>
+            <span class="beginner-goal-label">Build endurance</span>
+          </div>
+          <div class="beginner-goal">
+            <span class="beginner-goal-km">100 km</span>
+            <span class="beginner-goal-label">First century</span>
+          </div>
+        </div>
+
+        <ul class="beginner-features">
+          <li>A gentle, progressive 12-week plan tailored to your schedule</li>
+          <li>Clear ride instructions with no jargon — perfect for beginners</li>
+          <li>Built-in tips on nutrition, hydration, gear, and bike setup</li>
+          <li>AI coach to answer any question — from saddle height to fueling</li>
+          <li>Works with any bike: road, e-bike, mountain, or gravel</li>
+          <li>Progress toward your chosen goal distance, at your own pace</li>
+        </ul>
+      </div>
+
+      <div class="beginner-right">
+        <div class="beginner-right-label">YOUR 12-WEEK JOURNEY</div>
+        <h3>Week by Week,<br>Ride by Ride</h3>
+        <p class="beginner-right-sub">Each week builds on the last. We start easy and gradually increase distance and intensity so you arrive at your goal feeling strong and confident.</p>
+        <div class="beginner-weeks">
+          <div class="beginner-week">W1</div>
+          <div class="beginner-week">W2</div>
+          <div class="beginner-week">W3</div>
+          <div class="beginner-week">W4</div>
+          <div class="beginner-week">W5</div>
+          <div class="beginner-week">W6</div>
+          <div class="beginner-week">W7</div>
+          <div class="beginner-week">W8</div>
+          <div class="beginner-week">W9</div>
+          <div class="beginner-week">W10</div>
+          <div class="beginner-week">W11</div>
+          <div class="beginner-week">W12</div>
+        </div>
+
+        <!-- Beginner tips -->
+        <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px;">
+          <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px 16px;">
+            <div style="font-size:13px;font-weight:600;color:#E8458B;margin-bottom:4px;">What to expect</div>
+            <div style="font-size:12px;color:#999;font-weight:300;line-height:1.5;">You don't need to be fit to start — that's what the plan is for. We'll ease you in gently, building up distance and confidence week by week.</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px 16px;">
+            <div style="font-size:13px;font-weight:600;color:#E8458B;margin-bottom:4px;">Nutrition basics</div>
+            <div style="font-size:12px;color:#999;font-weight:300;line-height:1.5;">For rides under an hour, water is all you need. For longer rides, bring a banana or energy bar. Eat a light meal 1–2 hours before riding.</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px 16px;">
+            <div style="font-size:13px;font-weight:600;color:#E8458B;margin-bottom:4px;">Rest is part of training</div>
+            <div style="font-size:12px;color:#999;font-weight:300;line-height:1.5;">Your body gets stronger on rest days, not riding days. Don't skip them! Consistency over time beats pushing through fatigue.</div>
+          </div>
+        </div>
+
+        <div class="beginner-included">
+          Included with any Etapa subscription. Start from <strong><span id="beginner-price">£7.99</span>/mo</strong> or get <strong>lifetime access</strong> for <strong><span id="beginner-lifetime-price">£99.99</span></strong>.
+          <div style="margin-top:12px;">
+            <a href="#pricing" style="display:inline-block;background:#E8458B;color:#000;font-size:14px;font-weight:600;padding:12px 28px;border-radius:100px;text-decoration:none;transition:background 0.2s;">See Pricing</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bike types -->
+    <div style="margin-top:64px;text-align:center;">
+      <p style="font-size:13px;font-weight:600;color:#E8458B;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px;">Works with any bike</p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+        <span style="background:#0a0a0a;border:1px solid #222;border-radius:100px;padding:10px 22px;font-size:14px;font-weight:500;color:#ccc;">Road Bike</span>
+        <span style="background:#0a0a0a;border:1px solid #222;border-radius:100px;padding:10px 22px;font-size:14px;font-weight:500;color:#ccc;">E-Bike</span>
+        <span style="background:#0a0a0a;border:1px solid #222;border-radius:100px;padding:10px 22px;font-size:14px;font-weight:500;color:#ccc;">Mountain Bike</span>
+        <span style="background:#0a0a0a;border:1px solid #222;border-radius:100px;padding:10px 22px;font-size:14px;font-weight:500;color:#ccc;">Gravel Bike</span>
+      </div>
+    </div>
+  </section>
+
   <!-- Full Screenshot Showcase -->
   <section class="showcase">
     <div class="showcase-header">
@@ -944,7 +1138,8 @@
   </section>
 
   <script>
-    // Fetch live prices from the Etapa server and update the pricing section.
+    // Fetch live prices from the Etapa server (backed by RevenueCat / admin config)
+    // and update all pricing across the page — pricing cards + beginner section.
     (function () {
       const API = 'https://etapa.up.railway.app/api/public/prices';
 
@@ -952,6 +1147,8 @@
         .then(r => r.ok ? r.json() : null)
         .then(prices => {
           if (!prices) return;
+
+          // ── Pricing cards ──
 
           // Monthly
           if (prices.monthly) {
@@ -973,6 +1170,20 @@
           if (prices.lifetime) {
             const el = document.getElementById('price-lifetime');
             if (el) el.textContent = prices.lifetime.formatted;
+          }
+
+          // ── Beginner program section ──
+
+          // Monthly price in beginner section
+          if (prices.monthly) {
+            const bp = document.getElementById('beginner-price');
+            if (bp) bp.textContent = prices.monthly.formatted;
+          }
+
+          // Lifetime price in beginner section
+          if (prices.lifetime) {
+            const blp = document.getElementById('beginner-lifetime-price');
+            if (blp) blp.textContent = prices.lifetime.formatted;
           }
         })
         .catch(() => { /* keep static fallback values */ });

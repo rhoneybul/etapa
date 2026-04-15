@@ -177,6 +177,31 @@ export default function PlanConfigScreen({ navigation, route }) {
     setPlanWeeks(weeks);
   }, [step, beginnerDefaults, goal?.targetDate, planWeeks, goal, fitnessLevel, startDateChoice, customStartDate]);
 
+  // Auto-place the outdoor ride on the long ride day whenever it changes.
+  // Ensures that by the time the user lands on the Build Week step, their
+  // long ride day and any recurring rides are already on the grid.
+  useEffect(() => {
+    // Long ride day — always ensure there's an outdoor ride there
+    if (longRideDayOverride) {
+      setDayActivities(prev => {
+        const acts = prev[longRideDayOverride] || [];
+        if (acts.includes('outdoor')) return prev;
+        return { ...prev, [longRideDayOverride]: [...acts, 'outdoor'] };
+      });
+    }
+    // Recurring rides — ensure each is placed on its day
+    recurringRides.forEach(ride => {
+      setDayActivities(prev => {
+        const acts = prev[ride.day] || [];
+        // Allow multiple outdoor rides on the same day (long ride + recurring)
+        const outdoorCount = acts.filter(a => a === 'outdoor').length;
+        const needed = ride.day === longRideDayOverride ? 2 : 1;
+        if (outdoorCount >= needed) return prev;
+        return { ...prev, [ride.day]: [...acts, 'outdoor'] };
+      });
+    });
+  }, [longRideDayOverride, recurringRides]);
+
   // Step 3: session counts per cycling type
   const [sessionCounts, setSessionCounts] = useState(
     adjustmentDefaults?.sessionCounts
@@ -283,6 +308,16 @@ export default function PlanConfigScreen({ navigation, route }) {
   const allPlaced = totalCyclingPlaced > 0;
 
   // Handle tapping a day card — place or remove the selected activity
+  // A day is "locked" for removal of its outdoor ride if:
+  //  - it's the long ride day (must go back to step 4 to change)
+  //  - it has a regular ride scheduled (must go back to step 3 to change)
+  // When locked, the first outdoor ride on the day can't be removed — but
+  // additional activities (strength, cross-training) can still be added/removed.
+  const isOutdoorLockedOnDay = (dayKey) =>
+    dayKey === effectiveLongRideDay || recurringRides.some(r => r.day === dayKey);
+
+  const countOutdoorOnDay = (acts) => (acts || []).filter(a => a === 'outdoor').length;
+
   const handleDayTap = (dayKey) => {
     setDayActivities(prev => {
       const next = { ...prev };
@@ -292,6 +327,10 @@ export default function PlanConfigScreen({ navigation, route }) {
       // If it's a cycling type, place freely and auto-adjust session count
       if (isCyclingType(act)) {
         if (current.includes(act)) {
+          // If removing the last outdoor ride from a locked day, block it
+          if (act === 'outdoor' && isOutdoorLockedOnDay(dayKey) && countOutdoorOnDay(current) <= 1) {
+            return prev;
+          }
           // Remove it
           const updated = [...current];
           updated.splice(updated.indexOf(act), 1);
@@ -333,6 +372,11 @@ export default function PlanConfigScreen({ navigation, route }) {
 
   // Remove a specific activity from a day (tap on a placed pill)
   const handleRemoveActivity = (dayKey, actKey) => {
+    // Block removal of the locked outdoor ride (long ride day or day with regular ride)
+    if (actKey === 'outdoor' && isOutdoorLockedOnDay(dayKey)) {
+      const current = dayActivities[dayKey] || [];
+      if (countOutdoorOnDay(current) <= 1) return;
+    }
     setDayActivities(prev => {
       const next = { ...prev };
       const current = next[dayKey] || [];
@@ -596,7 +640,12 @@ export default function PlanConfigScreen({ navigation, route }) {
     // ── Step 3: Organised rides ───────────────────────────────────────────────
     if (step === 3) {
       return (
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={{ paddingBottom: showAddRecurring ? 360 : 20 }}
+        >
           <View style={s.organisedSection}>
             <Text style={s.organisedHint}>
               Got a regular group ride, club ride, or fixed session every week? Add it here and your plan will be built around it. You can skip this if you don't have any.
@@ -652,7 +701,16 @@ export default function PlanConfigScreen({ navigation, route }) {
                   </View>
                 </View>
 
-                <TextInput style={s.organisedFormNotesInput} placeholder="Name or notes (e.g. 'Friday club ride with mates')" placeholderTextColor={colors.textFaint} value={recurringForm.notes} onChangeText={v => setRecurringForm(f => ({ ...f, notes: v }))} />
+                <TextInput
+                  style={s.organisedFormNotesInput}
+                  placeholder="Name or notes (e.g. 'Friday club ride with mates')"
+                  placeholderTextColor={colors.textFaint}
+                  value={recurringForm.notes}
+                  onChangeText={v => setRecurringForm(f => ({ ...f, notes: v }))}
+                  returnKeyType="done"
+                  onSubmitEditing={addRecurringRide}
+                  blurOnSubmit
+                />
 
                 <View style={s.organisedFormActions}>
                   <TouchableOpacity style={s.organisedFormCancelBtn} onPress={() => { setShowAddRecurring(false); setRecurringForm({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' }); }}>
@@ -864,21 +922,32 @@ export default function PlanConfigScreen({ navigation, route }) {
                     <View style={s.dayStack}>
                       {acts.map((actKey, idx) => {
                         const actColor = getActivityColor(actKey);
+                        // Figure out if this specific chip is locked (can't be removed).
+                        // An outdoor chip is locked if the day is the long ride day
+                        // or has a recurring ride — AND this is the first outdoor chip.
+                        const outdoorsBefore = acts.slice(0, idx).filter(a => a === 'outdoor').length;
+                        const isOutdoor = actKey === 'outdoor';
+                        const locked = isOutdoor && outdoorsBefore === 0 && isOutdoorLockedOnDay(day.key);
                         // For outdoor activities, show recurring ride name if one exists for this day
                         let displayLabel = getActivityLabel(actKey);
-                        if (actKey === 'outdoor') {
+                        if (isOutdoor) {
                           const dayRecurring = recurringRides.filter(r => r.day === day.key);
-                          const outdoorsBefore = acts.slice(0, idx).filter(a => a === 'outdoor').length;
                           if (dayRecurring[outdoorsBefore]?.notes) {
                             displayLabel = dayRecurring[outdoorsBefore].notes;
+                          } else if (locked && day.key === effectiveLongRideDay) {
+                            displayLabel = 'Long ride';
                           }
                         }
                         return (
                           <TouchableOpacity
                             key={`${actKey}-${idx}`}
                             style={[s.stackPill, { backgroundColor: actColor + '18', borderColor: actColor + '44' }]}
-                            onPress={(e) => { e.stopPropagation?.(); handleRemoveActivity(day.key, actKey); }}
-                            activeOpacity={0.7}
+                            onPress={(e) => {
+                              e.stopPropagation?.();
+                              if (locked) return;
+                              handleRemoveActivity(day.key, actKey);
+                            }}
+                            activeOpacity={locked ? 1 : 0.7}
                           >
                             <MaterialCommunityIcons
                               name={getActivityIcon(isCyclingType(actKey)
@@ -888,7 +957,10 @@ export default function PlanConfigScreen({ navigation, route }) {
                               color={actColor}
                             />
                             <Text style={[s.stackLabel, { color: actColor }]} numberOfLines={1}>{displayLabel}</Text>
-                            <Text style={[s.stackRemove, { color: actColor }]}>{'\u00D7'}</Text>
+                            {locked
+                              ? <MaterialCommunityIcons name="lock" size={10} color={actColor + 'AA'} />
+                              : <Text style={[s.stackRemove, { color: actColor }]}>{'\u00D7'}</Text>
+                            }
                           </TouchableOpacity>
                         );
                       })}
