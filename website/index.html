@@ -350,9 +350,9 @@
     .pricing-header .section-sub { margin: 0 auto; }
     .pricing-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 24px;
-      max-width: 960px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      max-width: 1100px;
       margin: 0 auto;
     }
     .pricing-card {
@@ -510,18 +510,7 @@
       font-size: 15px; color: #888; font-weight: 300; line-height: 1.6;
       margin-bottom: 28px;
     }
-    .beginner-weeks {
-      display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;
-      margin-bottom: 24px;
-    }
-    .beginner-week {
-      aspect-ratio: 1;
-      background: rgba(232,69,139,0.1);
-      border: 1px solid rgba(232,69,139,0.2);
-      border-radius: 6px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 600; color: #E8458B;
-    }
+    /* (week bars are inline-styled in the HTML) */
     .beginner-included {
       font-size: 13px; color: #999; font-weight: 300;
       padding-top: 20px;
@@ -602,6 +591,7 @@
       .pricing { padding: 80px 24px; }
       .pricing-grid { grid-template-columns: 1fr; max-width: 380px; margin: 0 auto; }
       .pricing-card.featured { order: -1; }
+      .pricing-card.starter-highlight { order: -2; }
 
       .cta { padding: 80px 24px; }
 
@@ -962,19 +952,72 @@
         <div class="beginner-right-label">YOUR 12-WEEK JOURNEY</div>
         <h3>Week by Week,<br>Ride by Ride</h3>
         <p class="beginner-right-sub">Each week builds on the last. We start easy and gradually increase distance and intensity so you arrive at your goal feeling strong and confident.</p>
-        <div class="beginner-weeks">
-          <div class="beginner-week">W1</div>
-          <div class="beginner-week">W2</div>
-          <div class="beginner-week">W3</div>
-          <div class="beginner-week">W4</div>
-          <div class="beginner-week">W5</div>
-          <div class="beginner-week">W6</div>
-          <div class="beginner-week">W7</div>
-          <div class="beginner-week">W8</div>
-          <div class="beginner-week">W9</div>
-          <div class="beginner-week">W10</div>
-          <div class="beginner-week">W11</div>
-          <div class="beginner-week">W12</div>
+        <!-- Progressive distance bars showing the 12-week build-up -->
+        <div style="display:flex;align-items:flex-end;gap:4px;height:120px;margin-bottom:24px;">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;">
+            <span style="font-size:9px;color:#999;font-weight:300;">5km</span>
+            <div style="width:100%;background:rgba(232,69,139,0.25);border-radius:4px;height:12%;"></div>
+            <span style="font-size:9px;color:#666;">1</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;">
+            <span style="font-size:9px;color:#999;font-weight:300;">8km</span>
+            <div style="width:100%;background:rgba(232,69,139,0.3);border-radius:4px;height:18%;"></div>
+            <span style="font-size:9px;color:#666;">2</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;">
+            <span style="font-size:9px;color:#999;font-weight:300;">12km</span>
+            <div style="width:100%;background:rgba(232,69,139,0.35);border-radius:4px;height:25%;"></div>
+            <span style="font-size:9px;color:#666;">3</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;">
+            <span style="font-size:9px;color:#E8458B;font-weight:500;">Rest</span>
+            <div style="width:100%;background:rgba(232,69,139,0.15);border-radius:4px;height:10%;"></div>
+            <span style="font-size:9px;color:#666;">4</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;">
+            <span style="font-size:9px;color:#999;font-weight:300;">15km</span>
+            <div style="width:100%;background:rgba(232,69,139,0.4);border-radius:4px;height:32%;"></div>
+            <span style="font-size:9px;color:#666;">5</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;">
+            <span style="font-size:9px;color:#999;font-weight:300;">20km</span>
+            <div style="width:100%;background:rgba(232,69,139,0.45);border-radius:4px;height:40%;"></div>
+            <span style="font-size:9px;color:#666;">6</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;">
+            <span style="font-size:9px;color:#999;font-weight:300;">25km</span>
+            <div style="width:100%;background:rgba(232,69,139,0.5);border-radius:4px;height:48%;"></div>
+            <span style="font-size:9px;color:#666;">7</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;">
+            <span style="font-size:9px;color:#E8458B;font-weight:500;">Rest</span>
+            <div style="width:100%;background:rgba(232,69,139,0.15);border-radius:4px;height:10%;"></div>
+            <span style="font-size:9px;color:#666;">8</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;">
+            <span style="font-size:9px;color:#999;font-weight:300;">30km</span>
+            <div style="width:100%;background:rgba(232,69,139,0.6);border-radius:4px;height:58%;"></div>
+            <span style="font-size:9px;color:#666;">9</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;">
+            <span style="font-size:9px;color:#999;font-weight:300;">40km</span>
+            <div style="width:100%;background:rgba(232,69,139,0.7);border-radius:4px;height:72%;"></div>
+            <span style="font-size:9px;color:#666;">10</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;">
+            <span style="font-size:9px;color:#999;font-weight:300;">45km</span>
+            <div style="width:100%;background:rgba(232,69,139,0.8);border-radius:4px;height:82%;"></div>
+            <span style="font-size:9px;color:#666;">11</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;">
+            <span style="font-size:9px;color:#fff;font-weight:600;">50km</span>
+            <div style="width:100%;background:#E8458B;border-radius:4px;height:100%;"></div>
+            <span style="font-size:9px;color:#E8458B;font-weight:600;">12</span>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-size:11px;color:#666;font-weight:300;">Week</span>
+          <span style="font-size:11px;color:#666;font-weight:300;">Longest ride per week (50 km goal)</span>
         </div>
 
         <!-- Beginner tips -->
@@ -994,9 +1037,10 @@
         </div>
 
         <div class="beginner-included">
-          Included with any Etapa subscription. Start from <strong><span id="beginner-price">£7.99</span>/mo</strong> or get <strong>lifetime access</strong> for <strong><span id="beginner-lifetime-price">£99.99</span></strong>.
-          <div style="margin-top:12px;">
-            <a href="#pricing" style="display:inline-block;background:#E8458B;color:#000;font-size:14px;font-weight:600;padding:12px 28px;border-radius:100px;text-decoration:none;transition:background 0.2s;">See Pricing</a>
+          The <strong>Starter plan</strong> is made for this — <strong><span id="beginner-starter-price">£14.99</span></strong> one-time for <strong>3 months access</strong>, the exact length of the program. No subscription, no recurring charges.
+          <div style="margin-top:8px;font-size:12px;color:#777;">Or go with <span id="beginner-price">£7.99</span>/mo, <span id="beginner-annual-price">£49.99</span>/yr, or <span id="beginner-lifetime-price">£99.99</span> lifetime.</div>
+          <div style="margin-top:14px;">
+            <a href="#pricing" style="display:inline-block;background:#E8458B;color:#000;font-size:14px;font-weight:600;padding:12px 28px;border-radius:100px;text-decoration:none;transition:background 0.2s;">See All Plans</a>
           </div>
         </div>
       </div>
@@ -1074,11 +1118,29 @@
     </div>
 
     <div class="pricing-grid">
+      <!-- Starter -->
+      <div class="pricing-card starter-highlight" style="border-color:#E8458B;background:linear-gradient(180deg, rgba(232,69,139,0.06) 0%, #0a0a0a 60%);">
+        <div class="pricing-badge pricing-badge-popular">BEGINNER PICK</div>
+        <div class="pricing-plan-name">Starter</div>
+        <div class="pricing-price">
+          <span class="pricing-price-amount" id="price-starter">£14.99</span>
+        </div>
+        <div class="pricing-sub" id="sub-starter">One-time payment · 3 months access</div>
+        <ul class="pricing-features">
+          <li>Perfect for the Get into Cycling program</li>
+          <li>AI-generated training plans</li>
+          <li>Coach chat & real-time edits</li>
+          <li>No recurring charges</li>
+          <li>Upgrade to Annual or Lifetime anytime</li>
+        </ul>
+        <a href="#" class="pricing-btn pricing-btn-primary" onclick="event.preventDefault()">Get 3 Months Access</a>
+      </div>
+
       <!-- Monthly -->
       <div class="pricing-card">
         <div class="pricing-plan-name">Monthly</div>
         <div class="pricing-price">
-          <span class="pricing-price-amount" id="price-monthly">£9.99</span>
+          <span class="pricing-price-amount" id="price-monthly">£7.99</span>
           <span class="pricing-price-per">/mo</span>
         </div>
         <div class="pricing-sub" id="sub-monthly">Billed monthly · Cancel anytime</div>
@@ -1119,10 +1181,10 @@
         <div class="pricing-badge pricing-badge-popular">MOST POPULAR</div>
         <div class="pricing-plan-name">Annual</div>
         <div class="pricing-price">
-          <span class="pricing-price-amount" id="price-annual-monthly">£6.67</span>
+          <span class="pricing-price-amount" id="price-annual-monthly">£4.17</span>
           <span class="pricing-price-per">/mo</span>
         </div>
-        <div class="pricing-sub" id="sub-annual">Billed £79.99/year · Save 33%</div>
+        <div class="pricing-sub" id="sub-annual">Billed £49.99/year</div>
         <ul class="pricing-features">
           <li>AI-generated training plans</li>
           <li>Coach chat & real-time edits</li>
@@ -1134,7 +1196,7 @@
       </div>
     </div>
 
-    <p class="pricing-trial-note">All subscription plans include a 7-day free trial. Cancel anytime before it ends and you won't be charged. Lifetime access includes a 16-day full refund guarantee. Prices in GBP.</p>
+    <p class="pricing-trial-note">All subscription plans include a 7-day free trial. Starter is a one-time payment for 3 months. Cancel anytime before your trial ends and you won't be charged. Lifetime access includes a 16-day full refund guarantee. Prices in GBP.</p>
   </section>
 
   <script>
@@ -1172,15 +1234,28 @@
             if (el) el.textContent = prices.lifetime.formatted;
           }
 
+          // Starter
+          if (prices.starter) {
+            const el = document.getElementById('price-starter');
+            if (el) el.textContent = prices.starter.formatted;
+            const sub = document.getElementById('sub-starter');
+            if (sub) sub.textContent = (prices.starter.billedLabel || 'One-time payment') + ' · 3 months access';
+          }
+
           // ── Beginner program section ──
 
-          // Monthly price in beginner section
+          if (prices.starter) {
+            const bsp = document.getElementById('beginner-starter-price');
+            if (bsp) bsp.textContent = prices.starter.formatted;
+          }
           if (prices.monthly) {
             const bp = document.getElementById('beginner-price');
             if (bp) bp.textContent = prices.monthly.formatted;
           }
-
-          // Lifetime price in beginner section
+          if (prices.annual) {
+            const bap = document.getElementById('beginner-annual-price');
+            if (bap) bap.textContent = prices.annual.formatted;
+          }
           if (prices.lifetime) {
             const blp = document.getElementById('beginner-lifetime-price');
             if (blp) blp.textContent = prices.lifetime.formatted;
