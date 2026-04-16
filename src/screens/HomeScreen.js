@@ -74,7 +74,9 @@ function getPlanStats(plan) {
   };
 }
 
-export default function HomeScreen({ navigation }) {
+export default function HomeScreen({ navigation, route }) {
+  // When arriving from plan creation, freshPlanId is set — skip the loading screen
+  const freshPlanId = route?.params?.freshPlanId || null;
   const [name, setName] = useState(null);
   const [plans, setPlans] = useState([]);
   const [goals, setGoals] = useState([]);
@@ -82,7 +84,7 @@ export default function HomeScreen({ navigation }) {
   const [currentWeek, setCurrentWeek] = useState(1);
   const [stravaOk, setStravaOk] = useState(false);
   const [activePlanConfig, setActivePlanConfig] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!freshPlanId);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [subPlan, setSubPlan] = useState(null); // 'starter' | 'monthly' | 'annual' | null
@@ -125,7 +127,7 @@ export default function HomeScreen({ navigation }) {
       const hash = JSON.stringify(p.map(pl => ({ id: pl.id, updatedAt: pl.updatedAt, actLen: pl.activities?.length })));
       if (hash === cachedPlanHash.current) return; // No changes — skip reload
     }
-    setLoading(!initialLoadDone.current); // Only show loading spinner on first load
+    setLoading(!initialLoadDone.current && !freshPlanId); // Skip loading spinner when arriving from plan creation
     const [user, p, g, strava, userPrefs, remoteConfig] = await Promise.all([
       getCurrentUser(), getPlans(), getGoals(), isStravaConnected(), getUserPrefs(),
       api.appConfig.get().catch(() => ({})),
@@ -246,7 +248,7 @@ export default function HomeScreen({ navigation }) {
       }
     }
     if (isMounted.current) setLoading(false);
-  }, [selectedPlanIdx, navigation]);
+  }, [selectedPlanIdx, navigation, freshPlanId]);
 
   useEffect(() => { load({ force: true }); }, [load]);
   useEffect(() => {

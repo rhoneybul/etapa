@@ -204,9 +204,14 @@ export default function PlanLoadingScreen({ navigation, route }) {
       coachId: config.coachId,
     });
 
-    // Navigate straight to PlanReady — no "Plan ready!" flash in between
     if (mountedRef.current) {
-      navigation.replace('PlanReady', { planId: plan.id, requirePaywall: !!requirePaywall, defaultPlan });
+      if (requirePaywall) {
+        // Trial expired or payment required — go to paywall before home
+        navigation.replace('Paywall', { nextScreen: 'Home', nextParams: { freshPlanId: plan.id }, defaultPlan });
+      } else {
+        // Go straight to Home — skip the loading screen by passing freshPlanId
+        navigation.replace('Home', { freshPlanId: plan.id });
+      }
     }
   };
 
