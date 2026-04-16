@@ -3,7 +3,7 @@
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Switch, Linking, TextInput,
+  View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Switch, Linking, TextInput, Platform,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -143,7 +143,25 @@ export default function SettingsScreen({ navigation }) {
     );
   };
 
-  // Note: Refunds for Apple IAP are handled by Apple directly, not in-app.
+  const handleRequestRefund = () => {
+    Alert.alert(
+      'Request a refund',
+      'All purchases include a 7-day full refund guarantee. You\'ll be taken to the App Store or Play Store to complete your refund request.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          onPress: () => {
+            if (Platform.OS === 'ios') {
+              Linking.openURL('https://reportaproblem.apple.com');
+            } else {
+              Linking.openURL('https://play.google.com/store/account/subscriptions');
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const handleTogglePushNotifications = async (value) => {
     if (notifPermission === 'denied') {
@@ -418,6 +436,17 @@ export default function SettingsScreen({ navigation }) {
                 <Text style={s.chevron}>{'\u203A'}</Text>
               </TouchableOpacity>
             </View>
+            <View style={[s.card, { marginTop: 8 }]}>
+              <TouchableOpacity style={s.row} onPress={handleRequestRefund}>
+                <View style={s.rowLeft}>
+                  <View>
+                    <Text style={s.rowTitle}>Request Refund</Text>
+                    <Text style={s.rowSub}>7-day full refund guarantee on all purchases</Text>
+                  </View>
+                </View>
+                <Text style={s.chevron}>{'\u203A'}</Text>
+              </TouchableOpacity>
+            </View>
           </>
         )}
         {subscription?.active && subscription.plan === 'lifetime' && (
@@ -432,6 +461,17 @@ export default function SettingsScreen({ navigation }) {
                   </View>
                 </View>
               </View>
+            </View>
+            <View style={[s.card, { marginTop: 8 }]}>
+              <TouchableOpacity style={s.row} onPress={handleRequestRefund}>
+                <View style={s.rowLeft}>
+                  <View>
+                    <Text style={s.rowTitle}>Request Refund</Text>
+                    <Text style={s.rowSub}>7-day full refund guarantee on all purchases</Text>
+                  </View>
+                </View>
+                <Text style={s.chevron}>{'\u203A'}</Text>
+              </TouchableOpacity>
             </View>
           </>
         )}
@@ -457,6 +497,17 @@ export default function SettingsScreen({ navigation }) {
                   <View>
                     <Text style={[s.rowTitle, { color: colors.primary }]}>{portalLoading ? 'Opening...' : 'Cancel Subscription'}</Text>
                     <Text style={s.rowSub}>Cancel without leaving the app</Text>
+                  </View>
+                </View>
+                <Text style={s.chevron}>›</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={[s.card, { marginTop: 8 }]}>
+              <TouchableOpacity style={s.row} onPress={handleRequestRefund}>
+                <View style={s.rowLeft}>
+                  <View>
+                    <Text style={s.rowTitle}>Request Refund</Text>
+                    <Text style={s.rowSub}>7-day full refund guarantee on all purchases</Text>
                   </View>
                 </View>
                 <Text style={s.chevron}>›</Text>

@@ -39,7 +39,7 @@ const PLAN_META = {
     per: '',
     defaultSub: 'One-time payment · Forever yours',
     badge: 'LAUNCH SPECIAL',
-    defaultTrialLine: '16-day full refund guarantee',
+    defaultTrialLine: '7-day full refund guarantee',
     isLifetime: true,
   },
   annual: {
@@ -141,7 +141,7 @@ function buildPlans(serverPrices) {
         per,
         sub,
         trialLine: meta.isLifetime
-          ? '16-day full refund guarantee'
+          ? '7-day full refund guarantee'
           : sp.interval === 'year'
             ? `then ${sp.formatted}/year`
             : sp.interval === 'month'
@@ -488,8 +488,8 @@ export default function PaywallScreen({ navigation, route }) {
 
         <View style={s.guaranteeBadge}>
           <View style={s.guaranteeTextWrap}>
-            <Text style={s.guaranteeTitle}>16-Day Full Refund Guarantee</Text>
-            <Text style={s.guaranteeSub}>Not for you? Get a full refund within 16 days of purchase, no questions asked.</Text>
+            <Text style={s.guaranteeTitle}>7-Day Full Refund Guarantee</Text>
+            <Text style={s.guaranteeSub}>Not for you? Request a full refund within 7 days of purchase, no questions asked.</Text>
           </View>
         </View>
 
@@ -542,7 +542,7 @@ export default function PaywallScreen({ navigation, route }) {
             : plan.isStarter
               ? 'Starter is a one-time payment for 3 months of access. No recurring charges.\n'
               : 'Cancel anytime before your 7-day free trial ends and you won\'t be charged.\n'}
-          16-day full refund on all purchases. Prices in GBP.
+          7-day full refund on all purchases. Prices in GBP.
         </Text>
 
         <View style={s.legalLinks}>

@@ -1,6 +1,6 @@
 /**
  * UpgradePrompt — shown to starter users when they try to create a new plan
- * or from Settings. Explains the upgrade deal: pro-rata refund + 50% off annual.
+ * or from Settings. Explains the upgrade deal: 50% off annual.
  *
  * Props:
  *   visible: boolean
@@ -44,7 +44,7 @@ export default function UpgradePrompt({ visible, onClose, onUpgrade, upgrading }
             </View>
             <View style={s.dealRow}>
               <Text style={s.dealTick}>{'\u2713'}</Text>
-              <Text style={s.dealText}>Pro-rata refund on your starter fee</Text>
+              <Text style={s.dealText}>7-day full refund guarantee</Text>
             </View>
             <View style={s.dealRow}>
               <Text style={s.dealTick}>{'\u2713'}</Text>
