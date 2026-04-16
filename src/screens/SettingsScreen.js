@@ -9,8 +9,8 @@ import * as Notifications from 'expo-notifications';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { signOut } from '../services/authService';
-import { clearPlan, getPlans, deletePlan, clearUserData, getUserPrefs, setUserPrefs } from '../services/storageService';
-import { openBillingPortal, getSubscriptionStatus, upgradeStarter, refundStarter, refundLifetime, restorePurchases, getPrices } from '../services/subscriptionService';
+import { clearPlan, getPlans, clearUserData, getUserPrefs, setUserPrefs } from '../services/storageService';
+import { openBillingPortal, getSubscriptionStatus, restorePurchases, getPrices } from '../services/subscriptionService';
 import { logoutRevenueCat, isRevenueCatAvailable } from '../services/revenueCatService';
 import { connectStrava, disconnectStrava, isStravaConnected, isStravaConfigured, getStravaTokens } from '../services/stravaService';
 import UpgradePrompt from '../components/UpgradePrompt';
@@ -29,7 +29,6 @@ export default function SettingsScreen({ navigation }) {
   const [portalLoading, setPortalLoading] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
-  const [starterPlan, setStarterPlan] = useState(null); // the beginner plan object, if any
   const [unreadCount, setUnreadCount] = useState(0);
   const [preferences, setPreferences] = useState(null);
   const [notifPermission, setNotifPermission] = useState(null); // 'granted' | 'denied' | 'undetermined'
@@ -48,12 +47,12 @@ export default function SettingsScreen({ navigation }) {
     setTimeout(() => { navigatingRef.current = false; }, 1000);
   }, [navigation]);
   const [nameInput, setNameInput] = useState('');
-  const [starterPriceLabel, setStarterPriceLabel] = useState(null);
+  const [hasBeginnerPlan, setHasBeginnerPlan] = useState(false);
 
   useEffect(() => {
     checkStrava();
     getSubscriptionStatus().then(setSubscription).catch(() => {});
-    getPrices().then(prices => { if (prices?.starter) setStarterPriceLabel(prices.starter.formatted); }).catch(() => {});
+    getPrices().catch(() => {});
     api.notifications.unreadCount().then(d => setUnreadCount(d?.count || 0)).catch(() => {});
     api.preferences.get().then(setPreferences).catch(() => {});
     getUserPrefs().then(p => { setUserPrefsState(p); setNameInput(p.displayName || ''); }).catch(() => {});
@@ -62,10 +61,10 @@ export default function SettingsScreen({ navigation }) {
       if (cfg?.coming_soon) setComingSoonConfig(cfg.coming_soon);
       if (cfg?.strava_enabled !== undefined) setStravaEnabled(!!cfg.strava_enabled);
     }).catch(() => {});
-    // Find starter/beginner plan for refund eligibility
+    // Check if user has a beginner (Get into Cycling) plan — if so, upgrade should show starter only
     getPlans().then(plans => {
-      const bp = plans.find(p => p.name === 'Get into Cycling' && p.paymentStatus === 'paid');
-      setStarterPlan(bp || null);
+      const hasBeginner = plans.some(p => p.name && p.name.startsWith('Get into Cycling'));
+      setHasBeginnerPlan(hasBeginner);
     }).catch(() => {});
   }, []);
 
@@ -144,92 +143,7 @@ export default function SettingsScreen({ navigation }) {
     );
   };
 
-  const handleUpgrade = async () => {
-    setUpgrading(true);
-    try {
-      const result = await upgradeStarter();
-      if (result.success) {
-        setShowUpgrade(false);
-        // Refresh subscription status
-        getSubscriptionStatus().then(setSubscription).catch(() => {});
-        Alert.alert('Welcome!', 'You\'re now on the annual plan. Go create your next plan!');
-      }
-    } catch {
-      Alert.alert('Upgrade failed', 'Something went wrong. Please try again.');
-    } finally {
-      setUpgrading(false);
-    }
-  };
-
-  const handleRefundStarter = () => {
-    Alert.alert(
-      'Request refund?',
-      `You'll receive a full refund${starterPriceLabel ? ` of ${starterPriceLabel}` : ''} and your Get into Cycling plan will be cancelled. This can't be undone.`,
-      [
-        { text: 'Keep my plan', style: 'cancel' },
-        {
-          text: 'Refund & cancel',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await refundStarter(starterPlan?.startDate);
-              Alert.alert('Refund processed', 'Your refund is on its way. It may take 5–10 business days to appear.');
-              // Refresh subscription and plans
-              getSubscriptionStatus().then(setSubscription).catch(() => {});
-              if (starterPlan) {
-                await deletePlan(starterPlan.id);
-              }
-              setStarterPlan(null);
-            } catch (err) {
-              Alert.alert('Refund failed', err.message || 'Please contact support.');
-            }
-          },
-        },
-      ],
-    );
-  };
-
-  const handleRefundLifetime = () => {
-    Alert.alert(
-      'Request lifetime refund?',
-      'You\'ll receive a full refund and your lifetime access will be revoked. This can\'t be undone.',
-      [
-        { text: 'Keep lifetime access', style: 'cancel' },
-        {
-          text: 'Refund & revoke',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await refundLifetime();
-              Alert.alert('Refund processed', 'Your refund is on its way. It may take 5–10 business days to appear.');
-              getSubscriptionStatus().then(setSubscription).catch(() => {});
-            } catch (err) {
-              Alert.alert('Refund failed', err.message || 'Please contact support.');
-            }
-          },
-        },
-      ],
-    );
-  };
-
-  // Check if lifetime purchase is within 16-day refund window
-  const isWithinLifetimeRefundWindow = () => {
-    if (subscription?.plan !== 'lifetime') return false;
-    const purchaseDate = subscription.createdAt ? new Date(subscription.createdAt) : null;
-    if (!purchaseDate) return true; // Show by default, server will enforce the real window
-    const daysSince = Math.floor((new Date() - purchaseDate) / (1000 * 60 * 60 * 24));
-    return daysSince <= 16;
-  };
-
-  // Check if starter plan is within 16-day refund window
-  const isRefundEligible = (() => {
-    if (!starterPlan?.startDate || subscription?.plan !== 'starter') return false;
-    const sp = starterPlan.startDate.split('T')[0].split('-');
-    const startDate = new Date(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]), 12, 0, 0);
-    const now = new Date();
-    const daysSinceStart = Math.round((now - startDate) / (1000 * 60 * 60 * 24));
-    return daysSinceStart <= 16;
-  })();
+  // Note: Refunds for Apple IAP are handled by Apple directly, not in-app.
 
   const handleTogglePushNotifications = async (value) => {
     if (notifPermission === 'denied') {
@@ -478,7 +392,7 @@ export default function SettingsScreen({ navigation }) {
               </View>
             </View>
             <View style={[s.card, { marginTop: 8 }]}>
-              <TouchableOpacity style={s.row} onPress={() => navigation.navigate('Paywall', { nextScreen: 'Settings' })}>
+              <TouchableOpacity style={s.row} onPress={() => goPaywall({ nextScreen: 'Home' })}>
                 <View style={s.rowLeft}>
                   <View>
                     <Text style={[s.rowTitle, { color: colors.primary }]}>Upgrade Now</Text>
@@ -488,19 +402,6 @@ export default function SettingsScreen({ navigation }) {
                 <Text style={s.chevron}>{'\u203A'}</Text>
               </TouchableOpacity>
             </View>
-            {isRefundEligible && (
-              <View style={[s.card, { marginTop: 8 }]}>
-                <TouchableOpacity style={s.row} onPress={handleRefundStarter}>
-                  <View style={s.rowLeft}>
-                    <View>
-                      <Text style={[s.rowTitle, { color: colors.primary }]}>Request Refund</Text>
-                      <Text style={s.rowSub}>Full {starterPriceLabel || ''} refund · available for first 16 days</Text>
-                    </View>
-                  </View>
-                  <Text style={s.chevron}>{'\u203A'}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
             <View style={[s.card, { marginTop: 8 }]}>
               <TouchableOpacity style={s.row} onPress={handleCancelSubscription} disabled={portalLoading}>
                 <View style={s.rowLeft}>
@@ -527,19 +428,6 @@ export default function SettingsScreen({ navigation }) {
                 </View>
               </View>
             </View>
-            {isWithinLifetimeRefundWindow() && (
-              <View style={[s.card, { marginTop: 8 }]}>
-                <TouchableOpacity style={s.row} onPress={handleRefundLifetime}>
-                  <View style={s.rowLeft}>
-                    <View>
-                      <Text style={[s.rowTitle, { color: colors.primary }]}>Request Refund</Text>
-                      <Text style={s.rowSub}>16-day full refund guarantee</Text>
-                    </View>
-                  </View>
-                  <Text style={s.chevron}>›</Text>
-                </TouchableOpacity>
-              </View>
-            )}
           </>
         )}
         {subscription?.active && subscription.plan !== 'starter' && subscription.plan !== 'lifetime' && (
@@ -575,11 +463,11 @@ export default function SettingsScreen({ navigation }) {
           <>
             <Text style={s.sectionLabel}>SUBSCRIPTION</Text>
             <View style={s.card}>
-              <TouchableOpacity style={s.row} onPress={() => goPaywall({ fromHome: true, nextScreen: 'Home' })}>
+              <TouchableOpacity style={s.row} onPress={() => goPaywall({ fromHome: true, nextScreen: 'Home', ...(hasBeginnerPlan ? { defaultPlan: 'starter' } : {}) })}>
                 <View style={s.rowLeft}>
                   <View>
                     <Text style={s.rowTitle}>Subscribe</Text>
-                    <Text style={s.rowSub}>Your subscription is inactive</Text>
+                    <Text style={s.rowSub}>{hasBeginnerPlan ? 'Get the Starter plan for your cycling programme' : 'Your subscription is inactive'}</Text>
                   </View>
                 </View>
                 <Text style={s.chevron}>›</Text>

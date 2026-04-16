@@ -26,8 +26,7 @@ const notificationsRouter = require('./routes/notifications');
 const preferencesRouter   = require('./routes/preferences');
 const appConfigRouter     = require('./routes/appConfig');
 const coachCheckinRouter  = require('./routes/coachCheckin');
-const stripeRouter        = require('./routes/stripe');
-const { webhookHandler }  = require('./routes/stripe');
+const subscriptionRouter  = require('./routes/subscription');
 const { revenueCatWebhookHandler } = require('./routes/revenueCatWebhook');
 const adminRouter         = require('./routes/admin');
 const stravaRouter        = require('./routes/strava');
@@ -42,9 +41,6 @@ const PORT = process.env.PORT || 3001;
 const allowedOrigins = process.env.ALLOWED_ORIGINS;
 app.use(cors({ origin: !allowedOrigins || allowedOrigins === '*' ? '*' : allowedOrigins.split(',') }));
 Sentry.setupExpressErrorHandler(app);
-
-// Stripe webhook must receive raw body — mount BEFORE express.json()
-app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), webhookHandler);
 
 // RevenueCat webhook — receives JSON, no auth middleware (uses its own Bearer token)
 app.post('/api/revenuecat/webhook', express.json(), revenueCatWebhookHandler);
@@ -130,7 +126,7 @@ app.post('/api/account-deletion', async (req, res) => {
 });
 
 // ── Public prices endpoint (no auth — used by website and app before login) ──
-// Returns the same pricing data as /api/stripe/prices but without a Bearer token.
+// Returns the same pricing data as /api/subscription/prices but without a Bearer token.
 // Prices are sourced from the admin-configured pricing_config, falling back to defaults.
 app.get('/api/public/prices', async (req, res) => {
   const DEFAULT_PRICES = {
@@ -175,7 +171,7 @@ app.use('/api/plans', authMiddleware, plansRouter);
 app.use('/api/plan-configs', authMiddleware, planConfigsRouter);
 app.use('/api/chat-sessions', authMiddleware, chatSessionsRouter);
 app.use('/api/ai', authMiddleware, aiRouter);
-app.use('/api/stripe', authMiddleware, stripeRouter);
+app.use('/api/subscription', authMiddleware, subscriptionRouter);
 app.use('/api/feedback', authMiddleware, feedbackRouter);
 app.use('/api/support', authMiddleware, supportRouter);
 app.use('/api/notifications', authMiddleware, notificationsRouter);

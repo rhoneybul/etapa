@@ -29,7 +29,7 @@ async function notifySlack(text) {
   }
 }
 
-// Lifetime = access until 2099 (same as Stripe lifetime handling)
+// Lifetime = access until 2099
 const LIFETIME_END = '2099-12-31T23:59:59.000Z';
 
 /**

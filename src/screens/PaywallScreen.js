@@ -1,9 +1,10 @@
 /**
  * Paywall screen — shown before plan generation.
- * Monthly: £7.99/mo · Annual: £49.99/yr (= £4.17/mo) · Lifetime: £99.99 · Starter: £14.99 · 1 week free trial.
+ * Monthly: £7.99/mo · Annual: £49.99/yr (= £4.17/mo) · Lifetime: £99.99 · 1 week free trial.
  *
- * Prices are fetched from the server (configured via the admin console).
- * Hardcoded defaults below are only used as a last-resort offline fallback.
+ * Purchases are handled via RevenueCat (Apple IAP / Google Play).
+ * Display prices are fetched from the server (admin console); hardcoded defaults
+ * are only used as a last-resort offline fallback.
  */
 import React, { useState, useEffect } from 'react';
 import {
@@ -173,17 +174,16 @@ export default function PaywallScreen({ navigation, route }) {
   const [couponLoading, setCouponLoading] = useState(false);
   const [redeeming, setRedeeming] = useState(false);
 
-  const isNative = Platform.OS !== 'web';
-  // RevenueCat handles native purchases on both iOS and Android
-  const hasRevenueCat = isNative && isRevenueCatAvailable();
+  // RevenueCat handles all purchases via App Store / Play Store
+  const hasRevenueCat = isRevenueCatAvailable();
 
   // Where to go after successful subscription (default: Home)
   const nextScreen = route?.params?.nextScreen || 'Home';
   const nextParams = route?.params?.nextParams || {};
 
   // Fetch live prices from server on mount.
-  // Server prices (GBP, admin-configured) are used for display on ALL platforms.
-  // RevenueCat packages are fetched separately for the purchase transaction only.
+  // Server prices (GBP, admin-configured) are used for display.
+  // RevenueCat packages are fetched separately for the purchase transaction.
   useEffect(() => {
     getPrices().then(prices => {
       if (prices) {
@@ -193,8 +193,8 @@ export default function PaywallScreen({ navigation, route }) {
     }).catch(() => {});
   }, []);
 
-  // Fetch RevenueCat offerings on mount (native only).
-  // RC packages are needed for the purchase transaction (openCheckout), but
+  // Fetch RevenueCat offerings on mount.
+  // RC packages are needed for the purchase transaction (openCheckout),
   // display prices come from the server so they always show in GBP.
   useEffect(() => {
     if (!hasRevenueCat) return;
@@ -264,11 +264,11 @@ export default function PaywallScreen({ navigation, route }) {
     setLoading(true);
     analytics.capture?.('paywall_subscribe_tapped', {
       plan: selected,
-      source: couponAppliesToSelected ? 'coupon' : (hasRevenueCat ? 'revenuecat' : 'stripe'),
+      source: couponAppliesToSelected ? 'coupon' : 'revenuecat',
     });
 
     try {
-      // If a coupon grants this exact plan for free, don't open Stripe/RevenueCat at all.
+      // If a coupon grants this exact plan for free, don't open RevenueCat at all.
       if (couponAppliesToSelected) {
         const result = await redeemCoupon(couponCode.trim());
         if (result?.success) {
@@ -280,10 +280,10 @@ export default function PaywallScreen({ navigation, route }) {
         return;
       }
 
-      // On native iOS, use RevenueCat package for the purchase.
+      // Use RevenueCat package for the purchase.
       // If offerings haven't loaded yet, retry fetching them before giving up.
-      let rcPkg = hasRevenueCat ? findRcPackage(selected) : null;
-      if (hasRevenueCat && !rcPkg) {
+      let rcPkg = findRcPackage(selected);
+      if (!rcPkg) {
         try {
           const offerings = await getSubscriptionOfferings();
           if (offerings?.packages) {
@@ -305,7 +305,7 @@ export default function PaywallScreen({ navigation, route }) {
       if (result.cancelled) {
         // User cancelled — stay on paywall silently
       } else if (result.success) {
-        analytics.capture?.('subscription_started', { plan: selected, source: hasRevenueCat ? 'revenuecat' : 'stripe' });
+        analytics.capture?.('subscription_started', { plan: selected, source: 'revenuecat' });
         navigation.replace(nextScreen, nextParams);
       } else if (result.error) {
         Alert.alert('Something went wrong', result.error);
@@ -337,7 +337,7 @@ export default function PaywallScreen({ navigation, route }) {
   };
 
   const handleClose = () => {
-    // If we can go back (e.g. came from PlanReady), just go back.
+    // If we can go back, just go back.
     // Otherwise dismiss the paywall and start the free preview.
     if (navigation.canGoBack()) {
       navigation.goBack();
@@ -397,7 +397,7 @@ export default function PaywallScreen({ navigation, route }) {
           }).map(p => {
             const isSelected = selected === p.id;
             // Use hardcoded/server price for display; rcPkg is used only for the purchase transaction
-            const rcPkg = hasRevenueCat ? findRcPackage(p.id) : null;
+            const rcPkg = findRcPackage(p.id);
             const couponMakesFree = couponState?.valid && couponState.plan === p.id;
             const originalPrice = serverPrices?.[p.id]?.formatted || p.defaultPrice || p.price;
             const displayPrice = couponMakesFree ? '£0.00' : p.price;

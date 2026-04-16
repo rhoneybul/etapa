@@ -229,11 +229,6 @@ export default function CalendarScreen({ navigation, route }) {
     setTimeout(() => reviewScrollRef.current?.scrollToEnd({ animated: true }), 100);
   }, [reviewInput, reviewSending, reviewMessages, pendingChanges, plans, goals, planConfigs, navigation]);
 
-  // Long-press an activity — show inline action bar
-  const handleActivityLongPress = useCallback((activity, planId) => {
-    setActionActivity({ activity, planId });
-  }, []);
-
   const handleActionMove = useCallback(() => {
     if (!actionActivity) return;
     const plan = plans.find(p => p.id === actionActivity.planId);
@@ -573,6 +568,7 @@ export default function CalendarScreen({ navigation, route }) {
                       if (movingActivity) {
                         handlePlaceActivity(new Date(year, month, day));
                       } else {
+                        setActionActivity(null);
                         setSelectedDate(new Date(year, month, day));
                       }
                     }}
@@ -618,9 +614,14 @@ export default function CalendarScreen({ navigation, route }) {
         {/* Selected day activities */}
         <ScrollView style={s.activityList}>
           {selectedDate && (
-            <Text style={s.selectedLabel}>
-              {selectedDate.getDate()} {MONTHS[selectedDate.getMonth()]}
-            </Text>
+            <View style={s.selectedHeader}>
+              <Text style={s.selectedLabel}>
+                {selectedDate.getDate()} {MONTHS[selectedDate.getMonth()]}
+              </Text>
+              {selectedActivities.length > 0 && !actionActivity && (
+                <Text style={s.selectedHint}>Tap an activity to move or delete</Text>
+              )}
+            </View>
           )}
           {selectedDate && goalDateMap[`${selectedDate.getFullYear()}-${selectedDate.getMonth()}-${selectedDate.getDate()}`] && (
             <View style={s.goalBanner}>
@@ -656,9 +657,13 @@ export default function CalendarScreen({ navigation, route }) {
             <TouchableOpacity
               key={activity.id}
               style={[s.actCard, activity.type === 'strength' && s.actCardStrength, activity.completed && s.actCardDone, actionActivity?.activity?.id === activity.id && s.actCardActive]}
-              onPress={() => actionActivity ? setActionActivity(null) : navigation.navigate('ActivityDetail', { activityId: activity.id })}
-              onLongPress={() => handleActivityLongPress(activity, activity._planId)}
-              delayLongPress={400}
+              onPress={() => {
+                if (actionActivity?.activity?.id === activity.id) {
+                  setActionActivity(null);
+                } else {
+                  setActionActivity({ activity, planId: activity._planId });
+                }
+              }}
               activeOpacity={0.75}
             >
               <View style={[s.actAccent, { backgroundColor: ACTIVITY_BLUE }]} />
@@ -689,11 +694,15 @@ export default function CalendarScreen({ navigation, route }) {
           <View style={{ height: 80 }} />
         </ScrollView>
 
-        {/* Activity action bar — shown on long-press */}
+        {/* Activity action bar — shown when an activity is tapped */}
         {actionActivity && !movingActivity && (
           <View style={s.actionBar}>
             <Text style={s.actionBarTitle} numberOfLines={1}>{actionActivity.activity.title}</Text>
             <View style={s.actionBarBtns}>
+              <TouchableOpacity style={s.actionBarBtn} onPress={() => { const id = actionActivity.activity.id; setActionActivity(null); navigation.navigate('ActivityDetail', { activityId: id }); }} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="eye-outline" size={20} color={colors.text} />
+                <Text style={s.actionBarBtnText}>View</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={s.actionBarBtn} onPress={handleActionMove} activeOpacity={0.7}>
                 <MaterialCommunityIcons name="calendar-arrow-right" size={20} color={colors.text} />
                 <Text style={s.actionBarBtnText}>Move</Text>
@@ -701,10 +710,6 @@ export default function CalendarScreen({ navigation, route }) {
               <TouchableOpacity style={[s.actionBarBtn, s.actionBarBtnDelete]} onPress={handleActionDelete} activeOpacity={0.7}>
                 <MaterialCommunityIcons name="delete-outline" size={20} color="#EF4444" />
                 <Text style={[s.actionBarBtnText, { color: '#EF4444' }]}>Delete</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.actionBarBtn} onPress={() => setActionActivity(null)} activeOpacity={0.7}>
-                <MaterialCommunityIcons name="close" size={20} color={colors.textMuted} />
-                <Text style={[s.actionBarBtnText, { color: colors.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -856,7 +861,9 @@ const s = StyleSheet.create({
   goalBannerLabel: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid },
 
   activityList: { flex: 1, paddingHorizontal: 16 },
-  selectedLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, marginBottom: 8, marginTop: 4 },
+  selectedHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8, marginTop: 4 },
+  selectedLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted },
+  selectedHint: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint },
   noActivities: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, textAlign: 'center', marginTop: 20 },
 
   ctCard: {

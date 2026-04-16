@@ -12,7 +12,7 @@ import { colors, fontFamily } from '../theme';
 import { getCurrentUser } from '../services/authService';
 import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig, getUserPrefs, isOnboardingDone, setOnboardingDone } from '../services/storageService';
 import OnboardingTour from '../components/OnboardingTour';
-import { isSubscribed, getSubscriptionStatus, upgradeStarter, openCheckout, getPrices } from '../services/subscriptionService';
+import { isSubscribed, getSubscriptionStatus, openCheckout, getPrices } from '../services/subscriptionService';
 import UpgradePrompt from '../components/UpgradePrompt';
 import { isStravaConnected } from '../services/stravaService';
 import { syncStravaActivities, getStravaActivitiesForWeek, getStravaActivitiesForDate } from '../services/stravaSyncService';
@@ -84,13 +84,13 @@ export default function HomeScreen({ navigation, route }) {
   const [currentWeek, setCurrentWeek] = useState(1);
   const [stravaOk, setStravaOk] = useState(false);
   const [activePlanConfig, setActivePlanConfig] = useState(null);
-  const [loading, setLoading] = useState(!freshPlanId);
+  const [loading, setLoading] = useState(true);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [subPlan, setSubPlan] = useState(null); // 'starter' | 'monthly' | 'annual' | null
   const [unlocking, setUnlocking] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [starterPriceLabel, setStarterPriceLabel] = useState(null); // fetched from Stripe
+  const [starterPriceLabel, setStarterPriceLabel] = useState(null); // fetched from server
   const [subscribed, setSubscribed] = useState(true); // assumed true until checked
   const [previewDaysLeft, setPreviewDaysLeft] = useState(null); // null = subscribed / no limit
   const [trialConfig, setTrialConfig] = useState({ days: 7, bannerMessage: 'Subscribe to unlock full training access' });
@@ -127,7 +127,7 @@ export default function HomeScreen({ navigation, route }) {
       const hash = JSON.stringify(p.map(pl => ({ id: pl.id, updatedAt: pl.updatedAt, actLen: pl.activities?.length })));
       if (hash === cachedPlanHash.current) return; // No changes — skip reload
     }
-    setLoading(!initialLoadDone.current && !freshPlanId); // Skip loading spinner when arriving from plan creation
+    setLoading(!initialLoadDone.current); // Only show loading spinner on first load
     const [user, p, g, strava, userPrefs, remoteConfig] = await Promise.all([
       getCurrentUser(), getPlans(), getGoals(), isStravaConnected(), getUserPrefs(),
       api.appConfig.get().catch(() => ({})),
@@ -248,7 +248,7 @@ export default function HomeScreen({ navigation, route }) {
       }
     }
     if (isMounted.current) setLoading(false);
-  }, [selectedPlanIdx, navigation, freshPlanId]);
+  }, [selectedPlanIdx, navigation]);
 
   useEffect(() => { load({ force: true }); }, [load]);
   useEffect(() => {
@@ -291,20 +291,9 @@ export default function HomeScreen({ navigation, route }) {
     navigation.navigate('GoalSetup', { requirePaywall: !subscribed });
   };
 
-  const handleUpgrade = async () => {
-    setUpgrading(true);
-    try {
-      const result = await upgradeStarter();
-      if (result.success) {
-        setShowUpgrade(false);
-        setSubPlan('annual');
-        navigation.navigate('GoalSetup');
-      }
-    } catch {
-      Alert.alert('Upgrade failed', 'Something went wrong. Please try again.');
-    } finally {
-      setUpgrading(false);
-    }
+  const handleUpgrade = () => {
+    setShowUpgrade(false);
+    navigation.navigate('Paywall', { nextScreen: 'Home' });
   };
 
   /** Pay for a pending (locked) plan to unlock it */
@@ -346,14 +335,18 @@ export default function HomeScreen({ navigation, route }) {
   };
 
   // ── Loading state ─────────────────────────────────────────────────────────
+  // When arriving from plan creation (freshPlanId), show a plain background
+  // instead of the pulsing logo to avoid a jarring flash between screens.
   if (loading) {
     return (
       <View style={s.container}>
-        <SafeAreaView style={[s.safe, s.loadingWrap]}>
-          <Animated.View style={[s.loadingLogoWrap, { transform: [{ scale: pulseAnim }] }]}>
-            <Image source={require('../../assets/icon.png')} style={s.loadingLogo} />
-          </Animated.View>
-        </SafeAreaView>
+        {!freshPlanId && (
+          <SafeAreaView style={[s.safe, s.loadingWrap]}>
+            <Animated.View style={[s.loadingLogoWrap, { transform: [{ scale: pulseAnim }] }]}>
+              <Image source={require('../../assets/icon.png')} style={s.loadingLogo} />
+            </Animated.View>
+          </SafeAreaView>
+        )}
       </View>
     );
   }
@@ -865,7 +858,9 @@ export default function HomeScreen({ navigation, route }) {
                   ? activeGoal.eventName || 'Race'
                   : activeGoal.goalType === 'distance'
                     ? `Ride ${activeGoal.targetDistance} km`
-                    : 'Improve my cycling'}
+                    : activeGoal.goalType === 'beginner' && activeGoal.targetDistance
+                      ? `Ride ${activeGoal.targetDistance} km`
+                      : 'Improve my cycling'}
               </Text>
               <Text style={s.goalMeta}>
                 {CYCLING_LABELS[activeGoal.cyclingType] || activeGoal.cyclingType} {'\u00B7'} {activePlan.weeks} week plan

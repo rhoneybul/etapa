@@ -1,13 +1,9 @@
 /**
- * Subscription service — unified interface for RevenueCat (native) and Stripe (web).
+ * Subscription service — unified interface for RevenueCat (native IAP).
  *
  * On iOS/Android: RevenueCat handles purchases and entitlement checks via App Store / Play Store.
- * On web: Stripe Checkout handles purchases, server checks entitlements via Supabase.
- *
- * RevenueCat is configured as a wrapper over Stripe, so both native IAP and Stripe
- * web purchases are tracked in RevenueCat's dashboard.
+ * Server-side subscription records are synced via RevenueCat webhooks to Supabase.
  */
-import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 import { getSession } from './authService';
 import {
@@ -60,8 +56,7 @@ export async function getPrices(forceRefresh = false) {
     return _pricesCache;
   }
 
-  // Public endpoint so pricing does not depend on Stripe.
-  // Sourced from app_config.pricing_config (server-side), with sensible defaults.
+  // Public endpoint — prices do not require auth.
   const data = await authRequest('GET', '/api/public/prices');
   if (data && !data.error) {
     _pricesCache = data;
@@ -76,46 +71,25 @@ export async function getPrices(forceRefresh = false) {
   return null;
 }
 
-/**
- * Validate a promo code and get discount info.
- * @param {string} code - promo code string or promo ID (promo_xxx)
- * @param {string} [plan] - optional plan to calculate discounted price
- * @returns {{ valid, promoId, label, discountedFormatted, ... } | null}
- */
-export async function validatePromo(code, plan) {
-  const data = await authRequest('POST', '/api/stripe/validate-promo', { code, plan });
-  return data;
-}
-
 // ── Subscription status ─────────────────────────────────────────────────────────
 
 /**
  * Returns subscription status.
  *
- * The server (Stripe/Supabase) is always the authoritative source — it is checked
- * first on every platform. This prevents stale RevenueCat SDK cache from showing
- * the wrong status after an account switch (e.g. logging out of a subscribed
- * account and into an unsubscribed one).
- *
- * RevenueCat is checked afterwards ONLY as a positive supplement: if the server
- * says inactive but RC says active, the user likely just made an in-app purchase
- * whose webhook hasn't reached the server yet, so we trust RC in that case.
+ * The server (Supabase) is always the authoritative source — it is checked
+ * first on every platform. RevenueCat is checked afterwards ONLY as a positive
+ * supplement: if the server says inactive but RC says active, the user likely
+ * just made an in-app purchase whose webhook hasn't reached the server yet.
  */
 export async function getSubscriptionStatus() {
   // ── 1. Server check (always authoritative) ──────────────────────────────────
-  const serverData = await authRequest('GET', '/api/stripe/subscription-status');
+  const serverData = await authRequest('GET', '/api/subscription/status');
 
   if (serverData?.active) {
-    // Server confirms active — return immediately without hitting RC.
-    return { ...serverData, source: 'stripe' };
+    return { ...serverData, source: 'server' };
   }
 
   // ── 2. RevenueCat fallback (native only, handles very-recent IAP) ───────────
-  // If the server says inactive but RC has an active entitlement, the webhook
-  // probably hasn't fired yet. Trust RC so the user isn't locked out right after
-  // purchasing. This path is NOT reached when a subscribed user logs out and a
-  // non-subscribed user logs in, because logoutRevenueCat() resets RC to anonymous
-  // (no entitlements) before the new user is identified.
   if (isRevenueCatAvailable()) {
     try {
       const rc = await checkEntitlement();
@@ -134,7 +108,7 @@ export async function getSubscriptionStatus() {
     }
   }
 
-  return serverData ? { ...serverData, source: 'stripe' } : { active: false };
+  return serverData ? { ...serverData, source: 'server' } : { active: false };
 }
 
 /**
@@ -151,8 +125,7 @@ export async function isSubscribed() {
 
 /**
  * Get available subscription offerings.
- * Native: returns RevenueCat offerings (real App Store / Play Store prices).
- * Web: returns null (web uses hardcoded prices in PaywallScreen).
+ * Returns RevenueCat offerings (real App Store / Play Store prices).
  */
 export async function getSubscriptionOfferings() {
   if (!isRevenueCatAvailable()) return null;
@@ -160,46 +133,28 @@ export async function getSubscriptionOfferings() {
 }
 
 /**
- * Purchase a subscription or lifetime access.
- *
- * On native (iOS/Android): uses RevenueCat to trigger native IAP.
- * On web: opens Stripe Checkout in a browser.
+ * Purchase a subscription or lifetime access via RevenueCat / App Store / Play Store.
  *
  * @param {string} plan - 'monthly' | 'annual' | 'lifetime' | 'starter'
- * @param {object|null} rcPackage - RevenueCat package object (native only, from getSubscriptionOfferings)
- * @param {string|null} promoCode - optional Stripe promo code ID or code string
+ * @param {object|null} rcPackage - RevenueCat package object (from getSubscriptionOfferings)
  * @returns {{ success: boolean, cancelled?: boolean, error?: string }}
  */
-export async function openCheckout(plan, rcPackage = null, promoCode = null) {
-  // ── Native (iOS & Android): use RevenueCat / App Store / Play Store IAP ──
-  if (Platform.OS === 'ios' || Platform.OS === 'android') {
-    if (!isRevenueCatAvailable()) {
-      return { success: false, error: 'In-app purchases are temporarily unavailable. Please check your connection and try again.' };
-    }
-    if (!rcPackage) {
-      return { success: false, error: 'Subscription products are loading. Please wait a moment and try again.' };
-    }
-    const result = await purchasePackage(rcPackage);
-    return result;
+export async function openCheckout(plan, rcPackage = null) {
+  if (!isRevenueCatAvailable()) {
+    return { success: false, error: 'In-app purchases are temporarily unavailable. Please check your connection and try again.' };
   }
-
-  // ── Web: use Stripe Checkout ──────────────────────────────────────────────
-  const redirectBase = `${window.location.origin}/stripe`;
-
-  const data = await authRequest('POST', '/api/stripe/create-checkout-session', { plan, redirectBase, promoCode });
-  if (!data?.url) throw new Error('Could not create checkout session. Please try again.');
-
-  window.location.href = data.url;
-  return { success: false }; // App will detect return via checkStripeReturn()
+  if (!rcPackage) {
+    return { success: false, error: 'Subscription products are loading. Please wait a moment and try again.' };
+  }
+  return purchasePackage(rcPackage);
 }
 
 /**
- * Restore purchases (native only — triggers RevenueCat restore).
- * On web, this is a no-op.
+ * Restore purchases (triggers RevenueCat restore).
  */
 export async function restorePurchases() {
   if (!isRevenueCatAvailable()) {
-    return { success: false, error: 'Not available on web' };
+    return { success: false, error: 'Not available' };
   }
   return rcRestore();
 }
@@ -212,7 +167,7 @@ export async function restorePurchases() {
  * @returns {{ success: boolean, trialEnd?: string, error?: string }}
  */
 export async function startFreeTrial() {
-  const data = await authRequest('POST', '/api/stripe/start-trial');
+  const data = await authRequest('POST', '/api/subscription/start-trial');
   if (!data) return { success: false, error: 'Could not start trial. Please try again.' };
   return data;
 }
@@ -237,105 +192,15 @@ export async function redeemCoupon(code) {
   return data || { success: false, error: 'Could not redeem coupon' };
 }
 
-// ── Starter plan flows ──────────────────────────────────────────────────────────
+// ── Billing / subscription management ───────────────────────────────────────────
 
 /**
- * Upgrades a starter plan to annual — issues pro-rata refund and opens checkout with 50% off.
- * Returns { success, refundAmount, daysRemaining } on success, { success: false } on cancel.
- */
-export async function upgradeStarter() {
-  const isNative = Platform.OS !== 'web';
-
-  // On native, upgrade must go through IAP — direct to App Store subscriptions
-  if (isNative) {
-    const { Linking } = require('react-native');
-    if (Platform.OS === 'ios') {
-      await Linking.openURL('https://apps.apple.com/account/subscriptions');
-    } else {
-      await Linking.openURL('https://play.google.com/store/account/subscriptions');
-    }
-    return { success: false };
-  }
-
-  // On web, use Stripe
-  const redirectBase = `${window.location.origin}/stripe`;
-  const data = await authRequest('POST', '/api/stripe/upgrade-starter', { redirectBase });
-  if (!data?.url) throw new Error('Could not start upgrade. Please try again.');
-
-  window.location.href = data.url;
-  return { success: false };
-}
-
-/**
- * Requests a full refund for the starter plan.
- * Only available within 16 days of the plan start date.
- * Returns { ok, refundedAmount } on success.
- */
-export async function refundStarter(planStartDate) {
-  const data = await authRequest('POST', '/api/stripe/refund-starter', { planStartDate });
-  if (!data) throw new Error('Could not process refund. Please try again.');
-  if (data.error) throw new Error(data.error);
-  return data;
-}
-
-/**
- * Requests a full refund for the lifetime plan.
- * Only available within 16 days of purchase.
- * Returns { ok, refundedAmount } on success.
- */
-export async function refundLifetime() {
-  const data = await authRequest('POST', '/api/stripe/refund-lifetime');
-  if (!data) throw new Error('Could not process refund. Please try again.');
-  if (data.error) throw new Error(data.error);
-  return data;
-}
-
-// ── Billing portal ──────────────────────────────────────────────────────────────
-
-/**
- * Opens the subscription management UI so the user can cancel or modify their subscription.
+ * Opens the native subscription management UI so the user can cancel or modify.
  *
- * On iOS/Android: uses RevenueCat's showManageSubscriptions(), which presents a native
- * in-app sheet on iOS 15+ (user never leaves the app), or falls back to the App Store /
- * Play Store subscriptions page on older OS versions.
- *
- * On web: opens the Stripe Customer Portal.
+ * iOS 15+: native in-app sheet (user never leaves the app).
+ * Android: opens Play Store subscription management.
+ * Fallback: opens App Store / Play Store subscriptions page.
  */
 export async function openBillingPortal() {
-  const isNative = Platform.OS !== 'web';
-
-  // On native, use RevenueCat's native subscription management sheet
-  if (isNative) {
-    await rcShowManageSubscriptions();
-    return;
-  }
-
-  // On web, open Stripe billing portal
-  const returnUrl = `${window.location.origin}`;
-  const data = await authRequest('POST', '/api/stripe/create-portal-session', { returnUrl });
-  if (!data?.url) throw new Error('Could not open billing portal. Please try again.');
-  window.location.href = data.url;
-}
-
-// ── Web return handler ──────────────────────────────────────────────────────────
-
-/**
- * On web, call this on app startup to detect if the user just returned from
- * Stripe Checkout. Returns the verified session_id if successful, else null.
- */
-export async function checkStripeReturn() {
-  if (Platform.OS !== 'web') return null;
-
-  const url = window.location.href;
-  if (!url.includes('/stripe/success')) return null;
-
-  const params = new URLSearchParams(window.location.search);
-  const sessionId = params.get('session_id');
-  if (!sessionId) return null;
-
-  // Clean the URL so a refresh doesn't re-trigger this
-  window.history.replaceState({}, '', '/');
-
-  await authRequest('POST', '/api/stripe/verify-session', { sessionId });
-  return sessionId;
+  await rcShowManageSubscriptions();
 }

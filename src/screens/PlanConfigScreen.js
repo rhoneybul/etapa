@@ -5,8 +5,8 @@
  *  Step 3: Build your week — session counts, day placement, AND other training
  *  Step 4: Duration (if no target date) & start date
  */
-import React, { useEffect, useState } from 'react';
-import { View, ScrollView, Text, TouchableOpacity, StyleSheet, TextInput, Alert } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, ScrollView, Text, TouchableOpacity, StyleSheet, TextInput, Alert, Keyboard } from 'react-native';
 import { colors, fontFamily } from '../theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import WizardShell, { CheckCard } from '../components/WizardShell';
@@ -204,6 +204,8 @@ export default function PlanConfigScreen({ navigation, route }) {
   );
   const [showAddRecurring, setShowAddRecurring] = useState(false);
   const [recurringForm, setRecurringForm] = useState({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' });
+
+  const step3ScrollRef = useRef(null);
 
   // One-off rides removed — pre-planned rides concept no longer shown in setup
 
@@ -642,10 +644,11 @@ export default function PlanConfigScreen({ navigation, route }) {
     if (step === 3) {
       return (
         <ScrollView
+          ref={step3ScrollRef}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          contentContainerStyle={{ paddingBottom: showAddRecurring ? 360 : 20 }}
+          contentContainerStyle={{ paddingBottom: showAddRecurring ? 420 : 20 }}
         >
           <View style={s.organisedSection}>
             <Text style={s.organisedHint}>
@@ -690,17 +693,21 @@ export default function PlanConfigScreen({ navigation, route }) {
                 <View style={s.organisedFormInputRow}>
                   <View style={s.organisedFormInputGroup}>
                     <Text style={s.organisedFormInputLabel}>Duration</Text>
-                    <TextInput style={s.organisedFormInput} placeholder="mins" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={recurringForm.durationMins} onChangeText={v => setRecurringForm(f => ({ ...f, durationMins: v }))} />
+                    <TextInput style={s.organisedFormInput} placeholder="mins" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={recurringForm.durationMins} onChangeText={v => setRecurringForm(f => ({ ...f, durationMins: v }))} onFocus={() => setTimeout(() => step3ScrollRef.current?.scrollToEnd({ animated: true }), 300)} />
                   </View>
                   <View style={s.organisedFormInputGroup}>
                     <Text style={s.organisedFormInputLabel}>Distance</Text>
-                    <TextInput style={s.organisedFormInput} placeholder="km" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={recurringForm.distanceKm} onChangeText={v => setRecurringForm(f => ({ ...f, distanceKm: v }))} />
+                    <TextInput style={s.organisedFormInput} placeholder="km" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={recurringForm.distanceKm} onChangeText={v => setRecurringForm(f => ({ ...f, distanceKm: v }))} onFocus={() => setTimeout(() => step3ScrollRef.current?.scrollToEnd({ animated: true }), 300)} />
                   </View>
                   <View style={s.organisedFormInputGroup}>
                     <Text style={s.organisedFormInputLabel}>Elevation</Text>
-                    <TextInput style={s.organisedFormInput} placeholder="m" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={recurringForm.elevationM} onChangeText={v => setRecurringForm(f => ({ ...f, elevationM: v }))} />
+                    <TextInput style={s.organisedFormInput} placeholder="m" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={recurringForm.elevationM} onChangeText={v => setRecurringForm(f => ({ ...f, elevationM: v }))} onFocus={() => setTimeout(() => step3ScrollRef.current?.scrollToEnd({ animated: true }), 300)} />
                   </View>
                 </View>
+
+                <TouchableOpacity style={s.keyboardDoneRow} onPress={() => Keyboard.dismiss()} activeOpacity={0.7}>
+                  <Text style={s.keyboardDoneText}>Done</Text>
+                </TouchableOpacity>
 
                 <TextInput
                   style={s.organisedFormNotesInput}
@@ -711,13 +718,14 @@ export default function PlanConfigScreen({ navigation, route }) {
                   returnKeyType="done"
                   onSubmitEditing={addRecurringRide}
                   blurOnSubmit
+                  onFocus={() => setTimeout(() => step3ScrollRef.current?.scrollToEnd({ animated: true }), 300)}
                 />
 
                 <View style={s.organisedFormActions}>
-                  <TouchableOpacity style={s.organisedFormCancelBtn} onPress={() => { setShowAddRecurring(false); setRecurringForm({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' }); }}>
+                  <TouchableOpacity style={s.organisedFormCancelBtn} onPress={() => { Keyboard.dismiss(); setShowAddRecurring(false); setRecurringForm({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' }); }}>
                     <Text style={s.organisedFormCancelText}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={s.organisedFormAddBtn} onPress={addRecurringRide}>
+                  <TouchableOpacity style={s.organisedFormAddBtn} onPress={() => { Keyboard.dismiss(); addRecurringRide(); }}>
                     <Text style={s.organisedFormAddText}>Add ride</Text>
                   </TouchableOpacity>
                 </View>
@@ -1457,6 +1465,8 @@ const s = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, fontFamily: FF.regular, color: colors.text,
     marginBottom: 12,
   },
+  keyboardDoneRow: { alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 4, marginBottom: 8 },
+  keyboardDoneText: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary },
   organisedFormActions: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end' },
   organisedFormCancelBtn: { paddingHorizontal: 16, paddingVertical: 10 },
   organisedFormCancelText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
