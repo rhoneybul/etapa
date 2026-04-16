@@ -335,18 +335,14 @@ export default function HomeScreen({ navigation, route }) {
   };
 
   // ── Loading state ─────────────────────────────────────────────────────────
-  // When arriving from plan creation (freshPlanId), show a plain background
-  // instead of the pulsing logo to avoid a jarring flash between screens.
   if (loading) {
     return (
       <View style={s.container}>
-        {!freshPlanId && (
-          <SafeAreaView style={[s.safe, s.loadingWrap]}>
-            <Animated.View style={[s.loadingLogoWrap, { transform: [{ scale: pulseAnim }] }]}>
-              <Image source={require('../../assets/icon.png')} style={s.loadingLogo} />
-            </Animated.View>
-          </SafeAreaView>
-        )}
+        <SafeAreaView style={[s.safe, s.loadingWrap]}>
+          <Animated.View style={[s.loadingLogoWrap, { transform: [{ scale: pulseAnim }] }]}>
+            <Image source={require('../../assets/icon.png')} style={s.loadingLogo} />
+          </Animated.View>
+        </SafeAreaView>
       </View>
     );
   }
