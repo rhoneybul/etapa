@@ -877,14 +877,37 @@ router.get('/payments/details', async (req, res, next) => {
     const { data: redemptions } = await supabase.from('coupon_redemptions').select('user_id');
     const couponUsers = new Set((redemptions || []).map(r => r.user_id));
 
+    // Map RevenueCat `store` values → friendly labels used by the dashboard.
+    // The admin UI (payments/page.tsx) has colour styles keyed on these names.
+    const STORE_LABEL = {
+      APP_STORE: 'Apple IAP',
+      MAC_APP_STORE: 'Apple IAP',
+      PLAY_STORE: 'Google Play',
+      STRIPE: 'Stripe',
+      PROMOTIONAL: 'Promotional',
+      AMAZON: 'Amazon',
+    };
+
     const result = (subs || []).map(sub => {
       const user = usersById[sub.user_id];
-      // Determine source: coupon, trial, or Apple/Google IAP
-      let source = 'Apple IAP';
-      if (couponUsers.has(sub.user_id)) source = 'Coupon';
-      else if (sub.status === 'trialing') source = 'Free Trial';
-      // RevenueCat subscriptions have UUIDs as IDs; trials created server-side don't
-      // If stripe_customer_id is null and not a coupon, it came from RevenueCat (Apple/Google)
+
+      // Determine source — prefer the explicit store column populated by
+      // the RevenueCat webhook, fall back to heuristics for legacy rows.
+      let source;
+      if (couponUsers.has(sub.user_id)) {
+        source = 'Coupon';
+      } else if (sub.status === 'trialing') {
+        source = 'Free Trial';
+      } else if (sub.store && STORE_LABEL[sub.store]) {
+        source = STORE_LABEL[sub.store];
+      } else if (sub.store) {
+        source = sub.store; // unknown but persisted — show raw so admins can debug
+      } else if (sub.stripe_customer_id) {
+        source = 'Stripe';
+      } else {
+        // Legacy row without store metadata — assume Apple IAP (historical default).
+        source = 'Apple IAP';
+      }
 
       return {
         id: sub.id,
@@ -894,6 +917,8 @@ router.get('/payments/details', async (req, res, next) => {
         plan: sub.plan,
         status: sub.status,
         source,
+        store: sub.store || null,
+        productId: sub.product_id || null,
         trialEnd: sub.trial_end,
         currentPeriodEnd: sub.current_period_end,
         createdAt: sub.created_at,

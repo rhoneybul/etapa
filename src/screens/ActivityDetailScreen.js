@@ -10,7 +10,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontFamily } from '../theme';
+import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import { getPlans, getGoals, markActivityComplete, updateActivity, savePlan } from '../services/storageService';
 import { editActivityWithAI } from '../services/llmPlanService';
 import { getSessionColor, getSessionLabel, SESSION_COLORS, EFFORT_LABELS as EFFORT_GUIDE_LABELS } from '../utils/sessionLabels';
@@ -654,7 +654,7 @@ const s = StyleSheet.create({
   chatSendBtnDisabled: { opacity: 0.3 },
   chatSendText: { fontSize: 18, color: '#fff', fontWeight: '700' },
 
-  bottomBar: { paddingHorizontal: 20, paddingBottom: 12, paddingTop: 8 },
+  bottomBar: { paddingHorizontal: 20, paddingBottom: 12 + BOTTOM_INSET, paddingTop: 8 },
   completeBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center', shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 4 },
   completeBtnText: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: '#fff' },
 

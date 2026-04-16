@@ -11,7 +11,7 @@ import {
   TouchableOpacity, ScrollView, Alert, AppState, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontFamily } from '../theme';
+import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import {
   generatePlanWithLLM,
   startAsyncPlanGeneration,
@@ -396,7 +396,7 @@ const s = StyleSheet.create({
   bgNoteText: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center', lineHeight: 18 },
 
   // ── Bottom ─────────────────────────────────────────────────────────────────
-  bottom: { paddingHorizontal: 24, paddingBottom: 16, alignItems: 'center' },
+  bottom: { paddingHorizontal: 24, paddingBottom: 16 + BOTTOM_INSET, alignItems: 'center' },
   cancelBtn: {
     paddingVertical: 12, paddingHorizontal: 32, borderRadius: 12,
     borderWidth: 1, borderColor: colors.border, marginBottom: 12,

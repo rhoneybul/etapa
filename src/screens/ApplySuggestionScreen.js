@@ -7,7 +7,7 @@ import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontFamily } from '../theme';
+import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import { getPlan, getGoal, savePlan, getPlanConfig, getUserPrefs } from '../services/storageService';
 import { editPlanWithLLM } from '../services/llmPlanService';
 import { convertDistance, distanceLabel } from '../utils/units';
@@ -354,7 +354,7 @@ const s = StyleSheet.create({
   dayBtnActivitySelected: { color: colors.primary },
 
   // CTA
-  ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },
+  ctaWrap: { paddingHorizontal: 20, paddingBottom: 16 + BOTTOM_INSET, paddingTop: 8 },
   ctaRow: { flexDirection: 'row', gap: 10 },
   cancelBtn: {
     backgroundColor: colors.surface, borderRadius: 14, paddingVertical: 16, paddingHorizontal: 24,

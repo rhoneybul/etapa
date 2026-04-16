@@ -130,8 +130,15 @@ async function revenueCatWebhookHandler(req, res) {
     status: isLifetime ? 'paid' : status,
     trial_end: null,
     current_period_end: periodEnd,
+    // Persist the source store so the admin UI can distinguish Apple IAP,
+    // Google Play, Stripe, Promotional, etc. (column added in
+    // 20260416000001_add_store_to_subscriptions.sql)
+    store: store || null,
+    product_id: productId || null,
     updated_at: new Date().toISOString(),
   };
+
+  console.log(`[RevenueCat webhook] Upserting subscription ${subscriptionId} — store=${store || 'unknown'} product=${productId || 'unknown'} plan=${plan} status=${record.status}`);
 
   try {
     const { error } = await supabase

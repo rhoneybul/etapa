@@ -83,6 +83,19 @@ export const text = {
   caption:    { fontSize: 11, fontWeight: '300', color: colors.textMuted, fontFamily: fontFamily.light },
 };
 
+// Extra bottom padding for Android gesture navigation. On iOS, SafeAreaView
+// handles this automatically. On Android, bottom bars / CTAs need this extra
+// space so they aren't hidden behind the gesture pill / 3-button nav.
+// 24px was too small on many modern Android devices (gesture bars are
+// typically 28–48px). 34px is a safer baseline that keeps CTAs well clear of
+// the system bar. Screens that need pixel-perfect insets should use
+// useSafeAreaInsets() from react-native-safe-area-context instead.
+import { Platform, StatusBar } from 'react-native';
+export const BOTTOM_INSET = Platform.OS === 'android' ? 34 : 0;
+// Top inset for Android status bar — used on screens that render content
+// flush to the top without their own SafeAreaView top edge.
+export const TOP_INSET = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0;
+
 export const layout = {
   pagePad:    20,
   cardRadius: 14,

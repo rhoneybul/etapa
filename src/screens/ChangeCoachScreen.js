@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { colors, fontFamily } from '../theme';
+import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import { COACHES } from '../data/coaches';
 import { getPlans, getPlanConfig, updatePlanConfig } from '../services/storageService';
 import analytics from '../services/analyticsService';
@@ -230,7 +230,7 @@ const s = StyleSheet.create({
   coachCheckMark: { fontSize: 13, color: '#fff', fontWeight: '700' },
 
   // CTA
-  ctaWrap: { paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8 },
+  ctaWrap: { paddingHorizontal: 16, paddingBottom: 16 + BOTTOM_INSET, paddingTop: 8 },
   ctaBtn: {
     backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 16,
     alignItems: 'center', justifyContent: 'center',

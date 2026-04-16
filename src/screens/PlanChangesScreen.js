@@ -7,7 +7,7 @@ import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontFamily } from '../theme';
+import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import { getPlan, savePlan, getUserPrefs } from '../services/storageService';
 import { convertDistance, distanceLabel } from '../utils/units';
 
@@ -186,7 +186,7 @@ const s = StyleSheet.create({
   changeDot: { width: 8, height: 8, borderRadius: 4, marginTop: 5 },
   changeText: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, flex: 1, lineHeight: 20 },
 
-  ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },
+  ctaWrap: { paddingHorizontal: 20, paddingBottom: 16 + BOTTOM_INSET, paddingTop: 8 },
   ctaRow: { flexDirection: 'row', gap: 10 },
   undoBtn: {
     backgroundColor: colors.surface, borderRadius: 14, paddingVertical: 16, paddingHorizontal: 24,

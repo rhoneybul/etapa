@@ -12,7 +12,7 @@ import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontFamily } from '../theme';
+import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import { saveGoal } from '../services/storageService';
 import { isSubscribed } from '../services/subscriptionService';
 import analytics from '../services/analyticsService';
@@ -340,7 +340,7 @@ const s = StyleSheet.create({
   tipBody: { fontSize: 13, fontFamily: FF.regular, color: colors.textMid, lineHeight: 20 },
 
   // CTAs
-  ctaWrap: { paddingHorizontal: 24, paddingBottom: 16, paddingTop: 8, gap: 10 },
+  ctaWrap: { paddingHorizontal: 24, paddingBottom: 16 + BOTTOM_INSET, paddingTop: 8, gap: 10 },
   ctaBtn: {
     backgroundColor: '#E8458B', borderRadius: 14, paddingVertical: 16,
     alignItems: 'center',

@@ -5,9 +5,10 @@
  */
 import React from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, SafeAreaView,
+  View, Text, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 
 const FF = fontFamily;
@@ -144,7 +145,7 @@ const s = StyleSheet.create({
 
   content: { flex: 1, paddingHorizontal: 16 },
 
-  bottom: { paddingHorizontal: 24, paddingBottom: 12, paddingTop: 8, gap: 4 },
+  bottom: { paddingHorizontal: 24, paddingBottom: Platform.OS === 'android' ? 24 : 12, paddingTop: 8, gap: 4 },
   skipBtn: { alignItems: 'center', paddingVertical: 10 },
   skipText: { fontSize: 14, fontFamily: FF.medium, color: colors.textMuted },
   continueBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center' },

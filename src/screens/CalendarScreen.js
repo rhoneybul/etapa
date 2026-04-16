@@ -577,8 +577,18 @@ export default function CalendarScreen({ navigation, route }) {
                       if (movingActivity) {
                         handlePlaceActivity(new Date(year, month, day));
                       } else {
-                        setActionActivity(null);
-                        setSelectedDate(new Date(year, month, day));
+                        const tappedDate = new Date(year, month, day);
+                        setSelectedDate(tappedDate);
+                        // If the tapped day has exactly one activity, surface
+                        // the action bar immediately so the user sees all
+                        // options (Move/Delete/Open) without needing a second
+                        // tap on the activity card below.
+                        const dayActs = activityMap[getKey(day)] || [];
+                        if (dayActs.length === 1) {
+                          setActionActivity({ activity: dayActs[0], planId: dayActs[0]._planId });
+                        } else {
+                          setActionActivity(null);
+                        }
                       }
                     }}
                     disabled={!day}
@@ -914,7 +924,7 @@ const s = StyleSheet.create({
   checkMark: { fontSize: 12, color: '#fff', fontWeight: '700' },
 
   // Coach chat bottom bar
-  coachBar: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
+  coachBar: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: Platform.OS === 'android' ? 34 : 12, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
   coachBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14,
@@ -943,7 +953,7 @@ const s = StyleSheet.create({
   // Review panel (chat + buttons)
   reviewPanel: {
     backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border,
-    paddingBottom: Platform.OS === 'ios' ? 0 : 8,
+    paddingBottom: Platform.OS === 'ios' ? 0 : 24,
   },
   reviewChatScroll: { maxHeight: 160, paddingHorizontal: 16, paddingTop: 10 },
   reviewChatContent: { gap: 6, paddingBottom: 4 },
@@ -998,7 +1008,7 @@ const s = StyleSheet.create({
   // Activity action bar
   actCardActive: { borderColor: colors.primary, borderWidth: 1.5 },
   actionBar: {
-    paddingHorizontal: 16, paddingVertical: 12,
+    paddingHorizontal: 16, paddingTop: 12, paddingBottom: Platform.OS === 'android' ? 34 : 12,
     backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border,
   },
   actionBarTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, paddingVertical: 4 },

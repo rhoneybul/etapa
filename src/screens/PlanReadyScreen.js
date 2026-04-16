@@ -10,7 +10,7 @@ import {
   Animated, Image, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontFamily } from '../theme';
+import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan, getUserPrefs } from '../services/storageService';
 import { assessPlan, editPlanWithLLM } from '../services/llmPlanService';
 import { isSubscribed, startFreeTrial } from '../services/subscriptionService';
@@ -668,7 +668,7 @@ const s = StyleSheet.create({
   dayPickerCancelText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
 
   // CTA
-  ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },
+  ctaWrap: { paddingHorizontal: 20, paddingBottom: 16 + BOTTOM_INSET, paddingTop: 8 },
   ctaBtnRow: { flexDirection: 'row', gap: 10, marginBottom: 0 },
   backBtn: {
     backgroundColor: colors.surface, borderRadius: 14, paddingVertical: 16, paddingHorizontal: 24,

@@ -8,7 +8,7 @@ import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image, ImageBackground, Animated, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontFamily } from '../theme';
+import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import { getCurrentUser } from '../services/authService';
 import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig, getUserPrefs, isOnboardingDone, setOnboardingDone } from '../services/storageService';
 import OnboardingTour from '../components/OnboardingTour';
@@ -1655,7 +1655,7 @@ const s = StyleSheet.create({
   // Activity action bar
   todayCardActive: { borderColor: colors.primary, borderWidth: 1.5 },
   actionBar: {
-    paddingHorizontal: 16, paddingVertical: 12,
+    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 + BOTTOM_INSET,
     backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border,
   },
   actionBarTitle: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, marginBottom: 10 },
