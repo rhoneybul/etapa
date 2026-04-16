@@ -17,7 +17,7 @@ import { View } from 'react-native';
 import { useFonts, Poppins_300Light, Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold } from '@expo-google-fonts/poppins';
 import * as SplashScreen from 'expo-splash-screen';
 import { getSession, getCurrentUser, signOut, onAuthStateChange } from './src/services/authService';
-import { hydrateFromServer } from './src/services/storageService';
+import { ensureUserData, hydrateFromServer } from './src/services/storageService';
 import { checkStripeReturn } from './src/services/subscriptionService';
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from './src/services/revenueCatService';
 import analytics from './src/services/analyticsService';
@@ -167,7 +167,11 @@ function App() {
         // Link RevenueCat to the authenticated user
         loginRevenueCat(session.user?.id).catch(() => {});
 
-        await hydrateFromServer().catch(() => {});
+        // Verify the cached user matches whoever is in local storage.
+        // If the app was force-quit mid-sign-out, or a different account was
+        // used previously, this clears stale local data before hydrating.
+        const cleared = await ensureUserData(session.user?.id).catch(() => false);
+        await hydrateFromServer({ force: cleared }).catch(() => {});
 
         // Register for push notifications
         registerForPushNotifications().catch(() => {});

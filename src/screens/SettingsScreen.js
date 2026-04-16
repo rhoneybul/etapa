@@ -118,6 +118,32 @@ export default function SettingsScreen({ navigation }) {
     }
   };
 
+  const handleCancelSubscription = () => {
+    Alert.alert(
+      'Cancel subscription?',
+      'Your access will continue until the end of the current billing period. You can resubscribe at any time.',
+      [
+        { text: 'Keep subscription', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: async () => {
+            setPortalLoading(true);
+            try {
+              await openBillingPortal();
+              // Refresh subscription status after user returns from management sheet
+              getSubscriptionStatus().then(setSubscription).catch(() => {});
+            } catch (err) {
+              Alert.alert('Error', err.message);
+            } finally {
+              setPortalLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const handleUpgrade = async () => {
     setUpgrading(true);
     try {
@@ -245,7 +271,7 @@ export default function SettingsScreen({ navigation }) {
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete your account?',
-      'This will permanently delete your account, all training plans, and all associated data. This action cannot be undone.\n\nIf you have an active subscription, please cancel it first via Settings > Manage Plan or through the App Store.',
+      'This will permanently delete your account, all training plans, and all associated data. This action cannot be undone.\n\nIf you have an active subscription, please cancel it first using the Cancel Subscription option above.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -476,11 +502,11 @@ export default function SettingsScreen({ navigation }) {
               </View>
             )}
             <View style={[s.card, { marginTop: 8 }]}>
-              <TouchableOpacity style={s.row} onPress={handleManagePlan} disabled={portalLoading}>
+              <TouchableOpacity style={s.row} onPress={handleCancelSubscription} disabled={portalLoading}>
                 <View style={s.rowLeft}>
                   <View>
                     <Text style={[s.rowTitle, { color: colors.primary }]}>{portalLoading ? 'Opening...' : 'Cancel Subscription'}</Text>
-                    <Text style={s.rowSub}>Manage in App Store or Google Play</Text>
+                    <Text style={s.rowSub}>Cancel without leaving the app</Text>
                   </View>
                 </View>
                 <Text style={s.chevron}>{'\u203A'}</Text>
@@ -533,11 +559,11 @@ export default function SettingsScreen({ navigation }) {
               </TouchableOpacity>
             </View>
             <View style={[s.card, { marginTop: 8 }]}>
-              <TouchableOpacity style={s.row} onPress={handleManagePlan} disabled={portalLoading}>
+              <TouchableOpacity style={s.row} onPress={handleCancelSubscription} disabled={portalLoading}>
                 <View style={s.rowLeft}>
                   <View>
                     <Text style={[s.rowTitle, { color: colors.primary }]}>{portalLoading ? 'Opening...' : 'Cancel Subscription'}</Text>
-                    <Text style={s.rowSub}>Manage in App Store or Google Play</Text>
+                    <Text style={s.rowSub}>Cancel without leaving the app</Text>
                   </View>
                 </View>
                 <Text style={s.chevron}>›</Text>

@@ -229,3 +229,60 @@ export function isRevenueCatAvailable() {
 export function isRevenueCatConfigured() {
   return PURCHASES_AVAILABLE && isConfigured;
 }
+
+// Android package name — must match app.json android.package
+const ANDROID_PACKAGE = 'com.etapa.app';
+
+/**
+ * Opens the native subscription management UI.
+ *
+ * iOS 15+  → in-app sheet via RevenueCat (user never leaves the app).
+ * Android  → Google Play subscription management via RevenueCat (deep-linked to the
+ *            specific product when possible), which opens the Play Store.
+ * Fallback → platform-specific URL if the RevenueCat SDK call fails.
+ *
+ * @returns {Promise<void>}
+ */
+export async function showManageSubscriptions() {
+  // RevenueCat's showManageSubscriptions works on both iOS and Android.
+  // iOS 15+: renders an in-app sheet.
+  // Android: opens Play Store subscription management (deep-linked to the active SKU).
+  if (PURCHASES_AVAILABLE && isConfigured) {
+    try {
+      await Purchases.showManageSubscriptions();
+      return;
+    } catch (err) {
+      console.warn('[RevenueCat] showManageSubscriptions not available, falling back:', err);
+    }
+  }
+
+  // Fallback: build a platform-specific URL.
+  // On Android we include the active product SKU and package name so the Play Store
+  // deep-links directly to the right subscription rather than the generic list.
+  const { Linking } = require('react-native');
+
+  if (Platform.OS === 'android') {
+    let productId = null;
+    if (PURCHASES_AVAILABLE && isConfigured) {
+      try {
+        const customerInfo = await Purchases.getCustomerInfo();
+        const entitlement = customerInfo?.entitlements?.active?.['pro'];
+        if (entitlement?.productIdentifier) {
+          productId = entitlement.productIdentifier;
+        }
+      } catch {
+        // ignore — just use the generic URL below
+      }
+    }
+
+    const baseUrl = 'https://play.google.com/store/account/subscriptions';
+    const url = productId
+      ? `${baseUrl}?sku=${encodeURIComponent(productId)}&package=${ANDROID_PACKAGE}`
+      : baseUrl;
+    await Linking.openURL(url);
+    return;
+  }
+
+  // iOS fallback
+  await Linking.openURL('https://apps.apple.com/account/subscriptions');
+}

@@ -281,6 +281,8 @@ export async function clearStravaTokens() {
 
 /**
  * Clears all user-specific local data. Call on sign-out or when switching users.
+ * Intentionally broad — every key that could expose one user's data to another
+ * must be listed here.
  */
 export async function clearUserData() {
   await AsyncStorage.multiRemove([
@@ -289,24 +291,28 @@ export async function clearUserData() {
     KEYS.PLAN_CONFIGS,
     KEYS.CURRENT_USER,
     KEYS.ONBOARDING_DONE,
+    KEYS.USER_PREFS,          // display name, units — must not bleed to next user
+    KEYS.STRAVA,              // Strava OAuth tokens are user-specific
+    KEYS.STRAVA_ACTIVITIES,   // cached activities are user-specific
   ]);
   migrated = false; // Reset migration flag so next user gets a fresh start
 }
 
 /**
- * Call on sign-in. If the userId differs from what's stored locally,
- * clears all local data so stale data from a previous user is never shown.
- * Returns true if data was cleared (caller should then hydrate from server).
+ * Call on sign-in. If the userId differs from what's stored locally (or if no
+ * user was stored — e.g. just after sign-out), clears all local data so stale
+ * data from a previous session is never shown.
+ * Returns true if data was cleared (caller should then force-hydrate from server).
  */
 export async function ensureUserData(userId) {
   const storedUserId = await AsyncStorage.getItem(KEYS.CURRENT_USER);
-  if (storedUserId && storedUserId !== userId) {
+  if (storedUserId !== userId) {
+    // Covers both "different user" and "no stored user" (null !== userId).
+    // Clear everything so the new user starts with a clean slate,
+    // then immediately stamp the new user ID so this only runs once per session.
     await clearUserData();
     await AsyncStorage.setItem(KEYS.CURRENT_USER, userId);
-    return true; // Data was cleared — caller should hydrate
-  }
-  if (!storedUserId) {
-    await AsyncStorage.setItem(KEYS.CURRENT_USER, userId);
+    return true; // Caller must force-hydrate from server
   }
   return false;
 }

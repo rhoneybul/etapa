@@ -16,6 +16,7 @@ import {
   getOfferings,
   purchasePackage,
   restorePurchases as rcRestore,
+  showManageSubscriptions as rcShowManageSubscriptions,
 } from './revenueCatService';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
@@ -274,21 +275,20 @@ export async function refundLifetime() {
 // ── Billing portal ──────────────────────────────────────────────────────────────
 
 /**
- * Opens the Stripe Customer Portal so the user can manage/cancel their subscription.
- * On native with RevenueCat, users manage subscriptions through the App Store / Play Store
- * settings instead — the app should direct them there.
+ * Opens the subscription management UI so the user can cancel or modify their subscription.
+ *
+ * On iOS/Android: uses RevenueCat's showManageSubscriptions(), which presents a native
+ * in-app sheet on iOS 15+ (user never leaves the app), or falls back to the App Store /
+ * Play Store subscriptions page on older OS versions.
+ *
+ * On web: opens the Stripe Customer Portal.
  */
 export async function openBillingPortal() {
   const isNative = Platform.OS !== 'web';
 
-  // On native, direct users to the App Store / Play Store subscription management
+  // On native, use RevenueCat's native subscription management sheet
   if (isNative) {
-    const { Linking } = require('react-native');
-    if (Platform.OS === 'ios') {
-      await Linking.openURL('https://apps.apple.com/account/subscriptions');
-    } else {
-      await Linking.openURL('https://play.google.com/store/account/subscriptions');
-    }
+    await rcShowManageSubscriptions();
     return;
   }
 
