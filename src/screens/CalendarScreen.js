@@ -421,6 +421,14 @@ export default function CalendarScreen({ navigation, route }) {
   const isSelected = (d) => d && selectedDate && selectedDate.getFullYear() === year && selectedDate.getMonth() === month && selectedDate.getDate() === d;
   const getKey = (d) => `${year}-${month}-${d}`;
 
+  // Source day key when moving an activity (so we can highlight it)
+  const moveSourceKey = useMemo(() => {
+    if (!movingActivity) return null;
+    const d = getActivityDate(movingActivity.planStartDate, movingActivity.activity.week, movingActivity.activity.dayOfWeek);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  }, [movingActivity]);
+  const isMoveSource = (d) => d && moveSourceKey && moveSourceKey === getKey(d);
+
   const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
   const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
 
@@ -561,7 +569,8 @@ export default function CalendarScreen({ navigation, route }) {
                       isToday(day) && s.dayCellToday,
                       isSelected(day) && s.dayCellSelected,
                       reviewMode && day && affectedDateKeys.has(getKey(day)) && !isSelected(day) && s.dayCellChanged,
-                      movingActivity && day && s.dayCellDropTarget,
+                      movingActivity && day && !isMoveSource(day) && s.dayCellDropTarget,
+                      isMoveSource(day) && s.dayCellMoveSource,
                     ]}
                     onPress={() => {
                       if (!day) return;
@@ -619,7 +628,7 @@ export default function CalendarScreen({ navigation, route }) {
                 {selectedDate.getDate()} {MONTHS[selectedDate.getMonth()]}
               </Text>
               {selectedActivities.length > 0 && !actionActivity && (
-                <Text style={s.selectedHint}>Tap an activity to move or delete</Text>
+                <Text style={s.selectedHint}>Tap an activity for options</Text>
               )}
             </View>
           )}
@@ -659,7 +668,8 @@ export default function CalendarScreen({ navigation, route }) {
               style={[s.actCard, activity.type === 'strength' && s.actCardStrength, activity.completed && s.actCardDone, actionActivity?.activity?.id === activity.id && s.actCardActive]}
               onPress={() => {
                 if (actionActivity?.activity?.id === activity.id) {
-                  setActionActivity(null);
+                  // Already selected — navigate to activity detail
+                  navigation.navigate('ActivityDetail', { activityId: activity.id });
                 } else {
                   setActionActivity({ activity, planId: activity._planId });
                 }
@@ -697,12 +707,19 @@ export default function CalendarScreen({ navigation, route }) {
         {/* Activity action bar — shown when an activity is tapped */}
         {actionActivity && !movingActivity && (
           <View style={s.actionBar}>
-            <Text style={s.actionBarTitle} numberOfLines={1}>{actionActivity.activity.title}</Text>
+            <TouchableOpacity
+              style={s.actionBarTitleRow}
+              onPress={() => {
+                const id = actionActivity.activity.id;
+                setActionActivity(null);
+                navigation.navigate('ActivityDetail', { activityId: id });
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={s.actionBarTitle} numberOfLines={1}>{actionActivity.activity.title}</Text>
+              <Text style={s.actionBarTitleChevron}>{'\u203A'}</Text>
+            </TouchableOpacity>
             <View style={s.actionBarBtns}>
-              <TouchableOpacity style={s.actionBarBtn} onPress={() => { const id = actionActivity.activity.id; setActionActivity(null); navigation.navigate('ActivityDetail', { activityId: id }); }} activeOpacity={0.7}>
-                <MaterialCommunityIcons name="eye-outline" size={20} color={colors.text} />
-                <Text style={s.actionBarBtnText}>View</Text>
-              </TouchableOpacity>
               <TouchableOpacity style={s.actionBarBtn} onPress={handleActionMove} activeOpacity={0.7}>
                 <MaterialCommunityIcons name="calendar-arrow-right" size={20} color={colors.text} />
                 <Text style={s.actionBarBtnText}>Move</Text>
@@ -710,6 +727,10 @@ export default function CalendarScreen({ navigation, route }) {
               <TouchableOpacity style={[s.actionBarBtn, s.actionBarBtnDelete]} onPress={handleActionDelete} activeOpacity={0.7}>
                 <MaterialCommunityIcons name="delete-outline" size={20} color="#EF4444" />
                 <Text style={[s.actionBarBtnText, { color: '#EF4444' }]}>Delete</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.actionBarBtn} onPress={() => setActionActivity(null)} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="close" size={20} color={colors.textMuted} />
+                <Text style={[s.actionBarBtnText, { color: colors.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -972,6 +993,7 @@ const s = StyleSheet.create({
   moveBannerText: { flex: 1, fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: '#fff' },
   moveBannerCancel: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: 'rgba(255,255,255,0.7)' },
   dayCellDropTarget: { borderWidth: 1, borderColor: 'rgba(232,69,139,0.3)', borderStyle: 'dashed' },
+  dayCellMoveSource: { backgroundColor: 'rgba(232,69,139,0.2)', borderColor: colors.primary, borderWidth: 1.5, borderStyle: 'solid' },
 
   // Activity action bar
   actCardActive: { borderColor: colors.primary, borderWidth: 1.5 },
@@ -979,7 +1001,9 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 12,
     backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border,
   },
-  actionBarTitle: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, marginBottom: 10 },
+  actionBarTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, paddingVertical: 4 },
+  actionBarTitle: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, flex: 1 },
+  actionBarTitleChevron: { fontSize: 20, color: colors.primary, fontWeight: '300', marginLeft: 8 },
   actionBarBtns: { flexDirection: 'row', gap: 10 },
   actionBarBtn: {
     flex: 1, alignItems: 'center', gap: 4, paddingVertical: 10, borderRadius: 12,

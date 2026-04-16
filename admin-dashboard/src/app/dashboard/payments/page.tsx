@@ -13,6 +13,7 @@ interface Subscription {
   userEmail: string | null;
   plan: string;
   status: string;
+  source: string;
   trialEnd: string | null;
   currentPeriodEnd: string | null;
   createdAt: string;
@@ -26,6 +27,13 @@ function formatDate(iso: string | null) {
     year: "numeric",
   });
 }
+
+const SOURCE_STYLES: Record<string, string> = {
+  "Apple IAP": "bg-blue-900/30 text-blue-300 border-blue-700/30",
+  "Google Play": "bg-green-900/30 text-green-300 border-green-700/30",
+  "Coupon": "bg-purple-900/30 text-purple-300 border-purple-700/30",
+  "Free Trial": "bg-amber-900/30 text-amber-300 border-amber-700/30",
+};
 
 interface CouponRedemption {
   id: string;
@@ -95,15 +103,23 @@ export default function PaymentsPage() {
     planCounts[plan] = (planCounts[plan] || 0) + 1;
   }
 
+  // Group by source
+  const sourceCounts: Record<string, number> = {};
+  for (const sub of subs) {
+    const src = sub.source || "Unknown";
+    sourceCounts[src] = (sourceCounts[src] || 0) + 1;
+  }
+
   return (
     <div>
       <h1 className="text-lg font-semibold text-white mb-6">Subscriptions & Payments</h1>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         <StatCard label="Total Subscriptions" value={subs.length} />
         <StatCard label="Active / Paid" value={activeSubs.length} />
         <StatCard label="In Trial" value={trialingSubs.length} />
-        <StatCard label="Plans" value={Object.entries(planCounts).map(([p, c]) => `${p}: ${c}`).join(", ") || "—"} />
+        <StatCard label="Plans" value={Object.entries(planCounts).map(([p, c]) => `${p}: ${c}`).join(", ") || "\u2014"} />
+        <StatCard label="Sources" value={Object.entries(sourceCounts).map(([s, c]) => `${s}: ${c}`).join(", ") || "\u2014"} />
       </div>
 
       {/* Desktop table */}
@@ -115,6 +131,7 @@ export default function PaymentsPage() {
                 <th className="text-left px-4 py-3 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">User</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Plan</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Source</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Trial End</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Period End</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Started</th>
@@ -135,6 +152,11 @@ export default function PaymentsPage() {
                   </td>
                   <td className="px-4 py-3"><Badge value={sub.plan} /></td>
                   <td className="px-4 py-3"><Badge value={sub.status} /></td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${SOURCE_STYLES[sub.source] || "bg-gray-800 text-gray-400 border-gray-700"}`}>
+                      {sub.source}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-xs text-etapa-textMid">
                     {sub.status === "trialing" ? formatDate(sub.trialEnd) : "\u2014"}
                   </td>
@@ -154,7 +176,7 @@ export default function PaymentsPage() {
               ))}
               {subs.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-etapa-textFaint">
+                  <td colSpan={8} className="px-4 py-8 text-center text-etapa-textFaint">
                     No subscriptions found
                   </td>
                 </tr>
@@ -183,6 +205,9 @@ export default function PaymentsPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge value={sub.plan} />
                   <Badge value={sub.status} />
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${SOURCE_STYLES[sub.source] || "bg-gray-800 text-gray-400 border-gray-700"}`}>
+                    {sub.source}
+                  </span>
                   <span className="text-xs text-etapa-textFaint ml-auto">{formatDate(sub.createdAt)}</span>
                 </div>
                 {sub.currentPeriodEnd && (
@@ -215,12 +240,14 @@ export default function PaymentsPage() {
           >
             <h2 className="text-base font-semibold text-white mb-1">Delete Subscription</h2>
             <p className="text-sm text-etapa-textMid mb-4">
-              {deleteTarget.userName} &middot; {deleteTarget.plan} plan
+              {deleteTarget.userName} &middot; {deleteTarget.plan} plan &middot; {deleteTarget.source}
             </p>
 
             <div className="bg-red-900/20 border border-red-900/40 rounded-lg p-3 mb-4">
               <p className="text-xs font-medium text-red-400">
                 This will permanently remove this subscription record from the database.
+                If this is an Apple IAP or Google Play subscription, the user may still have
+                an active subscription in the store — this only removes the local record.
               </p>
             </div>
 
@@ -258,7 +285,6 @@ export default function PaymentsPage() {
           </div>
         ) : (
           <>
-            {/* Summary by user */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
               <StatCard label="Total Redemptions" value={redemptions.length} />
               <StatCard label="Unique Users" value={new Set(redemptions.map(r => r.user_id)).size} />
@@ -266,7 +292,6 @@ export default function PaymentsPage() {
               <StatCard label="Starter Codes" value={redemptions.filter(r => r.plan !== "lifetime").length} />
             </div>
 
-            {/* Per-user breakdown */}
             <div className="bg-etapa-surface border border-etapa-border rounded-xl overflow-hidden mb-4">
               <div className="px-4 py-3 border-b border-etapa-border">
                 <span className="text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">Usage by User</span>
@@ -328,7 +353,6 @@ export default function PaymentsPage() {
               </table>
             </div>
 
-            {/* Full redemption log */}
             <div className="bg-etapa-surface border border-etapa-border rounded-xl overflow-hidden">
               <div className="px-4 py-3 border-b border-etapa-border">
                 <span className="text-xs font-semibold text-etapa-textMuted uppercase tracking-wider">All Redemptions</span>

@@ -47,6 +47,30 @@ export default function PlansPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const handleDelete = async (plan: Plan) => {
+    const confirmed = window.confirm(
+      `Delete "${plan.name || "Untitled Plan"}" by ${plan.userName}?\n\nThis will permanently remove the plan and all ${plan.activityCount} activities.\n\nThis cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeleting(plan.id);
+    try {
+      const res = await fetch(`/api/plans/${plan.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(`Failed to delete plan: ${data.error || "Unknown error"}`);
+        return;
+      }
+      setPlans((prev) => prev.filter((p) => p.id !== plan.id));
+    } catch (err) {
+      alert("Failed to delete plan. Check the console for details.");
+      console.error(err);
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   useEffect(() => {
     fetch("/api/plans")
@@ -134,6 +158,15 @@ export default function PlansPage() {
           )},
           { key: "createdAt", label: "Created", render: (p: Plan) => (
             <span className="text-xs text-etapa-textMid">{new Date(p.createdAt).toLocaleDateString()}</span>
+          )},
+          { key: "actions", label: "", render: (p: Plan) => (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDelete(p); }}
+              disabled={deleting === p.id}
+              className="text-xs text-red-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {deleting === p.id ? "Deleting..." : "Delete"}
+            </button>
           )},
         ]}
         data={plans}

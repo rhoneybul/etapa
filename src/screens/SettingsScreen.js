@@ -6,6 +6,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Switch, Linking, TextInput, Platform,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import * as StoreReview from 'expo-store-review';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { signOut } from '../services/authService';
@@ -463,6 +464,17 @@ export default function SettingsScreen({ navigation }) {
               </View>
             </View>
             <View style={[s.card, { marginTop: 8 }]}>
+              <TouchableOpacity style={s.row} onPress={handleCancelSubscription} disabled={portalLoading}>
+                <View style={s.rowLeft}>
+                  <View>
+                    <Text style={[s.rowTitle, { color: colors.primary }]}>{portalLoading ? 'Opening...' : 'Cancel Subscription'}</Text>
+                    <Text style={s.rowSub}>Manage or cancel via your app store</Text>
+                  </View>
+                </View>
+                <Text style={s.chevron}>{'\u203A'}</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={[s.card, { marginTop: 8 }]}>
               <TouchableOpacity style={s.row} onPress={handleRequestRefund}>
                 <View style={s.rowLeft}>
                   <View>
@@ -641,9 +653,58 @@ export default function SettingsScreen({ navigation }) {
         {/* Support */}
         <Text style={s.sectionLabel}>SUPPORT</Text>
         <View style={s.card}>
+          <TouchableOpacity style={s.row} onPress={() => Linking.openURL('https://getetapa.com/support')}>
+            <View style={s.rowLeft}>
+              <View>
+                <Text style={s.rowTitle}>Help & FAQs</Text>
+                <Text style={s.rowSub}>Troubleshooting, account help, and more</Text>
+              </View>
+            </View>
+            <Text style={s.chevron}>{'\u203A'}</Text>
+          </TouchableOpacity>
+          <View style={s.divider} />
+          <TouchableOpacity style={s.row} onPress={() => Linking.openURL('mailto:support@getetapa.com')}>
+            <View style={s.rowLeft}>
+              <View>
+                <Text style={s.rowTitle}>Email Support</Text>
+                <Text style={s.rowSub}>support@getetapa.com · Usually replies within 24h</Text>
+              </View>
+            </View>
+            <Text style={s.chevron}>{'\u203A'}</Text>
+          </TouchableOpacity>
+          <View style={s.divider} />
           <TouchableOpacity style={s.row} onPress={() => navigation.navigate('Feedback')}>
             <View style={s.rowLeft}>
-              <Text style={s.rowTitle}>Send Feedback</Text>
+              <View>
+                <Text style={s.rowTitle}>Send Feedback</Text>
+                <Text style={s.rowSub}>Report a bug or suggest an improvement</Text>
+              </View>
+            </View>
+            <Text style={s.chevron}>{'\u203A'}</Text>
+          </TouchableOpacity>
+          <View style={s.divider} />
+          <TouchableOpacity style={s.row} onPress={async () => {
+            try {
+              if (await StoreReview.hasAction()) {
+                await StoreReview.requestReview();
+              } else {
+                const storeUrl = Platform.OS === 'ios'
+                  ? 'https://apps.apple.com/app/id6738429498?action=write-review'
+                  : 'https://play.google.com/store/apps/details?id=com.etapa.app';
+                Linking.openURL(storeUrl);
+              }
+            } catch {
+              const storeUrl = Platform.OS === 'ios'
+                ? 'https://apps.apple.com/app/id6738429498?action=write-review'
+                : 'https://play.google.com/store/apps/details?id=com.etapa.app';
+              Linking.openURL(storeUrl);
+            }
+          }}>
+            <View style={s.rowLeft}>
+              <View>
+                <Text style={s.rowTitle}>Rate Etapa</Text>
+                <Text style={s.rowSub}>Enjoying the app? Leave a review</Text>
+              </View>
             </View>
             <Text style={s.chevron}>{'\u203A'}</Text>
           </TouchableOpacity>

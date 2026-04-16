@@ -154,14 +154,18 @@ router.get('/users', async (req, res, next) => {
       if (!subsByUser[sub.user_id]) subsByUser[sub.user_id] = sub;
     }
 
-    // Plan count per user
-    const { data: plans } = await supabase.from('plans').select('user_id, created_at');
+    // Plan count per user + check for beginner plans
+    const { data: plans } = await supabase.from('plans').select('user_id, created_at, name');
     const planCountByUser = {};
     const firstPlanByUser = {};
+    const hasBeginnerByUser = {};
     for (const p of (plans || [])) {
       planCountByUser[p.user_id] = (planCountByUser[p.user_id] || 0) + 1;
       if (!firstPlanByUser[p.user_id] || p.created_at < firstPlanByUser[p.user_id]) {
         firstPlanByUser[p.user_id] = p.created_at;
+      }
+      if (p.name && p.name.startsWith('Get into Cycling')) {
+        hasBeginnerByUser[p.user_id] = true;
       }
     }
 
@@ -221,6 +225,7 @@ router.get('/users', async (req, res, next) => {
         subscription: sub,
         planCount: planCountByUser[u.id] || 0,
         firstPlanAt,
+        hasBeginner: !!hasBeginnerByUser[u.id],
         messageCount: msgCountByUser[u.id] || 0,
         feedbackCount: feedbackCountByUser[u.id] || 0,
         trial,
@@ -868,8 +873,19 @@ router.get('/payments/details', async (req, res, next) => {
     const usersById = {};
     for (const u of (users || [])) { usersById[u.id] = u; }
 
+    // Check for coupon redemptions to determine source
+    const { data: redemptions } = await supabase.from('coupon_redemptions').select('user_id');
+    const couponUsers = new Set((redemptions || []).map(r => r.user_id));
+
     const result = (subs || []).map(sub => {
       const user = usersById[sub.user_id];
+      // Determine source: coupon, trial, or Apple/Google IAP
+      let source = 'Apple IAP';
+      if (couponUsers.has(sub.user_id)) source = 'Coupon';
+      else if (sub.status === 'trialing') source = 'Free Trial';
+      // RevenueCat subscriptions have UUIDs as IDs; trials created server-side don't
+      // If stripe_customer_id is null and not a coupon, it came from RevenueCat (Apple/Google)
+
       return {
         id: sub.id,
         userId: sub.user_id,
@@ -877,6 +893,7 @@ router.get('/payments/details', async (req, res, next) => {
         userEmail: user?.email || null,
         plan: sub.plan,
         status: sub.status,
+        source,
         trialEnd: sub.trial_end,
         currentPeriodEnd: sub.current_period_end,
         createdAt: sub.created_at,

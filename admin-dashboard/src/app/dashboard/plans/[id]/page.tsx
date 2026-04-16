@@ -77,6 +77,7 @@ export default function PlanDetailPage() {
   const [saving, setSaving] = useState(false);
   const [expandedWeeks, setExpandedWeeks] = useState<Set<number>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [viewMode, setViewMode] = useState<"weeks" | "calendar">("weeks");
 
   const fetchPlan = () => {
     setLoading(true);
@@ -292,24 +293,161 @@ export default function PlanDetailPage() {
         )}
       </div>
 
-      {/* Expand/Collapse controls */}
-      <div className="flex items-center gap-3 mb-4">
-        <button
-          onClick={expandAll}
-          className="text-xs text-etapa-primary hover:text-etapa-primary/80 transition-colors"
-        >
-          Expand all
-        </button>
-        <span className="text-etapa-textFaint text-xs">&middot;</span>
-        <button
-          onClick={collapseAll}
-          className="text-xs text-etapa-textMuted hover:text-white transition-colors"
-        >
-          Collapse all
-        </button>
+      {/* View mode toggle */}
+      <div className="flex items-center gap-4 mb-4">
+        <div className="flex items-center bg-etapa-surface border border-etapa-border rounded-lg overflow-hidden">
+          <button
+            onClick={() => setViewMode("weeks")}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+              viewMode === "weeks"
+                ? "bg-etapa-primary text-white"
+                : "text-etapa-textMuted hover:text-white"
+            }`}
+          >
+            Weeks
+          </button>
+          <button
+            onClick={() => setViewMode("calendar")}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+              viewMode === "calendar"
+                ? "bg-etapa-primary text-white"
+                : "text-etapa-textMuted hover:text-white"
+            }`}
+          >
+            Calendar
+          </button>
+        </div>
+        {viewMode === "weeks" && (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={expandAll}
+              className="text-xs text-etapa-primary hover:text-etapa-primary/80 transition-colors"
+            >
+              Expand all
+            </button>
+            <span className="text-etapa-textFaint text-xs">&middot;</span>
+            <button
+              onClick={collapseAll}
+              className="text-xs text-etapa-textMuted hover:text-white transition-colors"
+            >
+              Collapse all
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Weeks */}
+      {/* Calendar view */}
+      {viewMode === "calendar" && (() => {
+        // Build a map of date string → activities
+        const activityByDate: Record<string, Activity[]> = {};
+        for (const a of plan.activities) {
+          const d = getDate(a.week, a.dayOfWeek);
+          if (d) {
+            const key = d.toISOString().split("T")[0];
+            if (!activityByDate[key]) activityByDate[key] = [];
+            activityByDate[key].push(a);
+          }
+        }
+
+        // Find date range: plan start → plan end
+        const [startPart] = plan.startDate.split("T");
+        const [sy, sm, sd] = startPart.split("-").map(Number);
+        const planStart = new Date(sy, sm - 1, sd);
+        const planEnd = new Date(planStart);
+        planEnd.setDate(planEnd.getDate() + plan.weeks * 7 - 1);
+
+        // Build months to render
+        const months: { year: number; month: number }[] = [];
+        const cursor = new Date(planStart.getFullYear(), planStart.getMonth(), 1);
+        while (cursor <= planEnd) {
+          months.push({ year: cursor.getFullYear(), month: cursor.getMonth() });
+          cursor.setMonth(cursor.getMonth() + 1);
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        return (
+          <div className="space-y-6">
+            {months.map(({ year, month }) => {
+              const monthStart = new Date(year, month, 1);
+              const monthName = monthStart.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+              const daysInMonth = new Date(year, month + 1, 0).getDate();
+              // Monday=0 start: getDay() returns 0=Sun, so Mon=0 means (getDay()+6)%7
+              const firstDayOffset = (monthStart.getDay() + 6) % 7;
+
+              const cells: (number | null)[] = [];
+              for (let i = 0; i < firstDayOffset; i++) cells.push(null);
+              for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+              // Pad to fill last row
+              while (cells.length % 7 !== 0) cells.push(null);
+
+              return (
+                <div key={`${year}-${month}`}>
+                  <h3 className="text-sm font-medium text-white mb-2">{monthName}</h3>
+                  <div className="border border-etapa-border rounded-xl overflow-hidden">
+                    {/* Day header */}
+                    <div className="grid grid-cols-7 bg-etapa-surface">
+                      {DAY_LABELS.map((d) => (
+                        <div key={d} className="px-1 py-2 text-center text-[10px] font-medium text-etapa-textMuted uppercase tracking-wide">
+                          {d}
+                        </div>
+                      ))}
+                    </div>
+                    {/* Date cells */}
+                    <div className="grid grid-cols-7">
+                      {cells.map((day, i) => {
+                        if (day === null) {
+                          return <div key={i} className="border-t border-etapa-border bg-etapa-surface/30 min-h-[72px]" />;
+                        }
+                        const cellDate = new Date(year, month, day);
+                        const key = cellDate.toISOString().split("T")[0];
+                        const acts = activityByDate[key] || [];
+                        const isInPlan = cellDate >= planStart && cellDate <= planEnd;
+                        const isToday = cellDate.getTime() === today.getTime();
+
+                        return (
+                          <div
+                            key={i}
+                            className={`border-t border-etapa-border min-h-[72px] px-1 py-1 ${
+                              isInPlan ? "bg-etapa-surface" : "bg-etapa-surface/30"
+                            } ${isToday ? "ring-1 ring-inset ring-etapa-primary" : ""}`}
+                          >
+                            <p className={`text-[10px] mb-0.5 ${
+                              isToday ? "text-etapa-primary font-bold" : "text-etapa-textFaint"
+                            }`}>
+                              {day}
+                            </p>
+                            <div className="space-y-0.5">
+                              {acts.map((a) => {
+                                const ec = EFFORT_COLORS[a.effort] || "bg-gray-800 text-gray-400 border-gray-700";
+                                return (
+                                  <div
+                                    key={a.id}
+                                    className={`text-[10px] leading-tight px-1 py-0.5 rounded border truncate ${ec} ${
+                                      a.completed ? "opacity-50 line-through" : ""
+                                    }`}
+                                    title={`${a.title}${a.durationMins ? ` · ${a.durationMins}m` : ""}${a.distanceKm ? ` · ${a.distanceKm}km` : ""}`}
+                                  >
+                                    {a.title}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      {/* Weeks view */}
+      {viewMode === "weeks" && (
       <div className="space-y-3">
         {Array.from({ length: plan.weeks }, (_, i) => i + 1).map((week) => {
           const weekActivities = byWeek[week] || [];
@@ -661,6 +799,7 @@ export default function PlanDetailPage() {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

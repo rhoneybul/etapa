@@ -28,6 +28,7 @@ interface User {
   } | null;
   planCount: number;
   firstPlanAt: string | null;
+  hasBeginner: boolean;
   messageCount: number;
   feedbackCount: number;
   trial: TrialInfo | null;
@@ -36,16 +37,18 @@ interface User {
 function TrialCell({ trial, subscription }: { trial: TrialInfo | null; subscription: User["subscription"] }) {
   if (!trial) return <span className="text-xs text-etapa-textFaint">no plan</span>;
 
-  // Subscribed — trial irrelevant
+  // Subscribed — show subscribed badge with plan info
   if (trial.isSubscribed || (subscription && ["active", "trialing", "paid"].includes(subscription.status))) {
     return (
       <div>
         <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-900/40 text-green-400">
           subscribed
         </span>
-        <p className="text-xs text-etapa-textFaint mt-0.5">
-          trial started {new Date(trial.startedAt).toLocaleDateString()}
-        </p>
+        {subscription?.plan && (
+          <p className="text-xs text-etapa-textFaint mt-0.5">
+            {subscription.plan} plan
+          </p>
+        )}
       </div>
     );
   }
@@ -155,6 +158,7 @@ export default function UsersPage() {
   if (loading) return <div className="animate-pulse text-etapa-textMuted">Loading users...</div>;
 
   const activeSubs = users.filter((u) => ["active", "trialing", "paid"].includes(u.subscription?.status || ""));
+  const beginnerUsers = users.filter((u) => u.hasBeginner);
   const totalMessages = users.reduce((sum, u) => sum + u.messageCount, 0);
   const totalPlans = users.reduce((sum, u) => sum + u.planCount, 0);
 
@@ -162,9 +166,10 @@ export default function UsersPage() {
     <div>
       <h1 className="text-lg font-semibold text-white mb-6">Users</h1>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         <StatCard label="Total Users" value={users.length} />
         <StatCard label="Active Subscriptions" value={activeSubs.length} />
+        <StatCard label="Beginner Users" value={beginnerUsers.length} />
         <StatCard label="Total Plans" value={totalPlans} />
         <StatCard label="Total Messages" value={totalMessages} />
       </div>
@@ -175,7 +180,14 @@ export default function UsersPage() {
         columns={[
           { key: "name", label: "User", render: (u: User) => (
             <div>
-              <p className="font-medium text-white">{u.name || "\u2014"}</p>
+              <div className="flex items-center gap-2">
+                <p className="font-medium text-white">{u.name || "\u2014"}</p>
+                {u.hasBeginner && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-etapa-primary/15 text-etapa-primary border border-etapa-primary/20">
+                    BEGINNER
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-etapa-textMuted">{u.email}</p>
             </div>
           )},
