@@ -282,7 +282,9 @@ export default function HomeScreen({ navigation }) {
       setShowUpgrade(true);
       return;
     }
-    navigation.navigate('GoalSetup');
+    // Check subscription — if not subscribed, show paywall after plan generation
+    const subscribed = __DEV__ ? false : await isSubscribed();
+    navigation.navigate('GoalSetup', { requirePaywall: !subscribed });
   };
 
   const handleUpgrade = async () => {

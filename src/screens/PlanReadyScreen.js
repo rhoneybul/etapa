@@ -7,13 +7,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  Animated, Image, ActivityIndicator,
+  Animated, Image, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan, getUserPrefs } from '../services/storageService';
 import { assessPlan, editPlanWithLLM } from '../services/llmPlanService';
-import { isSubscribed } from '../services/subscriptionService';
+import { isSubscribed, startFreeTrial } from '../services/subscriptionService';
 import { connectStrava, isStravaConnected, isStravaConfigured } from '../services/stravaService';
 import { convertDistance, distanceLabel } from '../utils/units';
 import { getSessionLabel } from '../utils/sessionLabels';
@@ -114,6 +114,7 @@ export default function PlanReadyScreen({ navigation, route }) {
 
   // Guard against double-tap navigation
   const navigatingRef = useRef(false);
+  const [skippingTrial, setSkippingTrial] = useState(false);
 
   // Animations
   const fadeIn = useRef(new Animated.Value(0)).current;
@@ -475,9 +476,36 @@ export default function PlanReadyScreen({ navigation, route }) {
               }}
               activeOpacity={0.8}
             >
-              <Text style={s.ctaText}>{requirePaywall ? (defaultPlan === 'starter' ? 'Get started — from £14.99' : 'Subscribe to start') : 'Start training'}</Text>
+              <Text style={s.ctaText}>{requirePaywall ? 'Get started' : 'Start training'}</Text>
             </TouchableOpacity>
           </View>
+          {requirePaywall && (
+            <TouchableOpacity
+              style={s.detailLink}
+              onPress={async () => {
+                if (skippingTrial) return;
+                setSkippingTrial(true);
+                try {
+                  const result = await startFreeTrial();
+                  if (result.success || result.alreadyActive) {
+                    navigation.replace('Home');
+                  } else {
+                    Alert.alert('Could not start trial', result.error || 'Please try again.');
+                  }
+                } catch {
+                  Alert.alert('Something went wrong', 'Please try again.');
+                } finally {
+                  setSkippingTrial(false);
+                }
+              }}
+              disabled={skippingTrial}
+              activeOpacity={0.7}
+            >
+              <Text style={s.detailLinkText}>
+                {skippingTrial ? 'Starting trial...' : 'Skip \u2014 try free for 7 days'}
+              </Text>
+            </TouchableOpacity>
+          )}
           {!requirePaywall && (
             <TouchableOpacity
               style={s.detailLink}

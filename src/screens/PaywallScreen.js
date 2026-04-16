@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
-import { openCheckout, getSubscriptionOfferings, restorePurchases, getPrices, validateCoupon, redeemCoupon } from '../services/subscriptionService';
+import { openCheckout, getSubscriptionOfferings, restorePurchases, getPrices, validateCoupon, redeemCoupon, startFreeTrial } from '../services/subscriptionService';
 import { isRevenueCatAvailable } from '../services/revenueCatService';
 import analytics from '../services/analyticsService';
 
@@ -341,9 +341,32 @@ export default function PaywallScreen({ navigation, route }) {
   };
 
   const handleClose = () => {
-    // Dismiss the paywall and start the 7-day free preview.
-    // Navigate to the next screen (plan/Home) so the user can explore the app.
-    navigation.replace(nextScreen, { ...nextParams, freePreview: true });
+    // If we can go back (e.g. came from PlanReady), just go back.
+    // Otherwise dismiss the paywall and start the free preview.
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.replace(nextScreen, { ...nextParams, freePreview: true });
+    }
+  };
+
+  const [skipping, setSkipping] = useState(false);
+
+  const handleSkipTrial = async () => {
+    setSkipping(true);
+    try {
+      const result = await startFreeTrial();
+      if (result.success || result.alreadyActive) {
+        analytics.capture?.('free_trial_started', { source: 'paywall_skip' });
+        navigation.replace(nextScreen, nextParams);
+      } else {
+        Alert.alert('Could not start trial', result.error || 'Please try again.');
+      }
+    } catch {
+      Alert.alert('Something went wrong', 'Please try again.');
+    } finally {
+      setSkipping(false);
+    }
   };
 
   const plan = plans[selected];
@@ -367,9 +390,15 @@ export default function PaywallScreen({ navigation, route }) {
           <Text style={s.subtitle}>{plans[selected]?.isStarter ? '3 months access · One-time payment' : '7-day free trial · No charge today'}</Text>
         </View>
 
-        {/* Plan cards */}
+        {/* Plan cards — filter based on entry flow */}
         <View style={s.plans}>
-          {Object.values(plans).map(p => {
+          {Object.values(plans).filter(p => {
+            const dp = route?.params?.defaultPlan;
+            // Beginner flow: show starter + monthly + lifetime
+            if (dp === 'starter') return p.id === 'starter' || p.id === 'monthly' || p.id === 'lifetime';
+            // Normal flow: hide starter (it's a beginner-specific plan)
+            return p.id !== 'starter';
+          }).map(p => {
             const isSelected = selected === p.id;
             // Use hardcoded/server price for display; rcPkg is used only for the purchase transaction
             const rcPkg = hasRevenueCat ? findRcPackage(p.id) : null;
@@ -447,6 +476,18 @@ export default function PaywallScreen({ navigation, route }) {
               <Text style={s.ctaSub}>{plan.trialLine}</Text>
             </>
           )}
+        </TouchableOpacity>
+
+        {/* Skip — start free trial */}
+        <TouchableOpacity
+          style={s.skipBtn}
+          onPress={handleSkipTrial}
+          disabled={skipping}
+          activeOpacity={0.7}
+        >
+          <Text style={s.skipText}>
+            {skipping ? 'Starting trial...' : 'Skip \u2014 try free for 7 days'}
+          </Text>
         </TouchableOpacity>
 
         <View style={s.guaranteeBadge}>
@@ -744,6 +785,20 @@ const s = StyleSheet.create({
     fontFamily: FF.light,
     color: 'rgba(255,255,255,0.65)',
     marginTop: 3,
+  },
+
+  // Skip / free trial
+  skipBtn: {
+    alignSelf: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    marginBottom: 8,
+  },
+  skipText: {
+    fontSize: 14,
+    fontFamily: FF.medium,
+    color: colors.textMid,
+    textDecorationLine: 'underline',
   },
 
   // Legal

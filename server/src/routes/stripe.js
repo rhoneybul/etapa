@@ -211,6 +211,57 @@ router.get('/subscription-status', async (req, res) => {
   });
 });
 
+// ── POST /api/stripe/start-trial ───────────────────────────────────────────────
+// Start a 7-day free trial without requiring payment upfront.
+// Creates a subscription record with status 'trialing' that expires in 7 days.
+router.post('/start-trial', async (req, res) => {
+  const userId = req.userId;
+  if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    // Check if user already has an active subscription or has already used a trial
+    const { data: existing } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      const now = new Date();
+      const periodEnd = existing.current_period_end ? new Date(existing.current_period_end) : null;
+      const isActive = periodEnd ? periodEnd > now : existing.status === 'trialing';
+
+      if (isActive) {
+        return res.json({ success: true, alreadyActive: true, message: 'You already have an active subscription.' });
+      }
+
+      // If they've had a trial before, don't allow another one
+      if (existing.status === 'trialing' || existing.trial_end) {
+        return res.status(400).json({ error: 'Free trial already used. Please subscribe to continue.' });
+      }
+    }
+
+    const trialEnd = new Date();
+    trialEnd.setDate(trialEnd.getDate() + 7);
+
+    await supabase.from('subscriptions').upsert({
+      user_id: userId,
+      plan: 'monthly',
+      status: 'trialing',
+      trial_end: trialEnd.toISOString(),
+      current_period_end: trialEnd.toISOString(),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' });
+
+    res.json({ success: true, trialEnd: trialEnd.toISOString() });
+  } catch (err) {
+    console.error('[start-trial] Error:', err);
+    res.status(500).json({ error: 'Failed to start trial' });
+  }
+});
+
 // ── POST /api/stripe/create-checkout-session ─────────────────────────────────
 router.post('/create-checkout-session', async (req, res) => {
   const stripe = getStripe();

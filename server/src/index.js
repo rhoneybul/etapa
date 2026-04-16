@@ -134,8 +134,9 @@ app.post('/api/account-deletion', async (req, res) => {
 // Prices are sourced from the admin-configured pricing_config, falling back to defaults.
 app.get('/api/public/prices', async (req, res) => {
   const DEFAULT_PRICES = {
-    monthly:  { amount: 999,  currency: 'gbp', formatted: '£9.99',  interval: 'month', perMonth: '£9.99',  billedLabel: 'Billed monthly',       trialDays: 7 },
-    annual:   { amount: 7999, currency: 'gbp', formatted: '£79.99', interval: 'year',  perMonth: '£6.67',  billedLabel: 'Billed £79.99/year',   trialDays: 7 },
+    starter:  { amount: 1499, currency: 'gbp', formatted: '£14.99', interval: null,    perMonth: null,     billedLabel: 'One-time payment',      trialDays: 0 },
+    monthly:  { amount: 799,  currency: 'gbp', formatted: '£7.99',  interval: 'month', perMonth: '£7.99',  billedLabel: 'Billed monthly',       trialDays: 7 },
+    annual:   { amount: 4999, currency: 'gbp', formatted: '£49.99', interval: 'year',  perMonth: '£4.17',  billedLabel: 'Billed £49.99/year',   trialDays: 7 },
     lifetime: { amount: 9999, currency: 'gbp', formatted: '£99.99', interval: null,    perMonth: null,     billedLabel: 'One-time payment',      trialDays: 0 },
   };
 

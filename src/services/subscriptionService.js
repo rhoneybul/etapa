@@ -185,6 +185,19 @@ export async function restorePurchases() {
   return rcRestore();
 }
 
+// ── Free trial ────────────────────────────────────────────────────────────────────
+
+/**
+ * Start a 7-day free trial without requiring payment upfront.
+ * The server creates a subscription record with status 'trialing'.
+ * @returns {{ success: boolean, trialEnd?: string, error?: string }}
+ */
+export async function startFreeTrial() {
+  const data = await authRequest('POST', '/api/stripe/start-trial');
+  if (!data) return { success: false, error: 'Could not start trial. Please try again.' };
+  return data;
+}
+
 // ── Coupon redemption ───────────────────────────────────────────────────────────
 
 /**
