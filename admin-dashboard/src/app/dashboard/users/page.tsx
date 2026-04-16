@@ -3,6 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { StatCard } from "@/components/stat-card";
@@ -179,17 +180,17 @@ export default function UsersPage() {
         searchPlaceholder="Search by email..."
         columns={[
           { key: "name", label: "User", render: (u: User) => (
-            <div>
+            <Link href={`/dashboard/users/${u.id}`} className="block group">
               <div className="flex items-center gap-2">
-                <p className="font-medium text-white">{u.name || "\u2014"}</p>
+                <p className="font-medium text-white group-hover:text-etapa-primary transition-colors">{u.name || "\u2014"}</p>
                 {u.hasBeginner && (
                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-etapa-primary/15 text-etapa-primary border border-etapa-primary/20">
                     BEGINNER
                   </span>
                 )}
               </div>
-              <p className="text-xs text-etapa-textMuted">{u.email}</p>
-            </div>
+              <p className="text-xs text-etapa-textMuted group-hover:text-etapa-textMid transition-colors">{u.email}</p>
+            </Link>
           )},
           { key: "subscription", label: "Plan", render: (u: User) => (
             u.subscription ? <Badge value={u.subscription.plan} /> : <span className="text-xs text-etapa-textFaint">free</span>

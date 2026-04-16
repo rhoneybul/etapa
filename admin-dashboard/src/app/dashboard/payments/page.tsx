@@ -3,6 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Badge } from "@/components/badge";
 import { StatCard } from "@/components/stat-card";
 
@@ -19,12 +20,49 @@ interface Subscription {
   createdAt: string;
 }
 
+interface RCTransaction {
+  kind: "one_time" | "subscription";
+  productId: string;
+  transactionId: string | null;
+  store: string | null;
+  isSandbox: boolean;
+  purchaseDate: string | null;
+  originalPurchaseDate?: string | null;
+  expiresDate: string | null;
+  periodType: string | null;
+  refundedAt: string | null;
+  billingIssueAt: string | null;
+  unsubscribeDetectedAt: string | null;
+  ownershipType: string | null;
+}
+
+interface RevenueCatData {
+  found: boolean;
+  firstSeen: string | null;
+  lastSeen: string | null;
+  originalAppUserId: string | null;
+  originalPurchaseDate: string | null;
+  managementUrl: string | null;
+  transactions: RCTransaction[];
+}
+
 function formatDate(iso: string | null) {
   if (!iso) return "\u2014";
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
+  });
+}
+
+function formatDateTime(iso: string | null) {
+  if (!iso) return "\u2014";
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }
 
@@ -52,6 +90,31 @@ export default function PaymentsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Subscription | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [txTarget, setTxTarget] = useState<Subscription | null>(null);
+  const [txData, setTxData] = useState<RevenueCatData | null>(null);
+  const [txLoading, setTxLoading] = useState(false);
+  const [txError, setTxError] = useState<string | null>(null);
+
+  const openTransactions = async (sub: Subscription) => {
+    setTxTarget(sub);
+    setTxData(null);
+    setTxError(null);
+    setTxLoading(true);
+    try {
+      const res = await fetch(`/api/users/${sub.userId}/revenuecat`);
+      const body = await res.json();
+      if (!res.ok) {
+        setTxError(body.error || `Request failed (${res.status})`);
+      } else {
+        setTxData(body as RevenueCatData);
+      }
+    } catch (err: any) {
+      setTxError(err.message || "Network error");
+    } finally {
+      setTxLoading(false);
+    }
+  };
 
   const fetchData = () => {
     setLoading(true);
@@ -163,14 +226,28 @@ export default function PaymentsPage() {
                   <td className="px-4 py-3 text-xs text-etapa-textMid">
                     {formatDate(sub.currentPeriodEnd)}
                   </td>
-                  <td className="px-4 py-3 text-xs text-etapa-textMid">{formatDate(sub.createdAt)}</td>
+                  <td className="px-4 py-3 text-xs text-etapa-textMid whitespace-nowrap">{formatDateTime(sub.createdAt)}</td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => { setDeleteTarget(sub); setDeleteError(null); }}
-                      className="text-xs text-red-500 hover:text-red-400 transition-colors"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex items-center gap-3 whitespace-nowrap">
+                      <Link
+                        href={`/dashboard/users/${sub.userId}`}
+                        className="text-xs text-etapa-textMuted hover:text-white transition-colors"
+                      >
+                        View user
+                      </Link>
+                      <button
+                        onClick={() => openTransactions(sub)}
+                        className="text-xs text-etapa-primary hover:text-amber-400 transition-colors"
+                      >
+                        Transactions
+                      </button>
+                      <button
+                        onClick={() => { setDeleteTarget(sub); setDeleteError(null); }}
+                        className="text-xs text-red-500 hover:text-red-400 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -217,6 +294,18 @@ export default function PaymentsPage() {
                 )}
               </div>
               <div className="px-4 pb-3 flex items-center gap-3">
+                <Link
+                  href={`/dashboard/users/${sub.userId}`}
+                  className="text-xs text-etapa-textMuted hover:text-white transition-colors"
+                >
+                  View user
+                </Link>
+                <button
+                  onClick={() => openTransactions(sub)}
+                  className="text-xs text-etapa-primary hover:text-amber-400 transition-colors"
+                >
+                  Transactions
+                </button>
                 <button
                   onClick={() => { setDeleteTarget(sub); setDeleteError(null); }}
                   className="text-xs text-red-500 hover:text-red-400 transition-colors"
@@ -269,6 +358,162 @@ export default function PaymentsPage() {
               >
                 {deleting ? "Deleting..." : "Delete Subscription"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transactions Modal */}
+      {txTarget && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+          onClick={() => setTxTarget(null)}
+        >
+          <div
+            className="bg-etapa-surface border border-etapa-border rounded-xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 border-b border-etapa-border flex items-center justify-between">
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-white truncate">
+                  Transactions — {txTarget.userName}
+                </h2>
+                <p className="text-xs text-etapa-textMuted truncate">
+                  {txTarget.userEmail} &middot; Live from RevenueCat
+                </p>
+              </div>
+              <button
+                onClick={() => setTxTarget(null)}
+                className="text-etapa-textMuted hover:text-white p-1"
+                aria-label="Close"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 overflow-auto">
+              {txLoading ? (
+                <div className="text-sm text-etapa-textMuted animate-pulse">Loading live transactions...</div>
+              ) : txError ? (
+                <div className="bg-red-900/20 border border-red-900/40 rounded-lg p-4 text-sm text-red-400">
+                  {txError}
+                </div>
+              ) : !txData || !txData.found ? (
+                <div className="text-sm text-etapa-textFaint text-center py-8">
+                  No RevenueCat record for this user. They may have never made a purchase via IAP,
+                  or the RC secret API key isn't configured on the server.
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                    <div className="bg-etapa-surfaceLight rounded-lg p-3">
+                      <p className="text-[10px] text-etapa-textMuted uppercase tracking-wide">First Seen</p>
+                      <p className="text-sm text-white mt-0.5">{formatDate(txData.firstSeen)}</p>
+                    </div>
+                    <div className="bg-etapa-surfaceLight rounded-lg p-3">
+                      <p className="text-[10px] text-etapa-textMuted uppercase tracking-wide">Last Seen</p>
+                      <p className="text-sm text-white mt-0.5">{formatDate(txData.lastSeen)}</p>
+                    </div>
+                    <div className="bg-etapa-surfaceLight rounded-lg p-3">
+                      <p className="text-[10px] text-etapa-textMuted uppercase tracking-wide">First Purchase</p>
+                      <p className="text-sm text-white mt-0.5">{formatDate(txData.originalPurchaseDate)}</p>
+                    </div>
+                    <div className="bg-etapa-surfaceLight rounded-lg p-3">
+                      <p className="text-[10px] text-etapa-textMuted uppercase tracking-wide">Transactions</p>
+                      <p className="text-sm text-white mt-0.5">{txData.transactions.length}</p>
+                    </div>
+                  </div>
+
+                  {txData.transactions.length === 0 ? (
+                    <p className="text-sm text-etapa-textFaint text-center py-6">
+                      No purchase transactions recorded in RevenueCat.
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-etapa-border text-left">
+                            <th className="px-3 py-2 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Kind</th>
+                            <th className="px-3 py-2 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Product</th>
+                            <th className="px-3 py-2 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Store</th>
+                            <th className="px-3 py-2 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Env</th>
+                            <th className="px-3 py-2 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Purchase Time</th>
+                            <th className="px-3 py-2 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Expires</th>
+                            <th className="px-3 py-2 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Flags</th>
+                            <th className="px-3 py-2 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Tx ID</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-etapa-border">
+                          {txData.transactions.map((t, i) => (
+                            <tr key={`${t.transactionId || t.productId}-${i}`}>
+                              <td className="px-3 py-2">
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    t.kind === "subscription"
+                                      ? "bg-indigo-900/30 text-indigo-300"
+                                      : "bg-purple-900/30 text-purple-300"
+                                  }`}
+                                >
+                                  {t.kind === "subscription" ? "sub" : "one-time"}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-xs text-etapa-textMid font-mono">{t.productId}</td>
+                              <td className="px-3 py-2 text-xs text-etapa-textMid">{t.store || "\u2014"}</td>
+                              <td className="px-3 py-2">
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    t.isSandbox
+                                      ? "bg-amber-900/30 text-amber-400"
+                                      : "bg-green-900/30 text-green-400"
+                                  }`}
+                                >
+                                  {t.isSandbox ? "sandbox" : "prod"}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-xs text-etapa-textMid whitespace-nowrap">
+                                {formatDateTime(t.purchaseDate)}
+                              </td>
+                              <td className="px-3 py-2 text-xs text-etapa-textMid whitespace-nowrap">
+                                {t.expiresDate ? formatDateTime(t.expiresDate) : "\u2014"}
+                              </td>
+                              <td className="px-3 py-2 space-x-1">
+                                {t.refundedAt && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-900/30 text-orange-400">
+                                    refunded
+                                  </span>
+                                )}
+                                {t.billingIssueAt && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-900/30 text-red-400">
+                                    billing
+                                  </span>
+                                )}
+                                {t.unsubscribeDetectedAt && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-800 text-gray-300">
+                                    unsub
+                                  </span>
+                                )}
+                                {t.periodType && t.periodType !== "normal" && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-900/30 text-blue-300">
+                                    {t.periodType}
+                                  </span>
+                                )}
+                                {!t.refundedAt && !t.billingIssueAt && !t.unsubscribeDetectedAt && (!t.periodType || t.periodType === "normal") && (
+                                  <span className="text-xs text-etapa-textFaint">{"\u2014"}</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-xs font-mono text-etapa-textFaint break-all">
+                                {t.transactionId || "\u2014"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>

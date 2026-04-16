@@ -1,7 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api-auth";
+import { etapaFetch } from "@/lib/etapa-api";
 
 const API_URL = process.env.ETAPA_API_URL || "http://localhost:3001";
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const { error, token } = await requireAdmin();
+  if (error) return error;
+
+  try {
+    const data = await etapaFetch(`/api/admin/users/${params.id}`, token!);
+    return NextResponse.json(data);
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 502 });
+  }
+}
 
 export async function DELETE(
   _req: NextRequest,

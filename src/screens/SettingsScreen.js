@@ -9,7 +9,7 @@ import * as Notifications from 'expo-notifications';
 import * as StoreReview from 'expo-store-review';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
-import { signOut } from '../services/authService';
+import { signOut, getCurrentUser } from '../services/authService';
 import { clearPlan, getPlans, clearUserData, getUserPrefs, setUserPrefs } from '../services/storageService';
 import { openBillingPortal, getSubscriptionStatus, restorePurchases, getPrices } from '../services/subscriptionService';
 import { logoutRevenueCat, isRevenueCatAvailable } from '../services/revenueCatService';
@@ -49,6 +49,7 @@ export default function SettingsScreen({ navigation }) {
   }, [navigation]);
   const [nameInput, setNameInput] = useState('');
   const [hasBeginnerPlan, setHasBeginnerPlan] = useState(false);
+  const [authUser, setAuthUser] = useState(null);
 
   useEffect(() => {
     checkStrava();
@@ -58,6 +59,7 @@ export default function SettingsScreen({ navigation }) {
     api.preferences.get().then(setPreferences).catch(() => {});
     getUserPrefs().then(p => { setUserPrefsState(p); setNameInput(p.displayName || ''); }).catch(() => {});
     Notifications.getPermissionsAsync().then(({ status }) => setNotifPermission(status)).catch(() => {});
+    getCurrentUser().then(setAuthUser).catch(() => {});
     api.appConfig.get().then(cfg => {
       if (cfg?.coming_soon) setComingSoonConfig(cfg.coming_soon);
       if (cfg?.strava_enabled !== undefined) setStravaEnabled(!!cfg.strava_enabled);
@@ -68,6 +70,23 @@ export default function SettingsScreen({ navigation }) {
       setHasBeginnerPlan(hasBeginner);
     }).catch(() => {});
   }, []);
+
+  // Format Supabase auth provider for display. "google" → "Google",
+  // "apple" → "Apple", "email" → "Email & Password", else capitalise.
+  const formatSignInMethod = (user) => {
+    if (!user) return 'Not signed in';
+    const providers = user.app_metadata?.providers;
+    const primary = user.app_metadata?.provider;
+    const list = Array.isArray(providers) && providers.length > 0 ? providers : (primary ? [primary] : []);
+    if (list.length === 0) return 'Unknown';
+    const pretty = list.map(p => {
+      if (p === 'google') return 'Google';
+      if (p === 'apple') return 'Apple';
+      if (p === 'email') return 'Email & Password';
+      return p.charAt(0).toUpperCase() + p.slice(1);
+    });
+    return pretty.join(', ');
+  };
 
   const checkStrava = async () => {
     const connected = await isStravaConnected();
@@ -274,6 +293,30 @@ export default function SettingsScreen({ navigation }) {
         {/* Profile */}
         <Text style={s.sectionLabel}>PROFILE</Text>
         <View style={s.card}>
+          {authUser && (
+            <>
+              <View style={s.row}>
+                <View style={s.rowLeft}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.rowTitle}>Email</Text>
+                    <Text style={s.rowSub} numberOfLines={1} ellipsizeMode="tail">
+                      {authUser.email || 'Not available'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              <View style={s.divider} />
+              <View style={s.row}>
+                <View style={s.rowLeft}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.rowTitle}>Sign-in Method</Text>
+                    <Text style={s.rowSub}>{formatSignInMethod(authUser)}</Text>
+                  </View>
+                </View>
+              </View>
+              <View style={s.divider} />
+            </>
+          )}
           <View style={s.row}>
             <View style={s.rowLeft}>
               <View style={{ flex: 1 }}>

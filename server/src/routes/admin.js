@@ -44,6 +44,41 @@ async function requireAdmin(req, res, next) {
   });
 }
 
+// ── RevenueCat Subscribers API helper ────────────────────────────────────────
+// Uses the RC v1 Subscribers endpoint to fetch authoritative transaction data
+// for a given app_user_id (= Supabase user ID). Requires a secret API key from
+// RevenueCat dashboard → Project Settings → API keys → secret key.
+async function fetchRevenueCatSubscriber(appUserId) {
+  const apiKey = process.env.REVENUECAT_SECRET_API_KEY;
+  if (!apiKey) return { error: 'missing_api_key' };
+  if (!appUserId) return { error: 'missing_user_id' };
+
+  try {
+    const res = await fetch(
+      `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          // Platform header is ignored for secret-key reads but avoids 400s.
+          'X-Platform': 'ios',
+        },
+      }
+    );
+
+    if (res.status === 404) return { notFound: true };
+    if (!res.ok) {
+      const text = await res.text();
+      return { error: 'http_error', status: res.status, body: text };
+    }
+
+    const json = await res.json();
+    return { subscriber: json.subscriber || null };
+  } catch (err) {
+    return { error: 'fetch_failed', message: err.message };
+  }
+}
+
 // ── GET /api/admin/check — check if an email has admin access ────────────────
 // Public endpoint (no admin auth required) — used by the dashboard login flow
 // to verify a user is an admin before granting access.
@@ -976,6 +1011,273 @@ router.delete('/subscriptions/:id', async (req, res, next) => {
     console.error('[admin] Delete subscription error:', err);
     next(err);
   }
+});
+
+// ── GET /api/admin/users/:id/revenuecat — authoritative RC transaction data ──
+// Returns normalised transactions + the raw subscriber object for one user.
+// Transactions = non_subscription one-offs (e.g. lifetime purchases) + current
+// period snapshots of every subscription product (purchase_date, expires_date,
+// store_transaction_id, is_sandbox, refunded_at, billing_issues_detected_at).
+router.get('/users/:id/revenuecat', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: 'User ID is required' });
+
+    const result = await fetchRevenueCatSubscriber(id);
+
+    if (result.error === 'missing_api_key') {
+      return res.status(503).json({
+        error: 'RevenueCat API key not configured',
+        hint: 'Set REVENUECAT_SECRET_API_KEY in the server env.',
+      });
+    }
+    if (result.error) {
+      return res.status(502).json({ error: 'RevenueCat fetch failed', detail: result });
+    }
+    if (result.notFound) {
+      return res.json({
+        found: false,
+        firstSeen: null,
+        lastSeen: null,
+        originalAppUserId: null,
+        originalPurchaseDate: null,
+        managementUrl: null,
+        transactions: [],
+        raw: null,
+      });
+    }
+
+    const sub = result.subscriber || {};
+    const transactions = [];
+
+    // Non-subscription purchases (one-offs like lifetime consumables) ---------
+    for (const [productId, items] of Object.entries(sub.non_subscriptions || {})) {
+      for (const item of items || []) {
+        transactions.push({
+          kind: 'one_time',
+          productId,
+          transactionId: item.id || null,
+          store: item.store || null,
+          isSandbox: !!item.is_sandbox,
+          purchaseDate: item.purchase_date || null,
+          expiresDate: null,
+          periodType: null,
+          refundedAt: null,
+          billingIssueAt: null,
+          unsubscribeDetectedAt: null,
+          ownershipType: null,
+        });
+      }
+    }
+
+    // Subscriptions — current-period snapshot per product ---------------------
+    for (const [productId, s] of Object.entries(sub.subscriptions || {})) {
+      transactions.push({
+        kind: 'subscription',
+        productId,
+        transactionId: s.store_transaction_id || null,
+        store: s.store || null,
+        isSandbox: !!s.is_sandbox,
+        purchaseDate: s.purchase_date || null,
+        originalPurchaseDate: s.original_purchase_date || null,
+        expiresDate: s.expires_date || null,
+        periodType: s.period_type || null,
+        refundedAt: s.refunded_at || null,
+        billingIssueAt: s.billing_issues_detected_at || null,
+        unsubscribeDetectedAt: s.unsubscribe_detected_at || null,
+        ownershipType: s.ownership_type || null,
+      });
+    }
+
+    // Sort newest purchase first
+    transactions.sort((a, b) => {
+      const ad = a.purchaseDate ? new Date(a.purchaseDate).getTime() : 0;
+      const bd = b.purchaseDate ? new Date(b.purchaseDate).getTime() : 0;
+      return bd - ad;
+    });
+
+    res.json({
+      found: true,
+      firstSeen: sub.first_seen || null,
+      lastSeen: sub.last_seen || null,
+      originalAppUserId: sub.original_app_user_id || null,
+      originalPurchaseDate: sub.original_purchase_date || null,
+      managementUrl: sub.management_url || null,
+      transactions,
+      raw: sub,
+    });
+  } catch (err) { next(err); }
+});
+
+// ── GET /api/admin/users/:id — full detail for a single user ─────────────────
+// Returns profile + all subscriptions + plans + feedback + support tickets
+// (filtered by user email) for the user detail page in the admin dashboard.
+router.get('/users/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: 'User ID is required' });
+
+    // ── Profile ────────────────────────────────────────────────────────────────
+    const { data: { user }, error: userError } = await supabase.auth.admin.getUserById(id);
+    if (userError || !user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const profile = {
+      id: user.id,
+      email: user.email,
+      name: user.user_metadata?.full_name || user.user_metadata?.name || null,
+      isAdmin: user.user_metadata?.is_admin === true,
+      createdAt: user.created_at,
+      lastSignInAt: user.last_sign_in_at,
+      emailConfirmedAt: user.email_confirmed_at || null,
+      provider: user.app_metadata?.provider || null,
+      providers: user.app_metadata?.providers || [],
+    };
+
+    // ── Subscriptions — ALL rows, not just latest ─────────────────────────────
+    const STORE_LABEL = {
+      APP_STORE: 'Apple IAP',
+      MAC_APP_STORE: 'Apple IAP',
+      PLAY_STORE: 'Google Play',
+      STRIPE: 'Stripe',
+      PROMOTIONAL: 'Promotional',
+      AMAZON: 'Amazon',
+    };
+
+    const { data: subsRows } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', id)
+      .order('created_at', { ascending: false });
+
+    const { data: redemptions } = await supabase
+      .from('coupon_redemptions')
+      .select('*')
+      .eq('user_id', id)
+      .order('redeemed_at', { ascending: false });
+
+    const hasCoupon = (redemptions || []).length > 0;
+
+    const subscriptions = (subsRows || []).map(sub => {
+      let source;
+      if (hasCoupon) source = 'Coupon';
+      else if (sub.status === 'trialing') source = 'Free Trial';
+      else if (sub.store && STORE_LABEL[sub.store]) source = STORE_LABEL[sub.store];
+      else if (sub.store) source = sub.store;
+      else if (sub.stripe_customer_id) source = 'Stripe';
+      else source = 'Apple IAP';
+
+      return {
+        id: sub.id,
+        plan: sub.plan,
+        status: sub.status,
+        source,
+        store: sub.store || null,
+        productId: sub.product_id || null,
+        trialEnd: sub.trial_end,
+        currentPeriodEnd: sub.current_period_end,
+        createdAt: sub.created_at,
+        updatedAt: sub.updated_at,
+      };
+    });
+
+    // ── Plans + activity counts ────────────────────────────────────────────────
+    const { data: plansRows } = await supabase
+      .from('plans')
+      .select('*')
+      .eq('user_id', id)
+      .order('created_at', { ascending: false });
+
+    let activityCountsByPlan = {};
+    const planIds = (plansRows || []).map(p => p.id);
+    if (planIds.length > 0) {
+      const { data: acts } = await supabase
+        .from('activities')
+        .select('plan_id')
+        .in('plan_id', planIds);
+      for (const a of (acts || [])) {
+        activityCountsByPlan[a.plan_id] = (activityCountsByPlan[a.plan_id] || 0) + 1;
+      }
+    }
+
+    const plans = (plansRows || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      status: p.status,
+      weeks: p.weeks,
+      startDate: p.start_date,
+      createdAt: p.created_at,
+      activityCount: activityCountsByPlan[p.id] || 0,
+    }));
+
+    // ── Feedback threads ───────────────────────────────────────────────────────
+    const { data: feedbackRows } = await supabase
+      .from('feedback')
+      .select('*')
+      .eq('user_id', id)
+      .order('created_at', { ascending: false });
+
+    const feedback = (feedbackRows || []).map(f => ({
+      id: f.id,
+      category: f.category,
+      message: f.message,
+      appVersion: f.app_version,
+      linearIssueKey: f.linear_issue_key,
+      linearIssueUrl: f.linear_issue_url,
+      adminResponse: f.admin_response || null,
+      adminRespondedAt: f.admin_responded_at || null,
+      createdAt: f.created_at,
+    }));
+
+    // ── Support tickets (Linear) — best-effort match by email in title/desc ────
+    const LINEAR_API_KEY = process.env.LINEAR_API_KEY;
+    const LINEAR_TEAM_ID = process.env.LINEAR_TEAM_ID;
+    let tickets = [];
+    if (LINEAR_API_KEY && LINEAR_TEAM_ID && user.email) {
+      try {
+        const query = `
+          query($teamId: String!, $email: String!) {
+            team(id: $teamId) {
+              issues(first: 20, orderBy: createdAt, filter: {
+                or: [
+                  { title: { containsIgnoreCase: $email } },
+                  { description: { containsIgnoreCase: $email } }
+                ]
+              }) {
+                nodes {
+                  id identifier title url priority state { name } createdAt updatedAt
+                  labels { nodes { name } }
+                }
+              }
+            }
+          }
+        `;
+        const response = await fetch('https://api.linear.app/graphql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: LINEAR_API_KEY },
+          body: JSON.stringify({ query, variables: { teamId: LINEAR_TEAM_ID, email: user.email } }),
+        });
+        const json = await response.json();
+        const issues = json.data?.team?.issues?.nodes || [];
+        tickets = issues.map(i => ({
+          id: i.id,
+          linearId: i.identifier,
+          title: i.title,
+          url: i.url,
+          priority: i.priority <= 1 ? 'urgent' : i.priority === 2 ? 'high' : i.priority === 3 ? 'medium' : 'low',
+          status: i.state?.name?.toLowerCase().replace(/ /g, '_') || 'open',
+          labels: i.labels?.nodes?.map(l => l.name) || [],
+          createdAt: i.createdAt,
+          updatedAt: i.updatedAt,
+        }));
+      } catch (ticketsErr) {
+        console.warn('[admin] Failed to fetch Linear tickets for user', id, ticketsErr.message);
+      }
+    }
+
+    res.json({ profile, subscriptions, plans, feedback, tickets });
+  } catch (err) { next(err); }
 });
 
 // ── DELETE /api/admin/users/:id — hard-delete a user and all their data ──────

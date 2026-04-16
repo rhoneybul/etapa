@@ -1415,7 +1415,7 @@ const s = StyleSheet.create({
   suggestText: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 17 },
   suggestTextApplied: { color: colors.textFaint },
   suggestArrow: { fontSize: 20, color: colors.textMid, fontWeight: '300' },
-  suggestAppliedLabel: { fontSize: 14, color: '#64748B', fontWeight: '600' },
+  suggestAppliedLabel: { fontSize: 14, color: '#64748B', fontWeight: '600', fontFamily: FF.semibold },
 
   // Strava connect
   stravaCard: {
@@ -1559,7 +1559,7 @@ const s = StyleSheet.create({
   todayMeta: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 2 },
   todayArrow: { fontSize: 24, color: colors.textFaint, paddingRight: 14, fontWeight: '300' },
   doneBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#22C55E', alignItems: 'center', justifyContent: 'center', marginRight: 14 },
-  doneMark: { fontSize: 14, color: '#fff', fontWeight: '700' },
+  doneMark: { fontSize: 14, color: '#fff', fontWeight: '600', fontFamily: FF.semibold },
 
   // Week progress
   weekProgressTrack: { height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden' },
