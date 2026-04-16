@@ -18,7 +18,7 @@ import { useFonts, Poppins_300Light, Poppins_400Regular, Poppins_500Medium, Popp
 import * as SplashScreen from 'expo-splash-screen';
 import { getSession, getCurrentUser, signOut, onAuthStateChange } from './src/services/authService';
 import { ensureUserData, hydrateFromServer } from './src/services/storageService';
-import { checkStripeReturn } from './src/services/subscriptionService';
+// Stripe removed — all payments go through Apple IAP via RevenueCat
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from './src/services/revenueCatService';
 import analytics from './src/services/analyticsService';
 
@@ -177,12 +177,7 @@ function App() {
         // Register for push notifications
         registerForPushNotifications().catch(() => {});
 
-        // On web: detect return from Stripe Checkout and go straight to GoalSetup
-        const stripeSession = await checkStripeReturn().catch(() => null);
-        if (stripeSession) {
-          setInitialRoute('GoalSetup');
-          return;
-        }
+        // Stripe checkout removed — payments are handled via Apple IAP / RevenueCat
       }
       setInitialRoute(session ? 'Home' : 'SignIn');
     });
