@@ -182,29 +182,25 @@ export default function PaywallScreen({ navigation, route }) {
   const nextParams = route?.params?.nextParams || {};
 
   // Fetch live prices from server on mount.
-  // On native, RevenueCat prices take priority for display — server prices are
-  // only stored here for coupon/promo calculations (e.g. showing the original price).
+  // Server prices (GBP, admin-configured) are used for display on ALL platforms.
+  // RevenueCat packages are fetched separately for the purchase transaction only.
   useEffect(() => {
     getPrices().then(prices => {
       if (prices) {
         setServerPrices(prices);
-        // Only drive the plan display from server prices on web (no RevenueCat)
-        if (!hasRevenueCat) {
-          setPlans(buildPlans(prices));
-        }
+        setPlans(buildPlans(prices));
       }
     }).catch(() => {});
-  }, [hasRevenueCat]);
+  }, []);
 
   // Fetch RevenueCat offerings on mount (native only).
-  // RC is the source of truth for displayed prices on native — prices come
-  // directly from the App Store / Play Store and are already localised.
+  // RC packages are needed for the purchase transaction (openCheckout), but
+  // display prices come from the server so they always show in GBP.
   useEffect(() => {
     if (!hasRevenueCat) return;
     getSubscriptionOfferings().then(offerings => {
       if (offerings?.packages) {
         setRcOfferings(offerings.packages);
-        setPlans(buildPlansFromRC(offerings.packages));
       }
     }).catch(() => {});
   }, [hasRevenueCat]);
@@ -394,8 +390,8 @@ export default function PaywallScreen({ navigation, route }) {
         <View style={s.plans}>
           {Object.values(plans).filter(p => {
             const dp = route?.params?.defaultPlan;
-            // Beginner flow: show starter + monthly + lifetime
-            if (dp === 'starter') return p.id === 'starter' || p.id === 'monthly' || p.id === 'lifetime';
+            // Beginner flow: show only the starter plan
+            if (dp === 'starter') return p.id === 'starter';
             // Normal flow: hide starter (it's a beginner-specific plan)
             return p.id !== 'starter';
           }).map(p => {

@@ -64,7 +64,8 @@ export async function loginRevenueCat(userId) {
 }
 
 /**
- * Log out the user (resets to anonymous).
+ * Log out the user (resets to anonymous) and invalidate cached entitlements.
+ * Call this on sign-out AND account deletion so the next login starts clean.
  */
 export async function logoutRevenueCat() {
   if (!PURCHASES_AVAILABLE || !isConfigured) return;
@@ -72,6 +73,14 @@ export async function logoutRevenueCat() {
     await Purchases.logOut();
   } catch (err) {
     console.error('[RevenueCat] Logout error:', err);
+  }
+  // Force the next getCustomerInfo / checkEntitlement to hit the server
+  // rather than returning stale cached data.
+  try {
+    await Purchases.invalidateCustomerInfoCache();
+  } catch (err) {
+    // invalidateCustomerInfoCache may not exist on older SDK versions
+    console.warn('[RevenueCat] Could not invalidate cache:', err);
   }
 }
 

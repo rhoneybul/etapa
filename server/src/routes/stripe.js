@@ -215,7 +215,7 @@ router.get('/subscription-status', async (req, res) => {
 // Start a 7-day free trial without requiring payment upfront.
 // Creates a subscription record with status 'trialing' that expires in 7 days.
 router.post('/start-trial', async (req, res) => {
-  const userId = req.userId;
+  const userId = req.user?.id;
   if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
   try {

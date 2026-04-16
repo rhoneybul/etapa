@@ -452,11 +452,11 @@ export default function SettingsScreen({ navigation }) {
               </View>
             </View>
             <View style={[s.card, { marginTop: 8 }]}>
-              <TouchableOpacity style={s.row} onPress={() => setShowUpgrade(true)}>
+              <TouchableOpacity style={s.row} onPress={() => navigation.navigate('Paywall', { nextScreen: 'Settings' })}>
                 <View style={s.rowLeft}>
                   <View>
-                    <Text style={[s.rowTitle, { color: colors.primary }]}>Upgrade to Annual</Text>
-                    <Text style={s.rowSub}>50% off + pro-rata refund on starter</Text>
+                    <Text style={[s.rowTitle, { color: colors.primary }]}>Upgrade Now</Text>
+                    <Text style={s.rowSub}>Switch to monthly, annual, or lifetime</Text>
                   </View>
                 </View>
                 <Text style={s.chevron}>{'\u203A'}</Text>
@@ -480,7 +480,7 @@ export default function SettingsScreen({ navigation }) {
                 <View style={s.rowLeft}>
                   <View>
                     <Text style={[s.rowTitle, { color: colors.primary }]}>{portalLoading ? 'Opening...' : 'Cancel Subscription'}</Text>
-                    <Text style={s.rowSub}>Manage in App Store or Stripe</Text>
+                    <Text style={s.rowSub}>Manage in App Store or Google Play</Text>
                   </View>
                 </View>
                 <Text style={s.chevron}>{'\u203A'}</Text>
@@ -537,7 +537,7 @@ export default function SettingsScreen({ navigation }) {
                 <View style={s.rowLeft}>
                   <View>
                     <Text style={[s.rowTitle, { color: colors.primary }]}>{portalLoading ? 'Opening...' : 'Cancel Subscription'}</Text>
-                    <Text style={s.rowSub}>Manage in App Store or Stripe</Text>
+                    <Text style={s.rowSub}>Manage in App Store or Google Play</Text>
                   </View>
                 </View>
                 <Text style={s.chevron}>›</Text>

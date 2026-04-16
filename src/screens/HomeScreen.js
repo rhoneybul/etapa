@@ -277,12 +277,6 @@ export default function HomeScreen({ navigation }) {
 
   // Enter the plan creation flow — paywall is shown after the plan is generated
   const handleMakePlan = async () => {
-    // Starter users can only have the beginner plan — prompt upgrade
-    if (subPlan === 'starter') {
-      setShowUpgrade(true);
-      return;
-    }
-    // Check subscription — if not subscribed, show paywall after plan generation
     const subscribed = __DEV__ ? false : await isSubscribed();
     navigation.navigate('GoalSetup', { requirePaywall: !subscribed });
   };
