@@ -19,7 +19,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "107"
+      "buildNumber": "108"
     },
     "android": {
       "adaptiveIcon": {
@@ -32,7 +32,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.etapa.app",
-      "versionCode": 107
+      "versionCode": 108
     },
     "web": {
       "bundler": "metro",

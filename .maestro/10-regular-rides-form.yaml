@@ -1,0 +1,105 @@
+# Flow 10: Regular Rides Form (PlanConfig Step 3)
+# Walks through PlanConfig to step 3 ("Any regular rides?"), adds a ride
+# using the form, verifies keyboard dismiss works, then skips ahead.
+#
+# Requires: signed-in user who has completed GoalSetup and reached PlanConfig
+# This flow assumes PlanConfig is reachable from the current state, or
+# starts fresh via the GoalSetup → PlanConfig flow.
+appId: com.etapa.app
+---
+- launchApp:
+    clearState: true
+
+# ── Sign in ──────────────────────────────────────────────────────────────────
+- assertVisible:
+    text: "Sign in"
+    timeout: 8000
+
+- tapOn: "Continue with email"
+- inputText: ${TEST_USER_EMAIL}
+- tapOn: "Continue"
+- inputText: ${TEST_USER_PASSWORD}
+- tapOn: "Sign in"
+
+# ── Wait for Home ────────────────────────────────────────────────────────────
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 12000
+
+# ── Start a new AI plan to reach PlanConfig ──────────────────────────────────
+- tapOn: "AI-POWERED"
+
+# GoalSetup Step 1: Cycling type
+- assertVisible:
+    text: "What type of cycling?"
+    timeout: 6000
+- tapOn: "Road"
+- tapOn: "Continue"
+
+# GoalSetup Step 2: Goal type
+- assertVisible: "What is your goal?"
+- tapOn: "Just want to improve"
+- tapOn: "Continue"
+
+# GoalSetup Step 3: Goal details (for "improve" — minimal)
+- assertVisible: "Just want to improve"
+- tapOn: "Continue"
+
+# ── PlanConfig Step 1: Fitness level ─────────────────────────────────────────
+- assertVisible:
+    text: "What's your current level?"
+    timeout: 8000
+
+- tapOn: "Beginner"
+- tapOn: "Continue"
+
+# ── PlanConfig Step 2: Training types ────────────────────────────────────────
+- assertVisible: "What types of training?"
+- tapOn:
+    text: ".*"
+    index: 0
+- tapOn: "Continue"
+
+# ── PlanConfig Step 3: Regular rides ─────────────────────────────────────────
+- assertVisible:
+    text: "Any regular rides?"
+    timeout: 6000
+
+- takeScreenshot: "10-regular-rides-step"
+
+# Tap "Add a regular ride" to open the form
+- tapOn: "Add a regular ride"
+
+- takeScreenshot: "10-ride-form-opened"
+
+# ── Fill in ride form ────────────────────────────────────────────────────────
+# Select a day
+- tapOn: "Sat"
+
+# Enter duration
+- tapOn:
+    text: "Duration"
+- inputText: "60"
+
+# Tap "Done" to dismiss keyboard
+- tapOn: "Done"
+
+- takeScreenshot: "10-ride-form-filled"
+
+# ── Add the ride ─────────────────────────────────────────────────────────────
+- tapOn: "Add ride"
+
+- takeScreenshot: "10-ride-added"
+
+# ── Verify the ride appears in the list ──────────────────────────────────────
+- assertVisible: "Sat"
+- assertVisible: "60 min"
+
+# ── Continue to next step ────────────────────────────────────────────────────
+- tapOn: "Continue"
+
+- assertVisible:
+    text: "Your longest ride day"
+    timeout: 6000
+
+- takeScreenshot: "10-step4-reached"

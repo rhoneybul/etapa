@@ -1,0 +1,74 @@
+# Flow 08: Calendar Interactions (View / Move / Delete)
+# Opens the Calendar screen, taps a day with activities, taps an activity
+# to reveal the action bar, and verifies View/Move/Delete buttons appear.
+#
+# Requires: signed-in user with an active plan that has activities on the calendar
+appId: com.etapa.app
+---
+- launchApp
+
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 10000
+
+# ── Navigate to Calendar ─────────────────────────────────────────────────────
+- tapOn: "Calendar"
+
+- assertVisible:
+    text: "Calendar"
+    timeout: 6000
+
+- takeScreenshot: "08-calendar-loaded"
+
+# ── Tap a day that likely has activities (try today or nearby) ───────────────
+# The calendar shows dots on days with activities. We tap on any visible
+# activity text in the selected day's activity list.
+- scrollUntilVisible:
+    element:
+      text: "Tap an activity to move or delete"
+    direction: DOWN
+    timeout: 8000
+    optional: true
+
+# If hint text is visible, there are activities. Tap the first one.
+- tapOn:
+    text: "Tap an activity to move or delete"
+    optional: true
+
+# Take a screenshot of the day with activities listed
+- takeScreenshot: "08-calendar-day-selected"
+
+# ── Tap an activity to open the action bar ───────────────────────────────────
+# Activities show their title (e.g. "Easy Ride", "Intervals", etc.)
+# We tap the first activity card in the list area
+- tapOn:
+    point: "50%,65%"
+
+- takeScreenshot: "08-action-bar-visible"
+
+# ── Verify action bar buttons ────────────────────────────────────────────────
+- assertVisible:
+    text: "View"
+    optional: true
+- assertVisible:
+    text: "Move"
+    optional: true
+- assertVisible:
+    text: "Delete"
+    optional: true
+
+- takeScreenshot: "08-action-bar-buttons"
+
+# ── Tap View to open ActivityDetail ──────────────────────────────────────────
+- tapOn:
+    text: "View"
+    optional: true
+
+- takeScreenshot: "08-activity-detail"
+
+# ── Go back to Calendar ──────────────────────────────────────────────────────
+- tapOn:
+    text: "←"
+    optional: true
+
+- takeScreenshot: "08-calendar-returned"

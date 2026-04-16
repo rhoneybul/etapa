@@ -1,0 +1,204 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Test → Deploy Pipeline
+#
+# Runs API tests + Maestro E2E, then on success deploys to Expo via EAS Update
+# (OTA) or triggers an EAS Build for a full native binary.
+#
+# Trigger: push to main, or manual dispatch.
+#
+# Secrets required:
+#   - EXPO_TOKEN              — Expo access token (from expo.dev → Access Tokens)
+#   - TEST_API_URL            — Test server URL
+#   - TEST_USER_EMAIL         — Test account email
+#   - TEST_USER_PASSWORD      — Test account password
+#   - TEST_SUPABASE_URL       — Test Supabase URL
+#   - TEST_SUPABASE_ANON_KEY  — Test Supabase anon key
+#   - TEST_SUPABASE_SERVICE_KEY
+#   - TEST_ADMIN_API_KEY
+#   - TEST_CRON_SECRET
+#
+# Optional:
+#   - MAESTRO_CLOUD_API_KEY   — If using Maestro Cloud instead of local simulator
+# ──────────────────────────────────────────────────────────────────────────────
+name: Test & Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_type:
+        description: 'Deploy type after tests pass'
+        required: true
+        default: 'update'
+        type: choice
+        options:
+          - update    # OTA update via EAS Update (fast, JS-only changes)
+          - build     # Full native build via EAS Build
+          - none      # Just run tests, don't deploy
+
+concurrency:
+  group: test-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # 1. API Tests (fast, runs on ubuntu)
+  # ────────────────────────────────────────────────────────────────────────────
+  api-tests:
+    name: API Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install server deps
+        working-directory: server
+        run: npm ci
+
+      - name: Run API tests
+        working-directory: server
+        env:
+          SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_KEY }}
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+          ADMIN_API_KEY: ${{ secrets.TEST_ADMIN_API_KEY }}
+          CRON_SECRET: ${{ secrets.TEST_CRON_SECRET }}
+        run: npm test
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 2. Maestro E2E Tests (needs macOS for iOS simulator)
+  # ────────────────────────────────────────────────────────────────────────────
+  e2e-tests:
+    name: Maestro E2E
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> $GITHUB_PATH
+
+      - name: Build iOS simulator app
+        run: npx expo run:ios --no-install --configuration Release
+        env:
+          EXPO_PUBLIC_API_URL: ${{ secrets.TEST_API_URL }}
+
+      - name: Boot iOS Simulator
+        run: |
+          xcrun simctl boot "iPhone 16" || true
+          xcrun simctl bootstatus "iPhone 16" -b
+
+      - name: Install app on simulator
+        run: |
+          APP_PATH=$(find ios/build -name "*.app" -type d | head -1)
+          xcrun simctl install booted "$APP_PATH"
+
+      - name: Run core flows (01-04)
+        run: |
+          maestro test .maestro/01-app-launch.yaml
+          maestro test .maestro/02-sign-in.yaml
+          maestro test .maestro/03-navigate-screens.yaml
+        env:
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+
+      - name: Run feature flows (05-11)
+        run: |
+          maestro test .maestro/05-beginner-onboarding.yaml
+          maestro test .maestro/06-custom-goal-setup.yaml
+          maestro test .maestro/07-paywall.yaml
+          maestro test .maestro/08-calendar-actions.yaml
+          maestro test .maestro/09-settings.yaml
+          maestro test .maestro/10-regular-rides-form.yaml
+        env:
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+        continue-on-error: false
+
+      # Flow 11 (full plan gen) is slow — run separately with extended timeout
+      # Uncomment when you have a test account with an active subscription:
+      # - name: Run plan generation E2E
+      #   run: maestro test .maestro/11-plan-generation-e2e.yaml
+      #   timeout-minutes: 10
+      #   env:
+      #     TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+      #     TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-screenshots
+          path: |
+            ~/.maestro/tests/**/*.png
+          if-no-files-found: ignore
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 3. Deploy — only runs if both test jobs pass
+  # ────────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Expo
+    needs: [api-tests, e2e-tests]
+    if: |
+      always() &&
+      needs.api-tests.result == 'success' &&
+      needs.e2e-tests.result == 'success' &&
+      (github.event_name == 'push' || github.event.inputs.deploy_type != 'none')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # ── OTA Update (default — fast, JS-only changes) ────────────────────────
+      - name: EAS Update (OTA)
+        if: github.event.inputs.deploy_type != 'build'
+        run: |
+          eas update --branch production --message "Deploy from CI — $(git log -1 --pretty=%s)"
+
+      # ── Full Native Build (when native deps change) ─────────────────────────
+      - name: EAS Build (native)
+        if: github.event.inputs.deploy_type == 'build'
+        run: |
+          eas build --platform ios --profile production --non-interactive
+
+      # ── Submit to App Store (only after a build) ────────────────────────────
+      - name: EAS Submit
+        if: github.event.inputs.deploy_type == 'build'
+        run: |
+          eas submit --platform ios --profile production --non-interactive

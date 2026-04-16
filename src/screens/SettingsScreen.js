@@ -226,6 +226,11 @@ export default function SettingsScreen({ navigation }) {
     );
   };
 
+  const handleUpgrade = () => {
+    setShowUpgrade(false);
+    goPaywall({ nextScreen: 'Home' });
+  };
+
   const handleSignOut = async () => {
     analytics.events.signedOut();
     analytics.reset();

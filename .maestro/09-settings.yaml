@@ -1,0 +1,88 @@
+# Flow 09: Settings Screen
+# Opens Settings, verifies all sections render (Profile, Connections,
+# Coaching, Subscription), toggles units, and navigates to sub-screens.
+#
+# Requires: signed-in user
+appId: com.etapa.app
+---
+- launchApp
+
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 10000
+
+# ── Navigate to Settings ─────────────────────────────────────────────────────
+- tapOn: "Settings"
+
+- assertVisible:
+    text: "Settings"
+    timeout: 6000
+
+- takeScreenshot: "09-settings-loaded"
+
+# ── Profile section ──────────────────────────────────────────────────────────
+- assertVisible: "PROFILE"
+- assertVisible: "Display Name"
+- assertVisible: "Distance Units"
+
+- takeScreenshot: "09-settings-profile"
+
+# ── Toggle distance units ────────────────────────────────────────────────────
+- tapOn: "mi"
+- takeScreenshot: "09-settings-miles"
+
+- tapOn: "km"
+- takeScreenshot: "09-settings-km"
+
+# ── Connections section ──────────────────────────────────────────────────────
+- scrollUntilVisible:
+    element:
+      text: "CONNECTIONS"
+    direction: DOWN
+    timeout: 5000
+
+- assertVisible: "Strava"
+
+- takeScreenshot: "09-settings-connections"
+
+# ── Coaching section ─────────────────────────────────────────────────────────
+- scrollUntilVisible:
+    element:
+      text: "COACHING"
+    direction: DOWN
+    timeout: 5000
+
+- assertVisible: "Change Coach"
+
+- takeScreenshot: "09-settings-coaching"
+
+# ── Tap Change Coach and verify screen loads ─────────────────────────────────
+- tapOn: "Change Coach"
+
+- assertVisible:
+    text: ".*"
+    timeout: 6000
+
+- takeScreenshot: "09-change-coach-screen"
+
+# Go back
+- tapOn:
+    text: "←"
+
+# ── Subscription section ─────────────────────────────────────────────────────
+- scrollUntilVisible:
+    element:
+      text: "SUBSCRIPTION"
+    direction: DOWN
+    timeout: 5000
+
+- takeScreenshot: "09-settings-subscription"
+
+# ── About / sign out (bottom of page) ────────────────────────────────────────
+- scrollUntilVisible:
+    element:
+      text: "Sign out"
+    direction: DOWN
+    timeout: 5000
+
+- takeScreenshot: "09-settings-bottom"

@@ -1,0 +1,76 @@
+# Flow 06: Custom Goal Setup (AI-powered plan)
+# Signs in, taps the AI-powered plan card, walks through the 3-step
+# GoalSetupScreen wizard: cycling type → goal type → goal details.
+#
+# Requires: TEST_USER_EMAIL, TEST_USER_PASSWORD
+appId: com.etapa.app
+---
+- launchApp:
+    clearState: true
+
+# ── Sign in ──────────────────────────────────────────────────────────────────
+- assertVisible:
+    text: "Sign in"
+    timeout: 8000
+
+- tapOn: "Continue with email"
+- inputText: ${TEST_USER_EMAIL}
+- tapOn: "Continue"
+- inputText: ${TEST_USER_PASSWORD}
+- tapOn: "Sign in"
+
+# ── Home screen ──────────────────────────────────────────────────────────────
+- assertVisible:
+    text: "AI-POWERED"
+    timeout: 12000
+
+- takeScreenshot: "06-home-ai-card"
+
+# Tap the AI-powered plan card
+- tapOn: "AI-POWERED"
+
+# ── Step 1: Cycling type ─────────────────────────────────────────────────────
+- assertVisible:
+    text: "What type of cycling?"
+    timeout: 6000
+
+- tapOn: "Road"
+
+- takeScreenshot: "06-step1-cycling-type"
+
+- tapOn: "Continue"
+
+# ── Step 2: Goal type ────────────────────────────────────────────────────────
+- assertVisible:
+    text: "What is your goal?"
+    timeout: 6000
+
+- tapOn: "Race"
+
+- takeScreenshot: "06-step2-goal-type"
+
+- tapOn: "Continue"
+
+# ── Step 3: Goal details ─────────────────────────────────────────────────────
+- assertVisible:
+    text: "Tell us about your goal"
+    timeout: 6000
+
+# Enter a plan name
+- tapOn: "Plan name"
+- inputText: "Test Race Plan"
+
+# Enter event name
+- tapOn: "Race / event name"
+- inputText: "Ride London"
+
+- takeScreenshot: "06-step3-goal-details"
+
+# Tap Continue to proceed (goes to Paywall or PlanConfig)
+- tapOn: "Continue"
+
+- assertVisible:
+    text: ".*"
+    timeout: 8000
+
+- takeScreenshot: "06-goal-setup-complete"

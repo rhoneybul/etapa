@@ -1,0 +1,73 @@
+# Flow 07: Paywall Screen
+# Verifies the paywall loads, plan options are visible, plan selection works,
+# coupon field is present, and restore purchases is tappable.
+#
+# NOTE: This flow does NOT complete a purchase (that requires a real IAP sandbox).
+# It verifies the UI renders correctly and is interactive.
+#
+# Requires: signed-in user (relies on session from previous flow or pre-seeded state)
+appId: com.etapa.app
+---
+- launchApp
+
+# ── Navigate to Paywall ──────────────────────────────────────────────────────
+# If user has no subscription, home may show an upgrade prompt or locked plan.
+# We look for common entry points to the Paywall.
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 10000
+
+# Try tapping "Subscribe" or the upgrade card — whichever is visible
+- tapOn:
+    text: "Subscribe|Upgrade Now|Get started"
+    optional: true
+
+# ── Paywall should be visible ────────────────────────────────────────────────
+- assertVisible:
+    text: "ETAPA PELOTON"
+    timeout: 8000
+
+- takeScreenshot: "07-paywall-loaded"
+
+# ── Plan options should be visible ───────────────────────────────────────────
+- assertVisible: "Lifetime"
+- assertVisible: "Annual"
+- assertVisible: "Monthly"
+
+- takeScreenshot: "07-paywall-plans"
+
+# ── Select different plans ───────────────────────────────────────────────────
+- tapOn: "Monthly"
+- takeScreenshot: "07-paywall-monthly-selected"
+
+- tapOn: "Annual"
+- takeScreenshot: "07-paywall-annual-selected"
+
+- tapOn: "Lifetime"
+- takeScreenshot: "07-paywall-lifetime-selected"
+
+# ── Coupon code section ──────────────────────────────────────────────────────
+- scrollUntilVisible:
+    element:
+      text: "Have a coupon code?"
+    direction: DOWN
+    timeout: 5000
+
+- takeScreenshot: "07-paywall-coupon-section"
+
+# ── Restore purchases button ────────────────────────────────────────────────
+- scrollUntilVisible:
+    element:
+      text: "Restore Purchases"
+    direction: DOWN
+    timeout: 5000
+
+- takeScreenshot: "07-paywall-restore"
+
+# ── 16-day guarantee visible ────────────────────────────────────────────────
+- assertVisible: "16-Day Full Refund Guarantee"
+
+# ── Close paywall ────────────────────────────────────────────────────────────
+- tapOn: "✕"
+
+- takeScreenshot: "07-paywall-closed"

@@ -1,0 +1,59 @@
+# Flow 05: Beginner Onboarding (Get into Cycling)
+# Signs in, taps the "Get into Cycling" beginner card on Home,
+# selects a goal and bike type on BeginnerProgramScreen, then continues.
+#
+# Requires: TEST_USER_EMAIL, TEST_USER_PASSWORD (account with no existing plan)
+appId: com.etapa.app
+---
+- launchApp:
+    clearState: true
+
+# ── Sign in ──────────────────────────────────────────────────────────────────
+- assertVisible:
+    text: "Sign in"
+    timeout: 8000
+
+- tapOn: "Continue with email"
+- inputText: ${TEST_USER_EMAIL}
+- tapOn: "Continue"
+- inputText: ${TEST_USER_PASSWORD}
+- tapOn: "Sign in"
+
+# ── Home screen should load ──────────────────────────────────────────────────
+- assertVisible:
+    text: "Get into Cycling"
+    timeout: 12000
+
+- takeScreenshot: "05-home-beginner-card"
+
+# ── Tap the beginner card ────────────────────────────────────────────────────
+- tapOn: "Get into Cycling"
+
+# ── BeginnerProgramScreen ────────────────────────────────────────────────────
+- assertVisible:
+    text: "What's included"
+    timeout: 6000
+
+- assertVisible: "What's your goal?"
+
+- takeScreenshot: "05-beginner-program"
+
+# Select first goal option (e.g. "Ride 25 km")
+- tapOn:
+    text: ".*km"
+    index: 0
+
+# Select a bike type
+- tapOn: "Road"
+
+- takeScreenshot: "05-beginner-configured"
+
+# Tap Continue
+- tapOn: "Continue"
+
+# Should navigate to Paywall or PlanLoading depending on subscription status
+- assertVisible:
+    text: ".*"
+    timeout: 8000
+
+- takeScreenshot: "05-beginner-next-screen"

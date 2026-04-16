@@ -1,0 +1,132 @@
+# Flow 11: Full Plan Generation End-to-End
+# The complete happy path: sign in → goal setup → plan config (all 7 steps)
+# → plan loading → plan ready. This is the critical path for the app.
+#
+# NOTE: This flow takes longer due to AI plan generation. Increase timeout
+# for CI runs. The plan generation step can take 30-60 seconds.
+#
+# Requires: TEST_USER_EMAIL, TEST_USER_PASSWORD (account with active subscription
+# or free trial, no existing plan — so the full creation flow is reachable)
+appId: com.etapa.app
+---
+- launchApp:
+    clearState: true
+
+# ── Sign in ──────────────────────────────────────────────────────────────────
+- assertVisible:
+    text: "Sign in"
+    timeout: 8000
+
+- tapOn: "Continue with email"
+- inputText: ${TEST_USER_EMAIL}
+- tapOn: "Continue"
+- inputText: ${TEST_USER_PASSWORD}
+- tapOn: "Sign in"
+
+# ── Home ─────────────────────────────────────────────────────────────────────
+- extendedWaitUntil:
+    visible: "AI-POWERED"
+    timeout: 12000
+
+- tapOn: "AI-POWERED"
+
+# ── GoalSetup: Step 1 — Cycling type ────────────────────────────────────────
+- assertVisible: "What type of cycling?"
+- tapOn: "Road"
+- tapOn: "Continue"
+
+# ── GoalSetup: Step 2 — Goal type ───────────────────────────────────────────
+- assertVisible: "What is your goal?"
+- tapOn: "Just want to improve"
+- tapOn: "Continue"
+
+# ── GoalSetup: Step 3 — Details (minimal for "improve") ─────────────────────
+- assertVisible: "Just want to improve"
+- tapOn: "Continue"
+
+# ── PlanConfig: Step 1 — Fitness level ───────────────────────────────────────
+- assertVisible:
+    text: "What's your current level?"
+    timeout: 8000
+- tapOn: "Intermediate"
+- tapOn: "Continue"
+
+# ── PlanConfig: Step 2 — Training types ──────────────────────────────────────
+- assertVisible: "What types of training?"
+# Tap the first training type option
+- tapOn:
+    text: ".*"
+    index: 0
+- tapOn: "Continue"
+
+# ── PlanConfig: Step 3 — Regular rides (skip) ────────────────────────────────
+- assertVisible: "Any regular rides?"
+- tapOn: "Skip — I don't have regular rides"
+
+# ── PlanConfig: Step 4 — Longest ride day ────────────────────────────────────
+- assertVisible:
+    text: "Your longest ride day"
+    timeout: 6000
+- tapOn: "Sun"
+- tapOn: "Continue"
+
+# ── PlanConfig: Step 5 — Build your week ─────────────────────────────────────
+- assertVisible:
+    text: "Build your week"
+    timeout: 6000
+
+- takeScreenshot: "11-build-week"
+
+# Tap on a few days to place sessions (tap day cells)
+- tapOn: "Tue"
+- tapOn: "Thu"
+- tapOn: "Sat"
+
+- tapOn: "Continue"
+
+# ── PlanConfig: Step 6 — Duration & start date ──────────────────────────────
+- assertVisible:
+    text: ".*start.*"
+    timeout: 6000
+
+- takeScreenshot: "11-duration-start"
+
+# Select recommended option (usually first)
+- tapOn:
+    text: ".*recommended.*"
+    index: 0
+    optional: true
+
+- tapOn: "Continue"
+
+# ── PlanConfig: Step 7 — Choose your coach ───────────────────────────────────
+- assertVisible:
+    text: "Choose your coach"
+    timeout: 6000
+
+- takeScreenshot: "11-choose-coach"
+
+# Select first coach
+- tapOn:
+    text: ".*"
+    index: 0
+
+# Tap "Generate my plan"
+- tapOn: "Generate my plan"
+
+# ── PlanLoading screen ───────────────────────────────────────────────────────
+# The loading screen shows while the AI generates the plan.
+# This can take up to 60 seconds.
+- assertVisible:
+    text: ".*"
+    timeout: 10000
+
+- takeScreenshot: "11-plan-loading"
+
+# ── PlanReady screen ─────────────────────────────────────────────────────────
+# Wait for plan generation to complete
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 90000
+
+- takeScreenshot: "11-plan-ready"
