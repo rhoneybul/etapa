@@ -114,17 +114,15 @@ export default function BeginnerProgramScreen({ navigation }) {
 
       analytics.capture?.('beginner_program_goal_selected', { goalOption });
 
-      // Skip paywall if already subscribed
-      const subscribed = await isSubscribed();
-      if (subscribed) {
-        navigation.replace('PlanConfig', planConfig);
-        return;
-      }
-
-      // Hand off to the paywall — on success it navigates to PlanConfig
-      navigation.navigate('Paywall', {
-        nextScreen: 'PlanConfig',
-        nextParams: planConfig,
+      // Check subscription — if already subscribed, go straight to PlanConfig.
+      // Otherwise, let them configure & generate the plan first, then show
+      // the paywall on PlanReady so they can see what they're paying for.
+      // TODO: remove __DEV__ bypass before release
+      const subscribed = __DEV__ ? false : await isSubscribed();
+      navigation.replace('PlanConfig', {
+        ...planConfig,
+        requirePaywall: !subscribed,
+        defaultPlan: 'starter',
       });
     } finally {
       setContinuing(false);

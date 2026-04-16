@@ -102,6 +102,7 @@ function getWeekVolume(plan, weekNum) {
 export default function PlanReadyScreen({ navigation, route }) {
   const planId = route.params?.planId;
   const requirePaywall = route.params?.requirePaywall || false;
+  const defaultPlan = route.params?.defaultPlan || null;
   const [plan, setPlan] = useState(null);
   const [goal, setGoal] = useState(null);
   const [assessment, setAssessment] = useState(null);
@@ -245,12 +246,13 @@ export default function PlanReadyScreen({ navigation, route }) {
 
           {/* ── The thinking behind your plan ──────────────────────────────
               One consolidated card: intro (from/to), session rationales,
-              recovery weeks, and the weekly volume chart. */}
+              recovery weeks, and the weekly volume chart.
+              When requirePaywall is set, show the volume chart as a teaser
+              but lock the detailed rationale and coach suggestions. */}
           {plan && (() => {
             const thinking = deriveKeyThinking(plan);
             const deloadWeeks = Math.floor(plan.weeks / 4);
             const goalDist = goal?.targetDistance ? `${goal.targetDistance} ${distanceLabel(units)}` : null;
-            // Intro: what the plan builds from and to
             let intro;
             if (goalDist) {
               intro = `Over ${plan.weeks} weeks, this plan builds from your current fitness toward your ${goalDist} goal — balancing hard work with the recovery your body needs to adapt.`;
@@ -262,32 +264,7 @@ export default function PlanReadyScreen({ navigation, route }) {
                 <Text style={s.assessTitle}>The thinking behind your plan</Text>
                 <Text style={s.thinkingIntro}>{intro}</Text>
 
-                {thinking.map((item, i) => (
-                  <View key={i} style={s.thinkingRow}>
-                    <View style={[s.thinkingDot, { backgroundColor: item.color }]} />
-                    <View style={s.thinkingTextWrap}>
-                      <Text style={s.thinkingLabel}>{item.label}</Text>
-                      <Text style={s.thinkingReason}>{item.reason}</Text>
-                    </View>
-                  </View>
-                ))}
-
-                {/* Recovery weeks as a first-class factor */}
-                {deloadWeeks > 0 && (
-                  <View style={s.thinkingRow}>
-                    <View style={[s.thinkingDot, { backgroundColor: colors.slate }]} />
-                    <View style={s.thinkingTextWrap}>
-                      <Text style={s.thinkingLabel}>
-                        {deloadWeeks} recovery week{deloadWeeks !== 1 ? 's' : ''} built in
-                      </Text>
-                      <Text style={s.thinkingReason}>
-                        every fourth week drops the volume — your body adapts and absorbs the training gains
-                      </Text>
-                    </View>
-                  </View>
-                )}
-
-                {/* Volume chart — stays visible, inside the same pane */}
+                {/* Volume chart — always visible as a teaser */}
                 <View style={s.chartDivider} />
                 <Text style={s.chartTitle}>Weekly volume build-up</Text>
                 <View style={s.chartArea}>
@@ -315,14 +292,61 @@ export default function PlanReadyScreen({ navigation, route }) {
                     );
                   })}
                 </View>
+
+                {/* Session rationale — locked behind paywall */}
+                {requirePaywall ? (
+                  <View style={s.lockedSection}>
+                    <View style={s.lockedOverlay}>
+                      {thinking.slice(0, 2).map((item, i) => (
+                        <View key={i} style={[s.thinkingRow, { opacity: 0.3 }]}>
+                          <View style={[s.thinkingDot, { backgroundColor: item.color }]} />
+                          <View style={s.thinkingTextWrap}>
+                            <Text style={s.thinkingLabel}>{item.label}</Text>
+                            <Text style={s.thinkingReason}>{item.reason}</Text>
+                          </View>
+                        </View>
+                      ))}
+                      <View style={s.lockedBadge}>
+                        <Text style={s.lockedIcon}>{'\uD83D\uDD12'}</Text>
+                        <Text style={s.lockedTitle}>Full plan details</Text>
+                        <Text style={s.lockedSub}>Subscribe to see the full breakdown, session rationale, and coach suggestions</Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    {thinking.map((item, i) => (
+                      <View key={i} style={s.thinkingRow}>
+                        <View style={[s.thinkingDot, { backgroundColor: item.color }]} />
+                        <View style={s.thinkingTextWrap}>
+                          <Text style={s.thinkingLabel}>{item.label}</Text>
+                          <Text style={s.thinkingReason}>{item.reason}</Text>
+                        </View>
+                      </View>
+                    ))}
+                    {deloadWeeks > 0 && (
+                      <View style={s.thinkingRow}>
+                        <View style={[s.thinkingDot, { backgroundColor: colors.slate }]} />
+                        <View style={s.thinkingTextWrap}>
+                          <Text style={s.thinkingLabel}>
+                            {deloadWeeks} recovery week{deloadWeeks !== 1 ? 's' : ''} built in
+                          </Text>
+                          <Text style={s.thinkingReason}>
+                            every fourth week drops the volume — your body adapts and absorbs the training gains
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </>
+                )}
               </Animated.View>
             );
           })()}
 
-          {/* Coach assessment — no readiness % */}
-          {loadingAssessment && !assessment && (
+          {/* Coach assessment — hidden behind paywall */}
+          {!requirePaywall && loadingAssessment && !assessment && (
             <View style={s.assessCard}>
-              <Text style={s.assessTitle}>Coach’s suggestions</Text>
+              <Text style={s.assessTitle}>Coach's suggestions</Text>
               <View style={s.assessLoading}>
                 <ActivityIndicator color={colors.primary} size="small" />
                 <Text style={s.assessLoadingText}>Thinking of ways to level up…</Text>
@@ -330,7 +354,7 @@ export default function PlanReadyScreen({ navigation, route }) {
             </View>
           )}
 
-          {assessment && (
+          {!requirePaywall && assessment && (
             <Animated.View style={[s.assessCard, { opacity: assessFade }]}>
               <Text style={s.assessTitle}>Ways to level up</Text>
               {assessment.summary ? <Text style={s.assessSummary}>{assessment.summary}</Text> : null}
@@ -378,8 +402,8 @@ export default function PlanReadyScreen({ navigation, route }) {
 
           {/* Suggestions are now applied via ApplySuggestionScreen */}
 
-          {/* Strava connect prompt — only show if not already connected */}
-          {isStravaConfigured && !stravaOk && (
+          {/* Strava connect prompt — only show if not already connected and paid */}
+          {!requirePaywall && isStravaConfigured && !stravaOk && (
             <Animated.View style={[s.stravaCard, { opacity: ctaFade }]}>
               <View style={s.stravaHeader}>
                 <View style={s.stravaLogo}><StravaLogo size={40} /></View>
@@ -408,7 +432,7 @@ export default function PlanReadyScreen({ navigation, route }) {
               </TouchableOpacity>
             </Animated.View>
           )}
-          {stravaOk && (
+          {!requirePaywall && stravaOk && (
             <Animated.View style={[s.stravaConnected, { opacity: ctaFade }]}>
               <Text style={s.stravaConnectedIcon}>{'\u2713'}</Text>
               <Text style={s.stravaConnectedText}>Strava connected — your rides will sync automatically</Text>
@@ -435,11 +459,11 @@ export default function PlanReadyScreen({ navigation, route }) {
                 navigatingRef.current = true;
                 try {
                   if (requirePaywall) {
-                    navigation.navigate('Paywall', { nextScreen: 'Home' });
+                    navigation.navigate('Paywall', { nextScreen: 'Home', defaultPlan });
                   } else {
                     const subscribed = await isSubscribed();
                     if (!subscribed) {
-                      navigation.navigate('Paywall', { nextScreen: 'Home' });
+                      navigation.navigate('Paywall', { nextScreen: 'Home', defaultPlan });
                     } else {
                       navigation.replace('Home');
                     }
@@ -451,17 +475,19 @@ export default function PlanReadyScreen({ navigation, route }) {
               }}
               activeOpacity={0.8}
             >
-              <Text style={s.ctaText}>{requirePaywall ? 'Subscribe to start' : 'Start training'}</Text>
+              <Text style={s.ctaText}>{requirePaywall ? (defaultPlan === 'starter' ? 'Get started — from £14.99' : 'Subscribe to start') : 'Start training'}</Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={s.detailLink}
-            onPress={() => navigation.navigate('PlanOverview', { planId: plan.id })}
-            activeOpacity={0.7}
-          >
-            <Text style={s.detailLinkText}>View full plan details</Text>
-          </TouchableOpacity>
-          {plan.configId && (
+          {!requirePaywall && (
+            <TouchableOpacity
+              style={s.detailLink}
+              onPress={() => navigation.navigate('PlanOverview', { planId: plan.id })}
+              activeOpacity={0.7}
+            >
+              <Text style={s.detailLinkText}>View full plan details</Text>
+            </TouchableOpacity>
+          )}
+          {!requirePaywall && plan.configId && (
             <TouchableOpacity
               style={s.detailLink}
               onPress={async () => {
@@ -480,6 +506,23 @@ export default function PlanReadyScreen({ navigation, route }) {
 }
 
 const s = StyleSheet.create({
+  // Locked/paywall teaser
+  lockedSection: { marginTop: 16 },
+  lockedOverlay: { overflow: 'hidden' },
+  lockedBadge: {
+    alignItems: 'center', paddingVertical: 24, paddingHorizontal: 16,
+    marginTop: 8,
+  },
+  lockedIcon: { fontSize: 24, marginBottom: 8 },
+  lockedTitle: {
+    fontSize: 16, fontFamily: FF.semibold, color: colors.text,
+    marginBottom: 6,
+  },
+  lockedSub: {
+    fontSize: 13, fontFamily: FF.regular, color: colors.textMuted,
+    textAlign: 'center', lineHeight: 19,
+  },
+
   container: { flex: 1, backgroundColor: colors.bg },
   safe: { flex: 1 },
   scroll: { flex: 1 },

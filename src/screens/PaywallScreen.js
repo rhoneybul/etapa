@@ -162,7 +162,7 @@ const FEATURES = [
 ];
 
 export default function PaywallScreen({ navigation, route }) {
-  const [selected, setSelected] = useState('lifetime');
+  const [selected, setSelected] = useState(route?.params?.defaultPlan || 'lifetime');
   const [loading, setLoading] = useState(false);
   const [rcOfferings, setRcOfferings] = useState(null); // RevenueCat packages (native only)
   const [restoring, setRestoring] = useState(false);
@@ -363,8 +363,8 @@ export default function PaywallScreen({ navigation, route }) {
         {/* Header */}
         <View style={s.header}>
           <Text style={s.eyebrow}>ETAPA PELOTON</Text>
-          <Text style={s.title}>Train smarter,{'\n'}start free.</Text>
-          <Text style={s.subtitle}>7-day free trial · No charge today</Text>
+          <Text style={s.title}>{plans[selected]?.isStarter ? 'Get into cycling' : 'Train smarter,'}{'\n'}{plans[selected]?.isStarter ? 'with Etapa.' : 'start free.'}</Text>
+          <Text style={s.subtitle}>{plans[selected]?.isStarter ? '3 months access · One-time payment' : '7-day free trial · No charge today'}</Text>
         </View>
 
         {/* Plan cards */}

@@ -138,6 +138,7 @@ export default function PlanConfigScreen({ navigation, route }) {
   const existingConfig = route.params?.existingConfig || null;
   const adjustPlanId = route.params?.planId || null;
   const requirePaywall = route.params?.requirePaywall || false;
+  const defaultPlan = route.params?.defaultPlan || null;
 
   // If coming from a plan adjustment, pre-fill from existing config and jump to step 3
   const adjustmentDefaults = adjustment && existingConfig ? {
@@ -177,31 +178,6 @@ export default function PlanConfigScreen({ navigation, route }) {
     setPlanWeeks(weeks);
   }, [step, beginnerDefaults, goal?.targetDate, planWeeks, goal, fitnessLevel, startDateChoice, customStartDate]);
 
-  // Auto-place the outdoor ride on the long ride day whenever it changes.
-  // Ensures that by the time the user lands on the Build Week step, their
-  // long ride day and any recurring rides are already on the grid.
-  useEffect(() => {
-    // Long ride day — always ensure there's an outdoor ride there
-    if (longRideDayOverride) {
-      setDayActivities(prev => {
-        const acts = prev[longRideDayOverride] || [];
-        if (acts.includes('outdoor')) return prev;
-        return { ...prev, [longRideDayOverride]: [...acts, 'outdoor'] };
-      });
-    }
-    // Recurring rides — ensure each is placed on its day
-    recurringRides.forEach(ride => {
-      setDayActivities(prev => {
-        const acts = prev[ride.day] || [];
-        // Allow multiple outdoor rides on the same day (long ride + recurring)
-        const outdoorCount = acts.filter(a => a === 'outdoor').length;
-        const needed = ride.day === longRideDayOverride ? 2 : 1;
-        if (outdoorCount >= needed) return prev;
-        return { ...prev, [ride.day]: [...acts, 'outdoor'] };
-      });
-    });
-  }, [longRideDayOverride, recurringRides]);
-
   // Step 3: session counts per cycling type
   const [sessionCounts, setSessionCounts] = useState(
     adjustmentDefaults?.sessionCounts
@@ -235,6 +211,31 @@ export default function PlanConfigScreen({ navigation, route }) {
   const [longRideDayOverride, setLongRideDayOverride] = useState(
     existingConfig?.longRideDay || 'saturday'
   );
+
+  // Auto-place the outdoor ride on the long ride day whenever it changes.
+  // Ensures that by the time the user lands on the Build Week step, their
+  // long ride day and any recurring rides are already on the grid.
+  useEffect(() => {
+    // Long ride day — always ensure there's an outdoor ride there
+    if (longRideDayOverride) {
+      setDayActivities(prev => {
+        const acts = prev[longRideDayOverride] || [];
+        if (acts.includes('outdoor')) return prev;
+        return { ...prev, [longRideDayOverride]: [...acts, 'outdoor'] };
+      });
+    }
+    // Recurring rides — ensure each is placed on its day
+    recurringRides.forEach(ride => {
+      setDayActivities(prev => {
+        const acts = prev[ride.day] || [];
+        // Allow multiple outdoor rides on the same day (long ride + recurring)
+        const outdoorCount = acts.filter(a => a === 'outdoor').length;
+        const needed = ride.day === longRideDayOverride ? 2 : 1;
+        if (outdoorCount >= needed) return prev;
+        return { ...prev, [ride.day]: [...acts, 'outdoor'] };
+      });
+    });
+  }, [longRideDayOverride, recurringRides]);
 
   const toggleTrainingType = (type) => {
     setTrainingTypes(prev => {
@@ -581,7 +582,7 @@ export default function PlanConfigScreen({ navigation, route }) {
       daysPerWeek: availableDays.length,
     });
 
-    navigation.replace('PlanLoading', { goal, config, requirePaywall });
+    navigation.replace('PlanLoading', { goal, config, requirePaywall, defaultPlan });
   };
 
   const handleBack = () => {

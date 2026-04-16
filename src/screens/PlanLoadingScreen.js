@@ -60,7 +60,7 @@ const ASYNC_PROGRESS_MAP = {
 };
 
 export default function PlanLoadingScreen({ navigation, route }) {
-  const { goal, config, requirePaywall } = route.params;
+  const { goal, config, requirePaywall, defaultPlan } = route.params;
   const [message, setMessage] = useState('Building your plan...');
   const [activities, setActivities] = useState([]);
   const [tipIndex, setTipIndex] = useState(0);
@@ -206,7 +206,7 @@ export default function PlanLoadingScreen({ navigation, route }) {
 
     // Navigate straight to PlanReady — no "Plan ready!" flash in between
     if (mountedRef.current) {
-      navigation.replace('PlanReady', { planId: plan.id, requirePaywall: !!requirePaywall });
+      navigation.replace('PlanReady', { planId: plan.id, requirePaywall: !!requirePaywall, defaultPlan });
     }
   };
 
