@@ -3,7 +3,7 @@
     "name": "Etapa",
     "slug": "etapa",
     "scheme": "etapa",
-    "version": "0.91.0",
+    "version": "0.92.0",
     "orientation": "portrait",
     "icon": "./assets/icons/ios/AppIcon-1024.png",
     "userInterfaceStyle": "dark",
@@ -19,7 +19,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "6"
+      "buildNumber": "7"
     },
     "android": {
       "adaptiveIcon": {
@@ -32,7 +32,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.etapa.app",
-      "versionCode": 6
+      "versionCode": 7
     },
     "web": {
       "bundler": "metro",
