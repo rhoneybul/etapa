@@ -10,6 +10,7 @@
     "dev:server": "npm --prefix server run dev",
     "setup": "npm install && npm --prefix server install && cp -n server/.env.example server/.env 2>/dev/null; cp -n .env.example .env 2>/dev/null; echo '\\n✅ Setup done. Fill in server/.env and .env with your API keys.'",
     "release": "bash scripts/release.sh",
+    "release:build": "bash scripts/release.sh build",
     "release:minor": "bash scripts/release.sh minor",
     "release:major": "bash scripts/release.sh major",
     "test": "npm --prefix server test",
