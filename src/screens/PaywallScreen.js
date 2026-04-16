@@ -85,6 +85,7 @@ function buildPlansFromRC(rcPackages) {
     if (key === 'monthly') return id === '$rc_monthly' || productId.includes('monthly');
     if (key === 'annual') return id === '$rc_annual' || productId.includes('annual') || productId.includes('yearly');
     if (key === 'lifetime') return id === 'lifetime' || id === '$rc_lifetime' || productId.includes('lifetime');
+    if (key === 'starter') return id === 'starter' || id === '$rc_starter' || productId.includes('starter');
     return false;
   });
 
@@ -105,6 +106,9 @@ function buildPlansFromRC(rcPackages) {
       } else if (key === 'monthly') {
         sub = 'Billed monthly';
         trialLine = trial ? `${trial}, then ${pkg.priceString}/month` : `then ${pkg.priceString}/month`;
+      } else if (key === 'starter') {
+        sub = `One-time payment · 3 months access`;
+        trialLine = `One-time payment · No recurring charges`;
       }
 
       plans[key] = { ...meta, price: pkg.priceString, per: meta.per, sub, trialLine };
@@ -217,6 +221,7 @@ export default function PaywallScreen({ navigation, route }) {
       if (planId === 'monthly') return id === '$rc_monthly' || productId.includes('monthly');
       if (planId === 'annual') return id === '$rc_annual' || productId.includes('annual') || productId.includes('yearly');
       if (planId === 'lifetime') return id === 'lifetime' || id === '$rc_lifetime' || productId.includes('lifetime');
+      if (planId === 'starter') return id === 'starter' || id === '$rc_starter' || productId.includes('starter');
       return false;
     });
   };
@@ -293,6 +298,7 @@ export default function PaywallScreen({ navigation, route }) {
               if (selected === 'monthly') return id === '$rc_monthly' || productId.includes('monthly');
               if (selected === 'annual') return id === '$rc_annual' || productId.includes('annual') || productId.includes('yearly');
               if (selected === 'lifetime') return id === 'lifetime' || id === '$rc_lifetime' || productId.includes('lifetime');
+              if (selected === 'starter') return id === 'starter' || id === '$rc_starter' || productId.includes('starter');
               return false;
             });
           }
@@ -436,7 +442,7 @@ export default function PaywallScreen({ navigation, route }) {
           ) : (
             <>
               <Text style={s.ctaText}>
-                {plan.isLifetime ? 'Get lifetime access' : 'Start 7-day free trial'}
+                {plan.isLifetime ? 'Get lifetime access' : plan.isStarter ? 'Pay now and get started' : 'Start 7-day free trial'}
               </Text>
               <Text style={s.ctaSub}>{plan.trialLine}</Text>
             </>
@@ -496,7 +502,9 @@ export default function PaywallScreen({ navigation, route }) {
         <Text style={s.legal}>
           {plan.isLifetime
             ? 'Lifetime access is a one-time purchase with no recurring charges.\n'
-            : 'Cancel anytime before your 7-day free trial ends and you won\'t be charged.\n'}
+            : plan.isStarter
+              ? 'Starter is a one-time payment for 3 months of access. No recurring charges.\n'
+              : 'Cancel anytime before your 7-day free trial ends and you won\'t be charged.\n'}
           16-day full refund on all purchases. Prices in GBP.
         </Text>
 
