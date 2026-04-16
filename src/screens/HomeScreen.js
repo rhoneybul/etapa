@@ -165,8 +165,16 @@ export default function HomeScreen({ navigation }) {
           : 0;
         const PREVIEW_DAYS = resolvedTrialConfig.days;
         if (daysSinceFirst > PREVIEW_DAYS) {
-          // Preview window expired — require subscription
-          navigation.replace('Paywall', { fromHome: true, nextScreen: 'Home' });
+          // Preview window expired — require subscription.
+          // If the user has a beginner ("Get into Cycling") plan, send them straight
+          // to the starter plan paywall rather than the full plan-picker.
+          const hasBeginnerPlan = p.some(pl => pl.name?.startsWith('Get into Cycling'))
+            || g.some(gl => gl.goalType === 'beginner');
+          navigation.replace('Paywall', {
+            fromHome: true,
+            nextScreen: 'Home',
+            ...(hasBeginnerPlan && { defaultPlan: 'starter' }),
+          });
           return;
         }
         setPreviewDaysLeft(Math.max(0, PREVIEW_DAYS - daysSinceFirst));
@@ -709,7 +717,16 @@ export default function HomeScreen({ navigation }) {
           {!subscribed && plans.length > 0 && (
             <TouchableOpacity
               style={s.subscribeBanner}
-              onPress={() => navigation.navigate('Paywall', { nextScreen: 'Home' })}
+              onPress={() => {
+                // Send beginner ("Get into Cycling") users straight to the starter plan
+                // instead of the full monthly/annual/lifetime picker.
+                const hasBeginnerPlan = plans.some(pl => pl.name?.startsWith('Get into Cycling'))
+                  || goals.some(gl => gl.goalType === 'beginner');
+                navigation.navigate('Paywall', {
+                  nextScreen: 'Home',
+                  ...(hasBeginnerPlan && { defaultPlan: 'starter' }),
+                });
+              }}
               activeOpacity={0.85}
             >
               <View style={s.subscribeBannerLeft}>

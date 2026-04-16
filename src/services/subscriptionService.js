@@ -91,11 +91,31 @@ export async function validatePromo(code, plan) {
 
 /**
  * Returns subscription status.
- * Native: checks RevenueCat entitlements first, falls back to server.
- * Web: checks server (Stripe via Supabase).
+ *
+ * The server (Stripe/Supabase) is always the authoritative source — it is checked
+ * first on every platform. This prevents stale RevenueCat SDK cache from showing
+ * the wrong status after an account switch (e.g. logging out of a subscribed
+ * account and into an unsubscribed one).
+ *
+ * RevenueCat is checked afterwards ONLY as a positive supplement: if the server
+ * says inactive but RC says active, the user likely just made an in-app purchase
+ * whose webhook hasn't reached the server yet, so we trust RC in that case.
  */
 export async function getSubscriptionStatus() {
-  // On native, try RevenueCat first
+  // ── 1. Server check (always authoritative) ──────────────────────────────────
+  const serverData = await authRequest('GET', '/api/stripe/subscription-status');
+
+  if (serverData?.active) {
+    // Server confirms active — return immediately without hitting RC.
+    return { ...serverData, source: 'stripe' };
+  }
+
+  // ── 2. RevenueCat fallback (native only, handles very-recent IAP) ───────────
+  // If the server says inactive but RC has an active entitlement, the webhook
+  // probably hasn't fired yet. Trust RC so the user isn't locked out right after
+  // purchasing. This path is NOT reached when a subscribed user logs out and a
+  // non-subscribed user logs in, because logoutRevenueCat() resets RC to anonymous
+  // (no entitlements) before the new user is identified.
   if (isRevenueCatAvailable()) {
     try {
       const rc = await checkEntitlement();
@@ -110,13 +130,11 @@ export async function getSubscriptionStatus() {
         };
       }
     } catch {
-      // Fall through to server check
+      // Ignore RC errors — server result is our ground truth
     }
   }
 
-  // Fall back to server (Stripe/Supabase)
-  const data = await authRequest('GET', '/api/stripe/subscription-status');
-  return data ? { ...data, source: 'stripe' } : { active: false };
+  return serverData ? { ...serverData, source: 'stripe' } : { active: false };
 }
 
 /**

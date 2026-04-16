@@ -164,8 +164,9 @@ function App() {
 
         analytics.identify(session.user?.id, { email: session.user?.email });
 
-        // Link RevenueCat to the authenticated user
-        loginRevenueCat(session.user?.id).catch(() => {});
+        // Link RevenueCat to the authenticated user — awaited so that subscription
+        // checks in HomeScreen see the correct entitlements for this user.
+        await loginRevenueCat(session.user?.id).catch(() => {});
 
         // Verify the cached user matches whoever is in local storage.
         // If the app was force-quit mid-sign-out, or a different account was

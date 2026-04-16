@@ -355,6 +355,45 @@ function buildPlanFromActivities(activities, goal, config) {
     }
   });
 
+  // ── Enforce longRideDay: move the Long Ride to the correct day regardless of
+  //    what the LLM decided. The AI prompt asks for this but it's unreliable,
+  //    so we post-process exactly the same way the local generator does. ───────
+  const longRideDay = config.longRideDay;
+  const longRideDayIdx = longRideDay
+    ? DAY_NAMES.indexOf(longRideDay.toLowerCase())
+    : -1;
+
+  if (longRideDayIdx >= 0) {
+    for (let week = 1; week <= maxWeeks; week++) {
+      // Only look at regular planned rides — leave recurring/one-off alone
+      const weekRides = planActivities.filter(
+        a => a.week === week && a.type === 'ride' && !a.isRecurring && !a.isOneOff
+      );
+      if (weekRides.length === 0) continue;
+
+      // Identify the Long Ride: explicit title first, then longest by duration
+      let longRideAct = weekRides.find(a =>
+        a.title?.toLowerCase().includes('long ride') || a.subType === 'long'
+      );
+      if (!longRideAct) {
+        longRideAct = weekRides.reduce(
+          (best, a) => ((a.durationMins || 0) > (best?.durationMins || 0) ? a : best),
+          null
+        );
+      }
+      if (!longRideAct) continue;
+
+      // Already on the correct day — nothing to do
+      if (longRideAct.dayOfWeek === longRideDayIdx) continue;
+
+      // Move it to the chosen long ride day
+      const idx = planActivities.findIndex(a => a.id === longRideAct.id);
+      if (idx >= 0) {
+        planActivities[idx] = { ...planActivities[idx], dayOfWeek: longRideDayIdx };
+      }
+    }
+  }
+
   // ── Resolve conflicts: organised > recurring > planned ──
   const priorityOrder = { organised: 0, recurring: 1, planned: 2 };
   const dayMap = {};

@@ -9,6 +9,7 @@ import {
   signInWithGoogle, signInWithApple, onAuthStateChange, getSession, isSupabaseConfigured,
 } from '../services/authService';
 import { ensureUserData, hydrateFromServer } from '../services/storageService';
+import { loginRevenueCat } from '../services/revenueCatService';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import analytics from '../services/analyticsService';
 
@@ -68,6 +69,10 @@ export default function SignInScreen({ navigation }) {
         const provider = user.app_metadata?.provider || 'unknown';
         analytics.events.signedIn(provider);
         analytics.identify(user.id, { email: user.email });
+        // Identify this user in RevenueCat BEFORE navigating so that any
+        // subsequent subscription check gets the correct entitlements.
+        // Must be awaited here — App.js only does this on cold start.
+        await loginRevenueCat(user.id).catch(() => {});
         // Clear stale data from a previous user, then hydrate from server
         const cleared = await ensureUserData(user.id);
         await hydrateFromServer({ force: cleared });
