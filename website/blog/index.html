@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blog — Etapa | Guides for Beginner Cyclists</title>
+  <meta name="description" content="Practical, jargon-free guides for beginner cyclists. Learn how to start cycling, build a habit, stay confident, and ride on your own terms. From the team at Etapa.">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
+  <link rel="apple-touch-icon" href="../icon-72.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Poppins', -apple-system, sans-serif;
+      background: #000; color: #fff;
+    }
+
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 48px;
+      background: rgba(0,0,0,0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 12px;
+      font-size: 22px; font-weight: 600; text-decoration: none; color: #fff;
+    }
+    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; overflow: hidden; }
+    .nav-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a {
+      color: #999; text-decoration: none; font-size: 15px; font-weight: 400;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #E8458B; }
+    .nav-cta {
+      background: #E8458B !important; color: #000 !important;
+      padding: 10px 24px; border-radius: 100px; font-weight: 600 !important;
+    }
+    .nav-cta:hover { background: #F472B6 !important; color: #000 !important; }
+
+    .page-header {
+      max-width: 800px; margin: 0 auto;
+      padding: 140px 24px 64px;
+      text-align: center;
+    }
+    .page-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(232,69,139,0.12); border: 1px solid rgba(232,69,139,0.25);
+      border-radius: 100px; padding: 8px 18px;
+      font-size: 14px; color: #E8458B; font-weight: 500;
+      margin-bottom: 24px;
+    }
+    .page-header h1 {
+      font-size: clamp(32px, 5vw, 52px); font-weight: 700;
+      letter-spacing: -1px; margin-bottom: 16px; line-height: 1.1;
+    }
+    .page-header p {
+      font-size: 18px; color: #888; line-height: 1.7; font-weight: 300;
+    }
+
+    .blog-grid-section {
+      max-width: 1100px; margin: 0 auto;
+      padding: 0 24px 100px;
+    }
+
+    .category-filter {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      margin-bottom: 48px; justify-content: center;
+    }
+    .cat-btn {
+      padding: 8px 18px; border-radius: 100px;
+      font-size: 13px; font-weight: 500; font-family: 'Poppins', sans-serif;
+      cursor: pointer; border: 1px solid #222; background: transparent;
+      color: #888; transition: all 0.2s;
+    }
+    .cat-btn:hover, .cat-btn.active { border-color: #E8458B; color: #E8458B; background: rgba(232,69,139,0.08); }
+
+    .blog-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .blog-card {
+      background: #0a0a0a; border: 1px solid #161616;
+      border-radius: 20px; padding: 28px;
+      transition: border-color 0.2s, transform 0.2s;
+      display: flex; flex-direction: column;
+    }
+    .blog-card:hover { border-color: #2a2a2a; transform: translateY(-2px); }
+    .blog-card-category {
+      display: inline-block;
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 1px; color: #E8458B;
+      margin-bottom: 12px;
+    }
+    .blog-card h2 {
+      font-size: 17px; font-weight: 600; margin-bottom: 10px;
+      line-height: 1.4; color: #fff;
+    }
+    .blog-card p {
+      font-size: 14px; color: #777; line-height: 1.6; font-weight: 300;
+      flex: 1; margin-bottom: 20px;
+    }
+    .blog-card-link {
+      color: #E8458B; text-decoration: none; font-size: 14px; font-weight: 500;
+      transition: color 0.2s;
+    }
+    .blog-card-link:hover { color: #F472B6; }
+
+    footer {
+      padding: 40px 48px; border-top: 1px solid #111;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .footer-left { display: flex; align-items: center; gap: 12px; }
+    .footer-left span { font-size: 14px; color: #444; }
+    footer a { color: #444; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    footer a:hover { color: #888; }
+    .footer-links { display: flex; gap: 24px; }
+
+    @media (max-width: 900px) {
+      .blog-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 640px) {
+      nav { padding: 16px 24px; }
+      .nav-links a:not(.active):not(.nav-cta) { display: none; }
+      .blog-grid { grid-template-columns: 1fr; }
+      footer { flex-direction: column; gap: 16px; text-align: center; }
+      .footer-links { flex-wrap: wrap; justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-logo">
+    <div class="nav-logo-icon"><img src="../icon-72.png" alt="Etapa"></div>
+    Etapa
+  </a>
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <a href="/#how-it-works">How It Works</a>
+    <a href="/#pricing">Pricing</a>
+    <a href="/blog" class="active">Blog</a>
+    <a href="/support">Support</a>
+    <a href="/" class="nav-cta">Get the App</a>
+  </div>
+</nav>
+
+<div class="page-header">
+  <div class="page-badge">Etapa Blog</div>
+  <h1>Guides for beginner cyclists</h1>
+  <p>Jargon-free, honest, welcoming. Whether you're just starting out, getting back on the bike, or looking for a community — there's something here for you.</p>
+</div>
+
+<div class="blog-grid-section">
+  <div class="blog-grid">
+
+    <div class="blog-card">
+      <span class="blog-card-category">Getting Started</span>
+      <h2>How Far Should I Ride as a Beginner? Real Distances for Real People</h2>
+      <p>Forget miles. Think in minutes. Your first rides should be 20–40 minutes, and that's more than enough. Here's how to build week by week without burning out.</p>
+      <a href="/blog/how-far-should-i-ride-as-a-beginner" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Getting Started</span>
+      <h2>Your First Month of Cycling: A Week-by-Week Guide</h2>
+      <p>Week one is about comfort. Week two is about routine. By week four you'll have something to celebrate. Here's what to expect and how to make it stick.</p>
+      <a href="/blog/beginner-cycling-first-month" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Getting Started</span>
+      <h2>Your Body After the First Week: What Soreness Is Normal (And What Isn't)</h2>
+      <p>Aching legs and a sore saddle area are signs your body is adapting — not breaking. Here's what's normal, what isn't, and how to tell the difference.</p>
+      <a href="/blog/muscle-soreness-after-cycling" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Getting Started</span>
+      <h2>The Beginner's Guide to Bike Gears: No Jargon, No Grinding</h2>
+      <p>Easy gear for hills, harder gear for flats. Shift before the strain. It really is that simple — and we'll explain why your bike makes that clicking noise too.</p>
+      <a href="/blog/how-to-use-bike-gears" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Getting Started</span>
+      <h2>Your First Bike: How to Choose Without the Paralysis</h2>
+      <p>Too many options, too much conflicting advice. Here's a simple decision tree that helps you cut through the noise and find a bike you'll actually ride.</p>
+      <a href="/blog/how-to-choose-first-bike" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Getting Started</span>
+      <h2>What Gear Do You Actually Need to Start Cycling?</h2>
+      <p>A helmet is non-negotiable. Padded shorts help a lot. Lights keep you safe. Everything else? Nice to have, not required. Here's the honest list.</p>
+      <a href="/blog/beginner-cycling-gear-essentials" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Getting Started</span>
+      <h2>I've Never Cycled as an Adult — Am I Too Late to Start?</h2>
+      <p>No. Thousands of adults start from scratch every year. Balance comes back faster than you think, and age is far less of a barrier than cycling culture suggests.</p>
+      <a href="/blog/learn-cycling-as-an-adult" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Training &amp; Motivation</span>
+      <h2>How to Build a Cycling Habit That Actually Sticks</h2>
+      <p>Motivation comes and goes. Habits stay. Here's how to use habit stacking, tiny sessions, and a forgiving mindset to make cycling a permanent part of your week.</p>
+      <a href="/blog/cycling-routine-habit-building" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Practical Guides</span>
+      <h2>Bike Maintenance for Beginners: What You Actually Need to Do</h2>
+      <p>You don't need to be a mechanic. Check tyre pressure, brakes, and chain lube before every ride. Everything else can wait — or go to the shop.</p>
+      <a href="/blog/beginner-bike-maintenance" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Practical Guides</span>
+      <h2>Eating and Drinking for Cycling: The Beginner's Guide</h2>
+      <p>Under 90 minutes? Just water. Longer? A light snack before you head out. You don't need gels, bars, or sports drinks. Here's what actually matters.</p>
+      <a href="/blog/beginner-cycling-nutrition" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Women &amp; Cycling</span>
+      <h2>Solo Cycling as a Woman: Safety, Confidence, and Finding Your Independence</h2>
+      <p>Your fears are valid — and manageable. Here's how to plan routes, stay visible, build confidence gradually, and discover why solo riding can be genuinely liberating.</p>
+      <a href="/blog/solo-cycling-as-a-woman" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Women &amp; Cycling</span>
+      <h2>Why Women Don't Cycle (And Why It's Not About Fitness)</h2>
+      <p>Infrastructure, intimidating culture, gear not designed for women, and a sea of MAMILs. The barriers are structural, not personal. And they can be changed.</p>
+      <a href="/blog/women-cycling-barriers" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Mind &amp; Confidence</span>
+      <h2>Cycling Anxiety: How to Ride Confidently Around Traffic</h2>
+      <p>Fear of traffic is completely normal and very common. Start on paths, graduate to quiet roads, and use visibility and positioning to make every ride feel safer.</p>
+      <a href="/blog/cycling-anxiety-traffic" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Mind &amp; Confidence</span>
+      <h2>What Actually Happens on Your First Group Ride (It's Not What You Think)</h2>
+      <p>Nobody gets left behind on a social ride. Everyone was a beginner once. Here's what to expect, what to say, and why group riding might be your secret weapon.</p>
+      <a href="/blog/first-group-ride-anxiety" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Mind &amp; Confidence</span>
+      <h2>Red Flags in Cycling Culture: Gatekeeping, Elitism, and How to Ignore It</h2>
+      <p>Gatekeeping says more about the gatekeeper than it does about you. Here's how to spot toxic cycling culture, find the good stuff, and ride unbothered.</p>
+      <a href="/blog/cycling-gatekeeping-toxic-culture" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Mind &amp; Confidence</span>
+      <h2>You Don't Have to Race: Cycling Purely for the Joy of It</h2>
+      <p>Cycling is transport, meditation, scenery, and fresh air. No metrics required. Here's a celebration of riding for its own sake — and why that's more than enough.</p>
+      <a href="/blog/recreational-cycling" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Practical Guides</span>
+      <h2>What to Wear Cycling: The Honest Beginner's Guide</h2>
+      <p>Normal activewear works fine to start. Padded shorts are genuinely worth it after 45 minutes. No Lycra required. Here's what to wear and what to ignore.</p>
+      <a href="/blog/what-to-wear-cycling-beginner" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Inclusive Cycling</span>
+      <h2>Plus-Size Cycling: Everything You Need to Know to Get Started</h2>
+      <p>Bike weight limits are higher than you think. Wider saddles exist. A welcoming community exists. Your body is a cycling body. Full stop.</p>
+      <a href="/blog/plus-size-cycling" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Inclusive Cycling</span>
+      <h2>Cycling as a Person of Colour: Community, Culture, and Finding Your Space</h2>
+      <p>The structural barriers are real, and they're being dismantled. Organisations, communities, and riders are reclaiming cycling. You belong here.</p>
+      <a href="/blog/bipoc-cycling" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Women &amp; Cycling</span>
+      <h2>Cycling Through Life Changes: Pregnancy, Postpartum, and Menopause</h2>
+      <p>Cycling can be a brilliant companion through all of life's transitions — with the right adjustments. Here's what the evidence actually says at each stage.</p>
+      <a href="/blog/cycling-pregnancy-postpartum-menopause" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Mind &amp; Confidence</span>
+      <h2>You Are a Cyclist: Overcoming Imposter Syndrome on the Bike</h2>
+      <p>If you ride a bike, you're a cyclist. It doesn't matter how fast, how far, or what you're wearing. Here's how to own the identity and stop waiting for permission.</p>
+      <a href="/blog/cycling-imposter-syndrome" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Mind &amp; Confidence</span>
+      <h2>Why Cycling Might Be the Best Thing for Your Mental Health</h2>
+      <p>Anxiety, stress, low mood — cycling helps with all of them, and the science backs it up. Any ride counts. Even the short ones on bad days especially the short ones.</p>
+      <a href="/blog/cycling-mental-health" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Mind &amp; Confidence</span>
+      <h2>Slow Cycling Is Valid: Why Your Pace Is Nobody's Business</h2>
+      <p>Speed is not the point. Consistency builds fitness, not pace. Comparison is a trap. Here's your permission to ride as slowly as you like — and feel great about it.</p>
+      <a href="/blog/slow-cycling-is-valid" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Getting Started</span>
+      <h2>I Just Fell Off My Bike — What Now?</h2>
+      <p>Beginner falls are incredibly common and usually much less dramatic than they feel in the moment. Here's what to check, how to treat road rash, and how to get back on.</p>
+      <a href="/blog/fell-off-bike" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Community</span>
+      <h2>How to Find Your Cycling Community (Even When Your Friends Think You're Weird)</h2>
+      <p>Local bike shop rides. Women's groups. Online communities. Here's where to find your people — and why having a community makes everything easier.</p>
+      <a href="/blog/beginner-cycling-community" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Practical Guides</span>
+      <h2>Cycling Safety for Beginners: What Actually Keeps You Safe</h2>
+      <p>Helmet fit, lights, route choice, predictable road position. The things that actually protect you — not the things that just look safe. A practical guide.</p>
+      <a href="/blog/cycling-safety-guide" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Practical Guides</span>
+      <h2>Why Your Back Hurts After Cycling (And How to Fix It)</h2>
+      <p>Nine times out of ten it's a saddle height or handlebar issue — things you can fix yourself in five minutes. Here's how to diagnose and solve back pain on the bike.</p>
+      <a href="/blog/back-pain-cycling" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Health &amp; Wellbeing</span>
+      <h2>Getting Back on the Bike After Injury or Illness</h2>
+      <p>Get cleared by a doctor. Start with 20 minutes easy. Trust your body. Rebuilding is not starting over — it's usually faster than you expect and more rewarding.</p>
+      <a href="/blog/cycling-after-injury" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Health &amp; Wellbeing</span>
+      <h2>Cycling and Body Image: Riding on Your Own Terms</h2>
+      <p>Your body is a cycling body — whatever size, shape, or ability. Here's how to use cycling as a celebration of what your body can do, not a punishment for how it looks.</p>
+      <a href="/blog/cycling-and-body-image" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+    <div class="blog-card">
+      <span class="blog-card-category">Community</span>
+      <h2>Your Bike as a Political Act: Cycling, Climate, and Community</h2>
+      <p>Every time you ride instead of drive, you're doing something real. Cycling is resistance, activism, and community-building rolled into one. Here's why it matters.</p>
+      <a href="/blog/cycling-as-activism" class="blog-card-link">Read &rarr;</a>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="../icon-56.png" alt="Etapa"></div>
+    <span>&copy; 2026 Etapa. All rights reserved.</span>
+  </div>
+  <div class="footer-links">
+    <a href="/#pricing">Pricing</a>
+    <a href="/#ai">AI Transparency</a>
+    <a href="/support">Support</a>
+    <a href="/privacy">Privacy Policy</a>
+    <a href="/terms">Terms of Use</a>
+  </div>
+</footer>
+<div style="text-align:center;padding:16px 48px 32px;border-top:1px solid #111;">
+  <p style="font-size:11px;color:#444;line-height:1.7;max-width:640px;margin:0 auto;font-weight:300;">
+    All training plans, coaching conversations, session adjustments, and check-in messages are generated by artificial intelligence (Anthropic Claude). Etapa is not a medical service and does not provide medical advice. Always consult a healthcare professional before beginning any exercise programme. You train at your own risk.
+  </p>
+</div>
+
+</body>
+</html>

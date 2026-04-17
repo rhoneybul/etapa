@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Why Your Back Hurts After Cycling (And How to Fix It) — Etapa</title>
+  <meta name="description" content="Nine times out of ten, back pain on the bike comes down to saddle height or handlebar reach — two things you can fix yourself in minutes. Here's how.">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', -apple-system, sans-serif; background: #000; color: #fff; }
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .nav-logo { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; text-decoration: none; color: #fff; }
+    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; overflow: hidden; }
+    .nav-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: #999; text-decoration: none; font-size: 15px; font-weight: 400; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #E8458B; }
+    .nav-cta { background: #E8458B !important; color: #000 !important; padding: 10px 24px; border-radius: 100px; font-weight: 600 !important; }
+    .nav-cta:hover { background: #F472B6 !important; color: #000 !important; }
+    .article-wrap { max-width: 720px; margin: 0 auto; padding: 120px 24px 80px; }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
+    .breadcrumb a { color: #666; text-decoration: none; font-size: 13px; transition: color 0.2s; }
+    .breadcrumb a:hover { color: #999; }
+    .breadcrumb span { color: #444; font-size: 13px; }
+    .article-category { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 16px; }
+    .article-wrap h1 { font-size: clamp(28px, 4vw, 42px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 16px; }
+    .article-subtitle { font-size: 18px; color: #888; line-height: 1.6; font-weight: 300; margin-bottom: 32px; }
+    .article-meta { display: flex; align-items: center; gap: 16px; margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid #1a1a1a; }
+    .article-meta span { font-size: 13px; color: #555; }
+    .article-meta .dot { color: #333; }
+    .article-body h2 { font-size: 24px; font-weight: 600; margin: 40px 0 16px; color: #fff; }
+    .article-body p { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 20px; }
+    .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 20px; }
+    .article-body li { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 8px; }
+    .callout { background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.2); border-radius: 16px; padding: 24px 28px; margin: 32px 0; }
+    .callout-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 8px; }
+    .callout p { color: #ddd; margin: 0; font-size: 15px; }
+    .pull-quote { border-left: 3px solid #E8458B; padding-left: 24px; margin: 32px 0; font-size: 20px; font-weight: 500; color: #fff; line-height: 1.5; font-style: italic; }
+    .article-cta { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 20px; padding: 40px; margin-top: 56px; text-align: center; }
+    .article-cta h3 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    .article-cta p { font-size: 15px; color: #888; margin-bottom: 24px; font-weight: 300; }
+    .btn-primary { display: inline-block; background: #E8458B; color: #000; padding: 14px 32px; border-radius: 100px; font-size: 15px; font-weight: 600; text-decoration: none; transition: background 0.2s; }
+    .btn-primary:hover { background: #F472B6; }
+    footer { padding: 40px 48px; border-top: 1px solid #111; display: flex; align-items: center; justify-content: space-between; }
+    .footer-left { display: flex; align-items: center; gap: 12px; }
+    .footer-left span { font-size: 14px; color: #444; }
+    footer a { color: #444; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    footer a:hover { color: #888; }
+    .footer-links { display: flex; gap: 24px; }
+    @media (max-width: 640px) { nav { padding: 16px 24px; } .nav-links a:not(.active):not(.nav-cta) { display: none; } footer { flex-direction: column; gap: 16px; text-align: center; } .footer-links { flex-wrap: wrap; justify-content: center; } }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-logo">
+    <div class="nav-logo-icon"><img src="../icon-72.png" alt="Etapa"></div>
+    Etapa
+  </a>
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <a href="/#how-it-works">How It Works</a>
+    <a href="/#pricing">Pricing</a>
+    <a href="/blog" class="active">Blog</a>
+    <a href="/support">Support</a>
+    <a href="/" class="nav-cta">Get the App</a>
+  </div>
+</nav>
+
+<div class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a>
+    <span>›</span>
+    <a href="/blog">Blog</a>
+    <span>›</span>
+    <span>Why Your Back Hurts After Cycling</span>
+  </div>
+
+  <span class="article-category">Practical Guides</span>
+  <h1>Why Your Back Hurts After Cycling (And How to Fix It)</h1>
+  <p class="article-subtitle">Nine times out of ten it's a saddle height or handlebar issue — things you can diagnose and fix yourself in five minutes. Here's how.</p>
+  <div class="article-meta">
+    <span>Etapa Team</span>
+    <span class="dot">·</span>
+    <span>7 min read</span>
+    <span class="dot">·</span>
+    <span>Practical Guides</span>
+  </div>
+
+  <div class="article-body">
+    <p>You came home from a ride feeling great about the cycling and terrible about your lower back. Now you're wondering whether cycling is actually doing you harm, whether you're just too unfit for it, or whether there's something wrong with your body. Almost certainly, none of those things are true. Back pain after cycling is extremely common among beginners, and in the vast majority of cases it has a simple, fixable cause: the bike doesn't fit you.</p>
+
+    <p>That might sound daunting — like you need an expensive professional fitting session. Often you don't. The most common culprits are saddle height and handlebar reach, and both can be adjusted in minutes with an Allen key (or sometimes no tools at all).</p>
+
+    <h2>The most likely cause: your saddle is at the wrong height</h2>
+
+    <p>Saddle height is the single biggest contributor to back pain for new cyclists, and it's usually set too low. This feels safer — you can touch the ground — but it means your legs never fully extend on the down stroke. Your pelvis rocks side to side to compensate, and that rocking movement places strain on your lower back with every single pedal turn.</p>
+
+    <p>To set the right height, sit on your bike with your heel on the pedal at the lowest point (six o'clock position). Your leg should be almost completely straight — just a very slight bend. If your leg is bent noticeably, the saddle is too low. When you then ride normally with the ball of your foot on the pedal, you'll have the correct slight bend in your knee at the bottom of each stroke.</p>
+
+    <div class="callout">
+      <div class="callout-label">Quick saddle height test</div>
+      <p>Stand next to your bike and put your fist on the saddle, thumb pointing down. Your fist should reach roughly to the top of your hip bone (greater trochanter). This gives you a starting point — fine-tune from there. Raise the saddle 5mm at a time and ride a short loop until back pain disappears and pedalling feels smooth.</p>
+    </div>
+
+    <p>A saddle that's too high causes a different kind of pain: hip-rocking, knee pain, and sometimes lower back discomfort from over-extension. If you're stretching at the bottom of each pedal stroke, drop it slightly.</p>
+
+    <h2>The second suspect: too much reach to the handlebars</h2>
+
+    <p>If your saddle is at the right height and your back still aches, look at how far you're reaching to the handlebars. On most beginner bikes, especially road-style bikes, the handlebars are positioned for a more stretched-out, aerodynamic position. If you're not used to that posture, it puts sustained tension on your lower back and shoulders.</p>
+
+    <p>Signs that reach is your problem: you feel uncomfortable within the first 20 minutes, the pain is more in your mid or upper back rather than lower, or you find yourself constantly changing hand positions to get comfortable.</p>
+
+    <p>The fix is usually raising the handlebars — either by flipping the stem (a quick job a bike shop can do in minutes) or adding stem spacers. On many commuter and hybrid bikes you can simply raise the handlebar using a bolt at the stem. Getting the bars 2–3cm higher can make a dramatic difference to comfort and won't significantly affect your riding.</p>
+
+    <h2>Saddle tilt: often overlooked, easily fixed</h2>
+
+    <p>Your saddle should be roughly level — perfectly horizontal, or with the nose tilted 1–2 degrees downward at most. If the nose tilts upward, you'll slide back and then constantly push forward with your lower back, causing aching. If it tilts too far down, you'll slide forward onto your hands and put strain on your neck and shoulders.</p>
+
+    <p>Check it with a spirit level or by eye. Most saddle clamps allow tilt adjustment with an Allen key. A small change here is often immediately noticeable.</p>
+
+    <h2>What about core weakness — is that the problem?</h2>
+
+    <p>Cycling articles often suggest that back pain on the bike comes from a weak core. For a very small number of riders on very long rides, there's some truth in this. But for beginners on short rides, it's almost never the primary cause. Fixing the bike fit almost always solves the problem faster and more completely than any amount of planking.</p>
+
+    <div class="pull-quote">"The bike should fit you. You shouldn't have to adapt your body to an incorrectly set-up bike."</div>
+
+    <p>If you've adjusted your saddle height, handlebar height, and saddle tilt, and you're still experiencing pain after rides of 30–45 minutes, then it's worth visiting a bike shop for a basic fit check. You don't need a full professional fitting (which can cost £100+). Just ask someone to look at your position — many shops will do a quick check for free, especially if you bought the bike from them.</p>
+
+    <h2>New-cyclist muscle soreness vs. genuine pain</h2>
+
+    <p>There's one more thing worth separating out: the general muscle tiredness that comes from using your back and core in a new way. When you start cycling, you're activating back muscles in a sustained, slightly bent-forward position that they're not used to. This can create a general achiness in the first week or two that resolves as those muscles strengthen.</p>
+
+    <p>This is different from sharp pain, pain that worsens during the ride, or pain that persists for days. General adaptation soreness fades with each ride. True bike-fit pain either stays the same or worsens.</p>
+
+    <ul>
+      <li><strong>Probably adaptation:</strong> general tiredness or dull ache in lower back, improves after a day of rest, getting better each week</li>
+      <li><strong>Probably a fit issue:</strong> pain starts within the first 20 minutes, gets worse the longer you ride, doesn't improve after a few weeks</li>
+      <li><strong>See a physio:</strong> sharp or stabbing pain, pain that radiates down your leg, anything that felt fine before cycling started</li>
+    </ul>
+
+    <h2>When to get professional help</h2>
+
+    <p>A bike shop fit assessment is worth it if your pain persists after adjusting saddle height, handlebar height, and saddle tilt. A professional fitter will look at cleat position (if you're using clipless pedals), saddle fore-aft position, and frame sizing. Most people don't need this level of detail in their first year of cycling — but it exists and it works.</p>
+
+    <p>If your back pain is sharp, refers down your leg, or is accompanied by any other symptoms, see a GP or physio before attributing it to cycling. Cycling rarely causes new back problems — it's more likely to aggravate existing ones that better position and load management can address.</p>
+
+    <p>The bottom line: back pain is one of the most solvable problems in beginner cycling. Start with saddle height. It fixes it most of the time.</p>
+
+    <div class="article-cta">
+      <h3>Ready to start riding?</h3>
+      <p>Etapa gives you a personalised training plan and an AI coach in your pocket — jargon-free, and built around your life, not a pro training schedule.</p>
+      <a href="/" class="btn-primary">Learn more about Etapa</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="../icon-56.png" alt="Etapa"></div>
+    <span>&copy; 2026 Etapa. All rights reserved.</span>
+  </div>
+  <div class="footer-links">
+    <a href="/#pricing">Pricing</a>
+    <a href="/#ai">AI Transparency</a>
+    <a href="/support">Support</a>
+    <a href="/privacy">Privacy Policy</a>
+    <a href="/terms">Terms of Use</a>
+  </div>
+</footer>
+<div style="text-align:center;padding:16px 48px 32px;border-top:1px solid #111;">
+  <p style="font-size:11px;color:#444;line-height:1.7;max-width:640px;margin:0 auto;font-weight:300;">
+    All training plans, coaching conversations, session adjustments, and check-in messages are generated by artificial intelligence (Anthropic Claude). Etapa is not a medical service and does not provide medical advice. Always consult a healthcare professional before beginning any exercise programme. You train at your own risk.
+  </p>
+</div>
+
+</body>
+</html>

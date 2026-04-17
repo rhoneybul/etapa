@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Build a Cycling Habit That Actually Sticks — Etapa</title>
+  <meta name="description" content="Motivation is unreliable. Habits are what make cycling part of your life. Here's how to use habit stacking, small sessions, and a forgiving mindset to make cycling stick.">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', -apple-system, sans-serif; background: #000; color: #fff; }
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .nav-logo { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; text-decoration: none; color: #fff; }
+    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; overflow: hidden; }
+    .nav-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: #999; text-decoration: none; font-size: 15px; font-weight: 400; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #E8458B; }
+    .nav-cta { background: #E8458B !important; color: #000 !important; padding: 10px 24px; border-radius: 100px; font-weight: 600 !important; }
+    .article-wrap { max-width: 720px; margin: 0 auto; padding: 120px 24px 80px; }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
+    .breadcrumb a { color: #666; text-decoration: none; font-size: 13px; }
+    .breadcrumb span { color: #444; font-size: 13px; }
+    .article-category { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 16px; }
+    .article-wrap h1 { font-size: clamp(28px, 4vw, 42px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 16px; }
+    .article-subtitle { font-size: 18px; color: #888; line-height: 1.6; font-weight: 300; margin-bottom: 32px; }
+    .article-meta { display: flex; align-items: center; gap: 16px; margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid #1a1a1a; }
+    .article-meta span { font-size: 13px; color: #555; }
+    .article-meta .dot { color: #333; }
+    .article-body h2 { font-size: 24px; font-weight: 600; margin: 40px 0 16px; color: #fff; }
+    .article-body p { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 20px; }
+    .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 20px; }
+    .article-body li { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 8px; }
+    .callout { background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.2); border-radius: 16px; padding: 24px 28px; margin: 32px 0; }
+    .callout-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 8px; }
+    .callout p { color: #ddd; margin: 0; font-size: 15px; }
+    .pull-quote { border-left: 3px solid #E8458B; padding-left: 24px; margin: 32px 0; font-size: 20px; font-weight: 500; color: #fff; line-height: 1.5; font-style: italic; }
+    .article-cta { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 20px; padding: 40px; margin-top: 56px; text-align: center; }
+    .article-cta h3 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    .article-cta p { font-size: 15px; color: #888; margin-bottom: 24px; font-weight: 300; }
+    .btn-primary { display: inline-block; background: #E8458B; color: #000; padding: 14px 32px; border-radius: 100px; font-size: 15px; font-weight: 600; text-decoration: none; transition: background 0.2s; }
+    .btn-primary:hover { background: #F472B6; }
+    .back-link { display: inline-block; margin-top: 40px; color: #666; text-decoration: none; font-size: 14px; }
+    .back-link:hover { color: #999; }
+    footer { padding: 40px 48px; border-top: 1px solid #111; display: flex; align-items: center; justify-content: space-between; }
+    .footer-left { display: flex; align-items: center; gap: 12px; }
+    .footer-left span { font-size: 14px; color: #444; }
+    footer a { color: #444; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    footer a:hover { color: #888; }
+    .footer-links { display: flex; gap: 24px; }
+    @media (max-width: 640px) { nav { padding: 16px 24px; } .nav-links a:not(.active):not(.nav-cta) { display: none; } footer { flex-direction: column; gap: 16px; text-align: center; } .footer-links { flex-wrap: wrap; justify-content: center; } }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-logo"><div class="nav-logo-icon"><img src="../icon-72.png" alt="Etapa"></div>Etapa</a>
+  <div class="nav-links">
+    <a href="/">Home</a><a href="/#how-it-works">How It Works</a><a href="/#pricing">Pricing</a>
+    <a href="/blog" class="active">Blog</a><a href="/support">Support</a>
+    <a href="/" class="nav-cta">Get the App</a>
+  </div>
+</nav>
+
+<div class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a><span>&rsaquo;</span><a href="/blog">Blog</a><span>&rsaquo;</span><span>Building a Cycling Habit</span>
+  </div>
+
+  <span class="article-category">Training &amp; Motivation</span>
+  <h1>How to Build a Cycling Habit That Actually Sticks</h1>
+  <p class="article-subtitle">Motivation comes and goes. Habits stay. Here's how to use small sessions, habit stacking, and a forgiving mindset to make cycling a permanent part of your week.</p>
+  <div class="article-meta">
+    <span>Etapa Team</span><span class="dot">&middot;</span><span>7 min read</span>
+  </div>
+
+  <div class="article-body">
+    <p>Most people start cycling with a burst of motivation. They buy a bike, ride it excitedly three times in the first week, and then life gets in the way. Work runs late. It rains. They're tired. A month later, the bike is in the garage and the enthusiasm has dissolved.</p>
+
+    <p>This isn't a character flaw. It's just how motivation works — it's an emotional state, not a system. What you need isn't more motivation. You need a habit.</p>
+
+    <h2>Why habits beat motivation every time</h2>
+
+    <p>Motivation is driven by how you feel. On a cold Tuesday evening after a long day at work, you won't feel like cycling. You'll feel like the sofa. Relying on motivation means you'll cycle when it's easy and not cycle when it's hard — which is exactly the opposite of what builds fitness.</p>
+
+    <p>A habit removes the decision. When brushing your teeth is a habit, you don't think "do I feel like brushing my teeth tonight?" You just do it, automatically, because it's part of your routine. That's what you're trying to build with cycling.</p>
+
+    <p>The good news is that habits form faster than most people think. Research suggests consistent repetition over 4–8 weeks is enough to start establishing an automatic behaviour. Six weeks of cycling two or three times a week, and the pull towards your bike starts to feel more automatic and less like willpower.</p>
+
+    <div class="callout">
+      <div class="callout-label">The key insight</div>
+      <p>Motivation follows action — it doesn't precede it. The moment you put on your kit and get outside, the motivation appears. Waiting until you feel like riding is waiting for something that often won't arrive.</p>
+    </div>
+
+    <h2>Start smaller than you think you should</h2>
+
+    <p>The most common habit-building mistake is starting too big. Committing to hour-long rides three times a week when you haven't exercised in months is too much friction. When life gets busy, that commitment is easy to break.</p>
+
+    <p>Start with 20–30 minute rides, two or three times a week. That's it. Rides short enough that you can squeeze them in even on difficult days. Once this frequency is automatic — once not riding on your scheduled days feels slightly wrong — you can extend the duration.</p>
+
+    <p>A 30-minute ride you actually do is infinitely more valuable than a 90-minute ride you don't.</p>
+
+    <h2>Habit stacking</h2>
+
+    <p>Habit stacking is a technique where you attach a new habit to an existing one. The existing habit acts as a trigger for the new one. It works because your brain already has a neural pathway for the existing habit — you're just adding another step.</p>
+
+    <p>Examples:</p>
+
+    <ul>
+      <li>"After I have my Saturday morning coffee, I get on my bike."</li>
+      <li>"Before I make dinner on Tuesdays and Thursdays, I go for a 30-minute ride."</li>
+      <li>"After I drop the kids at school on Wednesdays, I ride before coming home."</li>
+    </ul>
+
+    <p>The specificity is important. "I'll cycle a few times this week" is not a plan. "I cycle on Tuesday evenings after dinner and Saturday mornings after coffee" is a plan your brain can build a routine around.</p>
+
+    <h2>Reduce friction everywhere you can</h2>
+
+    <p>Every small obstacle between you and getting on your bike is a potential reason not to ride. Identifying and removing those obstacles is one of the most effective habit tools available.</p>
+
+    <ul>
+      <li>Keep your bike somewhere you can see it, not buried in a dark shed.</li>
+      <li>Leave your kit laid out the night before your planned ride.</li>
+      <li>Plan your route in advance so you don't waste time deciding.</li>
+      <li>Have a quick snack ready for before you head out if you're a morning rider.</li>
+    </ul>
+
+    <p>None of these feel like big things. But collectively, they make the difference between "getting out the door in 5 minutes" and "faff, delay, decide it's too late."</p>
+
+    <div class="pull-quote">"The two-minute rule: if getting ready to ride takes more than two minutes to decide on or set up, reduce the friction until it doesn't."</div>
+
+    <h2>What to do when you miss a ride</h2>
+
+    <p>You will miss rides. This is guaranteed. The habit is not broken by a single missed session — it's broken by the story you tell yourself about what that missed session means.</p>
+
+    <p>"I've already messed up this week, I might as well not bother" is the narrative that kills habits. It's not based on reality — missing one ride has almost no effect on your fitness or your habit — but it feels true in the moment.</p>
+
+    <p>The counter to this: the "never miss twice" rule. Missing once is an accident. Missing twice is the start of a new habit — a habit of not cycling. So when you miss a ride, don't try to make up for it with extra effort. Just show up for the next scheduled one. That's all that matters.</p>
+
+    <h2>Track your rides — gently</h2>
+
+    <p>Tracking your rides can be motivating, especially early on. A simple habit tracker — whether an app or a paper calendar where you mark your rides — gives you a visual record of progress and creates a small psychological reward for each session completed.</p>
+
+    <p>The danger of tracking is that it can tip into comparison and self-criticism. Keep it simple: track that you rode, roughly how long, and how you felt. Don't get pulled into comparing your numbers to other people. Your streak is personal.</p>
+
+    <h2>Consistency beats intensity, always</h2>
+
+    <p>Three 30-minute rides a week for six months builds far more fitness than occasional superhuman efforts followed by long gaps. Cycling rewards showing up regularly and consistently. The body adapts to gradual, regular stimulus — not infrequent heroics.</p>
+
+    <p>If you can only do two rides some weeks, do two rides. If you can only manage 20 minutes, manage 20 minutes. The habit is more important than any individual session. Protect the habit, and the fitness follows automatically.</p>
+  </div>
+
+  <div class="article-cta">
+    <h3>Ready to build your cycling habit?</h3>
+    <p>Etapa creates a personalised plan that fits your schedule — and an AI coach to help you stay on track even when motivation dips.</p>
+    <a href="/" class="btn-primary">Get started with Etapa</a>
+  </div>
+  <a href="/blog" class="back-link">&larr; Back to all articles</a>
+</div>
+
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="../icon-56.png" alt="Etapa"></div>
+    <span>&copy; 2026 Etapa. All rights reserved.</span>
+  </div>
+  <div class="footer-links">
+    <a href="/#pricing">Pricing</a><a href="/#ai">AI Transparency</a><a href="/support">Support</a><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Use</a>
+  </div>
+</footer>
+<div style="text-align:center;padding:16px 48px 32px;border-top:1px solid #111;">
+  <p style="font-size:11px;color:#444;line-height:1.7;max-width:640px;margin:0 auto;font-weight:300;">All training plans, coaching conversations, session adjustments, and check-in messages are generated by artificial intelligence (Anthropic Claude). Etapa is not a medical service and does not provide medical advice. Always consult a healthcare professional before beginning any exercise programme. You train at your own risk.</p>
+</div>
+</body>
+</html>

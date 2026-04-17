@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your First Month of Cycling: A Week-by-Week Guide — Etapa</title>
+  <meta name="description" content="Week one is about comfort. Week two is about routine. By week four you'll have something to celebrate. Here's your first month of cycling, laid out simply.">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', -apple-system, sans-serif; background: #000; color: #fff; }
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 48px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .nav-logo { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; text-decoration: none; color: #fff; }
+    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; overflow: hidden; }
+    .nav-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: #999; text-decoration: none; font-size: 15px; font-weight: 400; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #E8458B; }
+    .nav-cta { background: #E8458B !important; color: #000 !important; padding: 10px 24px; border-radius: 100px; font-weight: 600 !important; }
+    .article-wrap { max-width: 720px; margin: 0 auto; padding: 120px 24px 80px; }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
+    .breadcrumb a { color: #666; text-decoration: none; font-size: 13px; transition: color 0.2s; }
+    .breadcrumb a:hover { color: #999; }
+    .breadcrumb span { color: #444; font-size: 13px; }
+    .article-category { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 16px; }
+    .article-wrap h1 { font-size: clamp(28px, 4vw, 42px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 16px; }
+    .article-subtitle { font-size: 18px; color: #888; line-height: 1.6; font-weight: 300; margin-bottom: 32px; }
+    .article-meta { display: flex; align-items: center; gap: 16px; margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid #1a1a1a; }
+    .article-meta span { font-size: 13px; color: #555; }
+    .article-meta .dot { color: #333; }
+    .article-body h2 { font-size: 24px; font-weight: 600; margin: 40px 0 16px; color: #fff; }
+    .article-body p { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 20px; }
+    .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 20px; }
+    .article-body li { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 8px; }
+    .callout { background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.2); border-radius: 16px; padding: 24px 28px; margin: 32px 0; }
+    .callout-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 8px; }
+    .callout p { color: #ddd; margin: 0; font-size: 15px; }
+    .pull-quote { border-left: 3px solid #E8458B; padding-left: 24px; margin: 32px 0; font-size: 20px; font-weight: 500; color: #fff; line-height: 1.5; font-style: italic; }
+    .week-card { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 16px; padding: 24px 28px; margin-bottom: 16px; }
+    .week-card h3 { font-size: 17px; font-weight: 600; color: #E8458B; margin-bottom: 8px; }
+    .week-card p { font-size: 15px; color: #bbb; line-height: 1.7; font-weight: 300; margin: 0; }
+    .article-cta { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 20px; padding: 40px; margin-top: 56px; text-align: center; }
+    .article-cta h3 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    .article-cta p { font-size: 15px; color: #888; margin-bottom: 24px; font-weight: 300; }
+    .btn-primary { display: inline-block; background: #E8458B; color: #000; padding: 14px 32px; border-radius: 100px; font-size: 15px; font-weight: 600; text-decoration: none; transition: background 0.2s; }
+    .btn-primary:hover { background: #F472B6; }
+    .back-link { display: inline-block; margin-top: 40px; color: #666; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    .back-link:hover { color: #999; }
+    footer { padding: 40px 48px; border-top: 1px solid #111; display: flex; align-items: center; justify-content: space-between; }
+    .footer-left { display: flex; align-items: center; gap: 12px; }
+    .footer-left span { font-size: 14px; color: #444; }
+    footer a { color: #444; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    footer a:hover { color: #888; }
+    .footer-links { display: flex; gap: 24px; }
+    @media (max-width: 640px) { nav { padding: 16px 24px; } .nav-links a:not(.active):not(.nav-cta) { display: none; } footer { flex-direction: column; gap: 16px; text-align: center; } .footer-links { flex-wrap: wrap; justify-content: center; } }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-logo">
+    <div class="nav-logo-icon"><img src="../icon-72.png" alt="Etapa"></div>
+    Etapa
+  </a>
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <a href="/#how-it-works">How It Works</a>
+    <a href="/#pricing">Pricing</a>
+    <a href="/blog" class="active">Blog</a>
+    <a href="/support">Support</a>
+    <a href="/" class="nav-cta">Get the App</a>
+  </div>
+</nav>
+
+<div class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a><span>&rsaquo;</span>
+    <a href="/blog">Blog</a><span>&rsaquo;</span>
+    <span>First Month of Cycling</span>
+  </div>
+
+  <span class="article-category">Getting Started</span>
+  <h1>Your First Month of Cycling: A Week-by-Week Guide</h1>
+  <p class="article-subtitle">Week one is about comfort. Week two is about routine. By week four, you'll have something real to celebrate.</p>
+  <div class="article-meta">
+    <span>Etapa Team</span><span class="dot">&middot;</span><span>7 min read</span>
+  </div>
+
+  <div class="article-body">
+    <p>The first month of cycling is the hardest. Not because it's physically demanding — it's usually not — but because it's where habits either form or don't. A lot of people buy a bike, ride it twice with great enthusiasm, and then let it gather dust for six months. This doesn't make you a failure. It means nobody told you what the first month actually looks like.</p>
+
+    <p>Here's the thing: the first month isn't about becoming a cyclist. It's about becoming someone who rides a bike regularly. That's a much smaller, more achievable goal — and it sets up everything that comes after.</p>
+
+    <h2>Week one: Comfort is the only goal</h2>
+
+    <div class="week-card">
+      <h3>Week 1 — Target: 2–3 rides of 20–30 minutes</h3>
+      <p>Focus entirely on getting comfortable on the bike. Notice how it feels. Get used to stopping and starting, using brakes, and sitting in the saddle.</p>
+    </div>
+
+    <p>In week one, performance doesn't matter. Distance doesn't matter. Speed definitely doesn't matter. What matters is that you get on the bike and feel okay about it.</p>
+
+    <p>Choose routes you already know — familiar streets or a quiet local path. This is not the time to go exploring somewhere new, because unfamiliar territory adds stress you don't need when you're still learning how your bike handles.</p>
+
+    <p>You'll probably feel a little wobbly in traffic, unsure about your gears, and possibly uncomfortable in the saddle. All of this is completely normal. It passes.</p>
+
+    <h2>Week two: Building the routine</h2>
+
+    <div class="week-card">
+      <h3>Week 2 — Target: 2–3 rides of 30–40 minutes</h3>
+      <p>Start to build a schedule. Pick specific days and times you'll ride — and treat them like a commitment to yourself.</p>
+    </div>
+
+    <p>Week two is where the habit starts to take shape. The physical effort is almost identical to week one — you're adding a few minutes, that's all. What's different is that you're starting to build a routine.</p>
+
+    <p>Pick two or three days in your week that make sense for riding. Morning commute. Lunchtime spin. Evening after work. The specific time matters less than the consistency. Tell someone about your plan, if it helps you stick to it.</p>
+
+    <div class="callout">
+      <div class="callout-label">Habit tip</div>
+      <p>Lay out your kit the night before. Making it slightly easier to start removes the friction that turns "I'll go tomorrow" into never going at all.</p>
+    </div>
+
+    <h2>Week three: Introduce a small challenge</h2>
+
+    <div class="week-card">
+      <h3>Week 3 — Target: 2–3 rides of 35–50 minutes, including one gentle hill</h3>
+      <p>You're ready for your first gentle challenge. A small hill. A slightly longer loop. A route with a bit more variety.</p>
+    </div>
+
+    <p>By week three, your legs will have started adapting. You won't be as sore as you were in week one. You'll feel more confident on the bike. This is the right time to add a tiny challenge — not to push yourself hard, but to experience something a little new.</p>
+
+    <p>A gentle hill is perfect. Nothing brutal — just a rise that requires you to shift down a gear and work slightly harder. Hills teach you how to pace yourself, how to use your gears proactively, and how to recover on the descent. These are skills that pay off enormously over time.</p>
+
+    <p>You might also try riding to somewhere specific — a coffee shop, a park, a friend's house. Having a destination makes a ride feel purposeful and gives you a natural midpoint to rest at.</p>
+
+    <h2>Week four: Celebrate</h2>
+
+    <div class="week-card">
+      <h3>Week 4 — Target: 2–3 rides including one 60-minute ride</h3>
+      <p>A one-hour ride is a real milestone. It means you're a cyclist. Not a beginner preparing to be a cyclist — an actual cyclist.</p>
+    </div>
+
+    <p>A 60-minute ride might sound like nothing to an experienced rider, but for someone who started a month ago, it represents a genuine transformation. Your cardiovascular fitness has improved. Your muscles have adapted. Your saddle is starting to feel less alien. Your brain has stopped panicking at junctions.</p>
+
+    <p>Take a route you enjoy. Don't worry about pace or distance. Just ride for an hour, and then feel genuinely good about what you've done.</p>
+
+    <div class="pull-quote">"After one month of regular riding, you will feel a difference. Not just in your legs — in your head."</div>
+
+    <h2>What to do when you miss a ride</h2>
+
+    <p>You will miss rides. Life happens: work runs late, it pours with rain, you're exhausted, the kids are ill. Missing a ride doesn't break your habit — how you respond to missing it does.</p>
+
+    <p>The trap is the "well, I've already broken the streak" thinking. Missing one ride doesn't mean anything. Missing two in a row is still fine. The habit breaks when you decide it's over. So when you miss a ride: note it, forgive yourself immediately, and get back out on the next available day. That's it.</p>
+
+    <h2>What changes after month one?</h2>
+
+    <p>After a month of regular riding, a few things will be noticeably different. Your legs will feel stronger. You'll find it easier to hold a steady effort on flat roads. Hills will still be hard, but less surprisingly hard. And — perhaps most importantly — riding will start to feel like something you do, not something you're trying to do.</p>
+
+    <p>That identity shift is the real achievement of month one. From here, everything gets easier.</p>
+  </div>
+
+  <div class="article-cta">
+    <h3>Ready to start riding?</h3>
+    <p>Etapa builds a personalised plan around your schedule, fitness level, and goals. No experience needed — just a bike and a bit of time.</p>
+    <a href="/" class="btn-primary">Get started with Etapa</a>
+  </div>
+  <a href="/blog" class="back-link">&larr; Back to all articles</a>
+</div>
+
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="../icon-56.png" alt="Etapa"></div>
+    <span>&copy; 2026 Etapa. All rights reserved.</span>
+  </div>
+  <div class="footer-links">
+    <a href="/#pricing">Pricing</a>
+    <a href="/#ai">AI Transparency</a>
+    <a href="/support">Support</a>
+    <a href="/privacy">Privacy Policy</a>
+    <a href="/terms">Terms of Use</a>
+  </div>
+</footer>
+<div style="text-align:center;padding:16px 48px 32px;border-top:1px solid #111;">
+  <p style="font-size:11px;color:#444;line-height:1.7;max-width:640px;margin:0 auto;font-weight:300;">
+    All training plans, coaching conversations, session adjustments, and check-in messages are generated by artificial intelligence (Anthropic Claude). Etapa is not a medical service and does not provide medical advice. Always consult a healthcare professional before beginning any exercise programme. You train at your own risk.
+  </p>
+</div>
+</body>
+</html>

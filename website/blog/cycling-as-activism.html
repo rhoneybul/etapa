@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Bike as a Political Act: Cycling, Climate, and Community — Etapa</title>
+  <meta name="description" content="Every time you ride instead of drive, you're doing something real. Cycling is resistance, activism, and community-building rolled into one. Here's why it matters.">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', -apple-system, sans-serif; background: #000; color: #fff; }
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .nav-logo { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; text-decoration: none; color: #fff; }
+    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; overflow: hidden; }
+    .nav-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: #999; text-decoration: none; font-size: 15px; font-weight: 400; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #E8458B; }
+    .nav-cta { background: #E8458B !important; color: #000 !important; padding: 10px 24px; border-radius: 100px; font-weight: 600 !important; }
+    .nav-cta:hover { background: #F472B6 !important; color: #000 !important; }
+    .article-wrap { max-width: 720px; margin: 0 auto; padding: 120px 24px 80px; }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
+    .breadcrumb a { color: #666; text-decoration: none; font-size: 13px; transition: color 0.2s; }
+    .breadcrumb a:hover { color: #999; }
+    .breadcrumb span { color: #444; font-size: 13px; }
+    .article-category { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 16px; }
+    .article-wrap h1 { font-size: clamp(28px, 4vw, 42px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 16px; }
+    .article-subtitle { font-size: 18px; color: #888; line-height: 1.6; font-weight: 300; margin-bottom: 32px; }
+    .article-meta { display: flex; align-items: center; gap: 16px; margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid #1a1a1a; }
+    .article-meta span { font-size: 13px; color: #555; }
+    .article-meta .dot { color: #333; }
+    .article-body h2 { font-size: 24px; font-weight: 600; margin: 40px 0 16px; color: #fff; }
+    .article-body p { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 20px; }
+    .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 20px; }
+    .article-body li { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 8px; }
+    .callout { background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.2); border-radius: 16px; padding: 24px 28px; margin: 32px 0; }
+    .callout-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 8px; }
+    .callout p { color: #ddd; margin: 0; font-size: 15px; }
+    .pull-quote { border-left: 3px solid #E8458B; padding-left: 24px; margin: 32px 0; font-size: 20px; font-weight: 500; color: #fff; line-height: 1.5; font-style: italic; }
+    .article-cta { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 20px; padding: 40px; margin-top: 56px; text-align: center; }
+    .article-cta h3 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    .article-cta p { font-size: 15px; color: #888; margin-bottom: 24px; font-weight: 300; }
+    .btn-primary { display: inline-block; background: #E8458B; color: #000; padding: 14px 32px; border-radius: 100px; font-size: 15px; font-weight: 600; text-decoration: none; transition: background 0.2s; }
+    .btn-primary:hover { background: #F472B6; }
+    footer { padding: 40px 48px; border-top: 1px solid #111; display: flex; align-items: center; justify-content: space-between; }
+    .footer-left { display: flex; align-items: center; gap: 12px; }
+    .footer-left span { font-size: 14px; color: #444; }
+    footer a { color: #444; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    footer a:hover { color: #888; }
+    .footer-links { display: flex; gap: 24px; }
+    @media (max-width: 640px) { nav { padding: 16px 24px; } .nav-links a:not(.active):not(.nav-cta) { display: none; } footer { flex-direction: column; gap: 16px; text-align: center; } .footer-links { flex-wrap: wrap; justify-content: center; } }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-logo">
+    <div class="nav-logo-icon"><img src="../icon-72.png" alt="Etapa"></div>
+    Etapa
+  </a>
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <a href="/#how-it-works">How It Works</a>
+    <a href="/#pricing">Pricing</a>
+    <a href="/blog" class="active">Blog</a>
+    <a href="/support">Support</a>
+    <a href="/" class="nav-cta">Get the App</a>
+  </div>
+</nav>
+
+<div class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a>
+    <span>›</span>
+    <a href="/blog">Blog</a>
+    <span>›</span>
+    <span>Your Bike as a Political Act</span>
+  </div>
+
+  <span class="article-category">Community</span>
+  <h1>Your Bike as a Political Act: Cycling, Climate, and Community</h1>
+  <p class="article-subtitle">Every time you ride instead of drive, you're doing something real. Cycling is resistance, activism, and community-building rolled into one.</p>
+  <div class="article-meta">
+    <span>Etapa Team</span>
+    <span class="dot">·</span>
+    <span>7 min read</span>
+    <span class="dot">·</span>
+    <span>Community</span>
+  </div>
+
+  <div class="article-body">
+    <p>Most cycling content treats the bike as a fitness tool or a performance machine. It's neither of those things to a lot of cyclists — or at least, it's not primarily those things. For a growing number of riders, the bicycle is something else: a political statement, a community builder, a small daily act of resistance against car-dominated cities and carbon-intensive transport systems.</p>
+
+    <p>If you came to cycling for those reasons — or if you find yourself increasingly thinking about cycling in those terms alongside the fitness benefits — this piece is for you.</p>
+
+    <h2>The carbon reality of cycling</h2>
+
+    <p>Transport is one of the largest contributors to carbon emissions in most developed countries. In the UK, it accounts for roughly 27% of total greenhouse gas emissions, with cars and vans making up the majority. A single car journey of 5km generates around 1kg of CO₂. The same journey by bike: essentially zero.</p>
+
+    <p>The calculation gets even more interesting when you factor in manufacturing. Even accounting for the carbon cost of producing a bicycle and its components, a bike typically offsets its manufacturing carbon within a few months of replacing car journeys. Electric vehicles are better than petrol cars, but they still require large batteries, significant manufacturing energy, and road infrastructure that prioritises cars. A bicycle is, by almost any measure, the lowest-carbon way to get around that humans have invented.</p>
+
+    <div class="callout">
+      <div class="callout-label">The numbers</div>
+      <p>Research from the European Cyclists' Federation found that if cycling replaced car use for just 10% of all journeys, it would cut transport CO₂ emissions by around 26 million tonnes per year in Europe alone. Individual choices aggregate into real systemic change.</p>
+    </div>
+
+    <h2>The infrastructure argument: cycling is political by necessity</h2>
+
+    <p>Here's the uncomfortable truth: in most UK and European cities, cycling is still harder than it should be. Not because cycling is difficult, but because the built environment was designed — mostly in the mid-20th century — to prioritise cars. Wide roads, fast traffic, limited cycle infrastructure, parking built into every commercial development. Getting from A to B by bike often requires navigating roads that feel hostile, taking longer routes, or accepting a level of risk that drivers don't face.</p>
+
+    <p>That's not a natural state of affairs. It's the result of decades of planning decisions that can and are being reversed. Cities like Amsterdam, Copenhagen, and increasingly London, Paris, and Birmingham have demonstrated that when protected cycling infrastructure is built, cycling uptake increases dramatically — and most strikingly among women and older riders who had previously felt too unsafe to ride.</p>
+
+    <div class="pull-quote">"Every person who cycles instead of driving is a small vote for the kind of city we want to live in. Those votes, accumulated, change what politicians think is possible."</div>
+
+    <p>When you ride a bike, you become visible as a cyclist. You become part of the constituency that politicians count when they're deciding whether to build a cycle lane or another car park. You contribute to the normalisation of cycling as a mode of transport that ordinary people use, not just lycra-clad enthusiasts on weekend rides.</p>
+
+    <h2>Critical Mass and the tradition of cycling activism</h2>
+
+    <p>Cycling activism has a long and creative history. Critical Mass — the monthly ride where cyclists gather in large numbers to temporarily reclaim road space from cars — started in San Francisco in 1992 and now takes place in hundreds of cities worldwide. It's part protest, part celebration, part community gathering. The rule is simple: there are no rules, no leaders, and no specific destination. You just ride together, in numbers too large to be squeezed off the road.</p>
+
+    <p>Beyond Critical Mass, cycling advocacy organisations lobby for protected infrastructure, campaign against road danger, and push for planning laws that require cycling access in new developments. Cycling UK, London Cycling Campaign, and dozens of local groups do this work — and they need members, supporters, and people willing to show up at planning meetings and respond to consultations.</p>
+
+    <p>If the political angle of cycling interests you, these organisations are a good starting point. You don't need to be an expert cyclist or a seasoned activist — you just need to be someone who rides a bike and thinks things should be better for people who ride bikes.</p>
+
+    <h2>The mutual aid dimension</h2>
+
+    <p>In many communities, cycling has become a vehicle — literally — for mutual aid and community support. Bike kitchens and community repair workshops offer free or low-cost bike maintenance, often specifically targeting people who couldn't otherwise afford to cycle. Organisations like Wheels for All provide adapted cycling for people with disabilities. Refugee cycling programmes help new arrivals learn to cycle and gain independence in a new city.</p>
+
+    <p>The bicycle's accessibility — you don't need insurance, a licence, or fuel — makes it particularly powerful as a tool for communities that are underserved by public transport and can't afford cars. When cycling advocates push for better infrastructure, they're often pushing for equity: the right of everyone to travel safely and efficiently, not just those who can afford a car.</p>
+
+    <h2>Cycling as reclamation</h2>
+
+    <p>There's something else cycling can be, beyond the politics: a reclamation of space and of the body. For people who have been told, explicitly or implicitly, that public space isn't for them — women cycling alone, Black and Brown cyclists in predominantly white cycling spaces, disabled cyclists navigating inaccessible environments, larger-bodied cyclists in a sport that idolises thinness — simply showing up on a bike can be an act of defiance.</p>
+
+    <p>You don't have to frame your cycling politically. Riding for fitness or mental health or just the joy of it is entirely sufficient. But if you do feel something political in your relationship to the bike — a sense that you're taking something back, or asserting your right to space and movement — that feeling is valid and it's shared by a lot of cyclists who never appear in the glossy magazines.</p>
+
+    <h2>Small acts, large effects</h2>
+
+    <p>Not everyone has the time or inclination to attend planning meetings or join campaign groups. That's fine. The most basic political act available to any cyclist is to cycle. To be visible on the road. To take the space you're entitled to. To respond cheerfully when someone asks why you ride, and to tell them that it's faster, cheaper, and better for the air quality in your city than driving.</p>
+
+    <p>You don't have to save the world on your commute. But it's worth knowing that every journey you make by bike is part of something larger than the ride itself.</p>
+
+    <div class="article-cta">
+      <h3>Ready to start riding?</h3>
+      <p>Etapa gives you a personalised coaching plan and a supportive AI coach — for fitness, for transport, for joy, or for all of the above.</p>
+      <a href="/" class="btn-primary">Learn more about Etapa</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="../icon-56.png" alt="Etapa"></div>
+    <span>&copy; 2026 Etapa. All rights reserved.</span>
+  </div>
+  <div class="footer-links">
+    <a href="/#pricing">Pricing</a>
+    <a href="/#ai">AI Transparency</a>
+    <a href="/support">Support</a>
+    <a href="/privacy">Privacy Policy</a>
+    <a href="/terms">Terms of Use</a>
+  </div>
+</footer>
+<div style="text-align:center;padding:16px 48px 32px;border-top:1px solid #111;">
+  <p style="font-size:11px;color:#444;line-height:1.7;max-width:640px;margin:0 auto;font-weight:300;">
+    All training plans, coaching conversations, session adjustments, and check-in messages are generated by artificial intelligence (Anthropic Claude). Etapa is not a medical service and does not provide medical advice. Always consult a healthcare professional before beginning any exercise programme. You train at your own risk.
+  </p>
+</div>
+
+</body>
+</html>

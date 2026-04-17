@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your First Bike: How to Choose Without the Paralysis — Etapa</title>
+  <meta name="description" content="Too many options, too much advice. Here's a simple decision tree to help you choose your first bike — and a reminder that the right bike is the one you'll actually ride.">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', -apple-system, sans-serif; background: #000; color: #fff; }
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .nav-logo { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; text-decoration: none; color: #fff; }
+    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; overflow: hidden; }
+    .nav-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: #999; text-decoration: none; font-size: 15px; font-weight: 400; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #E8458B; }
+    .nav-cta { background: #E8458B !important; color: #000 !important; padding: 10px 24px; border-radius: 100px; font-weight: 600 !important; }
+    .article-wrap { max-width: 720px; margin: 0 auto; padding: 120px 24px 80px; }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
+    .breadcrumb a { color: #666; text-decoration: none; font-size: 13px; }
+    .breadcrumb span { color: #444; font-size: 13px; }
+    .article-category { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 16px; }
+    .article-wrap h1 { font-size: clamp(28px, 4vw, 42px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 16px; }
+    .article-subtitle { font-size: 18px; color: #888; line-height: 1.6; font-weight: 300; margin-bottom: 32px; }
+    .article-meta { display: flex; align-items: center; gap: 16px; margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid #1a1a1a; }
+    .article-meta span { font-size: 13px; color: #555; }
+    .article-meta .dot { color: #333; }
+    .article-body h2 { font-size: 24px; font-weight: 600; margin: 40px 0 16px; color: #fff; }
+    .article-body p { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 20px; }
+    .article-body ul { padding-left: 24px; margin-bottom: 20px; }
+    .article-body li { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 8px; }
+    .callout { background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.2); border-radius: 16px; padding: 24px 28px; margin: 32px 0; }
+    .callout-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 8px; }
+    .callout p { color: #ddd; margin: 0; font-size: 15px; }
+    .pull-quote { border-left: 3px solid #E8458B; padding-left: 24px; margin: 32px 0; font-size: 20px; font-weight: 500; color: #fff; line-height: 1.5; font-style: italic; }
+    .article-cta { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 20px; padding: 40px; margin-top: 56px; text-align: center; }
+    .article-cta h3 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    .article-cta p { font-size: 15px; color: #888; margin-bottom: 24px; font-weight: 300; }
+    .btn-primary { display: inline-block; background: #E8458B; color: #000; padding: 14px 32px; border-radius: 100px; font-size: 15px; font-weight: 600; text-decoration: none; transition: background 0.2s; }
+    .btn-primary:hover { background: #F472B6; }
+    .back-link { display: inline-block; margin-top: 40px; color: #666; text-decoration: none; font-size: 14px; }
+    .back-link:hover { color: #999; }
+    footer { padding: 40px 48px; border-top: 1px solid #111; display: flex; align-items: center; justify-content: space-between; }
+    .footer-left { display: flex; align-items: center; gap: 12px; }
+    .footer-left span { font-size: 14px; color: #444; }
+    footer a { color: #444; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    footer a:hover { color: #888; }
+    .footer-links { display: flex; gap: 24px; }
+    @media (max-width: 640px) { nav { padding: 16px 24px; } .nav-links a:not(.active):not(.nav-cta) { display: none; } footer { flex-direction: column; gap: 16px; text-align: center; } .footer-links { flex-wrap: wrap; justify-content: center; } }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-logo"><div class="nav-logo-icon"><img src="../icon-72.png" alt="Etapa"></div>Etapa</a>
+  <div class="nav-links">
+    <a href="/">Home</a><a href="/#how-it-works">How It Works</a><a href="/#pricing">Pricing</a>
+    <a href="/blog" class="active">Blog</a><a href="/support">Support</a>
+    <a href="/" class="nav-cta">Get the App</a>
+  </div>
+</nav>
+
+<div class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a><span>&rsaquo;</span><a href="/blog">Blog</a><span>&rsaquo;</span><span>Choosing Your First Bike</span>
+  </div>
+
+  <span class="article-category">Getting Started</span>
+  <h1>Your First Bike: How to Choose Without the Paralysis</h1>
+  <p class="article-subtitle">Too many options, too much conflicting advice. Here's a simple decision tree to cut through the noise and find a bike you'll actually ride.</p>
+  <div class="article-meta">
+    <span>Etapa Team</span><span class="dot">&middot;</span><span>8 min read</span>
+  </div>
+
+  <div class="article-body">
+    <p>Choosing your first bike is supposed to be exciting. It often ends up being exhausting. You ask a friend, they recommend a specific road bike. You look online, and there are seventeen different types. You walk into a bike shop, someone starts talking about carbon forks and disc brakes, and you leave with a headache and no bike.</p>
+
+    <p>Let's fix that. Here's what you actually need to know.</p>
+
+    <h2>Start with one question: where will you actually ride?</h2>
+
+    <p>This is the only question that truly matters at the start. Everything else — frame material, component brands, wheel size — is secondary to whether the bike fits what you're actually going to do with it.</p>
+
+    <ul>
+      <li><strong>Mostly on roads and paths:</strong> A hybrid bike or entry-level road bike.</li>
+      <li><strong>On trails, gravel, or mixed surfaces:</strong> A gravel bike or hardtail mountain bike.</li>
+      <li><strong>Mainly for commuting in a city:</strong> A hybrid or flat-bar road bike, possibly with mudguards and a rack.</li>
+      <li><strong>Not entirely sure yet:</strong> A hybrid bike. They're the most versatile option for beginners.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">The honest answer for most beginners</div>
+      <p>If you're reading this and you're not sure what kind of cycling you'll do — get a hybrid bike in the £400–£700 range. It will be good enough to find out what you love, and it works on roads, paths, and light gravel. You can always upgrade later when you know what you actually want.</p>
+    </div>
+
+    <h2>What kind of bike is right for roads and general riding?</h2>
+
+    <p>A hybrid bike sits between a road bike and a mountain bike. It has a comfortable upright riding position, wider tyres than a road bike (which makes it more forgiving on rough surfaces), and flat handlebars that most beginners find less intimidating than road bike drops.</p>
+
+    <p>An entry-level road bike will be faster on smooth tarmac, but the riding position is more aggressive (leaning forward), the tyres are narrow (more sensitive to potholes), and the dropped handlebars take some getting used to. Road bikes are excellent for training and longer rides, but they're not the most comfortable place to start.</p>
+
+    <h2>How much should I spend?</h2>
+
+    <p>You don't need to spend a lot to get a very good beginner bike. Here's a rough guide:</p>
+
+    <ul>
+      <li><strong>£300–£500:</strong> Solid bikes that will last years if looked after. Slightly heavier, simpler components. Perfectly good for beginning and building fitness.</li>
+      <li><strong>£500–£900:</strong> A noticeable step up in components, weight, and comfort. Bikes at this level are genuinely good, and most beginners will feel the difference.</li>
+      <li><strong>£900+:</strong> Excellent bikes, but the improvements become harder to feel for someone just starting out. Save this range until you know exactly what you want.</li>
+    </ul>
+
+    <p>Do not buy a £100 bike from a supermarket or online retailer. These bikes are typically heavy, poorly built, and hard to maintain — they make cycling feel much harder than it needs to be. Spending £350–£400 more than the cheapest option transforms the experience.</p>
+
+    <div class="pull-quote">"The right bike is the one you'll actually ride — not the theoretically optimal one you spent four months researching."</div>
+
+    <h2>New or second-hand?</h2>
+
+    <p>A good quality second-hand bike can be excellent value. The risks: you might not spot problems, and you can't return it if something's wrong. If you're buying second-hand, try to take someone knowledgeable with you, or ask the seller to meet at a bike shop so a mechanic can look it over.</p>
+
+    <p>Platforms like Facebook Marketplace, Gumtree, and specialist cycling sites often have great deals. Branded bikes from reputable manufacturers — Trek, Giant, Specialized, Cube, Boardman — hold their quality even second-hand.</p>
+
+    <h2>What about bike fit?</h2>
+
+    <p>A professional bike fit — where someone measures your body and adjusts the bike accordingly — is something experienced cyclists invest in. For a beginner, it's not necessary straight away.</p>
+
+    <p>What IS necessary: making sure the bike size is right. A bike that's too big or too small will be uncomfortable and potentially cause injury. Most bike shops will help you pick the right size if you tell them your height. If you're buying online, check the manufacturer's size guide — they're usually accurate.</p>
+
+    <p>Once you have the bike, a few easy adjustments — saddle height especially — make a big difference. Your leg should be almost fully extended at the bottom of each pedal stroke, with just a slight bend in the knee. If your hips are rocking side to side as you pedal, the saddle is too high.</p>
+
+    <h2>Should I buy from a shop or online?</h2>
+
+    <p>Buying from a local bike shop has real advantages: you can try the bike before buying, get it properly assembled, and have a relationship with someone who can help you when things go wrong. The price might be slightly higher, but the service is often worth it for a first bike.</p>
+
+    <p>Online is often cheaper and has a wider range. Many online retailers offer some assembly (you usually attach the front wheel and handlebars) and free returns. Brands like Wiggle, Evans Cycles, Chain Reaction, and Tredz are all reputable.</p>
+
+    <h2>The most important thing</h2>
+
+    <p>Don't let perfect be the enemy of good. A lot of people spend months researching bikes and never quite pull the trigger. Meanwhile, their neighbours are out riding, getting fitter, and having fun.</p>
+
+    <p>Pick something in your budget, in the right size, from a reputable brand. Then get on it and start riding. You can refine your choices later — when you know more about what you like and what your body needs. Right now, you just need a bike that works.</p>
+  </div>
+
+  <div class="article-cta">
+    <h3>Ready to start riding?</h3>
+    <p>Once you have your bike, Etapa creates a personalised training plan to take you from first ride to real fitness — at your pace.</p>
+    <a href="/" class="btn-primary">Get started with Etapa</a>
+  </div>
+  <a href="/blog" class="back-link">&larr; Back to all articles</a>
+</div>
+
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="../icon-56.png" alt="Etapa"></div>
+    <span>&copy; 2026 Etapa. All rights reserved.</span>
+  </div>
+  <div class="footer-links">
+    <a href="/#pricing">Pricing</a><a href="/#ai">AI Transparency</a><a href="/support">Support</a><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Use</a>
+  </div>
+</footer>
+<div style="text-align:center;padding:16px 48px 32px;border-top:1px solid #111;">
+  <p style="font-size:11px;color:#444;line-height:1.7;max-width:640px;margin:0 auto;font-weight:300;">All training plans, coaching conversations, session adjustments, and check-in messages are generated by artificial intelligence (Anthropic Claude). Etapa is not a medical service and does not provide medical advice. Always consult a healthcare professional before beginning any exercise programme. You train at your own risk.</p>
+</div>
+</body>
+</html>

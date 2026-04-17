@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What Gear Do You Actually Need to Start Cycling? — Etapa</title>
+  <meta name="description" content="A helmet is non-negotiable. Padded shorts help a lot after 45 minutes. Lights keep you safe. Everything else? Nice to have, not required. Here's the honest beginner gear list.">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', -apple-system, sans-serif; background: #000; color: #fff; }
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .nav-logo { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; text-decoration: none; color: #fff; }
+    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; overflow: hidden; }
+    .nav-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: #999; text-decoration: none; font-size: 15px; font-weight: 400; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #E8458B; }
+    .nav-cta { background: #E8458B !important; color: #000 !important; padding: 10px 24px; border-radius: 100px; font-weight: 600 !important; }
+    .article-wrap { max-width: 720px; margin: 0 auto; padding: 120px 24px 80px; }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
+    .breadcrumb a { color: #666; text-decoration: none; font-size: 13px; }
+    .breadcrumb span { color: #444; font-size: 13px; }
+    .article-category { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 16px; }
+    .article-wrap h1 { font-size: clamp(28px, 4vw, 42px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 16px; }
+    .article-subtitle { font-size: 18px; color: #888; line-height: 1.6; font-weight: 300; margin-bottom: 32px; }
+    .article-meta { display: flex; align-items: center; gap: 16px; margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid #1a1a1a; }
+    .article-meta span { font-size: 13px; color: #555; }
+    .article-meta .dot { color: #333; }
+    .article-body h2 { font-size: 24px; font-weight: 600; margin: 40px 0 16px; color: #fff; }
+    .article-body p { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 20px; }
+    .article-body ul { padding-left: 24px; margin-bottom: 20px; }
+    .article-body li { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 8px; }
+    .callout { background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.2); border-radius: 16px; padding: 24px 28px; margin: 32px 0; }
+    .callout-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 8px; }
+    .callout p { color: #ddd; margin: 0; font-size: 15px; }
+    .gear-item { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 16px; padding: 20px 24px; margin-bottom: 12px; display: flex; gap: 16px; align-items: flex-start; }
+    .gear-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; padding: 4px 10px; border-radius: 100px; flex-shrink: 0; margin-top: 2px; }
+    .gear-badge.must { background: rgba(232,69,139,0.15); color: #E8458B; border: 1px solid rgba(232,69,139,0.3); }
+    .gear-badge.nice { background: rgba(255,255,255,0.05); color: #666; border: 1px solid #222; }
+    .gear-item h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+    .gear-item p { font-size: 14px; color: #888; line-height: 1.6; font-weight: 300; margin: 0; }
+    .article-cta { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 20px; padding: 40px; margin-top: 56px; text-align: center; }
+    .article-cta h3 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    .article-cta p { font-size: 15px; color: #888; margin-bottom: 24px; font-weight: 300; }
+    .btn-primary { display: inline-block; background: #E8458B; color: #000; padding: 14px 32px; border-radius: 100px; font-size: 15px; font-weight: 600; text-decoration: none; transition: background 0.2s; }
+    .btn-primary:hover { background: #F472B6; }
+    .back-link { display: inline-block; margin-top: 40px; color: #666; text-decoration: none; font-size: 14px; }
+    .back-link:hover { color: #999; }
+    footer { padding: 40px 48px; border-top: 1px solid #111; display: flex; align-items: center; justify-content: space-between; }
+    .footer-left { display: flex; align-items: center; gap: 12px; }
+    .footer-left span { font-size: 14px; color: #444; }
+    footer a { color: #444; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    footer a:hover { color: #888; }
+    .footer-links { display: flex; gap: 24px; }
+    @media (max-width: 640px) { nav { padding: 16px 24px; } .nav-links a:not(.active):not(.nav-cta) { display: none; } footer { flex-direction: column; gap: 16px; text-align: center; } .footer-links { flex-wrap: wrap; justify-content: center; } }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-logo"><div class="nav-logo-icon"><img src="../icon-72.png" alt="Etapa"></div>Etapa</a>
+  <div class="nav-links">
+    <a href="/">Home</a><a href="/#how-it-works">How It Works</a><a href="/#pricing">Pricing</a>
+    <a href="/blog" class="active">Blog</a><a href="/support">Support</a>
+    <a href="/" class="nav-cta">Get the App</a>
+  </div>
+</nav>
+
+<div class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a><span>&rsaquo;</span><a href="/blog">Blog</a><span>&rsaquo;</span><span>Essential Cycling Gear</span>
+  </div>
+
+  <span class="article-category">Getting Started</span>
+  <h1>What Gear Do You Actually Need to Start Cycling?</h1>
+  <p class="article-subtitle">A helmet is non-negotiable. Padded shorts help. Lights keep you safe. Everything else is optional — here's the honest beginner gear list.</p>
+  <div class="article-meta">
+    <span>Etapa Team</span><span class="dot">&middot;</span><span>6 min read</span>
+  </div>
+
+  <div class="article-body">
+    <p>Walk into a cycling shop as a beginner and you can easily spend £500 before you've bought a helmet. GPS computers, specialised nutrition, carbon water bottle cages, compression socks — it can feel like you need all of it just to go for a ride.</p>
+
+    <p>You don't. Here's a clear-eyed breakdown of what you genuinely need, what's worth adding once you're riding regularly, and what you can safely ignore until much later (if ever).</p>
+
+    <h2>The must-haves</h2>
+
+    <div class="gear-item">
+      <span class="gear-badge must">Must have</span>
+      <div>
+        <h3>Helmet</h3>
+        <p>Non-negotiable. Falls happen, even to experienced cyclists, and often in situations you didn't expect. A helmet doesn't need to be expensive — any helmet that meets CE EN 1078 safety standard and fits properly is adequate. Fit matters more than brand: it should sit level on your head, low on your forehead, with the straps forming a V just below each ear. Replace it after any significant impact, even if it looks fine.</p>
+      </div>
+    </div>
+
+    <div class="gear-item">
+      <span class="gear-badge must">Must have</span>
+      <div>
+        <h3>Lights</h3>
+        <p>If there's any chance you'll be riding in low light — at dusk, on overcast days, through tunnels — you need a front white light and a rear red light. In the UK, it's a legal requirement after dark. Good lights are cheap: a decent USB-rechargeable set costs £15–25 and clips on in seconds. Visibility is one of the most effective safety tools you have as a cyclist.</p>
+      </div>
+    </div>
+
+    <div class="gear-item">
+      <span class="gear-badge must">Must have</span>
+      <div>
+        <h3>Pump and ability to fix a flat</h3>
+        <p>Flats happen. A floor pump for home (to keep your tyres at the right pressure) and a small hand pump or CO2 inflator for the road is essential kit. Knowing how to change an inner tube is a skill worth learning — there are great YouTube tutorials, and it takes about 15 minutes of practice to feel confident.</p>
+      </div>
+    </div>
+
+    <h2>Well worth adding early on</h2>
+
+    <div class="gear-item">
+      <span class="gear-badge must">Get soon</span>
+      <div>
+        <h3>Padded cycling shorts or liner</h3>
+        <p>If you're riding more than 45 minutes, padded shorts make a meaningful difference to saddle comfort. You don't need expensive Lycra — padded cycling liners worn under regular shorts work fine and look perfectly normal. The padding (called a chamois) cushions the sit bones and reduces friction. Worth every penny.</p>
+      </div>
+    </div>
+
+    <div class="gear-item">
+      <span class="gear-badge must">Get soon</span>
+      <div>
+        <h3>Water bottle and cage</h3>
+        <p>Hydration matters on rides over 45 minutes. A basic water bottle and cage (the bracket that holds it on the frame) costs very little and is genuinely useful. Alternatively, a small backpack with a hydration bladder works well — especially if you also want to carry a lock, snacks, or a layer.</p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">The starter kit total</div>
+      <p>Helmet + lights + pump + padded shorts + water bottle setup: around £80–130. That's genuinely everything you need to start riding safely and comfortably. Everything else is optional from here.</p>
+    </div>
+
+    <h2>Nice to have, but not urgent</h2>
+
+    <div class="gear-item">
+      <span class="gear-badge nice">Nice to have</span>
+      <div>
+        <h3>Cycling gloves</h3>
+        <p>Padded gloves reduce vibration fatigue on longer rides and protect your palms if you come off. Not essential for short rides, but worth considering once you're doing 60+ minutes regularly.</p>
+      </div>
+    </div>
+
+    <div class="gear-item">
+      <span class="gear-badge nice">Nice to have</span>
+      <div>
+        <h3>Cycle lock</h3>
+        <p>Essential if you're leaving your bike unattended anywhere. A decent D-lock is the gold standard. Cable locks alone offer minimal security. If you're commuting or stopping anywhere in public, this moves up to the "must have" list quickly.</p>
+      </div>
+    </div>
+
+    <div class="gear-item">
+      <span class="gear-badge nice">Nice to have</span>
+      <div>
+        <h3>Cycling computer or phone mount</h3>
+        <p>Tracking your rides can be motivating and helps you see progress over time. A basic phone mount (£10–15) and a free app like Strava is all you need — you don't need a £300 GPS unit to start. If you find yourself genuinely loving training data, you can upgrade later.</p>
+      </div>
+    </div>
+
+    <div class="gear-item">
+      <span class="gear-badge nice">Nice to have</span>
+      <div>
+        <h3>Rain jacket and warm layer</h3>
+        <p>UK weather being what it is, a packable rain jacket is useful for any ride over 60 minutes where conditions could change. Cycling-specific jackets pack small and are cut for the riding position. A merino baselayer adds a lot of warmth for very little weight on cold days.</p>
+      </div>
+    </div>
+
+    <h2>What you definitely don't need</h2>
+
+    <p>You do not need: clip-in pedals and cycling shoes, a power meter, a heart rate monitor, aerodynamic clothing, a carbon anything, or a cycling-specific nutrition strategy. These are all excellent tools — for experienced cyclists who know exactly what they're optimising for. For beginners, they're distractions from the actual goal: getting on your bike and riding.</p>
+
+    <p>The cycling industry is excellent at making you feel like your gear is inadequate. It isn't. Start simple, ride consistently, and add things gradually as you discover what matters for the riding you actually do.</p>
+  </div>
+
+  <div class="article-cta">
+    <h3>Ready to start riding?</h3>
+    <p>Get on your bike — however equipped you are — and let Etapa handle the training plan. You've got everything you need.</p>
+    <a href="/" class="btn-primary">Get started with Etapa</a>
+  </div>
+  <a href="/blog" class="back-link">&larr; Back to all articles</a>
+</div>
+
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="../icon-56.png" alt="Etapa"></div>
+    <span>&copy; 2026 Etapa. All rights reserved.</span>
+  </div>
+  <div class="footer-links">
+    <a href="/#pricing">Pricing</a><a href="/#ai">AI Transparency</a><a href="/support">Support</a><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Use</a>
+  </div>
+</footer>
+<div style="text-align:center;padding:16px 48px 32px;border-top:1px solid #111;">
+  <p style="font-size:11px;color:#444;line-height:1.7;max-width:640px;margin:0 auto;font-weight:300;">All training plans, coaching conversations, session adjustments, and check-in messages are generated by artificial intelligence (Anthropic Claude). Etapa is not a medical service and does not provide medical advice. Always consult a healthcare professional before beginning any exercise programme. You train at your own risk.</p>
+</div>
+</body>
+</html>

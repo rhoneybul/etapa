@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What Actually Happens on Your First Group Ride (It's Not What You Think) — Etapa</title>
+  <meta name="description" content="Nobody gets left behind on a social ride. Everyone was a beginner once. Here's what to expect on your first group ride and how to make it a great experience.">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', -apple-system, sans-serif; background: #000; color: #fff; }
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .nav-logo { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; text-decoration: none; color: #fff; }
+    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; overflow: hidden; }
+    .nav-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: #999; text-decoration: none; font-size: 15px; font-weight: 400; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #E8458B; }
+    .nav-cta { background: #E8458B !important; color: #000 !important; padding: 10px 24px; border-radius: 100px; font-weight: 600 !important; }
+    .article-wrap { max-width: 720px; margin: 0 auto; padding: 120px 24px 80px; }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
+    .breadcrumb a { color: #666; text-decoration: none; font-size: 13px; }
+    .breadcrumb span { color: #444; font-size: 13px; }
+    .article-category { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 16px; }
+    .article-wrap h1 { font-size: clamp(28px, 4vw, 42px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 16px; }
+    .article-subtitle { font-size: 18px; color: #888; line-height: 1.6; font-weight: 300; margin-bottom: 32px; }
+    .article-meta { display: flex; align-items: center; gap: 16px; margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid #1a1a1a; }
+    .article-meta span { font-size: 13px; color: #555; }
+    .article-meta .dot { color: #333; }
+    .article-body h2 { font-size: 24px; font-weight: 600; margin: 40px 0 16px; color: #fff; }
+    .article-body p { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 20px; }
+    .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 20px; }
+    .article-body li { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 8px; }
+    .callout { background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.2); border-radius: 16px; padding: 24px 28px; margin: 32px 0; }
+    .callout-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 8px; }
+    .callout p { color: #ddd; margin: 0; font-size: 15px; }
+    .pull-quote { border-left: 3px solid #E8458B; padding-left: 24px; margin: 32px 0; font-size: 20px; font-weight: 500; color: #fff; line-height: 1.5; font-style: italic; }
+    .article-cta { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 20px; padding: 40px; margin-top: 56px; text-align: center; }
+    .article-cta h3 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    .article-cta p { font-size: 15px; color: #888; margin-bottom: 24px; font-weight: 300; }
+    .btn-primary { display: inline-block; background: #E8458B; color: #000; padding: 14px 32px; border-radius: 100px; font-size: 15px; font-weight: 600; text-decoration: none; transition: background 0.2s; }
+    .btn-primary:hover { background: #F472B6; }
+    .back-link { display: inline-block; margin-top: 40px; color: #666; text-decoration: none; font-size: 14px; }
+    .back-link:hover { color: #999; }
+    footer { padding: 40px 48px; border-top: 1px solid #111; display: flex; align-items: center; justify-content: space-between; }
+    .footer-left { display: flex; align-items: center; gap: 12px; }
+    .footer-left span { font-size: 14px; color: #444; }
+    footer a { color: #444; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    footer a:hover { color: #888; }
+    .footer-links { display: flex; gap: 24px; }
+    @media (max-width: 640px) { nav { padding: 16px 24px; } .nav-links a:not(.active):not(.nav-cta) { display: none; } footer { flex-direction: column; gap: 16px; text-align: center; } .footer-links { flex-wrap: wrap; justify-content: center; } }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-logo"><div class="nav-logo-icon"><img src="../icon-72.png" alt="Etapa"></div>Etapa</a>
+  <div class="nav-links">
+    <a href="/">Home</a><a href="/#how-it-works">How It Works</a><a href="/#pricing">Pricing</a>
+    <a href="/blog" class="active">Blog</a><a href="/support">Support</a>
+    <a href="/" class="nav-cta">Get the App</a>
+  </div>
+</nav>
+
+<div class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a><span>&rsaquo;</span><a href="/blog">Blog</a><span>&rsaquo;</span><span>First Group Ride</span>
+  </div>
+
+  <span class="article-category">Mind &amp; Confidence</span>
+  <h1>What Actually Happens on Your First Group Ride (It's Not What You Think)</h1>
+  <p class="article-subtitle">The anticipation is worse than the reality. Here's what first group rides are actually like.</p>
+  <div class="article-meta">
+    <span>Etapa Team</span><span class="dot">&middot;</span><span>6 min read</span>
+  </div>
+
+  <div class="article-body">
+    <p>If you've been invited to a group ride, or you're considering joining one, there's a good chance you've spent some time worrying about it. Will you be too slow? Will people wait for you? Will everyone else be in matching Lycra on carbon bikes while you turn up in leggings with a Halfords hybrid?</p>
+
+    <p>The anxiety is extremely common. The reality is almost always much better than the anticipation. Here's what actually happens.</p>
+
+    <h2>What kind of ride is it?</h2>
+
+    <p>Group rides exist on a wide spectrum. At one end: racing clubs and chaingangs where the pace is aggressive, nobody waits for stragglers, and the whole thing is quite serious. At the other end: social rides where the point is the company, the cafe stop, and the scenery — and where staying together as a group is the explicit goal.</p>
+
+    <p>As a beginner, you want the latter. Look for rides advertised as "social," "beginner-friendly," "no-drop" (meaning nobody gets dropped — left behind), or run by women's cycling groups. Your local cycling club will often have a specific group for newer riders. Cycling UK, British Cycling, and local council cycling programmes often organise beginner rides.</p>
+
+    <div class="callout">
+      <div class="callout-label">The "no-drop" rule</div>
+      <p>Any ride described as "no-drop" explicitly commits to waiting for everyone. The group regroups at the top of hills, at junctions, and whenever someone needs a moment. If you're not sure, ask before the ride: "Is this a no-drop ride?" Any decent organiser will be happy to clarify.</p>
+    </div>
+
+    <h2>Say you're new</h2>
+
+    <p>This is the single most useful thing you can do before a group ride. Tell the organiser or a friendly-looking person that it's your first group ride. Every experienced cyclist was once a beginner, and most will respond with warmth. Knowing someone is new adjusts expectations, prompts more experienced riders to offer tips, and means you get the right level of encouragement.</p>
+
+    <p>"I've just started riding and this is my first group ride" is a perfectly fine thing to say. Nobody will judge you for it.</p>
+
+    <h2>The reality of the group dynamics</h2>
+
+    <p>On a well-run social ride, the group pauses at junctions and regrouping points for slower riders. The pace is set by the group, not by the fastest person. There are cafe stops. People chat. Someone always knows the route.</p>
+
+    <p>You'll probably find the pace in the middle of the group much easier than riding alone at the front, because you benefit from the slipstream of people ahead of you. This can feel like cheating; it isn't — it's how group cycling works, and it's one of the reasons people find it more enjoyable than solo riding.</p>
+
+    <h2>What to do if you're struggling</h2>
+
+    <p>If you're finding the pace too hard: say so. "I need to slow down a bit" is a completely acceptable thing to say. If you need to stop: stop. A good group will wait or send someone back. If you genuinely can't keep going: most social ride leaders have a plan for this — a shortcut back, someone to ride with you at a slower pace, or a way to get you home safely.</p>
+
+    <p>The only wrong thing to do is struggle silently and feel terrible. Cycling is supposed to be enjoyable.</p>
+
+    <div class="pull-quote">"The person at the back of a group ride is still out there doing it. That takes more guts than sitting at home."</div>
+
+    <h2>About the bike and the kit</h2>
+
+    <p>Your bike doesn't matter. On a social ride, people arrive on everything from carbon road bikes to town hybrids to e-bikes. What matters is that your bike is safe — tyres inflated, brakes working. Not the brand. Not the weight. Not whether it has drop bars.</p>
+
+    <p>Similarly, normal activewear is fine. You don't need to be in Lycra. You don't need a cycling jersey with back pockets. Come in whatever you're comfortable riding in.</p>
+
+    <h2>Why community multiplies everything</h2>
+
+    <p>Most regular cyclists will tell you that the best thing that happened to their cycling was finding a community. Riding with other people is more fun, more motivating, and stretches your comfort zone in productive ways. The conversations at cafe stops. The shared groaning at hills. The sense of having done something together.</p>
+
+    <p>A good cycling community also keeps you going when motivation dips. You show up because people are expecting you. You push a bit harder because someone's alongside you. You laugh more. You ride further than you would alone.</p>
+
+    <p>The first group ride is the hardest. After that, it becomes the thing you look forward to most.</p>
+  </div>
+
+  <div class="article-cta">
+    <h3>Ready to start riding?</h3>
+    <p>Etapa gives you a personalised plan built around your life — jargon-free and beginner-friendly.</p>
+    <a href="/" class="btn-primary">Get started with Etapa</a>
+  </div>
+  <a href="/blog" class="back-link">&larr; Back to all articles</a>
+</div>
+
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="../icon-56.png" alt="Etapa"></div>
+    <span>&copy; 2026 Etapa. All rights reserved.</span>
+  </div>
+  <div class="footer-links">
+    <a href="/#pricing">Pricing</a><a href="/#ai">AI Transparency</a><a href="/support">Support</a><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Use</a>
+  </div>
+</footer>
+<div style="text-align:center;padding:16px 48px 32px;border-top:1px solid #111;">
+  <p style="font-size:11px;color:#444;line-height:1.7;max-width:640px;margin:0 auto;font-weight:300;">All training plans, coaching conversations, session adjustments, and check-in messages are generated by artificial intelligence (Anthropic Claude). Etapa is not a medical service and does not provide medical advice. Always consult a healthcare professional before beginning any exercise programme. You train at your own risk.</p>
+</div>
+</body>
+</html>

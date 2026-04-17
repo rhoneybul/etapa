@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bike Maintenance for Beginners: What You Actually Need to Do — Etapa</title>
+  <meta name="description" content="You don't need to be a mechanic. Before every ride: check tyre pressure, brakes, and chain. Monthly: a quick look at cables. Everything else goes to the shop.">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', -apple-system, sans-serif; background: #000; color: #fff; }
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .nav-logo { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; text-decoration: none; color: #fff; }
+    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; overflow: hidden; }
+    .nav-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: #999; text-decoration: none; font-size: 15px; font-weight: 400; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #E8458B; }
+    .nav-cta { background: #E8458B !important; color: #000 !important; padding: 10px 24px; border-radius: 100px; font-weight: 600 !important; }
+    .article-wrap { max-width: 720px; margin: 0 auto; padding: 120px 24px 80px; }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
+    .breadcrumb a { color: #666; text-decoration: none; font-size: 13px; }
+    .breadcrumb span { color: #444; font-size: 13px; }
+    .article-category { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 16px; }
+    .article-wrap h1 { font-size: clamp(28px, 4vw, 42px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 16px; }
+    .article-subtitle { font-size: 18px; color: #888; line-height: 1.6; font-weight: 300; margin-bottom: 32px; }
+    .article-meta { display: flex; align-items: center; gap: 16px; margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid #1a1a1a; }
+    .article-meta span { font-size: 13px; color: #555; }
+    .article-meta .dot { color: #333; }
+    .article-body h2 { font-size: 24px; font-weight: 600; margin: 40px 0 16px; color: #fff; }
+    .article-body p { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 20px; }
+    .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 20px; }
+    .article-body li { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 8px; }
+    .callout { background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.2); border-radius: 16px; padding: 24px 28px; margin: 32px 0; }
+    .callout-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 8px; }
+    .callout p { color: #ddd; margin: 0; font-size: 15px; }
+    .pull-quote { border-left: 3px solid #E8458B; padding-left: 24px; margin: 32px 0; font-size: 20px; font-weight: 500; color: #fff; line-height: 1.5; font-style: italic; }
+    .article-cta { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 20px; padding: 40px; margin-top: 56px; text-align: center; }
+    .article-cta h3 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    .article-cta p { font-size: 15px; color: #888; margin-bottom: 24px; font-weight: 300; }
+    .btn-primary { display: inline-block; background: #E8458B; color: #000; padding: 14px 32px; border-radius: 100px; font-size: 15px; font-weight: 600; text-decoration: none; transition: background 0.2s; }
+    .btn-primary:hover { background: #F472B6; }
+    .back-link { display: inline-block; margin-top: 40px; color: #666; text-decoration: none; font-size: 14px; }
+    .back-link:hover { color: #999; }
+    footer { padding: 40px 48px; border-top: 1px solid #111; display: flex; align-items: center; justify-content: space-between; }
+    .footer-left { display: flex; align-items: center; gap: 12px; }
+    .footer-left span { font-size: 14px; color: #444; }
+    footer a { color: #444; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    footer a:hover { color: #888; }
+    .footer-links { display: flex; gap: 24px; }
+    @media (max-width: 640px) { nav { padding: 16px 24px; } .nav-links a:not(.active):not(.nav-cta) { display: none; } footer { flex-direction: column; gap: 16px; text-align: center; } .footer-links { flex-wrap: wrap; justify-content: center; } }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-logo"><div class="nav-logo-icon"><img src="../icon-72.png" alt="Etapa"></div>Etapa</a>
+  <div class="nav-links">
+    <a href="/">Home</a><a href="/#how-it-works">How It Works</a><a href="/#pricing">Pricing</a>
+    <a href="/blog" class="active">Blog</a><a href="/support">Support</a>
+    <a href="/" class="nav-cta">Get the App</a>
+  </div>
+</nav>
+
+<div class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a><span>&rsaquo;</span><a href="/blog">Blog</a><span>&rsaquo;</span><span>Beginner Bike Maintenance</span>
+  </div>
+
+  <span class="article-category">Practical Guides</span>
+  <h1>Bike Maintenance for Beginners: What You Actually Need to Do</h1>
+  <p class="article-subtitle">You don't need to be a mechanic. A few simple checks before each ride keep you safe. Everything else can go to the shop.</p>
+  <div class="article-meta">
+    <span>Etapa Team</span><span class="dot">&middot;</span><span>6 min read</span>
+  </div>
+
+  <div class="article-body">
+    <p>Bike maintenance has a reputation for being complicated and greasy, the domain of people who know what a "bottom bracket" is and own a specialist torque wrench. This puts a lot of beginners off doing any maintenance at all — and then they wonder why their brakes feel spongy and their chain keeps skipping.</p>
+
+    <p>Here's the reassuring truth: most of what keeps a bike safe and enjoyable can be done in under five minutes, requires no special knowledge, and only a couple of basic tools. And for everything else, your local bike shop exists and is genuinely not scary.</p>
+
+    <h2>Before every ride: the ABC quick check</h2>
+
+    <p>The pre-ride ABC check is a simple routine used by cyclists and cycling organisations worldwide. It takes under two minutes and covers the most common causes of mechanical problems.</p>
+
+    <ul>
+      <li><strong>A — Air:</strong> Squeeze your tyres. They should feel firm, not soft or mushy. If you can squeeze a tyre noticeably, it needs more air. A good floor pump with a pressure gauge takes 60 seconds. Check the tyre sidewall for the recommended pressure range (usually marked in PSI or Bar).</li>
+      <li><strong>B — Brakes:</strong> Squeeze each brake lever before you set off. They should engage firmly and stop your wheel before the lever reaches the handlebar. Weak or spongy brakes that need to be pulled hard before anything happens need attention before you ride.</li>
+      <li><strong>C — Chain:</strong> Give the chain a quick look. It should be visibly lubricated (a slight sheen) and free of obvious rust or thick black grime. A dry or rusty chain is rough on your gears and can break. A drop of chain lube on each link, wiped off the excess, takes two minutes.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">The tools you actually need</div>
+      <p>A good floor pump (£25–40) and a bottle of chain lubricant (£8–12) cover 90% of beginner maintenance. Everything else is optional until you want to go further.</p>
+    </div>
+
+    <h2>Monthly: a slightly closer look</h2>
+
+    <p>Once a month — or after particularly wet or muddy rides — it's worth spending 10 minutes on a slightly more thorough check:</p>
+
+    <ul>
+      <li><strong>Tyre condition:</strong> Look at the tread surface and sidewalls. Deep cuts, bulges, or visible cords (the fabric underneath the rubber) mean a tyre is due for replacement. You want to catch this before it becomes a blowout.</li>
+      <li><strong>Brake pads:</strong> Look at the rubber pads that grip your wheel rim (or disc rotors). If they're worn down to the metal backing, replace them. Most beginners should be able to go many months before this is an issue.</li>
+      <li><strong>Cables and housing:</strong> Look at the cables running from your brakes and shifters. Frayed wires or cracked housing can cause brakes and gears to feel unresponsive. This is a bike shop job if you spot it.</li>
+      <li><strong>Quick releases and bolts:</strong> Quickly check that your wheels are securely attached (if your bike uses quick-release skewers, they should be firmly closed). Check your saddle hasn't worked loose.</li>
+    </ul>
+
+    <h2>Chain maintenance — a slightly deeper dive</h2>
+
+    <p>Your chain is the hardest-working part of your bike and the easiest to neglect. A well-maintained chain lasts longer, shifts more smoothly, and puts less wear on your gears.</p>
+
+    <p>After wet or muddy rides, wipe the chain down with a rag and re-lubricate. For regular riding in normal conditions, lubricate every 100–150 miles or so. Use a proper bike chain lubricant — not WD-40 (it's a solvent, not a lubricant, and it attracts grime). Apply one drop per link on the inner side of the chain, then wipe off the excess after a few minutes. This keeps it clean and working smoothly.</p>
+
+    <div class="pull-quote">"A dry, rusty chain is one of the most common reasons a beginner's bike feels horrible to ride. Two minutes of lubrication transforms it."</div>
+
+    <h2>What definitely needs a bike shop</h2>
+
+    <p>Some things are genuinely better left to a professional, especially while you're still learning:</p>
+
+    <ul>
+      <li>Cable replacement or tension adjustment for brakes and gears</li>
+      <li>Wheel truing (straightening a buckled wheel)</li>
+      <li>Bottom bracket, headset, or hub servicing</li>
+      <li>Brake pad replacement (though this is learnable)</li>
+      <li>Any creaking or clicking noise you can't identify</li>
+    </ul>
+
+    <p>A good local bike shop will do a basic service for £40–70 and can spot problems you've missed. Most beginners benefit from a professional service once a year or after every 1,000 miles or so.</p>
+
+    <h2>Don't be afraid of the bike shop</h2>
+
+    <p>Many beginner cyclists avoid bike shops because they feel intimidated — worried they'll say the wrong thing or get condescended to. This can happen, but most bike shops are staffed by people who genuinely love bikes and are happy to explain things. If you walk in and say "I'm a beginner, my brakes feel weak, can someone take a look?" — that's a completely reasonable and welcomed request at any decent shop.</p>
+
+    <p>Find a local independent shop rather than a big chain if possible. They tend to be friendlier, more knowledgeable, and more invested in building relationships with local riders.</p>
+  </div>
+
+  <div class="article-cta">
+    <h3>Ready to start riding?</h3>
+    <p>Etapa builds your training plan so you can focus on riding — not worrying about whether you're doing it right.</p>
+    <a href="/" class="btn-primary">Get started with Etapa</a>
+  </div>
+  <a href="/blog" class="back-link">&larr; Back to all articles</a>
+</div>
+
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="../icon-56.png" alt="Etapa"></div>
+    <span>&copy; 2026 Etapa. All rights reserved.</span>
+  </div>
+  <div class="footer-links">
+    <a href="/#pricing">Pricing</a><a href="/#ai">AI Transparency</a><a href="/support">Support</a><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Use</a>
+  </div>
+</footer>
+<div style="text-align:center;padding:16px 48px 32px;border-top:1px solid #111;">
+  <p style="font-size:11px;color:#444;line-height:1.7;max-width:640px;margin:0 auto;font-weight:300;">All training plans, coaching conversations, session adjustments, and check-in messages are generated by artificial intelligence (Anthropic Claude). Etapa is not a medical service and does not provide medical advice. Always consult a healthcare professional before beginning any exercise programme. You train at your own risk.</p>
+</div>
+</body>
+</html>

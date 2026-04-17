@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Find Your Cycling Community (Even When Your Friends Think You're Weird) — Etapa</title>
+  <meta name="description" content="Local bike shop rides, women's groups, meetups, online communities — here's where to find your cycling people and why community makes everything easier.">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', -apple-system, sans-serif; background: #000; color: #fff; }
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .nav-logo { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; text-decoration: none; color: #fff; }
+    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; overflow: hidden; }
+    .nav-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: #999; text-decoration: none; font-size: 15px; font-weight: 400; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #E8458B; }
+    .nav-cta { background: #E8458B !important; color: #000 !important; padding: 10px 24px; border-radius: 100px; font-weight: 600 !important; }
+    .article-wrap { max-width: 720px; margin: 0 auto; padding: 120px 24px 80px; }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
+    .breadcrumb a { color: #666; text-decoration: none; font-size: 13px; }
+    .breadcrumb span { color: #444; font-size: 13px; }
+    .article-category { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 16px; }
+    .article-wrap h1 { font-size: clamp(28px, 4vw, 42px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 16px; }
+    .article-subtitle { font-size: 18px; color: #888; line-height: 1.6; font-weight: 300; margin-bottom: 32px; }
+    .article-meta { display: flex; align-items: center; gap: 16px; margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid #1a1a1a; }
+    .article-meta span { font-size: 13px; color: #555; }
+    .article-meta .dot { color: #333; }
+    .article-body h2 { font-size: 24px; font-weight: 600; margin: 40px 0 16px; color: #fff; }
+    .article-body p { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 20px; }
+    .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 20px; }
+    .article-body li { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 8px; }
+    .callout { background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.2); border-radius: 16px; padding: 24px 28px; margin: 32px 0; }
+    .callout-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 8px; }
+    .callout p { color: #ddd; margin: 0; font-size: 15px; }
+    .pull-quote { border-left: 3px solid #E8458B; padding-left: 24px; margin: 32px 0; font-size: 20px; font-weight: 500; color: #fff; line-height: 1.5; font-style: italic; }
+    .article-cta { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 20px; padding: 40px; margin-top: 56px; text-align: center; }
+    .article-cta h3 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    .article-cta p { font-size: 15px; color: #888; margin-bottom: 24px; font-weight: 300; }
+    .btn-primary { display: inline-block; background: #E8458B; color: #000; padding: 14px 32px; border-radius: 100px; font-size: 15px; font-weight: 600; text-decoration: none; transition: background 0.2s; }
+    .btn-primary:hover { background: #F472B6; }
+    .back-link { display: inline-block; margin-top: 40px; color: #666; text-decoration: none; font-size: 14px; }
+    .back-link:hover { color: #999; }
+    footer { padding: 40px 48px; border-top: 1px solid #111; display: flex; align-items: center; justify-content: space-between; }
+    .footer-left { display: flex; align-items: center; gap: 12px; }
+    .footer-left span { font-size: 14px; color: #444; }
+    footer a { color: #444; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    footer a:hover { color: #888; }
+    .footer-links { display: flex; gap: 24px; }
+    @media (max-width: 640px) { nav { padding: 16px 24px; } .nav-links a:not(.active):not(.nav-cta) { display: none; } footer { flex-direction: column; gap: 16px; text-align: center; } .footer-links { flex-wrap: wrap; justify-content: center; } }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-logo"><div class="nav-logo-icon"><img src="../icon-72.png" alt="Etapa"></div>Etapa</a>
+  <div class="nav-links">
+    <a href="/">Home</a><a href="/#how-it-works">How It Works</a><a href="/#pricing">Pricing</a>
+    <a href="/blog" class="active">Blog</a><a href="/support">Support</a>
+    <a href="/" class="nav-cta">Get the App</a>
+  </div>
+</nav>
+<div class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a><span>&rsaquo;</span><a href="/blog">Blog</a><span>&rsaquo;</span><span>Finding Your Cycling Community</span>
+  </div>
+  <span class="article-category">Community</span>
+  <h1>How to Find Your Cycling Community (Even When Your Friends Think You're Weird)</h1>
+  <p class="article-subtitle">Finding your people transforms cycling from a solo pursuit to something much better.</p>
+  <div class="article-meta">
+    <span>Etapa Team</span><span class="dot">&middot;</span><span>6 min read</span>
+  </div>
+  <div class="article-body">
+    <p>Cycling alone is fine. Cycling with people who get it is better. The difference between a hobby you maintain and a hobby that becomes part of your life often comes down to whether you've found your community.</p>
+
+    <p>The good news: cycling communities are everywhere, they're usually welcoming to beginners, and finding them is easier than it sounds.</p>
+
+    <h2>Your local bike shop</h2>
+
+    <p>The local independent bike shop is one of the best community entry points in cycling. Most run weekly or monthly group rides, host events, and act as a hub for local cycling activity. The people who work there are usually passionate about cycling and often know everyone worth knowing in the local scene.</p>
+
+    <p>Walk in, mention you've recently started cycling, and ask if they know of any beginner-friendly groups or rides. This straightforward question almost always leads somewhere useful.</p>
+
+    <div class="callout">
+      <div class="callout-label">Finding rides locally</div>
+      <p>Search "[your town/city] cycling club" or "[your area] social cycling ride" on Google or Facebook. Most clubs have a beginners' section or a social group that runs separately from the competitive element. British Cycling's club finder (britishcycling.org.uk) is also useful for finding affiliated clubs near you.</p>
+    </div>
+
+    <h2>Women's and women-friendly groups</h2>
+
+    <p>Women-specific cycling groups have proliferated significantly in recent years and are often the most beginner-friendly options available. Organisations including Breeze (British Cycling's women's network), Cycling UK's women's groups, and countless local grassroots groups specifically design their rides to be welcoming and non-intimidating.</p>
+
+    <p>These groups aren't just for women who've been cycling for years — many specifically target beginners and people who haven't cycled before. They tend to have patient leaders, clearly stated "no-drop" policies, and cafe stops. They're genuinely excellent.</p>
+
+    <h2>Cycling UK and organised rides</h2>
+
+    <p>Cycling UK (cyclinguk.org) is the UK's national cycling charity and runs an enormous range of organised rides, events, and groups across the country. Their led rides are specifically designed to be accessible to beginners, with a range of distances and difficulty levels. They also have groups specifically for women, older riders, and people who haven't cycled before.</p>
+
+    <h2>Strava and online communities</h2>
+
+    <p>Strava's club feature lets you join local cycling clubs and virtual groups where you can see other people's rides, give kudos, and start conversations. There are thousands of beginner-friendly Strava clubs, including ones specifically for new cyclists, women, and people cycling for health and enjoyment rather than performance.</p>
+
+    <p>Beyond Strava: Facebook groups for local cycling, Reddit communities (r/cycling is large and generally friendly; r/velo is more performance-focused), and Instagram communities built around tags like #beginnercy clist, #womenwhocycle, and #justridebikes are all active spaces with welcoming people.</p>
+
+    <div class="pull-quote">"The best thing that ever happened to my cycling was finding people who got it. Suddenly the weather stopped being an excuse."</div>
+
+    <h2>Cycling holidays and events</h2>
+
+    <p>Organised cycling events — sportives, charity rides, gentle touring events — are another way to meet people. The atmosphere at these events tends to be very sociable, particularly at the slower end of the pack where beginners often find themselves. Shared effort creates instant common ground.</p>
+
+    <p>Cycling holidays (group tours, guided rides, bikepacking with others) are a more immersive version of the same thing. The Sustrans network has guided rides. Cycling UK does touring events. Many companies specifically offer beginner cycling holidays designed around accessible distances and social enjoyment.</p>
+
+    <h2>Why community makes everything easier</h2>
+
+    <p>When you're part of a cycling community — even a loose one of a handful of people you occasionally ride with — a few things change:</p>
+
+    <ul>
+      <li>You ride more, because you show up for other people even when you wouldn't show up for yourself.</li>
+      <li>You push slightly harder, because riding with others slightly increases your effort level naturally.</li>
+      <li>You learn faster, because experienced riders in the group share knowledge naturally.</li>
+      <li>You enjoy it more, because almost everything is better with company.</li>
+    </ul>
+
+    <p>Finding your people is one of the highest-value investments you can make in your cycling. It tends to pay dividends indefinitely.</p>
+  </div>
+  <div class="article-cta">
+    <h3>Ready to start riding?</h3>
+    <p>Etapa gives you a personalised plan built around your life — jargon-free and beginner-friendly.</p>
+    <a href="/" class="btn-primary">Get started with Etapa</a>
+  </div>
+  <a href="/blog" class="back-link">&larr; Back to all articles</a>
+</div>
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="../icon-56.png" alt="Etapa"></div>
+    <span>&copy; 2026 Etapa. All rights reserved.</span>
+  </div>
+  <div class="footer-links">
+    <a href="/#pricing">Pricing</a><a href="/#ai">AI Transparency</a><a href="/support">Support</a><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Use</a>
+  </div>
+</footer>
+<div style="text-align:center;padding:16px 48px 32px;border-top:1px solid #111;">
+  <p style="font-size:11px;color:#444;line-height:1.7;max-width:640px;margin:0 auto;font-weight:300;">All training plans, coaching conversations, session adjustments, and check-in messages are generated by artificial intelligence (Anthropic Claude). Etapa is not a medical service and does not provide medical advice. Always consult a healthcare professional before beginning any exercise programme. You train at your own risk.</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>You Are a Cyclist: Overcoming Imposter Syndrome on the Bike — Etapa</title>
+  <meta name="description" content="If you ride a bike, you are a cyclist. It doesn't matter how fast, how far, or what you're wearing. Here's how to own the identity and stop waiting for permission.">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', -apple-system, sans-serif; background: #000; color: #fff; }
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .nav-logo { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; text-decoration: none; color: #fff; }
+    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; overflow: hidden; }
+    .nav-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: #999; text-decoration: none; font-size: 15px; font-weight: 400; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #E8458B; }
+    .nav-cta { background: #E8458B !important; color: #000 !important; padding: 10px 24px; border-radius: 100px; font-weight: 600 !important; }
+    .article-wrap { max-width: 720px; margin: 0 auto; padding: 120px 24px 80px; }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
+    .breadcrumb a { color: #666; text-decoration: none; font-size: 13px; }
+    .breadcrumb span { color: #444; font-size: 13px; }
+    .article-category { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 16px; }
+    .article-wrap h1 { font-size: clamp(28px, 4vw, 42px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 16px; }
+    .article-subtitle { font-size: 18px; color: #888; line-height: 1.6; font-weight: 300; margin-bottom: 32px; }
+    .article-meta { display: flex; align-items: center; gap: 16px; margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid #1a1a1a; }
+    .article-meta span { font-size: 13px; color: #555; }
+    .article-meta .dot { color: #333; }
+    .article-body h2 { font-size: 24px; font-weight: 600; margin: 40px 0 16px; color: #fff; }
+    .article-body p { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 20px; }
+    .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 20px; }
+    .article-body li { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 8px; }
+    .callout { background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.2); border-radius: 16px; padding: 24px 28px; margin: 32px 0; }
+    .callout-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 8px; }
+    .callout p { color: #ddd; margin: 0; font-size: 15px; }
+    .pull-quote { border-left: 3px solid #E8458B; padding-left: 24px; margin: 32px 0; font-size: 20px; font-weight: 500; color: #fff; line-height: 1.5; font-style: italic; }
+    .article-cta { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 20px; padding: 40px; margin-top: 56px; text-align: center; }
+    .article-cta h3 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    .article-cta p { font-size: 15px; color: #888; margin-bottom: 24px; font-weight: 300; }
+    .btn-primary { display: inline-block; background: #E8458B; color: #000; padding: 14px 32px; border-radius: 100px; font-size: 15px; font-weight: 600; text-decoration: none; transition: background 0.2s; }
+    .btn-primary:hover { background: #F472B6; }
+    .back-link { display: inline-block; margin-top: 40px; color: #666; text-decoration: none; font-size: 14px; }
+    .back-link:hover { color: #999; }
+    footer { padding: 40px 48px; border-top: 1px solid #111; display: flex; align-items: center; justify-content: space-between; }
+    .footer-left { display: flex; align-items: center; gap: 12px; }
+    .footer-left span { font-size: 14px; color: #444; }
+    footer a { color: #444; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    footer a:hover { color: #888; }
+    .footer-links { display: flex; gap: 24px; }
+    @media (max-width: 640px) { nav { padding: 16px 24px; } .nav-links a:not(.active):not(.nav-cta) { display: none; } footer { flex-direction: column; gap: 16px; text-align: center; } .footer-links { flex-wrap: wrap; justify-content: center; } }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-logo"><div class="nav-logo-icon"><img src="../icon-72.png" alt="Etapa"></div>Etapa</a>
+  <div class="nav-links">
+    <a href="/">Home</a><a href="/#how-it-works">How It Works</a><a href="/#pricing">Pricing</a>
+    <a href="/blog" class="active">Blog</a><a href="/support">Support</a>
+    <a href="/" class="nav-cta">Get the App</a>
+  </div>
+</nav>
+<div class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a><span>&rsaquo;</span><a href="/blog">Blog</a><span>&rsaquo;</span><span>Cycling Imposter Syndrome</span>
+  </div>
+  <span class="article-category">Mind &amp; Confidence</span>
+  <h1>You Are a Cyclist: Overcoming Imposter Syndrome on the Bike</h1>
+  <p class="article-subtitle">Stop waiting for permission. You already qualify.</p>
+  <div class="article-meta">
+    <span>Etapa Team</span><span class="dot">&middot;</span><span>6 min read</span>
+  </div>
+  <div class="article-body">
+    <p>Imposter syndrome in cycling sounds like this: "I'm not really a cyclist." "I'm just someone who rides a bike sometimes." "I don't look like a cyclist." "Real cyclists ride further / faster / in better kit than I do."</p>
+
+    <p>This kind of thinking is extremely common, particularly among people who are newer to the sport, who cycle for enjoyment rather than performance, or who don't fit the cultural image of what a cyclist "looks like." It's also, in a very direct sense, wrong.</p>
+
+    <h2>The definition of a cyclist</h2>
+
+    <p>A cyclist is a person who rides a bicycle. That's it. There is no speed threshold. No distance requirement. No kit specification. No experience level. No body type. If you ride a bike — even occasionally, even slowly, even on a secondhand hybrid — you are a cyclist. This isn't a motivational platitude. It's a straightforward definition.</p>
+
+    <p>The cycling world has constructed an elaborate mythology around what a "proper" cyclist looks like and does. This mythology serves the people at its centre and excludes everyone else. It is not the truth about cycling.</p>
+
+    <div class="callout">
+      <div class="callout-label">Worth sitting with</div>
+      <p>You don't wait until you feel like a runner to call yourself a runner. You don't wait until you feel like a reader to call yourself a reader. Why do you need to feel like a cyclist before you call yourself a cyclist? The label belongs to the activity, not the performance level.</p>
+    </div>
+
+    <h2>Where imposter syndrome comes from</h2>
+
+    <p>Imposter syndrome thrives on comparison. The faster riders at your local cycle club. The curated Instagram cyclists with perfect bikes and scenic routes. The people who've been riding for years and know every component by name. Comparison to these people can make you feel like you don't quite belong.</p>
+
+    <p>The comparison is unfair and the conclusion is wrong. Those experienced cyclists were all beginners once. They all had days when they felt slow, lost, uncertain. The difference is that they kept going, and eventually "cyclist" stopped feeling like something to aspire to and started feeling like something they simply were.</p>
+
+    <h2>Identity forms through action</h2>
+
+    <p>You become a cyclist by cycling — not by reaching a certain level. Every ride builds the identity. Every time you choose the bike over something else, the identity solidifies slightly. Every ride you complete adds another data point of evidence that this is something you do.</p>
+
+    <p>This is how identity works psychologically. It's not a judgement from outside that you wait to receive. It's a pattern you build from the inside, one action at a time. You are already building it.</p>
+
+    <div class="pull-quote">"The most experienced cyclists in the world are cyclists because they kept going. You're already doing the thing that makes you one of them."</div>
+
+    <h2>The gatekeeping is their problem</h2>
+
+    <p>If someone has ever made you feel that you're not a "real" cyclist — through comments about your speed, your kit, your bike, or your fitness — that's information about them, not about you. Gatekeeping is a reflection of insecurity and a desire to protect status by limiting who can claim it. It has nothing to do with who actually belongs in cycling.</p>
+
+    <p>Your response to gatekeeping doesn't have to be anger or self-doubt. It can simply be: that's not something I need to accept. Your identity as a cyclist doesn't require their approval.</p>
+
+    <h2>Practical steps to owning the identity</h2>
+
+    <ul>
+      <li>Use the word. When someone asks what you do at the weekend, say "I cycle." Not "I sometimes go for rides." Not "I'm trying to get into cycling." You cycle.</li>
+      <li>Find community with people who reinforce it. Social groups, beginner-friendly clubs, and online communities full of people at similar stages will reflect your identity back to you in a way that feels accurate.</li>
+      <li>Stop hedging. "I'm just a beginner" is not a full sentence — it implies an apology for your level. Being a beginner is a stage, not a qualification for your validity as a cyclist.</li>
+    </ul>
+
+    <h2>You are already a cyclist</h2>
+
+    <p>Not "almost." Not "one day." Right now, as someone who rides a bike, you are a cyclist. The permission you've been waiting for — this is it. You don't need to earn it. It's yours.</p>
+  </div>
+  <div class="article-cta">
+    <h3>Ready to start riding?</h3>
+    <p>Etapa gives you a personalised plan built around your life — jargon-free and beginner-friendly.</p>
+    <a href="/" class="btn-primary">Get started with Etapa</a>
+  </div>
+  <a href="/blog" class="back-link">&larr; Back to all articles</a>
+</div>
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="../icon-56.png" alt="Etapa"></div>
+    <span>&copy; 2026 Etapa. All rights reserved.</span>
+  </div>
+  <div class="footer-links">
+    <a href="/#pricing">Pricing</a><a href="/#ai">AI Transparency</a><a href="/support">Support</a><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Use</a>
+  </div>
+</footer>
+<div style="text-align:center;padding:16px 48px 32px;border-top:1px solid #111;">
+  <p style="font-size:11px;color:#444;line-height:1.7;max-width:640px;margin:0 auto;font-weight:300;">All training plans, coaching conversations, session adjustments, and check-in messages are generated by artificial intelligence (Anthropic Claude). Etapa is not a medical service and does not provide medical advice. Always consult a healthcare professional before beginning any exercise programme. You train at your own risk.</p>
+</div>
+</body>
+</html>

@@ -108,10 +108,16 @@ export async function generatePlanWithLLM(goal, config, onProgress) {
       // Fire off timed progress messages so the bar keeps moving
       // while the AI request is in-flight.
       let cancelled = false;
-      const progressSteps = [
+      const isBeginner = goal?.goalType === 'beginner';
+      const progressSteps = isBeginner ? [
+        { msg: 'Mapping out your first rides...', delay: 3000 },
+        { msg: 'Making it feel achievable...', delay: 5000 },
+        { msg: 'Adding encouragement along the way...', delay: 4000 },
+        { msg: 'Scheduling your sessions...', delay: 4000 },
+      ] : [
         { msg: 'Building your training framework...', delay: 3000 },
-        { msg: 'Calculating progressive overload...', delay: 5000 },
-        { msg: 'Adding periodisation and taper...', delay: 4000 },
+        { msg: 'Structuring your weekly load...', delay: 5000 },
+        { msg: 'Planning your build and taper...', delay: 4000 },
         { msg: 'Scheduling your sessions...', delay: 4000 },
       ];
       const progressTimers = [];
@@ -159,11 +165,12 @@ export async function generatePlanWithLLM(goal, config, onProgress) {
   }
 
   // Local generation with progress messages
-  onProgress?.('Building your training framework...');
+  const isBeginnerFallback = goal?.goalType === 'beginner';
+  onProgress?.(isBeginnerFallback ? 'Mapping out your first rides...' : 'Building your training framework...');
   await delay(800);
-  onProgress?.('Calculating progressive overload...');
+  onProgress?.(isBeginnerFallback ? 'Making it feel achievable...' : 'Structuring your weekly load...');
   await delay(600);
-  onProgress?.('Adding periodisation and taper...');
+  onProgress?.(isBeginnerFallback ? 'Adding encouragement along the way...' : 'Planning your build and taper...');
   await delay(500);
   onProgress?.('Scheduling your sessions...');
   await delay(400);

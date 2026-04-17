@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Etapa — AI-Powered Cycling Coach</title>
-  <meta name="description" content="Set a goal, pick a coach, get a personalised cycling training plan. Powered by AI.">
+  <title>Etapa — AI Cycling Coach for Beginners</title>
+  <meta name="description" content="Etapa is an AI cycling coach for beginners and riders of all levels. Get a personalised training plan, no experience needed. Available on iOS.">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
   <link rel="apple-touch-icon" href="icon-72.png">
@@ -593,6 +593,9 @@
       .pricing-card.featured { order: -1; }
       .pricing-card.starter-highlight { order: -2; }
 
+      .testimonials-section { padding: 80px 24px !important; }
+      .testimonials-grid { grid-template-columns: 1fr !important; max-width: 400px; }
+
       .cta { padding: 80px 24px; }
 
       footer {
@@ -622,6 +625,7 @@
       <a href="#features">Features</a>
       <a href="#coaches">Coaches</a>
       <a href="#pricing">Pricing</a>
+      <a href="blog/">Blog</a>
       <a href="support.html">Support</a>
       <a href="#" class="nav-cta">Coming Soon</a>
     </div>
@@ -630,14 +634,19 @@
   <!-- Hero -->
   <section class="hero">
     <div class="hero-content">
-      <div class="hero-badge">
-        <div class="hero-badge-dot"></div>
-        AI-Powered Training
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:32px;">
+        <div class="hero-badge" style="margin-bottom:0;">
+          <div class="hero-badge-dot"></div>
+          AI-Powered Training
+        </div>
+        <div class="hero-badge" style="margin-bottom:0;">
+          <div class="hero-badge-dot"></div>
+          Built for Every Rider
+        </div>
       </div>
-      <h1>Your Personal<br><span>Cycling Coach</span></h1>
+      <h1>Your First (or Fastest)<br><span>Cycling Coach</span></h1>
       <p class="hero-sub">
-        Set a goal, pick a coach, and get a personalised training plan
-        that adapts to your life. Powered by AI, built for real riders.
+        Never cycled before? Training for your first event? Or just want to get fitter on two wheels? Etapa builds a personalised plan around your life — no jargon, no experience required.
       </p>
       <div class="hero-buttons">
         <a href="#" class="btn-primary" onclick="event.preventDefault()">
@@ -687,7 +696,7 @@
       <div class="flow-step-text">
         <div class="flow-step-number">01</div>
         <h3>Set Your Goal</h3>
-        <p>Enter your event name, distance, elevation, and race date. Whether it's a local gran fondo or L'Etape du Tour, we'll tailor the plan to get you there.</p>
+        <p>Whether it's your first 10km ride, a charity sportive, or just "I want to get fitter" — we'll build a plan to get you there. You don't need a race to have a goal.</p>
       </div>
       <div class="flow-step-phones">
         <div class="phone">
@@ -779,34 +788,34 @@
   <section class="features" id="features">
     <div class="features-header">
       <div class="section-label">Features</div>
-      <h2>Everything You Need to<br>Reach the Start Line Ready</h2>
-      <p class="section-sub">From plan generation to race-day prep, Etapa covers the full training journey.</p>
+      <h2>Everything You Need to<br>Start — and Keep — Riding</h2>
+      <p class="section-sub">From your very first ride to your first big event, Etapa covers the full journey.</p>
     </div>
     <div class="features-grid">
       <div class="feature-card">
         <div class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></div>
         <h3>Goal-Based Plans</h3>
-        <p>Tell us your event, distance, and timeline. We build a structured plan around your real life and fitness level.</p>
+        <p>Tell us what you want to achieve and when. We build a plan around your real life and current fitness — wherever you're starting from.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
         <h3>AI Coaching Chat</h3>
-        <p>Ask your coach to adjust sessions, explain the science, or rework your week. It knows your full plan.</p>
+        <p>Ask your coach anything — swap sessions, ask why a ride is hard, or get a question answered at 10pm. It knows your full plan and never judges.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
         <h3>Flexible Scheduling</h3>
-        <p>Plans fit the days you can actually ride. Swap sessions, adjust intensity, or let your coach rebalance.</p>
+        <p>Plans fit the days you can actually ride. Life gets in the way — your coach adapts with you.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
-        <h3>Structured Workouts</h3>
-        <p>Every session has a purpose — endurance rides to VO2 intervals — with clear targets and ride tips.</p>
+        <h3>Guided Sessions</h3>
+        <p>Every ride has a clear purpose and instructions written in plain English. No experience needed — just follow along.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
-        <h3>Periodised Training</h3>
-        <p>Base, build, peak, and taper phases with recovery weeks built in. Proper training science, automated.</p>
+        <h3>Smart Progression</h3>
+        <p>Your plan builds week by week so you get stronger without burning out. Rest weeks are built in — because recovery is training too.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div>
@@ -860,14 +869,25 @@
         <h2>Pick a Coach That<br>Fits <span style="color:#E8458B">Your Style</span></h2>
         <p class="section-sub">
           Six AI coaches, each with a distinct personality.
-          Whether you want tough love or gentle encouragement,
+          Whether you want warm encouragement or straight-talking guidance,
           there's a coach for you — and you can switch any time.
         </p>
+        <p style="font-size:14px;color:#666;font-weight:300;margin-bottom:20px;">New to cycling? Clara or Sophie are a great place to start.</p>
         <div class="coach-list">
           <div class="coach-chip">
             <div class="coach-avatar" style="background:#2563A0;">CM</div>
             <span class="coach-chip-name">Clara Moreno</span>
-            <span class="coach-chip-style">— Warm & encouraging</span>
+            <span class="coach-chip-style">— Warm, patient & encouraging</span>
+          </div>
+          <div class="coach-chip">
+            <div class="coach-avatar" style="background:#2563A0;">SL</div>
+            <span class="coach-chip-name">Sophie Laurent</span>
+            <span class="coach-chip-style">— Science-backed, no fluff</span>
+          </div>
+          <div class="coach-chip">
+            <div class="coach-avatar" style="background:#2563A0;">EV</div>
+            <span class="coach-chip-name">Elena Vasquez</span>
+            <span class="coach-chip-style">— Race-day strategist</span>
           </div>
           <div class="coach-chip">
             <div class="coach-avatar" style="background:#2563A0;">LE</div>
@@ -875,19 +895,9 @@
             <span class="coach-chip-style">— No-nonsense & direct</span>
           </div>
           <div class="coach-chip">
-            <div class="coach-avatar" style="background:#2563A0;">SL</div>
-            <span class="coach-chip-name">Sophie Laurent</span>
-            <span class="coach-chip-style">— Science-backed precision</span>
-          </div>
-          <div class="coach-chip">
             <div class="coach-avatar" style="background:#2563A0;">MR</div>
             <span class="coach-chip-name">Matteo Rossi</span>
             <span class="coach-chip-style">— Chill but focused</span>
-          </div>
-          <div class="coach-chip">
-            <div class="coach-avatar" style="background:#2563A0;">EV</div>
-            <span class="coach-chip-name">Elena Vasquez</span>
-            <span class="coach-chip-style">— Race-day strategist</span>
           </div>
           <div class="coach-chip">
             <div class="coach-avatar" style="background:#2563A0;">TB</div>
@@ -917,34 +927,34 @@
   <section class="beginner" id="beginner">
     <div class="beginner-wrap">
       <div class="beginner-left">
-        <div class="beginner-badge">BEGINNER FRIENDLY</div>
-        <h2>Get into<br><span style="color:#E8458B">Cycling</span></h2>
+        <div class="beginner-badge">FOR EVERY RIDER</div>
+        <h2>Start Riding.<br><span style="color:#E8458B">We'll Handle the Rest.</span></h2>
         <p class="beginner-lead">
-          Never trained before? No problem. Our 12-week beginner program is designed to get you riding regularly and loving it. No experience needed — just a bike and some enthusiasm.
+          You don't need to be fit to start — that's what the plan is for. Etapa's beginner programme is built for anyone new to cycling, getting back after a break, or just wanting a simple, stress-free way to build a habit. No jargon. No pressure. No intimidating stats.
         </p>
 
         <div class="beginner-goals">
           <div class="beginner-goal">
-            <span class="beginner-goal-km">25 km</span>
-            <span class="beginner-goal-label">Build a habit</span>
+            <span class="beginner-goal-km" style="font-size:15px;line-height:1.3;">Ride with<br>confidence</span>
+            <span class="beginner-goal-label">First rides</span>
           </div>
           <div class="beginner-goal">
-            <span class="beginner-goal-km">50 km</span>
+            <span class="beginner-goal-km" style="font-size:15px;line-height:1.3;">Keep up on<br>group rides</span>
             <span class="beginner-goal-label">Build endurance</span>
           </div>
           <div class="beginner-goal">
-            <span class="beginner-goal-km">100 km</span>
-            <span class="beginner-goal-label">First century</span>
+            <span class="beginner-goal-km" style="font-size:15px;line-height:1.3;">Complete your<br>first sportive</span>
+            <span class="beginner-goal-label">First big goal</span>
           </div>
         </div>
 
         <ul class="beginner-features">
           <li>A gentle, progressive 12-week plan tailored to your schedule</li>
-          <li>Clear ride instructions with no jargon — perfect for beginners</li>
+          <li>Plain-English ride instructions — no cycling jargon, ever</li>
           <li>Built-in tips on nutrition, hydration, gear, and bike setup</li>
-          <li>AI coach to answer any question — from saddle height to fueling</li>
+          <li>AI coach available any time — ask anything, no question is too basic</li>
           <li>Works with any bike: road, e-bike, mountain, or gravel</li>
-          <li>Progress toward your chosen goal distance, at your own pace</li>
+          <li>Progress at your own pace, toward a goal that means something to you</li>
         </ul>
       </div>
 
@@ -1265,12 +1275,52 @@
     })();
   </script>
 
+  <!-- Testimonials -->
+  <section class="testimonials-section" style="padding:120px 48px;border-top:1px solid #111;">
+    <div style="text-align:center;margin-bottom:60px;">
+      <div class="section-label">Real Riders</div>
+      <h2>What People Are Saying</h2>
+    </div>
+    <div class="testimonials-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:1100px;margin:0 auto;">
+      <div style="background:#0a0a0a;border:1px solid #161616;border-radius:20px;padding:32px;">
+        <p style="font-size:15px;color:#bbb;line-height:1.7;font-weight:300;margin-bottom:24px;">"I'd never done a training plan before. Etapa made it feel completely manageable — I just followed along and suddenly I was riding further than I ever had."</p>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:36px;height:36px;border-radius:50%;background:rgba(232,69,139,0.15);border:1px solid rgba(232,69,139,0.25);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#E8458B;">S</div>
+          <div>
+            <div style="font-size:14px;font-weight:600;">Sarah, 34</div>
+            <div style="font-size:12px;color:#666;">Completed her first sportive</div>
+          </div>
+        </div>
+      </div>
+      <div style="background:#0a0a0a;border:1px solid #161616;border-radius:20px;padding:32px;">
+        <p style="font-size:15px;color:#bbb;line-height:1.7;font-weight:300;margin-bottom:24px;">"Finally an app that doesn't assume you know what FTP means. The plain-English instructions are exactly what I needed to stop feeling like an outsider."</p>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:36px;height:36px;border-radius:50%;background:rgba(232,69,139,0.15);border:1px solid rgba(232,69,139,0.25);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#E8458B;">P</div>
+          <div>
+            <div style="font-size:14px;font-weight:600;">Priya, 29</div>
+            <div style="font-size:12px;color:#666;">Total beginner, 3 months in</div>
+          </div>
+        </div>
+      </div>
+      <div style="background:#0a0a0a;border:1px solid #161616;border-radius:20px;padding:32px;">
+        <p style="font-size:15px;color:#bbb;line-height:1.7;font-weight:300;margin-bottom:24px;">"I asked my coach a 'stupid' question at 11pm about saddle height. It answered immediately, properly, without making me feel silly. That was when I was hooked."</p>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:36px;height:36px;border-radius:50%;background:rgba(232,69,139,0.15);border:1px solid rgba(232,69,139,0.25);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#E8458B;">J</div>
+          <div>
+            <div style="font-size:14px;font-weight:600;">James, 41</div>
+            <div style="font-size:12px;color:#666;">Getting back into cycling</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- CTA -->
   <section class="cta">
     <div class="cta-glow"></div>
     <div class="section-label">Get Started</div>
-    <h2>Ready to Ride?</h2>
-    <p class="section-sub">Etapa is launching soon on the App Store. AI-powered cycling coaching for everyone — transparent, science-backed, and built to help you ride further.</p>
+    <h2>Whatever Gets You on the Bike</h2>
+    <p class="section-sub">Whether you're a complete beginner or training for your first big event, Etapa gives you a personalised coach in your pocket — science-backed, jargon-free, and built around your life.</p>
     <a href="#" class="btn-primary" onclick="event.preventDefault()">
       <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
       App Store — Coming Soon
