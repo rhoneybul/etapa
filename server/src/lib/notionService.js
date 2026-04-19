@@ -1,4 +1,3 @@
-const fetch = require('node-fetch');
 
 const NOTION_API_KEY = process.env.NOTION_API_KEY;
 const NOTION_DATABASE_ID = process.env.NOTION_DATABASE_ID;
