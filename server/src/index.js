@@ -31,6 +31,7 @@ const { revenueCatWebhookHandler } = require('./routes/revenueCatWebhook');
 const adminRouter         = require('./routes/admin');
 const stravaRouter        = require('./routes/strava');
 const couponsRouter       = require('./routes/coupons');
+const todosRouter         = require('./routes/todos');
 
 const { authMiddleware } = require('./middleware/auth');
 
@@ -181,6 +182,7 @@ app.use('/api/coach-checkin', coachCheckinRouter); // auth via CRON_SECRET or AD
 app.use('/api/admin', adminRouter); // admin router has its own auth (API key or Supabase JWT)
 app.use('/api/coupons', authMiddleware, couponsRouter);
 app.use('/api/strava', stravaRouter); // no auth — Strava redirects browser here directly
+app.use('/api/todos', todosRouter); // no auth — Telegram webhook + todo commands
 
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {
