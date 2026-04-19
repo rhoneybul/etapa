@@ -31,6 +31,7 @@ const { revenueCatWebhookHandler } = require('./routes/revenueCatWebhook');
 const adminRouter         = require('./routes/admin');
 const stravaRouter        = require('./routes/strava');
 const couponsRouter       = require('./routes/coupons');
+const taskBuilderRouter    = require('./routes/taskBuilder');
 
 const { authMiddleware } = require('./middleware/auth');
 
@@ -181,6 +182,7 @@ app.use('/api/coach-checkin', coachCheckinRouter); // auth via CRON_SECRET or AD
 app.use('/api/admin', adminRouter); // admin router has its own auth (API key or Supabase JWT)
 app.use('/api/coupons', authMiddleware, couponsRouter);
 app.use('/api/strava', stravaRouter); // no auth — Strava redirects browser here directly
+app.use('/api/task-builder', taskBuilderRouter); // Telegram webhook + task building
 
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {
@@ -188,6 +190,16 @@ app.use((err, _req, res, _next) => {
   if (process.env.SENTRY_DSN) Sentry.captureException(err);
   res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
 });
+
+// Start Task Builder scheduler if enabled
+if (process.env.TASK_BUILDER_ENABLED === 'true') {
+  try {
+    const { startScheduler } = require('./lib/taskBuilderScheduler');
+    startScheduler();
+  } catch (error) {
+    console.warn('[Task Builder] Scheduler startup error:', error.message);
+  }
+}
 
 // Export the app for testing (Supertest) — only listen when run directly
 module.exports = { app };
