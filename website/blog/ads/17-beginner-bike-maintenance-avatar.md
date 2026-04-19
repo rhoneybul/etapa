@@ -23,6 +23,24 @@ All in `website/blog/ads/_library/`. No oily-chain close-ups — keep it clean a
 
 ---
 
+## 2b. Asset-picker fields (shown when uploading each Media image)
+
+### Form field: "What are you going to advertise?"
+
+> Etapa — an AI cycling coach for beginners. This ad drives to our guide on the three things that actually keep a bike working.
+
+### Form field: "Add a few more details"
+
+> Etapa is a cycling training app for people getting into cycling. Plans flex with real life.
+>
+> The blog post behind this ad is a permission-giving maintenance explainer: three things (tyre pressure weekly, chain clean and lube every few hundred km, proper service once a year). Everything else is YouTube rabbit-hole noise.
+>
+> Tone: casual, permission-giving, "don't overthink it."
+>
+> Made with AI. Etapa is upfront about it — plans and coach chats are AI, reviewed by real coaches.
+
+---
+
 ## 3. Script (aim 480–580 chars; hard cap 700)
 
 > Hi, I'm Tom — Etapa's AI cycling coach. Bike maintenance sounds intimidating but it isn't. Three things keep your bike working. One: check your tyre pressure once a week — front and rear firm when you squeeze them. Two: clean and lube the chain every couple of hundred kilometres. Three: book a proper service once a year at your local shop. That's it. Everything else is YouTube rabbit-hole noise. Full guide is on Etapa's blog.

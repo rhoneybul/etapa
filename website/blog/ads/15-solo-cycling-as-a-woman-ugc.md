@@ -61,11 +61,11 @@ Pick **Service showcase** on the *Select a preset* screen. The script delivers p
 
 *Short — 8-second single generation (default, ~250 credits):*
 
-> I'm an AI, but this is real. Solo cycling as a woman is different — plan your route, share your ETA, build on quiet roads. On our blog.
+> I'm an AI, but this is real. Sketch out your route. Share your ETA. Build on quiet roads first — and ride as much or as little as feels right today. Etapa's blog.
 
 *Extended — 25–30s via ~3 stitched generations (~750 credits):*
 
-> I'm an AI — but I was trained by cycling coaches who ride solo and take it seriously. If you're a woman riding alone: plan the route before you go. Tell someone your rough ETA. Share your live location. Build confidence on quiet roads first. You shouldn't have to ride scared — but you don't have to ride blind either. Full guide's on Etapa's blog.
+> I'm an AI — but I was trained by cycling coaches who ride solo and take it seriously. If you're a woman riding alone: know your route before you go. Tell someone your rough ETA. Share your live location. Build confidence on the quiet roads first. Ride as much or as little as feels right that day — there's no minimum. You shouldn't have to ride scared, and you don't have to ride blind either. Full guide's on Etapa's blog.
 
 Character limit is 1000. Kling 3.0 Pro produces ~8s per generation; longer videos require stitching multiple generations outside the tool.
 

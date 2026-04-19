@@ -1,13 +1,14 @@
-# UGC-style Video — The Gatekeeping Problem in Cycling
+# UGC-style Video — Cycling Doesn't Have to Feel Intimidating
 
 **Slug:** cycling-gatekeeping-toxic-culture
 **Format:** UGC-style Reel — 9:16, ≤ 30s (primary format)
+**Note:** the blog post keeps its "gatekeeping" framing for the long read. The ad intentionally lands on the *softer* invitation ("cycling doesn't have to feel intimidating") to avoid exclusive-sounding copy in-feed, then the blog delivers the fuller position for those who click through.
 
 ---
 
 ## 0. Preset
 
-Pick **General** on the *Select a preset* screen. This is a manifesto / positioning post, not a service explainer — Service showcase framing will make it read as a sales pitch, which undercuts the point. General lets the AI pick an environment that matches the editorial tone.
+Pick **Service showcase** on the *Select a preset* screen. The updated framing — "cycling doesn't have to feel intimidating, and Etapa is a way in" — is a soft service explainer, not a manifesto. Service showcase fits cleanly. Keep the delivery warm, not salesy.
 
 ---
 
@@ -16,7 +17,7 @@ Pick **General** on the *Select a preset* screen. This is a manifesto / position
 **Image — recommended:**
 - `brand-squiggle-01.png`
 - Path: `website/blog/ads/_library/brand-squiggle-01.png`
-- Why: punchy, manifesto-feeling opening frame.
+- Why: warm, calm opening frame — matches the "come in, it's fine" tone.
 
 **Reference — recommended:**
 - `brand-headline-poster.png`
@@ -24,8 +25,8 @@ Pick **General** on the *Select a preset* screen. This is a manifesto / position
 - Why: style anchor.
 
 **Avatar — recommended:**
-- **Dark-haired woman in activewear** (Sophie) — sharp, direct delivery suits the manifesto tone.
-- Backup: man with beard in grey t-shirt (Lars) for an equally direct but differently-gendered delivery — good for A/B.
+- **Chelsea (Female, 35, "Recommended" in the tool)** — warm, approachable, the right register for a reassurance piece.
+- Backup: dark-haired woman in activewear (Sophie) with her emotion set to Warm rather than Direct — use if Chelsea is overused in the week.
 
 ---
 
@@ -33,23 +34,23 @@ Pick **General** on the *Select a preset* screen. This is a manifesto / position
 
 ### Form field: "What are you going to advertise?"
 
-> Etapa — an AI cycling coach built for the people cycling culture gatekeeps out. This ad drives to our manifesto post on gatekeeping.
+> Etapa — an AI cycling coach for people who find cycling a bit intimidating to get into. This ad drives to our piece on why it doesn't have to feel that way.
 
 ### Form field: "Add a few more details"
 
-> Etapa exists because cycling culture has a gatekeeping problem. Every other cycling app and forum assumes you arrive already knowing FTP, cadence, power zones and the dress code. We don't.
+> Etapa is a cycling training app for people getting into cycling. Cycling has a reputation for feeling intimidating from the outside — the kit, the jargon, the people who look like they've always done this. We know it can feel that way. It doesn't have to.
 >
-> The blog post behind this ad is our manifesto: we name the gatekeeping behaviours (the Rules, wheel-sucking snobbery, the "when did you start riding?" pecking order, lycra-vs-gravel tribalism) and we say out loud that Etapa is built for people those behaviours are designed to exclude.
+> The blog post behind this ad makes the case that cycling doesn't need a special bike, a specific pace, or a certain look to count. Five minutes on a bike is a ride. An hour is a ride. Whatever works for today, works.
 >
-> Tone: direct, confident, slightly pissed off. This is our most positioning-heavy post — the "here's what we stand for" moment. Short sentences. No hedging.
+> Tone: warm, direct, inviting. Not combative. We're not saying "the industry is bad" — we're saying "it doesn't have to feel the way it looks from the outside, and we'll help you start."
 >
-> Made with AI. Etapa is open about being AI-built, reviewed by real coaches.
+> Made with AI. Etapa is upfront about it — plans and coach chats are AI, reviewed by real coaches.
 
 ---
 
 ## 1c. Prompt (optional) — for the start image
 
-> A woman in her early 30s in a clean, minimal indoor space — darker neutral background, low-key editorial lighting, slightly moody. Wearing a plain black or charcoal top, no logos, no cycling kit. Facing the camera directly, steady eye contact, confident and slightly serious — not smiling. Could be leaning slightly forward or arms resting, not animated. The register is "saying something the industry won't", not "friendly influencer". Clean, deliberate, editorial. No lycra, no bikes, no studio backdrop clichés.
+> A woman in her early-to-mid 30s in a warm, natural home setting — soft window light, neutral walls, nothing stylised. Wearing a casual jumper or long-sleeve top, nothing cycling-branded. Seated comfortably, facing the camera, calm and warm expression — the register is "a friend sharing something honest," not a manifesto. No lycra, no studio mood-lighting, no confrontational posture.
 
 ---
 
@@ -61,11 +62,11 @@ Pick **General** on the *Select a preset* screen. This is a manifesto / position
 
 *Short — 8-second single generation (default, ~250 credits):*
 
-> I'm an AI, and I'll say what the cycling industry won't. Cycling has a gatekeeping problem. Etapa is built for the people it's designed to keep out.
+> I'm an AI, but this is real. Cycling can look intimidating from the outside. It doesn't have to be. Five minutes on a bike counts. Etapa, link in bio.
 
 *Extended — 25–30s via ~3 stitched generations (~750 credits):*
 
-> I'm an AI — and I'm here to say something the cycling industry won't. Cycling has a gatekeeping problem. The Rules. The wheel-sucking snobbery. The "when did you start riding?" pecking order. The FTP-obsessed apps. Etapa is built for the people those behaviours are designed to keep out. Full piece is on our blog.
+> I'm an AI — but I want to tell you something real. Cycling can feel intimidating from the outside. The kit. The jargon. The people who look like they've always done this. You don't need any of it to start. Five minutes on a bike is a ride. An hour is a ride. Whatever works for today. Etapa's here for that moment — just before you start. Full piece on our blog.
 
 Character limit is 1000. Kling 3.0 Pro produces ~8s per generation; longer videos require stitching multiple generations outside the tool.
 
@@ -74,7 +75,7 @@ Character limit is 1000. Kling 3.0 Pro produces ~8s per generation; longer video
 **Audio — do NOT leave on Auto:**
 
 - Voice: **Natural**
-- Emotion: **Direct**
+- Emotion: **Warm**
 - Accent: **British**
 
 **Prompt (optional) toggle:** leave OFF. Section 1c already set the start-image scene.
@@ -102,13 +103,11 @@ Character limit is 1000. Kling 3.0 Pro produces ~8s per generation; longer video
 
 ## 4. Instagram caption
 
-> Cycling has a gatekeeping problem.
+> Cycling can look intimidating from the outside.
 >
-> The Rules. The wheel-sucking. The "when did you start riding?" pecking order. The FTP-obsessed apps.
+> It doesn't have to be. You don't need the kit, the jargon, or the years of experience to start. Five minutes on a bike is a ride. An hour is a ride. Whatever works for today.
 >
-> Etapa is built for the people those behaviours are designed to keep out.
->
-> Full piece on the blog — link in bio.
+> Etapa's built for the moment just before you get going. Full piece on the blog — link in bio.
 
 ---
 

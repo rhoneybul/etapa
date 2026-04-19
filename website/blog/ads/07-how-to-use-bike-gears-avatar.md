@@ -23,6 +23,24 @@ All in `website/blog/ads/_library/`. No photos of gear cassettes or hands on lev
 
 ---
 
+## 2b. Asset-picker fields (shown when uploading each Media image)
+
+### Form field: "What are you going to advertise?"
+
+> Etapa — an AI cycling coach for beginners. This ad drives to our guide on how bike gears actually work.
+
+### Form field: "Add a few more details"
+
+> Etapa is a cycling training app for people getting into cycling — not racers. Personalised plans in plain English, no FTP jargon.
+>
+> The blog post behind this ad is an explainer on the thing every new rider quietly pretends they understand: gears. Left lever = big changes (flat vs hills). Right lever = fine-tune. Shift before the hill, not in it.
+>
+> Tone: warm, matter-of-fact, "mate explaining it over coffee."
+>
+> Made with AI. Etapa is upfront about it — plans and coach chats are AI, reviewed by real coaches.
+
+---
+
 ## 3. Script (aim 480–580 chars; hard cap 700)
 
 > Hi, I'm Tom — Etapa's AI cycling coach. Gears are the single most confusing thing about a new bike, and nobody explains them properly. Here's the whole thing. Left lever: the big change — flat road versus hills. Right lever: fine-tune. Feel your legs spinning too fast — change up. Grinding and slow — change down. Anticipate the hill, shift before it, not in it. That's it. You've just done three years of quietly pretending you knew. Full guide on Etapa's blog.

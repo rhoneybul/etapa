@@ -24,6 +24,24 @@ All in `website/blog/ads/_library/`.
 
 ---
 
+## 2b. Asset-picker fields (shown when uploading each Media image)
+
+### Form field: "What are you going to advertise?"
+
+> Etapa — an AI cycling coach. Introduction to Tom, the final coach in our six-personality line-up. Casual riding buddy.
+
+### Form field: "Add a few more details"
+
+> Etapa is a cycling training app with six AI coach personalities. Tom is the riding-buddy one — light on structure, heavy on "nice one, see you Sunday." Good for people coming back to cycling after a long time off.
+>
+> This post closes the six-post coach spotlight series. Tom is last because he's for people who don't want coaching to feel like coaching.
+>
+> Tone: casual, warm, mate-in-the-kitchen register.
+>
+> Made with AI. Etapa is open about it — the coach IS the AI.
+
+---
+
 ## 3. Script (aim 420–520 chars)
 
 > Hi, I'm Tom — one of Etapa's six AI cycling coaches. I'm the riding buddy. If the other coaches sound a bit too much like work, I'm the one who just wants you out riding. Light on structure. Heavy on "nice one, see you Sunday." I'm a good fit if you've been off the bike a while and want coming back to feel like going for a pint, not a job interview. Download Etapa, do the two-minute chat, pick the coach you want. Train with purpose.

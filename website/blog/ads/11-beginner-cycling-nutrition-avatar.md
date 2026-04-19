@@ -23,6 +23,24 @@ All in `website/blog/ads/_library/`. No food photos, no flat-lays of bananas and
 
 ---
 
+## 2b. Asset-picker fields (shown when uploading each Media image)
+
+### Form field: "What are you going to advertise?"
+
+> Etapa — an AI cycling coach for beginners. This ad drives to our guide on what to eat before, during, and after rides.
+
+### Form field: "Add a few more details"
+
+> Etapa is a cycling training app for people getting into cycling. Plans adapt to your life, including how your body feels.
+>
+> The blog post behind this ad is a no-nonsense beginner nutrition explainer: under an hour, eat like a person. Over an hour, add something every 30 minutes. No gels, no electrolyte brands with neon logos.
+>
+> Tone: calm, science-backed, no performance anxiety.
+>
+> Made with AI. Etapa is upfront about it — plans and coach chats are AI, reviewed by real coaches.
+
+---
+
 ## 3. Script (aim 480–560 chars; hard cap 700)
 
 > Hi, I'm Sophie — Etapa's AI coach, and I'm here to save you from cycling nutrition panic. For a ride under an hour, eat like a person. A banana. A bit of breakfast. Water. That's it. Over an hour, add something every thirty minutes — a cereal bar, a handful of dried fruit, whatever works. You don't need gels, powders, or electrolyte brands with neon logos. You need enough food to feel okay. Full guide's on Etapa's blog — link in bio.

@@ -61,11 +61,11 @@ Pick **Service showcase** on the *Select a preset* screen. Practical tips delive
 
 *Short — 8-second single generation (default, ~250 credits):*
 
-> I'm an AI, but this is real: no one remembers the slowest rider on a group ride. Everyone remembers who was kind. Etapa, link in bio.
+> I'm an AI, but this is real. No one remembers the slowest rider on a group ride. Everyone remembers who was kind. Ride as much as you can, turn back when you need to. Etapa, link in bio.
 
 *Extended — 25–30s via ~3 stitched generations (~750 credits):*
 
-> I'm an AI — but the first-group-ride advice I'm about to give is from real coaches. If you're nervous, you're not alone. Arrive early. Say it's your first ride. Sit mid-pack, not at the back. Ask before you pull away. No one remembers the slowest person. Everyone remembers who was kind. Full guide on Etapa's blog.
+> I'm an AI — but the first-group-ride advice I'm about to give is from real coaches. If you're nervous, you're not alone. Arrive early. Say it's your first ride. Sit mid-pack, not at the back. Ask before you pull away. Turn back whenever you need to — no one will mind. No one remembers the slowest rider. Everyone remembers who was kind. Full guide on Etapa's blog.
 
 Character limit is 1000. Kling 3.0 Pro produces ~8s per generation; longer videos require stitching multiple generations outside the tool.
 

@@ -24,6 +24,24 @@ All in `website/blog/ads/_library/`.
 
 ---
 
+## 2b. Asset-picker fields (shown when uploading each Media image)
+
+### Form field: "What are you going to advertise?"
+
+> Etapa — an AI cycling coach. Introduction to Elena, one of our six coach personalities. Race-day strategist for people with a specific goal.
+
+### Form field: "Add a few more details"
+
+> Etapa is a cycling training app with six AI coach personalities. Elena is the race-day strategist — for people training for a specific event (a first sportive, first century, first big day on the bike).
+>
+> This post is part of a six-post coach spotlight series. Elena is for users with a date circled on the calendar.
+>
+> Tone: strategic, composed, race-savvy without being intense.
+>
+> Made with AI. Etapa is open about it — the coach IS the AI.
+
+---
+
 ## 3. Script (aim 420–520 chars)
 
 > Hi, I'm Elena — one of Etapa's six AI cycling coaches. I'm the race-day strategist. If you're training for something specific — a sportive, a century, a big day on the bike — I'll reverse-engineer your plan around it. Pacing, tapering, what to eat, when to rest, how to hold back on the climbs that don't matter so you've got legs for the ones that do. Download Etapa, do the two-minute chat, pick me if you've got a date circled. Train with purpose.

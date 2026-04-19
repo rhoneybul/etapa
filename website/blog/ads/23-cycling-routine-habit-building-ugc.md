@@ -61,11 +61,11 @@ Pick **Service showcase** on the *Select a preset* screen. Habit advice that ult
 
 *Short — 8-second single generation (default, ~250 credits):*
 
-> I'm an AI, but here's the thing: motivation doesn't get you riding. Two fixed windows a week. Kit out the night before. Etapa's blog.
+> I'm an AI, but here's the thing. Motivation doesn't get you riding. Rhythm does — and rhythm can be ten minutes on a Tuesday. Whatever you'll actually do. Etapa's blog.
 
 *Extended — 25–30s via ~3 stitched generations (~750 credits):*
 
-> I'm an AI — but I'll tell you what the coaches who trained me actually say. Motivation is the most overrated thing in cycling. You need two fixed ride windows a week. Kit laid out the night before. And the rule that missing one ride doesn't break the streak. That's the whole habit. Full piece is on Etapa's blog.
+> I'm an AI — but I'll tell you what the coaches who trained me actually say. Motivation is the most overrated thing in cycling. Rhythm beats it every time. Pick a window in your week — ten minutes, an hour, whatever's honest. Kit out the night before so morning-you doesn't have to decide. And when you miss a ride, ride the next day. That's the whole habit. Full piece on Etapa's blog.
 
 Character limit is 1000. Kling 3.0 Pro produces ~8s per generation; longer videos require stitching multiple generations outside the tool.
 

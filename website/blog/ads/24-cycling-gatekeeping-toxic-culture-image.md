@@ -1,7 +1,8 @@
-# Image Ad — The Gatekeeping Problem in Cycling
+# Image Ad — Cycling Doesn't Have to Feel Intimidating
 
 **Slug:** cycling-gatekeeping-toxic-culture
 **Format:** AI Image Ad — static 9:16 (secondary format; UGC is primary)
+**Note:** the blog post keeps its "gatekeeping" framing for the long read. The ad intentionally lands on the *softer* invitation — "cycling doesn't have to feel intimidating" — so in-feed copy invites rather than divides. The full piece delivers the deeper position for those who click through.
 
 ---
 
@@ -10,7 +11,7 @@
 **Image (required) — recommended:**
 - `brand-squiggle-01.png`
 - Path: `website/blog/ads/_library/brand-squiggle-01.png`
-- Why: manifesto-style typographic card. Leaning into the Etapa aesthetic hard here.
+- Why: typographic card that invites rather than confronts.
 
 **Reference (optional) — recommended:**
 - `brand-headline-poster.png`
@@ -21,25 +22,25 @@
 
 ## 2. Form field: "What are you going to advertise?"
 
-> Etapa — an AI cycling coach built for the people cycling culture gatekeeps out. This ad drives to our manifesto post on gatekeeping.
+> Etapa — an AI cycling coach for people who find cycling a bit intimidating to get into. This ad points at our piece on why it doesn't have to feel that way.
 
 ---
 
 ## 3. Form field: "Add a few more details"
 
-> Etapa exists because cycling culture has a gatekeeping problem. Every other cycling app and forum assumes you arrive already knowing FTP, cadence, power zones and the dress code. We don't.
+> Etapa is a cycling training app for people getting into cycling. Cycling has a reputation for feeling intimidating from the outside — the kit, the jargon, the pace. It doesn't have to be.
 >
-> The blog post behind this ad is our manifesto: we name the gatekeeping behaviours (the Rules, the wheel-sucking snobbery, the "when did you start riding?" pecking order, the lycra-vs-gravel tribalism) and we say out loud that Etapa is built for people those behaviours are designed to exclude.
+> The blog post behind this ad makes the case that cycling doesn't need a certain bike, a certain pace, or a certain look to count. Five minutes on a bike counts. An hour counts. Whatever works for today.
 >
-> Tone: direct, confident, slightly pissed off. This is our most positioning-heavy post — the "here's what we stand for" moment. Short sentences. No hedging.
+> Tone: warm, direct, inviting. Not combative. Not "the industry is bad" — just "it's more welcoming than it looks, and we'll help you start."
 >
-> Made with AI. Etapa is open about being AI-built, reviewed by real coaches. We're honest where the sport isn't.
+> Made with AI. Etapa is open about being AI-built, reviewed by real coaches.
 
 ---
 
 ## 4. Form field: "Idea"
 
-> 9:16 typographic poster. True-black. Large Poppins SemiBold white headline, slightly oversize for impact: "CYCLING HAS A GATEKEEPING PROBLEM." Subhead in mid-grey Poppins Light: "Etapa is built for the people it's designed to keep out." Pink squiggle centred, slightly off-axis — feels less polite. Wordmark top-left. AI chip bottom-left. CTA footer: "Read the full piece →". Type-only. Feels like a statement, not an ad.
+> 9:16 typographic poster. True-black. Large Poppins SemiBold white headline: "CYCLING DOESN'T HAVE TO FEEL INTIMIDATING." Rosa underline under "INTIMIDATING". Subhead in mid-grey Poppins Light: "No kit required. No jargon. No minimum. Just five minutes and a bike." Pink squiggle centred lower third. Wordmark top-left. AI chip bottom-left. CTA footer: "Read the full piece →". Warm but confident — an invitation, not a manifesto.
 
 ---
 
@@ -54,9 +55,9 @@
 
 ## 6. On-creative spec
 
-- **Headline:** `CYCLING HAS A GATEKEEPING PROBLEM.`
-- **Subhead:** `Etapa is built for the people it's designed to keep out.`
-- **Accent:** maglia rosa underline + off-axis squiggle.
+- **Headline:** `CYCLING DOESN'T HAVE TO FEEL INTIMIDATING.`
+- **Subhead:** `No kit required. No jargon. No minimum. Just five minutes and a bike.`
+- **Accent:** maglia rosa underline under "INTIMIDATING" + centred squiggle.
 - **Wordmark:** `Etapa` top-left.
 - **AI chip:** `Made with AI · Etapa` bottom-left.
 - **CTA text:** `Read the full piece →`
@@ -66,13 +67,11 @@
 
 ## 7. Instagram caption
 
-> Cycling has a gatekeeping problem.
+> Cycling can feel intimidating from the outside. It doesn't have to be.
 >
-> The Rules. The wheel-sucking snobbery. The "when did you start riding?" pecking order. The lycra-vs-gravel tribalism. The FTP-obsessed app interfaces.
+> No kit required. No jargon. No years of experience. Five minutes on a bike is a ride.
 >
-> Etapa is built for the people those behaviours are designed to keep out.
->
-> Full piece on the blog — link in bio.
+> Etapa's built for the moment just before you get going. Full piece on the blog — link in bio.
 
 ---
 

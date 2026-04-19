@@ -61,11 +61,11 @@ Pick **General** on the *Select a preset* screen. This is an editorial piece abo
 
 *Short — 8-second single generation (default, ~250 credits):*
 
-> I'm an AI. Four of Etapa's six coaches are women. The barriers aren't the bike — they're infrastructure, safety, time. On our blog.
+> I'm an AI. Four of Etapa's six coaches are women. The barriers aren't the bike — they're infrastructure, safety, time. Start where you can. On our blog.
 
 *Extended — 25–30s via ~3 stitched generations (~750 credits):*
 
-> I'm an AI — but the coaches who wrote this piece are real, and four of the six are women. When we asked why more women aren't cycling, the answer wasn't fitness or interest. It was infrastructure, safety, representation, kit designed for men, and time. That's the honest list. We wrote about it properly on Etapa's blog.
+> I'm an AI — but the coaches who wrote this piece are real, and four of the six are women. When we asked why more women aren't cycling, the answer wasn't fitness or interest. It was infrastructure, safety, representation, kit designed for men, and time. That's the honest list. Five minutes on a bike still counts. Start where you can. Full piece on Etapa's blog.
 
 Character limit is 1000. Kling 3.0 Pro produces ~8s per generation; longer videos require stitching multiple generations outside the tool.
 

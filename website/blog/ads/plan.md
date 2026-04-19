@@ -30,7 +30,7 @@ Before running any brief through the tool, read in this order:
 
 | # | Brief | Format | Purpose |
 |---|-------|--------|---------|
-| 05 | [cycling-gatekeeping-toxic-culture-ugc.md](./05-cycling-gatekeeping-toxic-culture-ugc.md) | UGC | Manifesto post — the "we're different" story |
+| 05 | [cycling-gatekeeping-toxic-culture-ugc.md](./05-cycling-gatekeeping-toxic-culture-ugc.md) | UGC | "Cycling doesn't have to feel intimidating" — warm invitation (softened from the blog's gatekeeping framing so in-feed copy reads as inclusive, not combative) |
 | 06 | [how-to-choose-first-bike-image.md](./06-how-to-choose-first-bike-image.md) | Image (carousel) | Highest-intent beginner question |
 | 07 | [how-to-use-bike-gears-avatar.md](./07-how-to-use-bike-gears-avatar.md) | Avatar | The #1 "I feel dumb" beginner question |
 | 08 | [stat-card-new-cyclists-drop-image.md](./08-stat-card-new-cyclists-drop-image.md) | Image (stat card) | "[XX]% quit within 12 weeks. Etapa's built for week 13." |
@@ -74,7 +74,7 @@ Before running any brief through the tool, read in this order:
 | # | Brief | Format | Purpose |
 |---|-------|--------|---------|
 | 23 | [cycling-routine-habit-building-ugc.md](./23-cycling-routine-habit-building-ugc.md) | UGC | Repurpose with new hook |
-| 24 | [cycling-gatekeeping-toxic-culture-image.md](./24-cycling-gatekeeping-toxic-culture-image.md) | Image | Manifesto in image form (high saves) |
+| 24 | [cycling-gatekeeping-toxic-culture-image.md](./24-cycling-gatekeeping-toxic-culture-image.md) | Image | "Cycling doesn't have to feel intimidating" poster — same softer framing as #05 in static form (high saves) |
 | 25 | [stat-card-beginner-retention-image.md](./25-stat-card-beginner-retention-image.md) | Image (stat card) | "At week 7, you're either a cyclist or not." |
 
 ### Week 8 — Coach spotlight, part 1

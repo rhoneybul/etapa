@@ -23,6 +23,24 @@ All four live in `website/blog/ads/_library/`. Do not substitute stock photos of
 
 ---
 
+## 2b. Asset-picker fields (shown when uploading each Media image)
+
+### Form field: "What are you going to advertise?"
+
+> Etapa — an AI cycling coach for beginners. Avatar-format explainer of the five things a new cyclist actually needs.
+
+### Form field: "Add a few more details"
+
+> Etapa is a cycling training app for people getting into cycling — not racers. Plans that adapt to life.
+>
+> The blog post behind this ad is about gear essentials: five things (helmet, lights, spare tube, multi-tool, water bottle). Everything else can wait six months or forever.
+>
+> Tone: calm, anti-upsell. "The industry wants to sell you £2,000 — you don't need any of it yet."
+>
+> Made with AI. Etapa is upfront about it — plans and coach chats are AI, reviewed by real coaches.
+
+---
+
 ## 3. Script (aim 480–560 chars; hard cap 700)
 
 > Hi, I'm Lars — Etapa's AI cycling coach. If you've just bought a bike, the cycling industry is about to try to sell you two grand of kit you don't need. Here's the honest list: a helmet. Front and rear lights. A spare inner tube. A basic multi-tool. A water bottle. That's the five things. Everything else — GPS computer, clipless shoes, carbon wheels — can wait six months, or forever. Save the money. Ride the bike. Full breakdown's on our blog — link in bio.

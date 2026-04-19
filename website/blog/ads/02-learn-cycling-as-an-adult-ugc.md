@@ -61,11 +61,11 @@ Pick **Service showcase** on the *Select a preset* screen. The post is a soft ex
 
 *Short — 8-second single generation (default, ~250 credits):*
 
-> I'm an AI, but this is real — you're not too late to start cycling. You haven't started. That's the only thing wrong. Etapa, link in bio.
+> I'm an AI, but this is real. You're not too late to start cycling. Five minutes counts. So does an hour. The only thing that matters is starting. Etapa, link in bio.
 
 *Extended — 25–30s via ~3 stitched generations (~750 credits):*
 
-> I'm an AI — but I want to tell you something real. I keep hearing people say they're too old to start cycling. You're not. Balance comes back in an afternoon. Fitness follows. Thousands of adults start from scratch every year. You are not behind. You just haven't started. Full piece is on Etapa's blog.
+> I'm an AI — but I want to tell you something real. People keep saying they're too old to start cycling. You're not. Five minutes counts. Ten minutes counts. An hour counts. There's no minimum, and there's no one you're behind except the version of you who hasn't started. Balance comes back in an afternoon. Fitness follows. Full piece is on Etapa's blog.
 
 Character limit is 1000. Kling 3.0 Pro produces ~8s per generation; longer videos require stitching multiple generations outside the tool.
 

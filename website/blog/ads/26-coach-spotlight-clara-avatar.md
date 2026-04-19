@@ -24,6 +24,24 @@ All in `website/blog/ads/_library/`.
 
 ---
 
+## 2b. Asset-picker fields (shown when uploading each Media image)
+
+### Form field: "What are you going to advertise?"
+
+> Etapa — an AI cycling coach. Introduction to Clara, one of our six coach personalities. Beginner-friendly, warm, patient.
+
+### Form field: "Add a few more details"
+
+> Etapa is a cycling training app with six AI coach personalities — you pick whichever voice motivates you. Clara is the warm, patient one, built for people new to cycling or coming back after a long break.
+>
+> This post is part of a six-post coach spotlight series introducing each coach. Clara opens the series because she's the recommended starting point for our target audience: beginners and people getting into cycling.
+>
+> Tone: warm, reassuring, permission-giving. "I won't talk about FTP. I won't ask you to suffer."
+>
+> Made with AI. Etapa is open about it — the coach IS the AI.
+
+---
+
 ## 3. Script (aim 420–520 chars)
 
 > Hi, I'm Clara — one of Etapa's six AI cycling coaches. I'm the warm one. Patient. If you're new to cycling and everything you've tried before has made you feel behind, pick me. I won't talk about FTP. I won't ask you to suffer. I'll ask how your week looks, then build a plan that fits — and check in when you miss a ride, because you will, and that's fine. Download Etapa, do the two-minute chat, pick the coach you want. Train with purpose.

@@ -24,6 +24,24 @@ All in `website/blog/ads/_library/`.
 
 ---
 
+## 2b. Asset-picker fields (shown when uploading each Media image)
+
+### Form field: "What are you going to advertise?"
+
+> Etapa — an AI cycling coach. Introduction to Matteo, one of our six coach personalities. Chill but focused.
+
+### Form field: "Add a few more details"
+
+> Etapa is a cycling training app with six AI coach personalities. Matteo is the chill-but-focused one — plans that fit around life, rides that feel earned, not survived.
+>
+> This post is part of a six-post coach spotlight series. Matteo fits people who've caught the cycling bug and don't want training to turn it into a chore.
+>
+> Tone: relaxed, focused, grounded.
+>
+> Made with AI. Etapa is open about it — the coach IS the AI.
+
+---
+
 ## 3. Script (aim 420–520 chars)
 
 > Hi, I'm Matteo — one of Etapa's six AI cycling coaches. I'm the chill one. Focused, but not shouty. If cycling is one of the good things in your week and you don't want training to turn it into a chore, I'm your guy. Plans that fit around life. Rides that feel earned, not survived. If you've caught the bug and want to build on it without losing the joy, pick me. Download Etapa, do the two-minute chat. Train with purpose.

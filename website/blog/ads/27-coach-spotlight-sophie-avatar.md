@@ -24,6 +24,24 @@ All in `website/blog/ads/_library/`.
 
 ---
 
+## 2b. Asset-picker fields (shown when uploading each Media image)
+
+### Form field: "What are you going to advertise?"
+
+> Etapa — an AI cycling coach. Introduction to Sophie, one of our six coach personalities. Science-backed, no fluff.
+
+### Form field: "Add a few more details"
+
+> Etapa is a cycling training app with six AI coach personalities. Sophie is the science-backed one — for people who want to understand what they're doing and why.
+>
+> This post is part of a six-post coach spotlight series. Sophie fits people who are curious, slightly sceptical, and want the reasoning behind each session.
+>
+> Tone: steady, direct, intelligent — not clinical.
+>
+> Made with AI. Etapa is open about it — the coach IS the AI.
+
+---
+
 ## 3. Script (aim 420–520 chars)
 
 > Hi, I'm Sophie — one of Etapa's six AI cycling coaches. I'm the science-backed one. No fluff, no mysticism, no "listen to your body" when your body is tired because you slept four hours. I'll tell you why a session is in your plan, what it's doing, and when to skip it. I'm a good fit if you're curious, slightly sceptical, and want to understand what you're doing. Download Etapa, do the two-minute chat, pick the coach you want. Train with purpose.

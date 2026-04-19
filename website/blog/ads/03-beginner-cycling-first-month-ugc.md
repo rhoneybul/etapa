@@ -61,11 +61,11 @@ Pick **Service showcase** on the *Select a preset* screen. The post directly exp
 
 *Short — 8-second single generation (default, ~250 credits):*
 
-> I'm an AI, but here's the first-month rule: you're not becoming a cyclist. You're becoming someone who rides. That's it. Etapa, link in bio.
+> I'm an AI, but here's the honest bit. You're not becoming a cyclist. You're just becoming someone who rides — as much or as little as you want. Five minutes counts. Etapa, link in bio.
 
 *Extended — 25–30s via ~3 stitched generations (~750 credits):*
 
-> I'm an AI — but I wanted to say something that a real person should have told me before I started cycling. Your first month isn't about becoming a cyclist. It's about becoming someone who rides a bike regularly. Week one, just 20 minutes. By week four, a one-hour ride. That's it. Full plan's on Etapa's blog — link in bio.
+> I'm an AI — but I wanted to say something a real person should have told me before I started cycling. Starting isn't about becoming a cyclist. It's about becoming someone who rides, as much or as little as fits your life. Ten minutes on a Tuesday is a real ride. An hour on Sunday is a real ride. Nobody's counting except you. Full guide's on Etapa's blog.
 
 Character limit is 1000. Kling 3.0 Pro produces ~8s per generation; longer videos require stitching multiple generations outside the tool.
 

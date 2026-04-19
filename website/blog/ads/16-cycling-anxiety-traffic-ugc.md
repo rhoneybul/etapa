@@ -61,11 +61,11 @@ Pick **Service showcase** on the *Select a preset* screen. The script is a tip-l
 
 *Short — 8-second single generation (default, ~250 credits):*
 
-> I'm an AI, but this is real. Traffic fear isn't irrational — it's information. The full guide's on Etapa's blog.
+> I'm an AI, but this is real. Traffic fear isn't irrational — it's information. Pick the quieter road today. Even five minutes counts. Etapa's guide on our blog.
 
 *Extended — 25–30s via ~3 stitched generations (~750 credits):*
 
-> I'm an AI — but the coaches behind this advice actually ride in traffic. Here's the truth: traffic fear isn't irrational. It's information. You don't beat it by pretending it's not there. You beat it with route choice, position, and one quieter road at a time. We put the full thing on Etapa's blog.
+> I'm an AI — but the coaches behind this advice actually ride in traffic. Here's the truth: traffic fear isn't irrational. It's information. You don't beat it by pretending it's not there. You beat it with route choice, position, and one quieter road at a time. Ten minutes on a back road today is more progress than a guilt-ridden ride you never took. Full guide on Etapa's blog.
 
 Character limit is 1000. Kling 3.0 Pro produces ~8s per generation; longer videos require stitching multiple generations outside the tool.
 

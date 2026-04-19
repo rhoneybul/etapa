@@ -30,6 +30,20 @@ All four live in `website/blog/ads/_library/` — see `brand-assets-guide.md` fo
 
 ---
 
+## 2b. Asset-picker fields (shown when uploading each Media image)
+
+When you upload any of the four brand-kit PNGs, the tool opens the same "Select an image from your assets" picker used elsewhere — it asks *What are you going to advertise?* and *Add a few more details*. These only need to be filled once per upload (the assets then sit in your library and can be picked without re-answering), but if you're starting fresh, use:
+
+### Form field: "What are you going to advertise?"
+
+> {{WHAT_TO_ADVERTISE_ONE_LINER}}
+
+### Form field: "Add a few more details"
+
+> {{DETAILS_BLOCK}}
+
+---
+
 ## 3. Script (tool form: Script — 700 char max, aim 480–600)
 
 > {{SCRIPT}}
