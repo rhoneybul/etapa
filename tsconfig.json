@@ -1,4 +1,25 @@
 {
+  "extends": "expo/tsconfig.base",
   "compilerOptions": {},
-  "extends": "expo/tsconfig.base"
+  "include": [
+    "src/**/*",
+    "App.tsx",
+    "index.js",
+    "app.json",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "admin-dashboard",
+    "mcp-server",
+    "server",
+    "tests",
+    "website",
+    "ios",
+    "android",
+    ".expo",
+    ".next",
+    "scripts"
+  ]
 }
