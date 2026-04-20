@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.rhoneybul/etapa-mcp",
-  "description": "AI cycling coach — training plans and beginner guidance via the Etapa API.",
+  "description": "AI cycling coach — generate plans, ask questions, review existing plans, all via the Etapa API.",
   "title": "Etapa — Cycling Coach MCP",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "repository": {
     "url": "https://github.com/rhoneybul/etapa",
     "source": "github",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "etapa-mcp",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "transport": {
         "type": "stdio"
       }

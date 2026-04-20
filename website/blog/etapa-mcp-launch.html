@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Etapa Is Now an MCP — Ask Any AI Assistant About Your Cycling — Etapa</title>
+  <meta name="description" content="Etapa is a Model Context Protocol server. Plug it into Claude, ChatGPT, Cursor, or any MCP-compatible AI and get personalised training plans, plan critiques, beginner guidance, and coaching advice in plain English — free, no account, no jargon.">
+  <link rel="canonical" href="https://getetapa.com/blog/etapa-mcp-launch.html">
+  <meta property="og:title" content="Etapa Is Now an MCP — Ask Any AI Assistant About Your Cycling">
+  <meta property="og:description" content="Four cycling-coach tools you can plug into any MCP-compatible AI: training plans, plan reviews, beginner guides, and open-ended Q&A. Free, no account.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://getetapa.com/blog/etapa-mcp-launch.html">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Etapa Is Now an MCP — Ask Any AI Assistant About Your Cycling">
+  <meta name="twitter:description" content="Four cycling coach tools for any AI assistant. Plans, critiques, beginner guides, Q&A. Free, open, live today.">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', -apple-system, sans-serif; background: #000; color: #fff; }
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 48px;
+      background: rgba(0,0,0,0.8); backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 12px;
+      font-size: 22px; font-weight: 600; text-decoration: none; color: #fff;
+    }
+    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; overflow: hidden; }
+    .nav-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: #999; text-decoration: none; font-size: 15px; font-weight: 400; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #E8458B; }
+    .nav-cta { background: #E8458B !important; color: #000 !important; padding: 10px 24px; border-radius: 100px; font-weight: 600 !important; }
+    .nav-cta:hover { background: #F472B6 !important; color: #000 !important; }
+
+    .article-wrap { max-width: 720px; margin: 0 auto; padding: 120px 24px 80px; }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; flex-wrap: wrap; }
+    .breadcrumb a { color: #666; text-decoration: none; font-size: 13px; transition: color 0.2s; }
+    .breadcrumb a:hover { color: #999; }
+    .breadcrumb span { color: #444; font-size: 13px; }
+    .article-category {
+      display: inline-block; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 1px; color: #E8458B;
+      margin-bottom: 16px;
+    }
+    .article-wrap h1 {
+      font-size: clamp(28px, 4vw, 42px); font-weight: 700;
+      letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 16px;
+    }
+    .article-subtitle { font-size: 18px; color: #888; line-height: 1.6; font-weight: 300; margin-bottom: 32px; }
+    .article-meta { display: flex; align-items: center; gap: 16px; margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid #1a1a1a; flex-wrap: wrap; }
+    .article-meta span { font-size: 13px; color: #555; }
+    .article-meta .dot { color: #333; }
+    .article-body h2 { font-size: 24px; font-weight: 600; margin: 48px 0 16px; color: #fff; }
+    .article-body h3 { font-size: 19px; font-weight: 600; margin: 32px 0 12px; color: #eee; }
+    .article-body p { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 20px; }
+    .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 20px; }
+    .article-body li { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 8px; }
+    .article-body a { color: #E8458B; text-decoration: none; border-bottom: 1px solid rgba(232,69,139,0.3); transition: border-color 0.2s; }
+    .article-body a:hover { border-bottom-color: #E8458B; }
+    .article-body code { background: #161616; padding: 2px 6px; border-radius: 4px; font-size: 0.92em; color: #ddd; font-family: 'SF Mono', Menlo, Monaco, monospace; }
+    .article-body pre { background: #050505; border: 1px solid #1a1a1a; border-radius: 12px; padding: 20px; margin: 24px 0; overflow-x: auto; }
+    .article-body pre code { background: transparent; padding: 0; font-size: 13px; color: #ddd; line-height: 1.6; }
+    .callout {
+      background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.2);
+      border-radius: 16px; padding: 24px 28px; margin: 32px 0;
+    }
+    .callout-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 8px; }
+    .callout p { color: #ddd; margin: 0; font-size: 15px; }
+    .pull-quote {
+      border-left: 3px solid #E8458B; padding-left: 24px;
+      margin: 32px 0; font-size: 20px; font-weight: 500;
+      color: #fff; line-height: 1.5; font-style: italic;
+    }
+    .article-cta {
+      background: #0a0a0a; border: 1px solid #1a1a1a;
+      border-radius: 20px; padding: 40px; margin-top: 56px; text-align: center;
+    }
+    .article-cta h3 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    .article-cta p { font-size: 15px; color: #888; margin-bottom: 24px; font-weight: 300; }
+    .btn-primary {
+      display: inline-block; background: #E8458B; color: #000;
+      padding: 14px 32px; border-radius: 100px; font-size: 15px;
+      font-weight: 600; text-decoration: none; transition: background 0.2s;
+    }
+    .btn-primary:hover { background: #F472B6; }
+    .back-link { display: inline-block; margin-top: 40px; color: #666; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    .back-link:hover { color: #999; }
+    footer {
+      padding: 40px 48px; border-top: 1px solid #111;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .footer-left { display: flex; align-items: center; gap: 12px; }
+    .footer-left span { font-size: 14px; color: #444; }
+    footer a { color: #444; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    footer a:hover { color: #888; }
+    .footer-links { display: flex; gap: 24px; }
+    @media (max-width: 640px) {
+      nav { padding: 16px 24px; }
+      .nav-links a:not(.active):not(.nav-cta) { display: none; }
+      footer { flex-direction: column; gap: 16px; text-align: center; }
+      .footer-links { flex-wrap: wrap; justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-logo">
+    <div class="nav-logo-icon"><img src="../icon-72.png" alt="Etapa"></div>
+    Etapa
+  </a>
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <a href="/#how-it-works">How It Works</a>
+    <a href="/#pricing">Pricing</a>
+    <a href="/blog" class="active">Blog</a>
+    <a href="/support">Support</a>
+    <a href="https://www.instagram.com/getetapa/" target="_blank" rel="noopener" aria-label="Etapa on Instagram" style="color:#888;display:inline-flex;align-items:center;"><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg></a>
+    <a href="https://www.youtube.com/@getetapa" target="_blank" rel="noopener" aria-label="Etapa on YouTube" style="color:#888;display:inline-flex;align-items:center;"><svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg></a>
+    <a href="#register-interest" class="nav-cta" data-register-interest>Register Interest</a>
+  </div>
+</nav>
+
+<div class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a>
+    <span>&rsaquo;</span>
+    <a href="/blog">Blog</a>
+    <span>&rsaquo;</span>
+    <span>Etapa MCP Launch</span>
+  </div>
+
+  <span class="article-category">Product · Launch</span>
+  <h1>Etapa Is Now an MCP — Ask Any AI Assistant About Your Cycling</h1>
+  <p class="article-subtitle">The app launches soon. But starting today, our AI cycling coach lives inside Claude, ChatGPT, Cursor, and every other MCP-compatible tool. Build plans, review plans you already have, ask any cycling question. No install, no account, no jargon.</p>
+
+  <div class="article-meta">
+    <span>By the Etapa team</span>
+    <span class="dot">·</span>
+    <span>Updated April 2026 · v0.2.0</span>
+    <span class="dot">·</span>
+    <span>6 min read</span>
+  </div>
+
+  <div class="article-body">
+
+    <p>Open Claude. Type <em>"build me a three-week plan for my first 30&nbsp;km ride."</em> Hit enter.</p>
+
+    <p>A plan comes back. Week by week. Days you should ride, roughly how far, how it should feel. Built by Etapa, an AI cycling coach we've been working on for the last few months. All without opening our app, creating an account, or paying a penny.</p>
+
+    <p>That's possible because Etapa is now an <strong>MCP server</strong> — a tiny piece of software that plugs our cycling coach into any AI assistant that supports the Model Context Protocol. Claude, ChatGPT, Cursor, Windsurf, and a growing list of others.</p>
+
+    <p>This post is about what we built, why we built it before the app is even out, and how to use it in the next 60 seconds.</p>
+
+    <h2>Why bother opening this up?</h2>
+
+    <p>Etapa's mission is simple: <strong>cycling has always been gatekept, and we want to open the gate</strong>. Most cycling apps are aimed at people who already speak the language — FTP, TSS, VO2max, zone 2. If you're just getting into cycling, they're intimidating. If you're a woman, a beginner, or coming back after a break, they can feel like they weren't built for you.</p>
+
+    <p>We're building an app that fixes that. But it turns out there's a second move that fits our mission just as well: meet people where they already are.</p>
+
+    <p>More and more people are talking to AI assistants every day. Claude. ChatGPT. Whatever comes next. If they can ask those assistants for a simple, beginner-friendly cycling plan — without having to install another app, create another login, or learn another interface — that's one less barrier. One less thing in the way of getting on the bike.</p>
+
+    <p>So we built Etapa MCP.</p>
+
+    <div class="callout">
+      <div class="callout-label">What's an MCP?</div>
+      <p>MCP (Model Context Protocol) is an open standard that lets AI assistants safely connect to external tools and services. Think of it as a universal adaptor: if an app supports MCP, any AI model can use it. Anthropic released it as an open standard, and since then Claude, ChatGPT, and a growing list of other tools have added support.</p>
+    </div>
+
+    <h2>What Etapa MCP can do</h2>
+
+    <p>Four tools, all focused on getting more people on bikes:</p>
+
+    <h3>1. Generate a personalised training plan</h3>
+
+    <p>Ask in plain English. Tell the AI what your goal is ("first 20&nbsp;km ride", "get fit enough to commute three times a week", "complete a sportive"), how many days a week you can train, and how long you've been riding. You'll get back a 2-4 week cycling plan tailored to your situation.</p>
+
+    <p>Every plan comes with clear rides, rest days, and plain-English explanations of why each session exists. No zone charts. No jargon. No "today's workout is 5x5 VO2max intervals at 110% FTP." Just things like <em>"Wednesday: easy ride, 30 minutes, conversational pace — you should be able to hold a chat."</em></p>
+
+    <h3>2. Ask the coach anything</h3>
+
+    <p>This is the one we just added in v0.2, and it's the one we use most ourselves. <strong>Ask our cycling coach any question</strong> — life adaptations, training theory, recovery advice, gear questions — and get an answer in the same plain-English voice as our plans.</p>
+
+    <p>Things people have been asking in testing:</p>
+
+    <ul>
+      <li><em>"I missed Monday's ride because of work. Do I skip it or add it somewhere else?"</em></li>
+      <li><em>"My legs feel heavy two days in a row. Should I rest or push through?"</em></li>
+      <li><em>"I can only ride indoors this week because of rain. How do I adapt my plan?"</em></li>
+      <li><em>"Is five rides a week too much if I'm just starting?"</em></li>
+      <li><em>"Why do rest days matter? I feel like I should be on the bike."</em></li>
+    </ul>
+
+    <p>The coach answers the way a friend with actual cycling experience would answer — specific, honest, never dismissive. It's the closest thing we've shipped to the full coach-chat experience in the Etapa app.</p>
+
+    <h3>3. Review a plan you already have</h3>
+
+    <p>Also new in v0.2. You've got a plan from another app, a book, a YouTube video, or a coach — but you're not sure if it's right for you. Paste it into your AI assistant and ask our coach for an honest review.</p>
+
+    <p>You get back a structured critique in four sections:</p>
+
+    <ul>
+      <li><strong>What's working</strong> — two or three things the plan does well</li>
+      <li><strong>What's missing or risky</strong> — gaps, red flags, overreach</li>
+      <li><strong>What I'd change</strong> — specific, concrete adjustments</li>
+      <li><strong>Bottom line</strong> — plain-English verdict</li>
+    </ul>
+
+    <p>We've been honest about what this is: if your plan is bad, we'll say so. If it's good, we'll say that too. The point isn't to sell you on Etapa — the point is to help you not hurt yourself and not waste weeks on a plan that doesn't fit.</p>
+
+    <h3>4. Answer beginner questions</h3>
+
+    <p>Everything we've learned about getting into cycling is built in: how to choose your first bike, what gear you actually need, nutrition basics, road safety, bike fit, and how to build a habit that sticks. Ask your AI anything on those topics and you'll get an answer that sounds like it came from a friend who cycles — because it's written by our team, not the internet's endless stream of hot takes.</p>
+
+    <div class="pull-quote">
+      We want Etapa to feel like texting a friend who happens to be a cycling coach. That's as true in Claude as it is in our app.
+    </div>
+
+    <h2>How to try it in 60 seconds</h2>
+
+    <p>If you use Claude Desktop, you can plug Etapa in right now. Open the config file:</p>
+
+    <pre><code>~/Library/Application Support/Claude/claude_desktop_config.json</code></pre>
+
+    <p>Add Etapa to the list of MCP servers:</p>
+
+    <pre><code>{
+  "mcpServers": {
+    "etapa": {
+      "command": "npx",
+      "args": ["-y", "etapa-mcp"]
+    }
+  }
+}</code></pre>
+
+    <p>Quit Claude Desktop fully (⌘Q), reopen it, start a new chat, and try any of these:</p>
+
+    <pre><code>Use the Etapa MCP to generate a 3-week beginner cycling plan
+for someone aiming to complete their first 30 km ride.
+
+Ask the Etapa coach: I missed my Monday ride because of work.
+Should I skip it or fit it in later this week?
+
+Here's a plan I found online. Ask the Etapa coach what it
+thinks. [paste plan text]</code></pre>
+
+    <p>You'll see Claude pick the right tool — <code>generate_training_plan</code>, <code>ask_cycling_coach</code>, or <code>review_cycling_plan</code> — and the response will come back in seconds, in plain English.</p>
+
+    <p>Other MCP clients (Cursor, Windsurf, and anything else that speaks MCP over stdio or HTTP) work the same way — check their docs for the exact config location.</p>
+
+    <div class="callout">
+      <div class="callout-label">Prefer a hosted version?</div>
+      <p>If you don't want to install anything locally, there's also a hosted HTTP version running at <code>https://etapa-mcp-production.up.railway.app/mcp</code> that any MCP-compatible client can point to directly. Free to use, no account required.</p>
+    </div>
+
+    <h2>Why we're giving it away</h2>
+
+    <p>A reasonable question: if Etapa is a paid app launching soon, why open up our AI coach for free?</p>
+
+    <p>Two honest reasons.</p>
+
+    <p><strong>First: it's genuinely in line with our mission.</strong> We're building Etapa because beginner cyclists are underserved. If someone can get a useful plan, an honest critique, or a quick coaching answer from us without paying a penny — through Claude, through ChatGPT, through whatever AI app they already use — that's a win. They're on the bike. That's what we actually care about.</p>
+
+    <p><strong>Second: the full Etapa app does more.</strong> The MCP gives you a sample plan up to 4 weeks long. The app generates plans up to 24 weeks, with proper periodisation through base, build, peak, and taper phases. It gives you a persistent, on-going coach chat rather than one-off questions — the coach remembers your plan, your recent rides, and how you've been feeling week on week. You pick between six different coach personalities. Your rides sync from Strava automatically so you can see what you've actually done. The MCP is a taste; the app is the full menu.</p>
+
+    <p>We believe in giving people real value up front. If the sample plan, the critique, and the coaching Q&amp;A are good enough to hook you, you'll come back for the app. If they're not, we'd rather you found that out now than after paying for it.</p>
+
+    <h2>What's next</h2>
+
+    <p>The Etapa app is launching soon on iOS, with Android to follow. You can <a href="/#register-interest" data-register-interest>register your interest here</a> and we'll let you know the moment it's live — first-access perks and all.</p>
+
+    <p>The MCP is live <em>today</em> at <a href="https://www.npmjs.com/package/etapa-mcp" target="_blank" rel="noopener">npmjs.com/package/etapa-mcp</a> and listed in the <a href="https://modelcontextprotocol.io/registry" target="_blank" rel="noopener">official MCP Registry</a>. If you want to read the code, file an issue, or suggest a new tool, everything's on <a href="https://github.com/rhoneybul/etapa/tree/main/mcp-server" target="_blank" rel="noopener">GitHub</a>.</p>
+
+    <p>If you build something with it — or even just try it and have thoughts — we'd love to hear. Find us on <a href="https://www.instagram.com/getetapa/" target="_blank" rel="noopener">Instagram</a>, <a href="https://www.youtube.com/@getetapa" target="_blank" rel="noopener">YouTube</a>, or drop a note to <a href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a>.</p>
+
+    <p>Thanks for reading. Now go ride.</p>
+
+  </div>
+
+  <div class="article-cta">
+    <h3>The full Etapa app launches soon.</h3>
+    <p>24-week plans, live coach chat, six AI coaches, Strava sync, and more. Register your interest and we'll tell you the moment it's live.</p>
+    <a href="/#register-interest" class="btn-primary" data-register-interest>Register Interest</a>
+  </div>
+
+  <a href="/blog" class="back-link">&larr; Back to the Etapa blog</a>
+</div>
+
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="../icon-56.png" alt="Etapa"></div>
+    <span>&copy; 2026 Etapa. All rights reserved.</span>
+  </div>
+  <div class="footer-links">
+    <a href="/">Home</a>
+    <a href="/blog">Blog</a>
+    <a href="/support">Support</a>
+    <a href="/privacy.html">Privacy</a>
+    <a href="/terms.html">Terms</a>
+  </div>
+</footer>
+
+<script src="../register-interest.js" defer></script>
+</body>
+</html>

@@ -149,7 +149,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write          # required for git tag push + GitHub release
-      id-token: write          # required for npm provenance
+      id-token: write          # required for both npm provenance AND MCP Registry OIDC login
     steps:
       - uses: actions/checkout@v4
         with:
@@ -223,12 +223,29 @@ jobs:
         if: needs.decide.outputs.dry_run == 'true'
         run: echo "Dry run requested — skipping actual npm publish"
 
+      - name: Sync server.json to the published version
+        if: needs.decide.outputs.dry_run != 'true'
+        working-directory: mcp-server
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node -e "
+            const fs = require('fs');
+            const s = JSON.parse(fs.readFileSync('server.json', 'utf8'));
+            s.version = process.env.VERSION;
+            if (Array.isArray(s.packages) && s.packages[0]) {
+              s.packages[0].version = process.env.VERSION;
+            }
+            fs.writeFileSync('server.json', JSON.stringify(s, null, 2) + '\n');
+          "
+          echo "→ server.json synced to v${VERSION}"
+
       - name: Commit version change back to main
         if: needs.decide.outputs.dry_run != 'true'
         run: |
-          git add mcp-server/package.json mcp-server/package-lock.json
+          git add mcp-server/package.json mcp-server/package-lock.json mcp-server/server.json
           if git diff --staged --quiet; then
-            echo "→ No version change to commit (file already matched)"
+            echo "→ No version change to commit (files already matched)"
           else
             git commit -m "chore(mcp): sync to v${{ steps.version.outputs.version }}"
             git push origin HEAD:main
@@ -241,7 +258,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="mcp-v${{ steps.version.outputs.version }}"
-          # Don't double-tag if triggered from a tag push
           if ! git rev-parse "$TAG" >/dev/null 2>&1; then
             git tag "$TAG"
             git push origin "$TAG"
@@ -251,10 +267,44 @@ jobs:
             --generate-notes \
             --latest=false || echo "Release already exists, skipping"
 
+      # ── Publish to the official MCP Registry ────────────────────────────────
+      # Uses the mcp-publisher CLI with GitHub OIDC — no browser, no stored
+      # tokens. The id-token: write permission on this job lets GitHub mint a
+      # short-lived certificate proving this repo owns the io.github.rhoneybul
+      # namespace. The registry verifies that cert before accepting the publish.
+      - name: Download mcp-publisher
+        if: needs.decide.outputs.dry_run != 'true'
+        working-directory: mcp-server
+        run: |
+          # Grab the latest Linux amd64 release from GitHub
+          curl -fsSL \
+            "$(curl -fsSL https://api.github.com/repos/modelcontextprotocol/registry/releases/latest \
+              | grep -oE 'https://[^"]+/mcp-publisher_[^"]+_linux_amd64\.tar\.gz' \
+              | head -1)" \
+            -o mcp-publisher.tar.gz
+          tar -xzf mcp-publisher.tar.gz
+          chmod +x mcp-publisher
+          ./mcp-publisher --version || ./mcp-publisher --help | head -5
+
+      - name: Login to MCP Registry (GitHub OIDC)
+        if: needs.decide.outputs.dry_run != 'true'
+        working-directory: mcp-server
+        run: |
+          ./mcp-publisher login github-oidc
+          echo "→ OIDC login OK"
+
+      - name: Publish to MCP Registry
+        if: needs.decide.outputs.dry_run != 'true'
+        working-directory: mcp-server
+        run: |
+          ./mcp-publisher publish
+          echo "→ Published to MCP Registry"
+
       - name: Summary
         run: |
           echo "## Published etapa-mcp v${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- npm: https://www.npmjs.com/package/etapa-mcp/v/${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- tag: mcp-v${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- install: \`npx -y etapa-mcp\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **npm:** https://www.npmjs.com/package/etapa-mcp/v/${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **MCP Registry:** https://registry.modelcontextprotocol.io/v0/servers/io.github.rhoneybul/etapa-mcp" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Git tag:** mcp-v${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Install:** \`npx -y etapa-mcp\`" >> "$GITHUB_STEP_SUMMARY"

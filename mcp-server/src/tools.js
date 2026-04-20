@@ -185,4 +185,170 @@ export const cyclingBeginnerGuideTool = {
   },
 };
 
-export const ALL_TOOLS = [generateTrainingPlanTool, cyclingBeginnerGuideTool];
+// ── Tool 3: ask_cycling_coach ─────────────────────────────────────────────
+// Open-ended coaching Q&A. Powers questions like "I missed Monday, what now?",
+// "Is 5 rides a week too much?", "How do I train for hills?". Calls the
+// Etapa API, which uses the same coaching logic as the full Etapa app.
+export const askCyclingCoachTool = {
+  name: 'ask_cycling_coach',
+  title: 'Ask the Etapa cycling coach',
+  description:
+    'Ask the **Etapa cycling coach** any question about cycling, training, plan adjustments, ' +
+    'recovery, nutrition, gear, or technique. Answers are in plain English — no jargon, ' +
+    'beginner-friendly, and grounded in established training science. Use this for ' +
+    'open-ended questions, plan adaptations ("I missed a ride, what now?"), or when the ' +
+    'rider wants an opinion. Powered by the Etapa API.',
+  inputSchema: {
+    question: z
+      .string()
+      .min(3)
+      .max(500)
+      .describe('The rider\'s question. Can be about anything cycling-related.'),
+    context: z
+      .string()
+      .max(500)
+      .optional()
+      .describe('Optional background about the rider (fitness level, goal, schedule, recent riding). Helps the coach tailor the answer.'),
+    planText: z
+      .string()
+      .max(3000)
+      .optional()
+      .describe('Optional — the rider\'s current training plan, pasted as text. Use this if the question is about a specific plan.'),
+  },
+  async handler(args) {
+    try {
+      const res = await fetch(`${ETAPA_API_URL}/api/public/coach-ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(args || {}),
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `The Etapa coach API returned an error (${res.status}).\n\n${body || '(no body)'}\n\nTry again shortly, or visit https://getetapa.com.`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      const data = await res.json();
+      const answer = data.answer || '(no answer)';
+      const meta = data.meta || {};
+
+      const lines = [
+        answer,
+        '',
+        '---',
+        '',
+        `_${meta.attribution || 'Powered by the Etapa cycling coach API.'}${meta.downloadUrl ? ` · ${meta.downloadUrl}` : ''}_`,
+      ];
+
+      return {
+        content: [{ type: 'text', text: lines.join('\n') }],
+        structuredContent: { answer, meta },
+      };
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Failed to reach the Etapa coach API: ${err.message}\n\nTry again in a moment, or visit https://getetapa.com.`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  },
+};
+
+// ── Tool 4: review_cycling_plan ───────────────────────────────────────────
+// Takes any cycling plan (from a book, another app, a coach, YouTube video)
+// and returns Etapa's critique. Honest — flags red flags and gaps.
+export const reviewCyclingPlanTool = {
+  name: 'review_cycling_plan',
+  title: 'Review a cycling training plan',
+  description:
+    'Give the **Etapa cycling coach** any training plan (from another app, a book, a YouTube ' +
+    'video, a coach, or anywhere else) and get an honest critique in four sections: what\'s ' +
+    'working, what\'s missing or risky, what to change, and a bottom-line verdict. Use this ' +
+    'when the rider wants a second opinion on a plan they already have. Powered by the Etapa API.',
+  inputSchema: {
+    plan: z
+      .string()
+      .min(20)
+      .max(3000)
+      .describe('The training plan as text — sessions, weeks, distances, whatever the rider has. Paste it in as-is.'),
+    goal: z
+      .string()
+      .max(150)
+      .optional()
+      .describe('What the rider is training for. E.g. "first 100 km sportive", "commute twice a week", "get fitter".'),
+    fitnessLevel: z
+      .enum(['beginner', 'intermediate', 'advanced'])
+      .optional()
+      .describe('Rider\'s current fitness level, if known.'),
+  },
+  async handler(args) {
+    try {
+      const res = await fetch(`${ETAPA_API_URL}/api/public/review-plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(args || {}),
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `The Etapa review-plan API returned an error (${res.status}).\n\n${body || '(no body)'}\n\nTry again shortly.`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      const data = await res.json();
+      const critique = data.critique || '(no critique)';
+      const meta = data.meta || {};
+
+      const lines = [
+        `# Plan review — from the Etapa coach`,
+        '',
+        critique,
+        '',
+        '---',
+        '',
+        `_${meta.attribution || 'Critique powered by the Etapa API.'}${meta.downloadUrl ? ` · ${meta.downloadUrl}` : ''}_`,
+      ];
+
+      return {
+        content: [{ type: 'text', text: lines.join('\n') }],
+        structuredContent: { critique, meta },
+      };
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Failed to reach the Etapa review-plan API: ${err.message}\n\nTry again in a moment, or visit https://getetapa.com.`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  },
+};
+
+export const ALL_TOOLS = [
+  generateTrainingPlanTool,
+  cyclingBeginnerGuideTool,
+  askCyclingCoachTool,
+  reviewCyclingPlanTool,
+];

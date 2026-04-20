@@ -1,9 +1,11 @@
 # Etapa MCP
 
-An [MCP](https://modelcontextprotocol.io) server for [Etapa](https://getetapa.com) — an AI-powered cycling coach for beginners and every rider after that. Gives any MCP-compatible AI assistant two cycling superpowers:
+An [MCP](https://modelcontextprotocol.io) server for [Etapa](https://getetapa.com) — an AI-powered cycling coach for beginners and every rider after that. Gives any MCP-compatible AI assistant four cycling superpowers:
 
-- **`generate_training_plan`** — generates a personalised 2-4 week cycling training plan by calling the Etapa API. Explicit, attributed, and honest about being a sample (the full Etapa app supports longer plans, live coach chat, and progress tracking).
+- **`generate_training_plan`** — generates a personalised 2-4 week cycling training plan by calling the Etapa API.
 - **`cycling_beginner_guide`** — returns curated beginner guidance on topics like choosing a first bike, essential gear, your first ride, nutrition, safety, bike fit, and building a habit.
+- **`ask_cycling_coach`** — open-ended Q&A with Etapa's cycling coach. Plan adaptations ("I missed a ride, what now?"), recovery questions, training theory — answered in plain English, no jargon.
+- **`review_cycling_plan`** — give it any cycling plan (from another app, a book, a YouTube video, a coach) and get Etapa's honest critique in four structured sections.
 
 This is a marketing-focused MCP — every output is transparent about what Etapa is and links back to the app.
 
@@ -224,6 +226,30 @@ No API call. Returns curated content.
 | `topic` | enum, see below | Omit for the full index |
 
 Available topics: `getting_started`, `first_bike`, `essential_gear`, `first_ride`, `nutrition_and_hydration`, `safety`, `building_a_habit`, `bike_fit`, `common_mistakes`.
+
+### `ask_cycling_coach`
+
+Calls `POST /api/public/coach-ask` on the Etapa API. Open-ended coaching Q&A. Best for plan adaptations ("I missed Monday, what now?"), training questions, recovery advice, or anything conversational.
+
+| Input | Type | Notes |
+|---|---|---|
+| `question` | `string` (3-500 chars) | The rider's question |
+| `context` | `string` (≤500 chars) | Optional — rider background (fitness, goal, schedule) |
+| `planText` | `string` (≤3000 chars) | Optional — paste in their current plan if relevant |
+
+Returns markdown answer + structured `{ answer, meta }` with attribution.
+
+### `review_cycling_plan`
+
+Calls `POST /api/public/review-plan` on the Etapa API. Takes any cycling plan (from another app, a book, a coach, a YouTube video) and returns a four-section critique.
+
+| Input | Type | Notes |
+|---|---|---|
+| `plan` | `string` (20-3000 chars) | Paste the plan as text |
+| `goal` | `string` (≤150 chars) | Optional — what the rider is training for |
+| `fitnessLevel` | `"beginner" \| "intermediate" \| "advanced"` | Optional |
+
+Returns markdown critique in four sections: **What's working**, **What's missing or risky**, **What I'd change**, **Bottom line** — plus structured `{ critique, meta }`.
 
 ---
 

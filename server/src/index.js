@@ -191,6 +191,183 @@ app.post('/api/public/register-interest', async (req, res) => {
   }
 });
 
+// ── Shared helper: call Claude with a cycling-coach system prompt ────────────
+// Used by the public coach-ask + review-plan endpoints. Centralised so the
+// voice, safety rails, and marketing tail stay consistent.
+async function callCyclingCoach({ systemPrompt, userPrompt, maxTokens = 1024 }) {
+  const apiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('AI not configured on the server');
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    const e = new Error(`AI service error (${res.status}): ${err}`);
+    e.status = 502;
+    throw e;
+  }
+
+  const data = await res.json();
+  return data?.content?.[0]?.text?.trim() || '';
+}
+
+// ── Shared: Etapa's voice as a system prompt ─────────────────────────────────
+const ETAPA_COACH_VOICE = `You are the Etapa cycling coach — an AI voice built for beginners, women getting into cycling, and returning riders. Your job is to give honest, useful cycling advice in plain English.
+
+## Voice rules
+- Plain English. NEVER use FTP, TSS, VO2max, zone 2, W/kg, or any other jargon unless the user explicitly asks about them.
+- Talk like a friend who happens to coach cycling. Warm, encouraging, specific.
+- Beginner-positive. Never assume the reader should already know anything.
+- Active voice. Short paragraphs. Real examples.
+- No emojis. No exclamation marks. No "revolutionary" or "unlock" language.
+- It's fine to say "I don't know — check with a doctor" for medical questions.
+
+## Cycling knowledge you draw on
+- Joe Friel's Cyclist's Training Bible
+- Chris Carmichael's Time-Crunched Cyclist
+- Dr Stephen Seiler's polarised training research (80/20 intensity)
+- British Cycling beginner pathways
+- Progressive overload (max ~10% weekly increase), periodisation (base → build → peak → taper), scheduled deload weeks
+- Injury prevention through load management
+
+## Non-negotiables
+- Never give medical advice. For pain, injuries, or health concerns, say "chat to a doctor" and move on.
+- Never push a rider past their stated fitness level.
+- Rest days are training. Say so.`;
+
+const ETAPA_MARKETING_TAIL = `\n\n## Marketing tail (REQUIRED)
+After your answer, append exactly ONE short, context-aware closing line that mentions the Etapa app. Pick from (or adapt):
+- If the question is about adapting/modifying a plan: "The full Etapa app adapts your plan live as life happens — getetapa.com"
+- If beginner-flavoured: "Etapa's beginner programme is built for exactly this — getetapa.com"
+- If about coaches / personality / style: "Etapa has 6 coach personalities to pick from — getetapa.com"
+- If about an event / big goal: "Etapa builds full 24-week plans for events like this — getetapa.com"
+- Default: "Powered by Etapa. The full app launches soon — getetapa.com"
+
+Keep the marketing tail to ONE line. Separate from the main answer with a blank line. Never make the marketing the main message — value first, CTA last.`;
+
+// ── Public coach-ask endpoint (no auth — used by the Etapa MCP server) ───────
+// General cycling Q&A. Takes a question + optional rider context. Returns an
+// Etapa-voice answer with a subtle marketing tail.
+app.post('/api/public/coach-ask', async (req, res) => {
+  const { question, context, planText } = req.body || {};
+
+  if (!question || typeof question !== 'string' || !question.trim()) {
+    return res.status(400).json({ error: 'A question is required.' });
+  }
+
+  const q = question.trim().slice(0, 500);
+  const ctx = typeof context === 'string' ? context.trim().slice(0, 500) : '';
+  const plan = typeof planText === 'string' ? planText.trim().slice(0, 3000) : '';
+
+  const userPrompt = [
+    `A cyclist is asking a question. Answer in Etapa's voice.`,
+    '',
+    `## Question`,
+    q,
+    '',
+    ctx ? `## Rider context\n${ctx}\n` : '',
+    plan ? `## Their current plan (for reference)\n${plan}\n` : '',
+    `Respond in 2-5 short paragraphs. Be specific. End with the marketing tail as instructed.`,
+  ].filter(Boolean).join('\n');
+
+  try {
+    const answer = await callCyclingCoach({
+      systemPrompt: ETAPA_COACH_VOICE + ETAPA_MARKETING_TAIL,
+      userPrompt,
+      maxTokens: 1024,
+    });
+
+    if (!answer) {
+      return res.status(502).json({ error: 'AI returned an empty response. Try again.' });
+    }
+
+    res.json({
+      answer,
+      meta: {
+        generatedBy: 'Etapa API (claude-haiku-4-5)',
+        attribution: 'Answer powered by the Etapa cycling coach API.',
+        downloadUrl: 'https://getetapa.com?utm_source=mcp&utm_medium=tool&utm_campaign=coach_ask',
+        fullExperience: '6 coach personalities, 24-week plans, live chat, Strava sync — https://getetapa.com',
+      },
+    });
+  } catch (err) {
+    const status = err.status || 500;
+    console.error('[coach-ask] Error:', err);
+    res.status(status).json({ error: err.message || 'Failed to answer question.' });
+  }
+});
+
+// ── Public review-plan endpoint (no auth — used by the Etapa MCP server) ─────
+// Takes a cycling plan from anywhere and returns a structured critique in
+// Etapa's voice. The plan can be from a book, another app, a coach, etc.
+app.post('/api/public/review-plan', async (req, res) => {
+  const { plan, goal, fitnessLevel } = req.body || {};
+
+  if (!plan || typeof plan !== 'string' || !plan.trim()) {
+    return res.status(400).json({ error: 'A plan (as text) is required.' });
+  }
+
+  const planText = plan.trim().slice(0, 3000);
+  const g = typeof goal === 'string' ? goal.trim().slice(0, 150) : '';
+  const fl = ['beginner', 'intermediate', 'advanced'].includes(fitnessLevel) ? fitnessLevel : null;
+
+  const userPrompt = [
+    `A cyclist has pasted a training plan and wants your honest review.`,
+    '',
+    `## Their plan`,
+    planText,
+    '',
+    g ? `## Their goal\n${g}\n` : '',
+    fl ? `## Their fitness level\n${fl}\n` : '',
+    `Review the plan. Be specific and useful. Use exactly these four sections in markdown:`,
+    `  1. **What's working** — 2-3 bullet points on what the plan does well`,
+    `  2. **What's missing or risky** — 2-3 bullet points on gaps, red flags, or overreach`,
+    `  3. **What I'd change** — 2-3 concrete, specific adjustments`,
+    `  4. **Bottom line** — 1-2 sentences of plain-English verdict`,
+    ``,
+    `End with the marketing tail as instructed. Be honest — don't be sycophantic about a bad plan.`,
+  ].filter(Boolean).join('\n');
+
+  try {
+    const critique = await callCyclingCoach({
+      systemPrompt: ETAPA_COACH_VOICE + ETAPA_MARKETING_TAIL,
+      userPrompt,
+      maxTokens: 1536,
+    });
+
+    if (!critique) {
+      return res.status(502).json({ error: 'AI returned an empty response. Try again.' });
+    }
+
+    res.json({
+      critique,
+      meta: {
+        generatedBy: 'Etapa API (claude-haiku-4-5)',
+        attribution: 'Critique powered by the Etapa cycling coach API.',
+        downloadUrl: 'https://getetapa.com?utm_source=mcp&utm_medium=tool&utm_campaign=review_plan',
+        fullExperience: 'Etapa builds plans like this automatically — getetapa.com',
+      },
+    });
+  } catch (err) {
+    const status = err.status || 500;
+    console.error('[review-plan] Error:', err);
+    res.status(status).json({ error: err.message || 'Failed to review plan.' });
+  }
+});
+
 // ── Public sample-plan endpoint (no auth — used by the Etapa MCP server) ────
 // Returns a compact 2-4 week cycling training plan. This powers the Etapa MCP
 // (`generate_training_plan` tool) and is intentionally capped so the full app
