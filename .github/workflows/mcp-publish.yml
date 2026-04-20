@@ -176,21 +176,35 @@ jobs:
         id: version
         working-directory: mcp-server
         run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          LOCAL=$(node -p "require('./package.json').version")
+          # Highest version already on npm (or 0.0.0 if package doesn't exist yet)
+          PUBLISHED=$(npm view "$PKG_NAME" version 2>/dev/null || echo "0.0.0")
+          echo "→ Local: $LOCAL · Published on npm: $PUBLISHED"
+
+          # Always work from max(local, published) so we can't collide with npm
+          BASELINE=$(node -e "
+            const semver = (a,b) => a.localeCompare(b,undefined,{numeric:true});
+            const a='$LOCAL', b='$PUBLISHED';
+            process.stdout.write(semver(a,b) >= 0 ? a : b);
+          ")
+          echo "→ Baseline (max of the two): $BASELINE"
+          npm version "$BASELINE" --no-git-tag-version --allow-same-version > /dev/null
+
           if [[ "${{ github.ref }}" == refs/tags/mcp-v* ]]; then
-            # Tag is the source of truth — extract version from tag name
-            # and sync package.json to match
+            # Tag is the source of truth
             V="${GITHUB_REF#refs/tags/mcp-v}"
-            echo "→ Syncing package.json to match tag: $V"
+            echo "→ Syncing to tag: $V"
             npm version "$V" --no-git-tag-version --allow-same-version
           elif [ "${{ needs.decide.outputs.bump }}" != "none" ]; then
-            # Manual dispatch with bump — use npm version to bump
+            # Bump relative to the baseline — never collides with npm
             NEW=$(npm version ${{ needs.decide.outputs.bump }} --no-git-tag-version)
             V="${NEW#v}"
-            echo "→ Bumped ${{ needs.decide.outputs.bump }} to $V"
+            echo "→ Bumped ${{ needs.decide.outputs.bump }}: $BASELINE → $V"
           else
-            # Manual dispatch with bump=none — publish current version
-            V=$(node -p "require('./package.json').version")
-            echo "→ Using current version: $V"
+            # Publish baseline as-is (only useful if baseline > published, otherwise will 403)
+            V="$BASELINE"
+            echo "→ Using baseline as-is: $V"
           fi
           echo "version=$V" >> "$GITHUB_OUTPUT"
 
