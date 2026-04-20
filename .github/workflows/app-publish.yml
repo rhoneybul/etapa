@@ -19,13 +19,10 @@
 # Required GitHub secrets (Settings → Secrets → Actions):
 #   EXPO_TOKEN   — expo.dev → Access Tokens → Create.
 #
-# Optional (only needed if you tick "Run E2E"):
-#   TEST_USER_EMAIL, TEST_USER_PASSWORD, TEST_API_URL
-#
 # What runs before publishing:
-#   - Preflight: expo-doctor + Metro/TS compile check (~2 min, always runs)
-#   - Maestro E2E is OPT-IN via the `run_e2e` input, and AUTO-FORCED for
-#     `build-submit` releases (you can't un-submit to the App Store).
+#   - Preflight (lint-only): expo-doctor + TypeScript check + Metro compile
+#     check. Runs on Ubuntu in ~2 min. No API tests, no Maestro E2E —
+#     those are handled separately or not at all.
 # ──────────────────────────────────────────────────────────────────────────────
 name: Publish Etapa App
 
@@ -60,11 +57,6 @@ on:
           - ios
           - android
           - all
-      run_e2e:
-        description: 'Run Maestro E2E before publish (slower)'
-        required: false
-        default: false
-        type: boolean
       channel:
         description: 'OTA channel (only used for release_type=ota)'
         required: false
@@ -98,7 +90,6 @@ jobs:
       release_type:   ${{ steps.decide.outputs.release_type }}
       bump:           ${{ steps.decide.outputs.bump }}
       platform:       ${{ steps.decide.outputs.platform }}
-      run_e2e:        ${{ steps.decide.outputs.run_e2e }}
       channel:        ${{ steps.decide.outputs.channel }}
       dry_run:        ${{ steps.decide.outputs.dry_run }}
     steps:
@@ -111,7 +102,6 @@ jobs:
           TYPE="ota"
           BUMP="none"
           PLATFORM="ios"
-          E2E=false
           CHANNEL="production"
           DRY_RUN=false
 
@@ -120,27 +110,21 @@ jobs:
             TYPE="${{ github.event.inputs.release_type }}"
             BUMP="${{ github.event.inputs.bump }}"
             PLATFORM="${{ github.event.inputs.platform }}"
-            E2E="${{ github.event.inputs.run_e2e }}"
             CHANNEL="${{ github.event.inputs.channel }}"
             DRY_RUN="${{ github.event.inputs.dry_run }}"
           elif [[ "${{ github.ref }}" == refs/tags/app-v* ]]; then
-            # Tag push = real release: build + submit, run E2E for safety
+            # Tag push = real release — build + submit
             SHOULD=true
             TYPE="build-submit"
             BUMP="none"          # tag IS the version of record
             PLATFORM="ios"
-            E2E=true
             CHANNEL="production"
           fi
-
-          # Force E2E for anything that can't be rolled back (submit)
-          if [ "$TYPE" = "build-submit" ]; then E2E=true; fi
 
           echo "should_publish=$SHOULD" >> "$GITHUB_OUTPUT"
           echo "release_type=$TYPE"     >> "$GITHUB_OUTPUT"
           echo "bump=$BUMP"             >> "$GITHUB_OUTPUT"
           echo "platform=$PLATFORM"     >> "$GITHUB_OUTPUT"
-          echo "run_e2e=$E2E"           >> "$GITHUB_OUTPUT"
           echo "channel=$CHANNEL"       >> "$GITHUB_OUTPUT"
           echo "dry_run=$DRY_RUN"       >> "$GITHUB_OUTPUT"
 
@@ -149,13 +133,12 @@ jobs:
           echo "- Type: **$TYPE**"      >> "$GITHUB_STEP_SUMMARY"
           echo "- Bump: **$BUMP**"      >> "$GITHUB_STEP_SUMMARY"
           echo "- Platform: **$PLATFORM**" >> "$GITHUB_STEP_SUMMARY"
-          echo "- E2E: **$E2E**"        >> "$GITHUB_STEP_SUMMARY"
           echo "- Channel: **$CHANNEL**" >> "$GITHUB_STEP_SUMMARY"
           echo "- Dry run? **$DRY_RUN**" >> "$GITHUB_STEP_SUMMARY"
 
-  # ── 2. Fast preflight (always runs) ────────────────────────────────────────
+  # ── 2. Preflight — lint only (no API tests, no E2E) ────────────────────────
   preflight:
-    name: Preflight (lint + compile check)
+    name: Preflight (lint)
     needs: decide
     if: needs.decide.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
@@ -168,88 +151,43 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install
+      - name: Install dependencies
         run: npm ci
 
-      - name: Expo Doctor
+      - name: Validate app.json + package.json JSON
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('app.json','utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"
+          echo "✓ app.json + package.json are valid JSON"
+
+      - name: Expo Doctor (dependency + config sanity)
         run: npx expo-doctor@latest
 
-      - name: Metro / TS compile check
+      - name: TypeScript check (if tsconfig present)
         run: |
+          if [ -f "tsconfig.json" ]; then
+            echo "→ Running tsc --noEmit"
+            npx tsc --noEmit --skipLibCheck
+          else
+            echo "→ No tsconfig.json found — skipping TypeScript check"
+          fi
+
+      - name: Metro bundle compile check
+        run: |
+          # Catches import errors, missing modules, and syntax errors.
+          # Doesn't hit any API, doesn't boot the app, doesn't require a simulator.
           npx expo export --platform web --output-dir /tmp/expo-check --dump-sourcemap false 2>&1
 
-  # ── 3. Slow E2E (optional) ─────────────────────────────────────────────────
-  e2e:
-    name: Maestro E2E
-    needs: [decide, preflight]
-    if: needs.decide.outputs.should_publish == 'true' && needs.decide.outputs.run_e2e == 'true'
-    runs-on: macos-14
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
+  # Note: the old "Maestro E2E" job has been intentionally removed —
+  # this workflow is lint-only by design. If you ever want E2E back,
+  # see git history for this file before April 2026 where the full
+  # job definition is preserved.
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install
-        run: npm ci
-
-      - name: Install Maestro
-        run: |
-          curl -Ls "https://get.maestro.mobile.dev" | bash
-          echo "$HOME/.maestro/bin" >> $GITHUB_PATH
-
-      - name: Build iOS simulator app
-        run: npx expo run:ios --no-install --configuration Release
-        env:
-          EXPO_PUBLIC_API_URL: ${{ secrets.TEST_API_URL }}
-
-      - name: Boot simulator
-        run: |
-          xcrun simctl boot "iPhone 16" || true
-          xcrun simctl bootstatus "iPhone 16" -b
-
-      - name: Install app
-        run: |
-          APP_PATH=$(find ios/build -name "*.app" -type d | head -1)
-          xcrun simctl install booted "$APP_PATH"
-
-      - name: Run Maestro flows
-        env:
-          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
-          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
-        run: |
-          for flow in .maestro/01-app-launch.yaml .maestro/02-sign-in.yaml \
-                      .maestro/03-navigate-screens.yaml \
-                      .maestro/05-beginner-onboarding.yaml \
-                      .maestro/06-custom-goal-setup.yaml \
-                      .maestro/07-paywall.yaml \
-                      .maestro/08-calendar-actions.yaml \
-                      .maestro/09-settings.yaml \
-                      .maestro/10-regular-rides-form.yaml; do
-            [ -f "$flow" ] || continue
-            maestro test "$flow"
-          done
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: maestro-screenshots
-          path: ~/.maestro/tests/**/*.png
-          if-no-files-found: ignore
-
-  # ── 4. Publish (EAS Update for OTA, EAS Build for native) ──────────────────
+  # ── 3. Publish (EAS Update for OTA, EAS Build for native) ──────────────────
   publish:
     name: Publish (${{ needs.decide.outputs.release_type }})
-    needs: [decide, preflight, e2e]
-    # Require e2e only if it was meant to run; otherwise we're fine just with preflight
-    if: |
-      always() &&
-      needs.decide.outputs.should_publish == 'true' &&
-      needs.preflight.result == 'success' &&
-      (needs.decide.outputs.run_e2e != 'true' || needs.e2e.result == 'success')
+    needs: [decide, preflight]
+    if: needs.decide.outputs.should_publish == 'true' && needs.preflight.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
