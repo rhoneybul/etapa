@@ -172,32 +172,27 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Bump version
-        if: needs.decide.outputs.bump != 'none'
-        id: bump
-        working-directory: mcp-server
-        run: |
-          NEW_VERSION=$(npm version ${{ needs.decide.outputs.bump }} --no-git-tag-version)
-          echo "version=${NEW_VERSION#v}" >> "$GITHUB_OUTPUT"
-          echo "→ Bumped to ${NEW_VERSION}"
-
-      - name: Read current version
-        if: needs.decide.outputs.bump == 'none'
-        id: current
-        working-directory: mcp-server
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "→ Publishing existing version ${VERSION}"
-
-      - name: Resolve version
+      - name: Resolve target version
         id: version
+        working-directory: mcp-server
         run: |
-          if [ -n "${{ steps.bump.outputs.version }}" ]; then
-            echo "version=${{ steps.bump.outputs.version }}" >> "$GITHUB_OUTPUT"
+          if [[ "${{ github.ref }}" == refs/tags/mcp-v* ]]; then
+            # Tag is the source of truth — extract version from tag name
+            # and sync package.json to match
+            V="${GITHUB_REF#refs/tags/mcp-v}"
+            echo "→ Syncing package.json to match tag: $V"
+            npm version "$V" --no-git-tag-version --allow-same-version
+          elif [ "${{ needs.decide.outputs.bump }}" != "none" ]; then
+            # Manual dispatch with bump — use npm version to bump
+            NEW=$(npm version ${{ needs.decide.outputs.bump }} --no-git-tag-version)
+            V="${NEW#v}"
+            echo "→ Bumped ${{ needs.decide.outputs.bump }} to $V"
           else
-            echo "version=${{ steps.current.outputs.version }}" >> "$GITHUB_OUTPUT"
+            # Manual dispatch with bump=none — publish current version
+            V=$(node -p "require('./package.json').version")
+            echo "→ Using current version: $V"
           fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
 
       - name: npm pack (dry-run preview)
         working-directory: mcp-server
@@ -214,12 +209,17 @@ jobs:
         if: needs.decide.outputs.dry_run == 'true'
         run: echo "Dry run requested — skipping actual npm publish"
 
-      - name: Commit version bump
-        if: needs.decide.outputs.bump != 'none' && needs.decide.outputs.dry_run != 'true'
+      - name: Commit version change back to main
+        if: needs.decide.outputs.dry_run != 'true'
         run: |
           git add mcp-server/package.json mcp-server/package-lock.json
-          git commit -m "chore(mcp): release v${{ steps.version.outputs.version }}"
-          git push origin HEAD:main
+          if git diff --staged --quiet; then
+            echo "→ No version change to commit (file already matched)"
+          else
+            git commit -m "chore(mcp): sync to v${{ steps.version.outputs.version }}"
+            git push origin HEAD:main
+            echo "→ Pushed version sync to main"
+          fi
 
       - name: Create git tag + GitHub release
         if: needs.decide.outputs.dry_run != 'true'
