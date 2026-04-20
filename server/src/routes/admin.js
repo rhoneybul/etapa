@@ -874,6 +874,36 @@ router.put('/app-config/:key', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── GET /api/admin/signups — pre-launch interest signups ────────────────────
+router.get('/signups', async (req, res, next) => {
+  try {
+    const { data, error } = await supabase
+      .from('interest_signups')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json((data || []).map(row => ({
+      id: row.id,
+      email: row.email,
+      source: row.source,
+      referrer: row.referrer,
+      userAgent: row.user_agent,
+      createdAt: row.created_at,
+    })));
+  } catch (err) { next(err); }
+});
+
+// ── DELETE /api/admin/signups/:id — remove a pre-launch interest signup ─────
+router.delete('/signups/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: 'id is required' });
+    const { error } = await supabase.from('interest_signups').delete().eq('id', id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 // ── GET /api/admin/stats — quick overview numbers ────────────────────────────
 router.get('/stats', async (req, res, next) => {
   try {

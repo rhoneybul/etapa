@@ -125,6 +125,72 @@ app.post('/api/account-deletion', async (req, res) => {
   }
 });
 
+// ── Public register-interest endpoint (no auth — used by the marketing site) ─
+// Stores an email in `interest_signups` and posts to the configured Slack
+// webhook. Dedupes on lower(email) so repeat submissions don't spam Slack.
+app.post('/api/public/register-interest', async (req, res) => {
+  const { email, source } = req.body || {};
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  if (!email || !EMAIL_RE.test(String(email).trim())) {
+    return res.status(400).json({ error: 'Please enter a valid email address.' });
+  }
+
+  const cleanEmail = String(email).trim();
+  const referrer = req.headers.referer || req.headers.referrer || null;
+  const userAgent = req.headers['user-agent'] || null;
+
+  try {
+    const { supabase } = require('./lib/supabase');
+    let alreadyRegistered = false;
+
+    if (supabase) {
+      const { error } = await supabase.from('interest_signups').insert({
+        email: cleanEmail,
+        source: source ? String(source).slice(0, 80) : null,
+        referrer: referrer ? String(referrer).slice(0, 500) : null,
+        user_agent: userAgent ? String(userAgent).slice(0, 500) : null,
+      });
+      // Unique constraint violation = already signed up
+      if (error) {
+        if (error.code === '23505' || /duplicate|unique/i.test(error.message || '')) {
+          alreadyRegistered = true;
+        } else {
+          console.error('[register-interest] Supabase error:', error.message);
+        }
+      }
+    }
+
+    // Only notify Slack the first time we see an email.
+    if (!alreadyRegistered) {
+      // Use the same Slack webhook as the rest of the app (feedback, subs, etc.)
+      const SLACK_WEBHOOK_URL =
+        process.env.SLACK_WEBHOOK_URL ||
+        process.env.SLACK_SUBSCRIPTIONS_WEBHOOK_URL;
+
+      if (SLACK_WEBHOOK_URL) {
+        const text = `🎉 *${cleanEmail}* registered interest${source ? ` (from \`${source}\`)` : ''}`;
+        fetch(SLACK_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        }).catch(err => console.error('[register-interest slack] Failed:', err.message));
+      }
+    }
+
+    return res.json({
+      success: true,
+      alreadyRegistered,
+      message: alreadyRegistered
+        ? "You're already on the list — we'll be in touch soon."
+        : "You're on the list! We'll let you know the moment Etapa is live.",
+    });
+  } catch (err) {
+    console.error('[register-interest] Error:', err);
+    return res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
 // ── Public prices endpoint (no auth — used by website and app before login) ──
 // Returns the same pricing data as /api/subscription/prices but without a Bearer token.
 // Prices are sourced from the admin-configured pricing_config, falling back to defaults.
