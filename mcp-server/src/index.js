@@ -57,7 +57,7 @@ app.get('/', (_req, res) => {
     name: 'etapa-mcp',
     version: '0.1.0',
     status: 'ok',
-    docs: 'https://github.com/etapa/etapa/tree/main/mcp-server',
+    docs: 'https://github.com/rhoneybul/etapa/tree/main/mcp-server',
     mcpEndpoint: '/mcp',
   });
 });

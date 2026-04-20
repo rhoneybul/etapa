@@ -586,6 +586,9 @@
       .coach-list { align-items: center; }
       .coaches-visual .phone:nth-child(2) { display: none; }
 
+      .mcp-section { padding: 80px 24px !important; }
+      .mcp-section > div > div:nth-child(2) { grid-template-columns: 1fr !important; }
+
       .beginner { padding: 80px 24px; }
       .beginner-wrap { grid-template-columns: 1fr; gap: 40px; }
       .beginner h2 { font-size: 36px; }
@@ -630,6 +633,7 @@
       <a href="#beginner">Get into Cycling</a>
       <a href="#features">Features</a>
       <a href="#coaches">Coaches</a>
+      <a href="#mcp">For Developers</a>
       <a href="#pricing">Pricing</a>
       <a href="blog/">Blog</a>
       <a href="support.html">Support</a>
@@ -880,6 +884,100 @@
       <div class="ai-card">
         <h3>Not Medical Advice</h3>
         <p>Etapa is a training tool, not a medical service. Always consult your doctor before starting any new exercise programme, especially if you have pre-existing conditions or have been inactive.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- MCP — Use Etapa in any AI assistant -->
+  <section class="mcp-section" id="mcp" style="padding:120px 48px;border-top:1px solid #111;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:50%;right:10%;transform:translateY(-50%);width:500px;height:500px;background:radial-gradient(circle,rgba(232,69,139,0.06) 0%,transparent 70%);border-radius:50%;pointer-events:none;"></div>
+    <div style="max-width:1100px;margin:0 auto;position:relative;z-index:2;">
+      <div style="text-align:center;margin-bottom:64px;">
+        <div class="section-label">New · Open to every AI</div>
+        <h2>Use Etapa in <span style="color:#E8458B;">any AI assistant</span>.</h2>
+        <p class="section-sub" style="margin:16px auto 0;">Etapa's training-plan generator and beginner guidance are now available as an <strong style="color:#ddd;font-weight:500;">MCP server</strong> — plug it into Claude, ChatGPT, Cursor, or any MCP-compatible app. Ask for a plan in plain English, get one built by Etapa.</p>
+      </div>
+
+      <!-- Two-column: left = what it does, right = install snippet -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:stretch;">
+        <!-- Left: feature list -->
+        <div style="background:#0a0a0a;border:1px solid #161616;border-radius:20px;padding:36px;">
+          <div style="display:inline-flex;align-items:center;gap:10px;background:rgba(232,69,139,0.12);border:1px solid rgba(232,69,139,0.25);border-radius:100px;padding:6px 14px;font-size:12px;color:#E8458B;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:20px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:#E8458B;"></span>
+            What the MCP does
+          </div>
+          <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:18px;">
+            <li style="display:flex;gap:14px;align-items:flex-start;">
+              <div style="width:32px;height:32px;border-radius:10px;background:rgba(232,69,139,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#E8458B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+              </div>
+              <div>
+                <div style="font-size:15px;font-weight:600;color:#fff;margin-bottom:4px;">Generate a training plan</div>
+                <div style="font-size:14px;color:#888;font-weight:300;line-height:1.6;">A personalised 2-4 week sample plan tailored to the rider's goal, fitness, and schedule. Powered by the Etapa API.</div>
+              </div>
+            </li>
+            <li style="display:flex;gap:14px;align-items:flex-start;">
+              <div style="width:32px;height:32px;border-radius:10px;background:rgba(232,69,139,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#E8458B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+              </div>
+              <div>
+                <div style="font-size:15px;font-weight:600;color:#fff;margin-bottom:4px;">Beginner cycling guidance</div>
+                <div style="font-size:14px;color:#888;font-weight:300;line-height:1.6;">Jargon-free advice on first bikes, essential gear, nutrition, road safety, bike fit, and building a cycling habit.</div>
+              </div>
+            </li>
+            <li style="display:flex;gap:14px;align-items:flex-start;">
+              <div style="width:32px;height:32px;border-radius:10px;background:rgba(232,69,139,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#E8458B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              </div>
+              <div>
+                <div style="font-size:15px;font-weight:600;color:#fff;margin-bottom:4px;">Free, open, and hosted</div>
+                <div style="font-size:14px;color:#888;font-weight:300;line-height:1.6;">No account, no API key, no payment. Runs via npm or as a hosted server on Railway.</div>
+              </div>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Right: install snippet -->
+        <div style="background:linear-gradient(180deg,rgba(232,69,139,0.06) 0%,#0a0a0a 60%);border:1px solid rgba(232,69,139,0.2);border-radius:20px;padding:36px;display:flex;flex-direction:column;">
+          <div style="display:inline-flex;align-items:center;gap:10px;background:rgba(232,69,139,0.12);border:1px solid rgba(232,69,139,0.25);border-radius:100px;padding:6px 14px;font-size:12px;color:#E8458B;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:20px;width:fit-content;">
+            <span style="width:6px;height:6px;border-radius:50%;background:#E8458B;"></span>
+            Install in 30 seconds
+          </div>
+          <p style="font-size:14px;color:#999;font-weight:300;line-height:1.6;margin-bottom:16px;">Add this to your Claude Desktop config (<code style="background:#161616;padding:2px 6px;border-radius:4px;font-size:12px;color:#ddd;font-family:monospace;">~/Library/Application Support/Claude/claude_desktop_config.json</code>):</p>
+          <pre style="background:#050505;border:1px solid #1a1a1a;border-radius:12px;padding:18px;font-family:'SF Mono',Menlo,Monaco,monospace;font-size:13px;color:#ddd;line-height:1.6;overflow-x:auto;margin:0 0 16px 0;"><code>{
+  "mcpServers": {
+    "etapa": {
+      "command": "npx",
+      "args": ["-y", "etapa-mcp"]
+    }
+  }
+}</code></pre>
+          <p style="font-size:13px;color:#777;font-weight:300;line-height:1.6;margin-bottom:24px;">Restart Claude Desktop and ask: <em style="color:#E8458B;font-style:italic;">"Use Etapa to build me a plan for my first 30km ride."</em></p>
+
+          <!-- CTAs -->
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:auto;">
+            <a href="https://www.npmjs.com/package/etapa-mcp" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;background:#E8458B;color:#000;text-decoration:none;padding:12px 20px;border-radius:100px;font-size:14px;font-weight:600;transition:background 0.2s;" onmouseover="this.style.background='#F472B6'" onmouseout="this.style.background='#E8458B'">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M0 0v24h24V0H0zm19.2 19.2h-2.4V9.6h-4.8v9.6H4.8V4.8h14.4v14.4z"/></svg>
+              View on npm
+            </a>
+            <a href="https://github.com/rhoneybul/etapa/tree/main/mcp-server" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;background:#161616;color:#ddd;text-decoration:none;padding:12px 20px;border-radius:100px;font-size:14px;font-weight:500;border:1px solid #232323;transition:all 0.2s;" onmouseover="this.style.borderColor='#333';this.style.background='#1a1a1a';this.style.color='#fff'" onmouseout="this.style.borderColor='#232323';this.style.background='#161616';this.style.color='#ddd'">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.6.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
+              GitHub
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Compatible clients strip -->
+      <div style="margin-top:48px;text-align:center;">
+        <p style="font-size:12px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px;">Works with</p>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+          <span style="background:#0a0a0a;border:1px solid #222;border-radius:100px;padding:8px 18px;font-size:13px;font-weight:500;color:#bbb;">Claude Desktop</span>
+          <span style="background:#0a0a0a;border:1px solid #222;border-radius:100px;padding:8px 18px;font-size:13px;font-weight:500;color:#bbb;">Cursor</span>
+          <span style="background:#0a0a0a;border:1px solid #222;border-radius:100px;padding:8px 18px;font-size:13px;font-weight:500;color:#bbb;">Windsurf</span>
+          <span style="background:#0a0a0a;border:1px solid #222;border-radius:100px;padding:8px 18px;font-size:13px;font-weight:500;color:#bbb;">ChatGPT connectors</span>
+          <span style="background:#0a0a0a;border:1px solid #222;border-radius:100px;padding:8px 18px;font-size:13px;font-weight:500;color:#bbb;">Any MCP client</span>
+        </div>
       </div>
     </div>
   </section>

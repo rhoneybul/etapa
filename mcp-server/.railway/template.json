@@ -7,7 +7,7 @@
     {
       "name": "etapa-mcp",
       "source": {
-        "repo": "etapa/etapa",
+        "repo": "rhoneybul/etapa",
         "rootDirectory": "/mcp-server"
       },
       "variables": {

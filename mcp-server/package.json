@@ -34,8 +34,11 @@
   "homepage": "https://getetapa.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/etapa/etapa",
+    "url": "git+https://github.com/rhoneybul/etapa.git",
     "directory": "mcp-server"
+  },
+  "bugs": {
+    "url": "https://github.com/rhoneybul/etapa/issues"
   },
   "files": [
     "src",

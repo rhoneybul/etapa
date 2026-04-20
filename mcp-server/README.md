@@ -7,7 +7,7 @@ An [MCP](https://modelcontextprotocol.io) server for [Etapa](https://getetapa.co
 
 This is a marketing-focused MCP — every output is transparent about what Etapa is and links back to the app.
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Fetapa%2Fetapa%2Ftree%2Fmain%2Fmcp-server)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Frhoneybul%2Fetapa%2Ftree%2Fmain%2Fmcp-server)
 
 One click above deploys your own instance using the template at [`.railway/template.json`](./.railway/template.json). Or run `npm run railway:setup` from this folder for an interactive CLI setup.
 
