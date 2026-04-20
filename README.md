@@ -102,6 +102,8 @@ etapa/
 ├── src/                # React Native / Expo app (iOS + Android)
 ├── server/             # Node.js API (Railway)
 ├── mcp-server/         # MCP server (npm: etapa-mcp)
+│   ├── README.md       # technical docs
+│   └── PLAN.md         # MCP release state + distribution templates
 ├── admin-dashboard/    # Next.js admin panel
 ├── website/            # Static marketing site (Vercel)
 │   └── blog/           # Long-form content for beginner cyclists
@@ -109,7 +111,20 @@ etapa/
 └── ios/ android/       # Native project files
 ```
 
-Each folder has its own README with more detail.
+## Strategy & marketing docs
+
+Eight top-level docs covering everything you need to pick up where we left off:
+
+| File | What it's for |
+|---|---|
+| [`README.md`](./README.md) | This file — repo landing page |
+| [`CLAUDE.md`](./CLAUDE.md) | Tech context for AI assistants |
+| [`BRAND.md`](./BRAND.md) | Brand bible — voice, tone, audience, visual style |
+| [`MARKET_RESEARCH.md`](./MARKET_RESEARCH.md) | Competitive landscape + positioning research |
+| [`STRATEGY.md`](./STRATEGY.md) | **Marketing playbook** — pillars, 30-day social launch plan, Holo production playbook, SEO content strategy. Everything about how we go to market. |
+| [`THIS_WEEK.md`](./THIS_WEEK.md) | Rolling tactical file — the current week's Instagram content plan. Overwritten every Sunday. |
+| [`mcp-server/README.md`](./mcp-server/README.md) | MCP technical docs + deployment + npm publishing |
+| [`mcp-server/PLAN.md`](./mcp-server/PLAN.md) | MCP release checkpoints + distribution templates (directory submissions, Reddit post, Show HN, etc.) |
 
 ---
 
