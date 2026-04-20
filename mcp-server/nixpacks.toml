@@ -1,0 +1,11 @@
+# Nixpacks config for the Etapa MCP server.
+# Used when Railway's Root Directory is pointed at /mcp-server.
+
+[phases.setup]
+nixPkgs = ["nodejs_22"]
+
+[phases.install]
+cmds = ["npm ci --omit=dev"]
+
+[start]
+cmd = "node src/index.js"

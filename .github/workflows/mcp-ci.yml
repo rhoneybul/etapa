@@ -1,0 +1,139 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# MCP Server CI
+#
+# Runs on every push/PR that touches /mcp-server/. Catches broken JS, missing
+# deps, and verifies the server actually boots and responds to /health before
+# Railway auto-deploys it.
+#
+# Railway's GitHub integration handles the actual deploy once this passes —
+# just connect the Railway service to this repo with Root Directory = /mcp-server.
+# ──────────────────────────────────────────────────────────────────────────────
+name: MCP CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mcp-server/**'
+      - '.github/workflows/mcp-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mcp-server/**'
+      - '.github/workflows/mcp-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: mcp-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Syntax + boot check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: mcp-server/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mcp-server
+        run: npm ci
+
+      - name: Syntax check all source files
+        working-directory: mcp-server
+        run: |
+          node --check src/index.js
+          node --check src/stdio.js
+          node --check src/server.js
+          node --check src/tools.js
+          node --check src/guide.js
+
+      - name: Boot test — start server + hit /health
+        working-directory: mcp-server
+        env:
+          PORT: 3099
+          # Point at localhost so the boot test never tries to hit real Etapa API
+          ETAPA_API_URL: http://localhost:9999
+        run: |
+          node src/index.js > /tmp/mcp.log 2>&1 &
+          PID=$!
+
+          # Wait up to 10s for the server to come up
+          for i in {1..10}; do
+            sleep 1
+            if curl -sf http://localhost:3099/health > /dev/null; then
+              echo "✓ Server is healthy after ${i}s"
+              break
+            fi
+            if [ $i -eq 10 ]; then
+              echo "✗ Server never became healthy"
+              cat /tmp/mcp.log
+              kill $PID 2>/dev/null || true
+              exit 1
+            fi
+          done
+
+          # Verify / responds correctly
+          curl -sf http://localhost:3099/ | grep -q 'etapa-mcp' || {
+            echo "✗ / did not return expected payload"
+            cat /tmp/mcp.log
+            kill $PID 2>/dev/null || true
+            exit 1
+          }
+
+          # Verify MCP initialize handshake works
+          RESP=$(curl -si http://localhost:3099/mcp \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}')
+          echo "$RESP" | grep -qi '^mcp-session-id:' || {
+            echo "✗ MCP initialize did not return session id"
+            echo "$RESP"
+            kill $PID 2>/dev/null || true
+            exit 1
+          }
+
+          echo "✓ All checks passed"
+          kill $PID 2>/dev/null || true
+
+      - name: Show server log
+        if: always()
+        run: cat /tmp/mcp.log || true
+
+  # Railway auto-deploys on every push to main (if configured via the GitHub
+  # integration). This job is a sanity signal to help the team watch deploys.
+  post-deploy-check:
+    name: Post-deploy health probe
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wait for Railway to deploy
+        run: sleep 90
+
+      - name: Probe production /health
+        env:
+          MCP_URL: ${{ secrets.MCP_PROD_URL }}
+        run: |
+          if [ -z "$MCP_URL" ]; then
+            echo "Skipping — set MCP_PROD_URL secret to enable (e.g. https://etapa-mcp.up.railway.app)"
+            exit 0
+          fi
+          for i in {1..10}; do
+            if curl -sf "$MCP_URL/health" > /dev/null; then
+              echo "✓ Production MCP is healthy at $MCP_URL"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
+          echo "✗ Production MCP did not become healthy at $MCP_URL"
+          exit 1

@@ -1,0 +1,246 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Publish etapa-mcp to npm
+#
+# Three ways to trigger a release:
+#
+#   1. Manual (easiest) — GitHub → Actions → "Publish etapa-mcp" → Run workflow
+#      → pick patch/minor/major → done. CI bumps the version, tags, publishes.
+#
+#   2. Git tag — push a tag matching `mcp-v*` (e.g. `mcp-v0.1.1`). CI publishes
+#      whatever version is already in mcp-server/package.json.
+#        git tag mcp-v0.1.1 && git push --tags
+#
+#   3. Commit message convention — include `[release patch]`, `[release minor]`,
+#      or `[release major]` in a commit message pushed to main. CI bumps + ships.
+#
+# Required GitHub secret:
+#   NPM_TOKEN — a "Granular Access Token" from npmjs.com with publish permission
+#               on the `etapa-mcp` package. Settings → Access Tokens → Generate.
+#               Use token type "Granular" (not "Classic") — more secure.
+# ──────────────────────────────────────────────────────────────────────────────
+name: Publish etapa-mcp
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: 'Dry run (no actual publish)'
+        required: false
+        default: false
+        type: boolean
+
+  push:
+    tags:
+      - 'mcp-v*'
+    branches:
+      - main
+    paths:
+      - 'mcp-server/**'
+
+concurrency:
+  group: mcp-publish
+  cancel-in-progress: false
+
+jobs:
+  # ── Decide whether to publish + which bump to apply ────────────────────────
+  decide:
+    name: Decide
+    runs-on: ubuntu-latest
+    outputs:
+      should_publish: ${{ steps.decide.outputs.should_publish }}
+      bump: ${{ steps.decide.outputs.bump }}
+      dry_run: ${{ steps.decide.outputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: decide
+        name: Decide release path
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            echo "bump=${{ github.event.inputs.bump }}" >> "$GITHUB_OUTPUT"
+            echo "dry_run=${{ github.event.inputs.dry_run }}" >> "$GITHUB_OUTPUT"
+            echo "→ Manual dispatch: bump=${{ github.event.inputs.bump }}"
+            exit 0
+          fi
+
+          # Tag push: publish current version as-is
+          if [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" == refs/tags/mcp-v* ]]; then
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            echo "bump=none" >> "$GITHUB_OUTPUT"
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+            echo "→ Tag push: publishing current version"
+            exit 0
+          fi
+
+          # Commit message convention
+          MSG="${{ github.event.head_commit.message }}"
+          if echo "$MSG" | grep -q '\[release major\]'; then
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            echo "bump=major" >> "$GITHUB_OUTPUT"
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+          elif echo "$MSG" | grep -q '\[release minor\]'; then
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            echo "bump=minor" >> "$GITHUB_OUTPUT"
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+          elif echo "$MSG" | grep -q '\[release patch\]'; then
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            echo "bump=patch" >> "$GITHUB_OUTPUT"
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "→ No release trigger — skipping publish"
+          fi
+
+  # ── Preflight: syntax + boot test before we ever touch npm ──────────────────
+  preflight:
+    name: Preflight (syntax + boot)
+    needs: decide
+    if: needs.decide.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: mcp-server/package-lock.json
+
+      - name: Install
+        working-directory: mcp-server
+        run: npm ci
+
+      - name: Syntax check
+        working-directory: mcp-server
+        run: npm run check
+
+      - name: Boot test
+        working-directory: mcp-server
+        env:
+          PORT: 3099
+          ETAPA_API_URL: http://localhost:9999
+        run: |
+          node src/index.js > /tmp/mcp.log 2>&1 &
+          PID=$!
+          for i in {1..10}; do
+            sleep 1
+            curl -sf http://localhost:3099/health > /dev/null && break
+            [ $i -eq 10 ] && { cat /tmp/mcp.log; kill $PID; exit 1; }
+          done
+          kill $PID 2>/dev/null || true
+
+  # ── Publish to npm ──────────────────────────────────────────────────────────
+  publish:
+    name: Publish to npm
+    needs: [decide, preflight]
+    if: needs.decide.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write          # required for git tag push + GitHub release
+      id-token: write          # required for npm provenance
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0       # we need full history for git log + push back
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+          cache-dependency-path: mcp-server/package-lock.json
+
+      - name: Install
+        working-directory: mcp-server
+        run: npm ci
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        if: needs.decide.outputs.bump != 'none'
+        id: bump
+        working-directory: mcp-server
+        run: |
+          NEW_VERSION=$(npm version ${{ needs.decide.outputs.bump }} --no-git-tag-version)
+          echo "version=${NEW_VERSION#v}" >> "$GITHUB_OUTPUT"
+          echo "→ Bumped to ${NEW_VERSION}"
+
+      - name: Read current version
+        if: needs.decide.outputs.bump == 'none'
+        id: current
+        working-directory: mcp-server
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "→ Publishing existing version ${VERSION}"
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ steps.bump.outputs.version }}" ]; then
+            echo "version=${{ steps.bump.outputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ steps.current.outputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: npm pack (dry-run preview)
+        working-directory: mcp-server
+        run: npm pack --dry-run
+
+      - name: Publish to npm
+        if: needs.decide.outputs.dry_run != 'true'
+        working-directory: mcp-server
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
+
+      - name: Skip publish (dry-run)
+        if: needs.decide.outputs.dry_run == 'true'
+        run: echo "Dry run requested — skipping actual npm publish"
+
+      - name: Commit version bump
+        if: needs.decide.outputs.bump != 'none' && needs.decide.outputs.dry_run != 'true'
+        run: |
+          git add mcp-server/package.json mcp-server/package-lock.json
+          git commit -m "chore(mcp): release v${{ steps.version.outputs.version }}"
+          git push origin HEAD:main
+
+      - name: Create git tag + GitHub release
+        if: needs.decide.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="mcp-v${{ steps.version.outputs.version }}"
+          # Don't double-tag if triggered from a tag push
+          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+          gh release create "$TAG" \
+            --title "etapa-mcp v${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            --latest=false || echo "Release already exists, skipping"
+
+      - name: Summary
+        run: |
+          echo "## Published etapa-mcp v${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- npm: https://www.npmjs.com/package/etapa-mcp/v/${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- tag: mcp-v${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- install: \`npx -y etapa-mcp\`" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "name": "Etapa MCP",
+  "description": "AI cycling coach MCP server — get training plans and beginner guidance through any MCP-compatible assistant.",
+  "tags": ["mcp", "cycling", "ai-coach", "training-plan"],
+  "services": [
+    {
+      "name": "etapa-mcp",
+      "source": {
+        "repo": "etapa/etapa",
+        "rootDirectory": "/mcp-server"
+      },
+      "variables": {
+        "ETAPA_API_URL": {
+          "default": "https://etapa.up.railway.app",
+          "description": "Base URL of the Etapa API. Leave default unless you're self-hosting Etapa."
+        },
+        "MCP_AUTH_TOKEN": {
+          "default": "",
+          "description": "Optional bearer token. Leave empty for a public MCP, or set any string to require `Authorization: Bearer <token>` on all requests."
+        },
+        "NODE_ENV": {
+          "default": "production"
+        }
+      },
+      "domains": [
+        {
+          "generate": true
+        }
+      ],
+      "healthcheck": {
+        "path": "/health",
+        "timeout": 30
+      }
+    }
+  ]
+}

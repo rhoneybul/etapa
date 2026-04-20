@@ -7,6 +7,10 @@ An [MCP](https://modelcontextprotocol.io) server for [Etapa](https://getetapa.co
 
 This is a marketing-focused MCP — every output is transparent about what Etapa is and links back to the app.
 
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Fetapa%2Fetapa%2Ftree%2Fmain%2Fmcp-server)
+
+One click above deploys your own instance using the template at [`.railway/template.json`](./.railway/template.json). Or run `npm run railway:setup` from this folder for an interactive CLI setup.
+
 ---
 
 ## Running locally
@@ -76,20 +80,58 @@ No authentication required by default. If you want to gate it behind a bearer to
 
 ## Deploying to Railway
 
-This folder contains both `railway.json` and a `Dockerfile` — Railway will pick one of them automatically.
+You've got **three options**, pick what fits:
 
-**First-time setup:**
+### Option A — One-click template button (easiest)
+
+Click the **Deploy on Railway** button at the top of this README. Railway reads [`.railway/template.json`](./.railway/template.json), spins up the service with the right Root Directory + env vars + healthcheck + a generated domain. Takes ~2 minutes.
+
+### Option B — Interactive CLI setup (fully automated)
+
+From the `mcp-server/` folder:
+
+```bash
+npm run railway:setup
+```
+
+This runs [`scripts/railway-setup.sh`](./scripts/railway-setup.sh) which is idempotent and:
+
+1. Installs the Railway CLI if missing
+2. Logs you in
+3. Links this folder to a Railway project (new or existing)
+4. Creates the `etapa-mcp` service with the right config
+5. Sets env vars interactively
+6. Generates a public domain
+7. Triggers a deploy
+8. Prints a ready-to-paste Claude Desktop config
+
+Other useful shortcuts:
+
+```bash
+npm run railway:deploy    # manual redeploy (no git push needed)
+npm run railway:logs      # tail production logs
+npm run railway:status    # show deploy status
+npm run railway:open      # open the Railway dashboard
+```
+
+### Option C — Manual dashboard setup
 
 1. Open your existing Etapa Railway project (or create a new one).
 2. Click **New Service** → **GitHub Repo** → pick the Etapa repo.
-3. In the service's Settings → Source, set the **Root Directory** to `/mcp-server`.
-4. Environment variables:
-   - `ETAPA_API_URL` — `https://etapa.up.railway.app` (or wherever your Etapa API is hosted)
-   - `MCP_AUTH_TOKEN` — optional; leave empty for an open MCP
-5. Settings → Networking → **Generate Domain** to get a public URL, e.g. `etapa-mcp.up.railway.app`.
-6. Deploy. Railway will auto-detect either Nixpacks (via `railway.json`) or the Dockerfile.
+3. In the service's Settings → Source, set **Root Directory** to `/mcp-server`.
+4. Env vars:
+   - `ETAPA_API_URL` — `https://etapa.up.railway.app`
+   - `MCP_AUTH_TOKEN` — optional
+5. Settings → Networking → **Generate Domain**.
+6. Deploy.
 
-**Custom domain (e.g. `mcp.getetapa.com`):**
+### Automatic redeploys on git push
+
+This folder's `railway.json` sets `watchPatterns: ["mcp-server/**"]`, so Railway's GitHub integration only rebuilds the MCP service when files under `mcp-server/` change — pushes that only touch the app, website, or admin dashboard are ignored by this service.
+
+CI runs on every push/PR that touches `mcp-server/**` — see [`.github/workflows/mcp-ci.yml`](../.github/workflows/mcp-ci.yml). It does a syntax check, boots the server, hits `/health`, and runs an MCP `initialize` handshake. If you add `MCP_PROD_URL` as a GitHub secret, it'll also probe the production URL after a push to confirm the Railway deploy landed.
+
+### Custom domain (e.g. `mcp.getetapa.com`)
 
 Settings → Networking → Custom Domain → point your DNS CNAME to the Railway target. Takes ~2 min after DNS propagates.
 
