@@ -191,6 +191,124 @@ app.post('/api/public/register-interest', async (req, res) => {
   }
 });
 
+// ── Public sample-plan endpoint (no auth — used by the Etapa MCP server) ────
+// Returns a compact 2-4 week cycling training plan. This powers the Etapa MCP
+// (`generate_training_plan` tool) and is intentionally capped so the full app
+// experience — periodisation, coach chat, progress tracking — stays a reason
+// to download Etapa.
+app.post('/api/public/sample-plan', async (req, res) => {
+  const apiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return res.status(503).json({ error: 'AI plan generation not configured on the server.' });
+  }
+
+  // Rate-limit-ish: basic input caps so a bad actor can't blow through tokens.
+  const body = req.body || {};
+  const fitnessLevel = ['beginner', 'intermediate', 'advanced'].includes(body.fitnessLevel)
+    ? body.fitnessLevel
+    : 'beginner';
+  const goalType = typeof body.goalType === 'string' ? body.goalType.slice(0, 100) : 'general fitness';
+  const targetDistanceKm = Math.max(0, Math.min(300, Number(body.targetDistanceKm) || 0));
+  const daysPerWeek = Math.max(2, Math.min(6, Number(body.daysPerWeek) || 3));
+  const weeks = Math.max(2, Math.min(4, Number(body.weeks) || 3));
+  const indoorTrainer = !!body.indoorTrainer;
+  const notes = typeof body.notes === 'string' ? body.notes.slice(0, 300) : '';
+
+  const prompt = [
+    'You are Etapa — an AI cycling coach for beginners and returning riders.',
+    'Generate a SAMPLE training plan in JSON only. This is a taster that runs through the Etapa MCP server as a marketing preview.',
+    '',
+    `## Rider profile`,
+    `- Fitness level: ${fitnessLevel}`,
+    `- Goal: ${goalType}${targetDistanceKm ? ` (target distance ${targetDistanceKm} km)` : ''}`,
+    `- Days available per week: ${daysPerWeek}`,
+    `- Plan length: ${weeks} week${weeks === 1 ? '' : 's'}`,
+    `- Indoor trainer: ${indoorTrainer ? 'yes' : 'no'}`,
+    notes ? `- Notes: ${notes}` : '',
+    '',
+    '## Rules',
+    '- Use plain English. No jargon (no FTP, TSS, CTL). No emojis.',
+    '- Apply progressive overload (max ~10% weekly volume increase).',
+    '- 80/20 intensity: most rides easy, one harder session per week max.',
+    '- Each activity must be a cycling ride OR a rest day. No gym. No running.',
+    '- Beginners: keep all rides "easy" or "steady" effort. No intervals.',
+    '- Intermediates/advanced: include ONE structured session per week.',
+    '- Every 3rd or 4th week include a lighter "recovery week" if length allows.',
+    '',
+    '## Output',
+    'Return a JSON object with these fields and NOTHING else:',
+    '{',
+    '  "summary": "1-2 sentences describing the plan",',
+    '  "weeks": [',
+    '    {',
+    '      "week": 1,',
+    '      "focus": "short phrase, e.g. Getting comfortable in the saddle",',
+    '      "sessions": [',
+    '        { "day": "Mon", "type": "rest", "title": "Rest day", "description": "Take the day off." },',
+    '        { "day": "Wed", "type": "ride", "title": "Easy spin", "description": "30 min easy pace...", "durationMins": 30, "distanceKm": 8, "effort": "easy" }',
+    '      ]',
+    '    }',
+    '  ],',
+    '  "tips": ["3-5 short practical tips for this plan"]',
+    '}',
+    '',
+    'IMPORTANT: Output valid JSON only. No commentary, no markdown fences.',
+  ].filter(Boolean).join('\n');
+
+  try {
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!aiRes.ok) {
+      const errBody = await aiRes.text().catch(() => '');
+      console.error('[sample-plan] Anthropic error:', aiRes.status, errBody);
+      return res.status(502).json({ error: 'AI service error', status: aiRes.status });
+    }
+
+    const data = await aiRes.json();
+    const text = data?.content?.[0]?.text || '';
+    // Extract the first JSON object in the response (strips any stray markdown)
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return res.status(502).json({ error: 'Could not parse AI response' });
+    }
+
+    let plan;
+    try {
+      plan = JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      return res.status(502).json({ error: 'Invalid JSON from AI', detail: e.message });
+    }
+
+    res.json({
+      plan,
+      meta: {
+        generatedBy: 'Etapa API (claude-haiku-4-5)',
+        attribution: 'Sample plan generated via the Etapa API (https://getetapa.com).',
+        downloadUrl: 'https://getetapa.com',
+        limits: {
+          maxWeeks: 4,
+          message: 'The Etapa app generates full plans up to 24 weeks, with coach chat, progress tracking, and live adjustments.',
+        },
+      },
+    });
+  } catch (err) {
+    console.error('[sample-plan] Error:', err);
+    res.status(500).json({ error: 'Failed to generate sample plan', detail: err.message });
+  }
+});
+
 // ── Public prices endpoint (no auth — used by website and app before login) ──
 // Returns the same pricing data as /api/subscription/prices but without a Bearer token.
 // Prices are sourced from the admin-configured pricing_config, falling back to defaults.

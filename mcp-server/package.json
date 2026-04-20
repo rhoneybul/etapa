@@ -1,0 +1,38 @@
+{
+  "name": "etapa-mcp",
+  "version": "0.1.0",
+  "description": "Etapa MCP server — cycling training plans and beginner guidance via the Etapa API",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "etapa-mcp": "src/stdio.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "stdio": "node src/stdio.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "cycling",
+    "training-plan",
+    "etapa",
+    "ai-coach",
+    "model-context-protocol"
+  ],
+  "author": "Etapa",
+  "license": "MIT",
+  "homepage": "https://getetapa.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/etapa/etapa"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "express": "^4.21.1",
+    "zod": "^3.23.8"
+  }
+}
