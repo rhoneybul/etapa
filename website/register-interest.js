@@ -179,10 +179,19 @@
       button.disabled = true;
       button.innerHTML = '<span class="ri-spin"></span> Submitting…';
 
+      // If the interactive MCP demo is on the page, grab its session ID + CTA variant
+      // so the backend can attribute this signup to a specific demo interaction.
+      var demoMeta = (window.__etapaDemo && typeof window.__etapaDemo === 'object') ? window.__etapaDemo : {};
+
       fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email, source: PAGE_SOURCE }),
+        body: JSON.stringify({
+          email: email,
+          source: PAGE_SOURCE,
+          demoSessionId: demoMeta.sessionId || null,
+          demoCtaVariant: demoMeta.ctaVariant || null,
+        }),
       })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
         .then(function (resp) {

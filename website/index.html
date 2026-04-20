@@ -588,6 +588,10 @@
 
       .mcp-section { padding: 80px 24px !important; }
       .mcp-section > div > div:nth-child(2) { grid-template-columns: 1fr !important; }
+      #mcp-demo-cards { grid-template-columns: 1fr !important; }
+    }
+    @media (max-width: 1000px) and (min-width: 641px) {
+      #mcp-demo-cards { grid-template-columns: repeat(2, 1fr) !important; }
 
       .beginner { padding: 80px 24px; }
       .beginner-wrap { grid-template-columns: 1fr; gap: 40px; }
@@ -986,8 +990,83 @@
         </div>
       </div>
 
+      <!-- ── Try it now — interactive demo ──────────────────────────────── -->
+      <div id="mcp-demo" style="margin-top:64px;">
+        <div style="text-align:center;margin-bottom:32px;">
+          <div style="display:inline-flex;align-items:center;gap:10px;background:rgba(232,69,139,0.12);border:1px solid rgba(232,69,139,0.25);border-radius:100px;padding:6px 14px;font-size:12px;color:#E8458B;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:16px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:#E8458B;"></span>
+            Live demo · no install
+          </div>
+          <h3 style="font-size:26px;font-weight:600;margin-bottom:12px;color:#fff;">Try it right here</h3>
+          <p style="font-size:15px;color:#888;font-weight:300;max-width:560px;margin:0 auto;line-height:1.6;">Pick an example below. We'll ask the Etapa coach live — exactly the same API Claude Desktop would hit.</p>
+        </div>
+
+        <!-- Prompt cards — 6 in a 3-column grid on desktop, stacks on mobile -->
+        <div id="mcp-demo-cards" style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px;max-width:1000px;margin:0 auto 28px;">
+          <button type="button" class="mcp-demo-card" data-prompt="generate-plan" style="text-align:left;background:#0a0a0a;border:1px solid #1a1a1a;border-radius:16px;padding:18px 20px;cursor:pointer;transition:all 0.2s;font-family:inherit;color:inherit;">
+            <div style="font-size:18px;margin-bottom:6px;">🚴</div>
+            <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;">Build me a 3-week plan</div>
+            <div style="font-size:13px;color:#888;font-weight:300;line-height:1.4;">For my first 30&nbsp;km ride, 3 days a week</div>
+          </button>
+
+          <button type="button" class="mcp-demo-card" data-prompt="coach-adapt" style="text-align:left;background:#0a0a0a;border:1px solid #1a1a1a;border-radius:16px;padding:18px 20px;cursor:pointer;transition:all 0.2s;font-family:inherit;color:inherit;">
+            <div style="font-size:18px;margin-bottom:6px;">💭</div>
+            <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;">I missed Monday's ride</div>
+            <div style="font-size:13px;color:#888;font-weight:300;line-height:1.4;">Skip it or fit it in later this week?</div>
+          </button>
+
+          <button type="button" class="mcp-demo-card" data-prompt="coach-volume" style="text-align:left;background:#0a0a0a;border:1px solid #1a1a1a;border-radius:16px;padding:18px 20px;cursor:pointer;transition:all 0.2s;font-family:inherit;color:inherit;">
+            <div style="font-size:18px;margin-bottom:6px;">🤔</div>
+            <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;">Is 5 rides a week too much?</div>
+            <div style="font-size:13px;color:#888;font-weight:300;line-height:1.4;">Coming from zero, afraid of burning out</div>
+          </button>
+
+          <button type="button" class="mcp-demo-card" data-prompt="review-plan" style="text-align:left;background:#0a0a0a;border:1px solid #1a1a1a;border-radius:16px;padding:18px 20px;cursor:pointer;transition:all 0.2s;font-family:inherit;color:inherit;">
+            <div style="font-size:18px;margin-bottom:6px;">🔍</div>
+            <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;">Review this plan</div>
+            <div style="font-size:13px;color:#888;font-weight:300;line-height:1.4;">Aggressive sample from a YouTube video</div>
+          </button>
+
+          <button type="button" class="mcp-demo-card" data-prompt="coach-bike" style="text-align:left;background:#0a0a0a;border:1px solid #1a1a1a;border-radius:16px;padding:18px 20px;cursor:pointer;transition:all 0.2s;font-family:inherit;color:inherit;">
+            <div style="font-size:18px;margin-bottom:6px;">🛒</div>
+            <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;">What bike should I buy?</div>
+            <div style="font-size:13px;color:#888;font-weight:300;line-height:1.4;">£500 budget, mostly commuting + weekend rides</div>
+          </button>
+
+          <button type="button" class="mcp-demo-card" data-prompt="coach-habit" style="text-align:left;background:#0a0a0a;border:1px solid #1a1a1a;border-radius:16px;padding:18px 20px;cursor:pointer;transition:all 0.2s;font-family:inherit;color:inherit;">
+            <div style="font-size:18px;margin-bottom:6px;">🌱</div>
+            <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;">Help me build a habit</div>
+            <div style="font-size:13px;color:#888;font-weight:300;line-height:1.4;">I keep starting and stopping. What works?</div>
+          </button>
+        </div>
+
+        <!-- Output area -->
+        <div id="mcp-demo-output" style="max-width:720px;margin:0 auto;display:none;">
+          <!-- User prompt bubble -->
+          <div id="mcp-demo-user" style="background:rgba(232,69,139,0.08);border:1px solid rgba(232,69,139,0.2);border-radius:16px;padding:14px 18px;margin-bottom:12px;">
+            <div style="font-size:11px;font-weight:600;color:#E8458B;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">You asked</div>
+            <div id="mcp-demo-user-text" style="font-size:14px;color:#ddd;line-height:1.5;font-weight:300;"></div>
+          </div>
+
+          <!-- Coach response bubble -->
+          <div id="mcp-demo-response" style="background:#0a0a0a;border:1px solid #1a1a1a;border-radius:16px;padding:20px 24px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+              <div style="width:26px;height:26px;border-radius:50%;background:#E8458B;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#000;">E</div>
+              <div style="font-size:12px;font-weight:600;color:#E8458B;text-transform:uppercase;letter-spacing:1px;">Etapa coach · via MCP</div>
+            </div>
+            <div id="mcp-demo-response-text" style="font-size:15px;color:#ccc;line-height:1.7;font-weight:300;"></div>
+            <div id="mcp-demo-cta" style="margin-top:20px;padding-top:18px;border-top:1px solid #1a1a1a;display:none;">
+              <p id="mcp-demo-cta-copy" style="font-size:13px;color:#888;font-weight:300;margin-bottom:12px;"></p>
+              <a id="mcp-demo-cta-link" href="#register-interest" data-register-interest style="display:inline-flex;align-items:center;gap:8px;background:#E8458B;color:#000;text-decoration:none;padding:10px 20px;border-radius:100px;font-size:14px;font-weight:600;transition:background 0.2s;" onmouseover="this.style.background='#F472B6'" onmouseout="this.style.background='#E8458B'"></a>
+            </div>
+          </div>
+        </div>
+
+        <p id="mcp-demo-hint" style="text-align:center;font-size:12px;color:#555;font-weight:300;margin-top:16px;">Responses take 5-15 seconds. Powered by the Etapa API — the same one the MCP calls from Claude Desktop.</p>
+      </div>
+
       <!-- Compatible clients strip -->
-      <div style="margin-top:48px;text-align:center;">
+      <div style="margin-top:64px;padding-top:40px;border-top:1px solid #111;text-align:center;">
         <p style="font-size:12px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px;">Works with</p>
         <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
           <span style="background:#0a0a0a;border:1px solid #222;border-radius:100px;padding:8px 18px;font-size:13px;font-weight:500;color:#bbb;">Claude Desktop</span>
@@ -999,6 +1078,251 @@
       </div>
     </div>
   </section>
+
+  <!-- MCP demo interactive script -->
+  <script>
+    (function () {
+      'use strict';
+      var API = 'https://etapa.up.railway.app';
+
+      // ── Per-session identity + A/B variant (picked once per page load) ───
+      var SESSION_ID = crypto.randomUUID ? crypto.randomUUID() :
+        'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+          var r = Math.random() * 16 | 0;
+          return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+        });
+      var CTA_VARIANT = Math.random() < 0.5 ? 'A' : 'B';
+
+      // Two CTA variants to A/B test
+      var CTA_COPY = {
+        A: {
+          blurb: 'This is a 30-second preview. The full Etapa app has 24-week plans, live coach chat, and 6 coach personalities.',
+          button: 'Register interest in Etapa →',
+        },
+        B: {
+          blurb: 'Liked that? Imagine it remembering every ride you\'ve done, adapting every week, and having your back at 11pm when you\'re anxious about tomorrow\'s ride.',
+          button: 'See the full Etapa experience →',
+        },
+      };
+
+      // Expose session + variant so the register-interest modal can pick them up
+      window.__etapaDemo = { sessionId: SESSION_ID, ctaVariant: CTA_VARIANT };
+
+      // Fire-and-forget analytics (never blocks UI, never throws)
+      function logEvent(eventType, extras) {
+        try {
+          var body = Object.assign({
+            sessionId: SESSION_ID,
+            eventType: eventType,
+            ctaVariant: CTA_VARIANT,
+          }, extras || {});
+          fetch(API + '/api/public/demo-event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Etapa-Source': 'website-demo' },
+            body: JSON.stringify(body),
+            keepalive: true,
+          }).catch(function () { /* ignore */ });
+        } catch (e) { /* ignore */ }
+      }
+
+      // Fixed, pre-written prompts. Users cannot send free-form queries.
+      var PROMPTS = {
+        'generate-plan': {
+          userText: 'Build me a 3-week beginner plan for my first 30 km ride — I can train 3 days a week.',
+          endpoint: '/api/public/sample-plan',
+          body: { fitnessLevel: 'beginner', goalType: 'first 30km ride', targetDistanceKm: 30, daysPerWeek: 3, weeks: 3, indoorTrainer: false },
+          resultField: 'plan',
+          renderer: renderPlan,
+        },
+        'coach-adapt': {
+          userText: "I missed Monday's ride because of work. Should I skip it or fit it in later this week?",
+          endpoint: '/api/public/coach-ask',
+          body: { question: "I missed Monday's ride because of work. Should I skip it or fit it in later this week? I'm a beginner doing 3 rides a week, training for my first 30km sportive." },
+          resultField: 'answer',
+          renderer: renderText,
+        },
+        'coach-volume': {
+          userText: 'Is 5 rides a week too much for a beginner? I worry about burning out.',
+          endpoint: '/api/public/coach-ask',
+          body: { question: "I'm a complete beginner — never done structured cycling training. Is 5 rides a week too much? I worry about burning out." },
+          resultField: 'answer',
+          renderer: renderText,
+        },
+        'review-plan': {
+          userText: 'Can you review this plan I found on YouTube? Week 1: Mon rest, Wed 20km, Sat 40km. Week 2: Mon rest, Wed 30km, Sat 60km. Week 3: Mon rest, Wed 40km, Sat 80km. Week 4: Mon rest, Wed 30km, Sat 100km.',
+          endpoint: '/api/public/review-plan',
+          body: {
+            plan: "Week 1: Mon rest, Wed 20km, Sat 40km\nWeek 2: Mon rest, Wed 30km, Sat 60km\nWeek 3: Mon rest, Wed 40km, Sat 80km\nWeek 4: Mon rest, Wed 30km, Sat 100km",
+            goal: 'first 100km sportive',
+            fitnessLevel: 'beginner',
+          },
+          resultField: 'critique',
+          renderer: renderText,
+        },
+        'coach-bike': {
+          userText: 'I want to buy my first bike. Budget is £500, mostly commuting plus weekend rides. What should I get?',
+          endpoint: '/api/public/coach-ask',
+          body: { question: "I want to buy my first bike. Budget is £500, I'll mostly commute to work (5 miles each way, mix of roads and cycle paths) and do some weekend rides, maybe up to 30km. What kind of bike should I get and any specific models to consider?" },
+          resultField: 'answer',
+          renderer: renderText,
+        },
+        'coach-habit': {
+          userText: 'I keep starting cycling and stopping after a few weeks. How do I actually build a habit that sticks?',
+          endpoint: '/api/public/coach-ask',
+          body: { question: "I keep starting cycling and then stopping after 2-3 weeks. Bike gathers dust. How do I actually build a sustainable cycling habit? Practical advice please." },
+          resultField: 'answer',
+          renderer: renderText,
+        },
+      };
+
+      var cards       = document.querySelectorAll('.mcp-demo-card');
+      var output      = document.getElementById('mcp-demo-output');
+      var userText    = document.getElementById('mcp-demo-user-text');
+      var respText    = document.getElementById('mcp-demo-response-text');
+      var ctaWrap     = document.getElementById('mcp-demo-cta');
+      var ctaCopyEl   = document.getElementById('mcp-demo-cta-copy');
+      var ctaLink     = document.getElementById('mcp-demo-cta-link');
+      var busy        = false;
+
+      // Populate the CTA bubble with whichever variant we picked
+      ctaCopyEl.textContent = CTA_COPY[CTA_VARIANT].blurb;
+      ctaLink.textContent   = CTA_COPY[CTA_VARIANT].button;
+      ctaLink.addEventListener('click', function () { logEvent('cta_click'); });
+
+      // Fire a 'view' event when the demo scrolls into view (once per session)
+      var viewed = false;
+      var demoSection = document.getElementById('mcp-demo');
+      if (demoSection && 'IntersectionObserver' in window) {
+        var io = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting && !viewed) {
+              viewed = true;
+              logEvent('view');
+              io.disconnect();
+            }
+          });
+        }, { threshold: 0.3 });
+        io.observe(demoSection);
+      }
+
+      // Click handlers — one call per click, locks the UI while in-flight.
+      cards.forEach(function (card) {
+        card.addEventListener('mouseenter', function () {
+          card.style.borderColor = '#E8458B';
+          card.style.background = '#111';
+        });
+        card.addEventListener('mouseleave', function () {
+          card.style.borderColor = '#1a1a1a';
+          card.style.background = '#0a0a0a';
+        });
+        card.addEventListener('click', function () {
+          if (busy) return;
+          var key = card.getAttribute('data-prompt');
+          var p = PROMPTS[key];
+          if (!p) return;
+          logEvent('prompt_click', { promptKey: key });
+          runPrompt(key, p);
+        });
+      });
+
+      function runPrompt(key, p) {
+        busy = true;
+        cards.forEach(function (c) { c.disabled = true; c.style.opacity = '0.5'; });
+        output.style.display = 'block';
+        userText.textContent = p.userText;
+        respText.innerHTML = '<span style="color:#666;">Asking the Etapa coach…</span><span class="mcp-demo-spinner" style="display:inline-block;width:10px;height:10px;margin-left:8px;border:2px solid rgba(232,69,139,0.2);border-top-color:#E8458B;border-radius:50%;animation:mcpSpin 0.8s linear infinite;"></span>';
+        ctaWrap.style.display = 'none';
+        output.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        fetch(API + p.endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Etapa-Source': 'website-demo' },
+          body: JSON.stringify(p.body),
+        })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); })
+          .then(function (resp) {
+            if (!resp.ok) {
+              if (resp.status === 429) throw new Error('You\'ve tried the demo a lot — give it a few minutes and try again. (Or install the MCP in Claude Desktop for unlimited use.)');
+              throw new Error(resp.body && resp.body.error || 'Something went wrong.');
+            }
+            var result = resp.body[p.resultField];
+            respText.innerHTML = p.renderer(result);
+            ctaWrap.style.display = 'block';
+            logEvent('response_ok', { promptKey: key });
+          })
+          .catch(function (err) {
+            respText.innerHTML = '<span style="color:#f87171;">Something went wrong: ' + escapeHtml(err.message || 'unknown error') + '</span><br><br><span style="color:#888;">Try again, or <a href="https://www.npmjs.com/package/etapa-mcp" style="color:#E8458B;">install the MCP in Claude Desktop</a> for the full experience.</span>';
+            logEvent('response_error', { promptKey: key, errorMessage: err.message || 'unknown' });
+          })
+          .finally(function () {
+            busy = false;
+            cards.forEach(function (c) { c.disabled = false; c.style.opacity = '1'; });
+          });
+      }
+
+      // ── Renderers ────────────────────────────────────────────────────
+      function renderText(text) {
+        // Light markdown: ** bold, ## headers, bullet lists, paragraphs
+        if (!text) return '<em>(empty response)</em>';
+        var html = escapeHtml(text);
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/^#### (.+)$/gm, '<h5 style="font-size:14px;font-weight:600;color:#fff;margin:16px 0 6px;">$1</h5>');
+        html = html.replace(/^### (.+)$/gm, '<h4 style="font-size:15px;font-weight:600;color:#fff;margin:18px 0 8px;">$1</h4>');
+        html = html.replace(/^## (.+)$/gm, '<h4 style="font-size:16px;font-weight:600;color:#fff;margin:20px 0 10px;">$1</h4>');
+        html = html.replace(/^# (.+)$/gm, '<h3 style="font-size:17px;font-weight:600;color:#fff;margin:22px 0 12px;">$1</h3>');
+        html = html.replace(/^- (.+)$/gm, '<li style="margin-left:20px;margin-bottom:4px;">$1</li>');
+        html = html.replace(/(<li[^>]*>.*?<\/li>)(\s*\n)+(?!<li)/gs, '<ul style="margin:8px 0;padding:0;list-style:disc;">$1</ul>');
+        html = html.split(/\n\n+/).map(function (p) {
+          if (p.indexOf('<h') === 0 || p.indexOf('<ul') === 0 || p.indexOf('<li') === 0) return p;
+          return '<p style="margin:10px 0;">' + p.replace(/\n/g, '<br>') + '</p>';
+        }).join('');
+        return html;
+      }
+
+      function renderPlan(plan) {
+        if (!plan) return '<em>(empty plan)</em>';
+        var html = '';
+        if (plan.summary) html += '<p style="margin:0 0 16px;color:#ddd;"><strong>' + escapeHtml(plan.summary) + '</strong></p>';
+        if (Array.isArray(plan.weeks)) {
+          plan.weeks.forEach(function (w) {
+            html += '<h4 style="font-size:15px;font-weight:600;color:#fff;margin:18px 0 8px;">Week ' + w.week + (w.focus ? ' — ' + escapeHtml(w.focus) : '') + '</h4>';
+            if (Array.isArray(w.sessions)) {
+              html += '<ul style="margin:0;padding:0;list-style:none;">';
+              w.sessions.forEach(function (s) {
+                var stats = [
+                  s.durationMins ? s.durationMins + ' min' : null,
+                  s.distanceKm ? s.distanceKm + ' km' : null,
+                  s.effort ? s.effort : null,
+                ].filter(Boolean).join(' · ');
+                html += '<li style="margin-bottom:8px;padding-left:12px;border-left:2px solid rgba(232,69,139,0.3);">';
+                html += '<div><strong style="color:#fff;">' + escapeHtml(s.day || '') + ' — ' + escapeHtml(s.title || s.type || '') + '</strong>' + (stats ? ' <span style="font-size:13px;color:#888;">(' + stats + ')</span>' : '') + '</div>';
+                if (s.description) html += '<div style="color:#999;font-size:13px;margin-top:2px;">' + escapeHtml(s.description) + '</div>';
+                html += '</li>';
+              });
+              html += '</ul>';
+            }
+          });
+        }
+        if (Array.isArray(plan.tips) && plan.tips.length) {
+          html += '<h4 style="font-size:15px;font-weight:600;color:#fff;margin:20px 0 8px;">Tips</h4><ul style="margin:0 0 8px 20px;">';
+          plan.tips.forEach(function (t) { html += '<li style="margin-bottom:4px;">' + escapeHtml(t) + '</li>'; });
+          html += '</ul>';
+        }
+        return html;
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+      }
+
+      // Spinner keyframes
+      var style = document.createElement('style');
+      style.textContent = '@keyframes mcpSpin { to { transform: rotate(360deg); } }';
+      document.head.appendChild(style);
+    })();
+  </script>
 
   <!-- Coaches -->
   <section class="coaches" id="coaches">

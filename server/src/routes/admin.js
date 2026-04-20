@@ -874,6 +874,101 @@ router.put('/app-config/:key', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── GET /api/admin/demo-stats — MCP demo interaction analytics ──────────────
+// Aggregates the demo_interactions table into something useful:
+//   - total events (last 7 / 30 days)
+//   - prompt popularity (click counts by prompt_key)
+//   - A/B variant performance (views / cta_clicks / signups per variant)
+//   - funnel conversion rate
+router.get('/demo-stats', async (req, res, next) => {
+  try {
+    const { data: events, error } = await supabase
+      .from('demo_interactions')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(5000);
+    if (error) throw error;
+
+    const all = events || [];
+    const now = Date.now();
+    const DAY = 24 * 60 * 60 * 1000;
+
+    const within = (ms) => all.filter(e => now - new Date(e.created_at).getTime() < ms);
+    const last24h = within(DAY);
+    const last7d  = within(7 * DAY);
+    const last30d = within(30 * DAY);
+
+    const count = (arr, type) => arr.filter(e => e.event_type === type).length;
+    const uniq = (arr, key) => new Set(arr.map(e => e[key]).filter(Boolean)).size;
+
+    // Prompt popularity (from prompt_click events)
+    const promptClicks = {};
+    for (const e of all) {
+      if (e.event_type === 'prompt_click' && e.prompt_key) {
+        promptClicks[e.prompt_key] = (promptClicks[e.prompt_key] || 0) + 1;
+      }
+    }
+    const promptPopularity = Object.entries(promptClicks)
+      .sort((a, b) => b[1] - a[1])
+      .map(([prompt, clicks]) => ({ prompt, clicks }));
+
+    // A/B variant performance
+    const byVariant = { A: { views: 0, clicks: 0, responses: 0, ctaClicks: 0, signups: 0 },
+                       B: { views: 0, clicks: 0, responses: 0, ctaClicks: 0, signups: 0 } };
+    for (const e of all) {
+      const v = e.cta_variant;
+      if (v !== 'A' && v !== 'B') continue;
+      if (e.event_type === 'view')           byVariant[v].views += 1;
+      if (e.event_type === 'prompt_click')   byVariant[v].clicks += 1;
+      if (e.event_type === 'response_ok')    byVariant[v].responses += 1;
+      if (e.event_type === 'cta_click')      byVariant[v].ctaClicks += 1;
+      if (e.event_type === 'signup')         byVariant[v].signups += 1;
+    }
+
+    // Conversion rates (signups / views)
+    ['A', 'B'].forEach(v => {
+      const s = byVariant[v];
+      s.conversionRate = s.views > 0 ? (s.signups / s.views * 100).toFixed(2) + '%' : '—';
+      s.engagementRate = s.views > 0 ? (s.clicks / s.views * 100).toFixed(2) + '%' : '—';
+    });
+
+    res.json({
+      summary: {
+        totalEvents:    all.length,
+        uniqueSessions: uniq(all, 'session_id'),
+        viewsAllTime:   count(all, 'view'),
+        promptClicksAllTime: count(all, 'prompt_click'),
+        responsesAllTime:    count(all, 'response_ok'),
+        ctaClicksAllTime:    count(all, 'cta_click'),
+        signupsAllTime:      count(all, 'signup'),
+      },
+      last24h: {
+        events: last24h.length,
+        uniqueSessions: uniq(last24h, 'session_id'),
+        views: count(last24h, 'view'),
+        promptClicks: count(last24h, 'prompt_click'),
+        signups: count(last24h, 'signup'),
+      },
+      last7d: {
+        events: last7d.length,
+        uniqueSessions: uniq(last7d, 'session_id'),
+        views: count(last7d, 'view'),
+        promptClicks: count(last7d, 'prompt_click'),
+        signups: count(last7d, 'signup'),
+      },
+      last30d: {
+        events: last30d.length,
+        uniqueSessions: uniq(last30d, 'session_id'),
+        views: count(last30d, 'view'),
+        promptClicks: count(last30d, 'prompt_click'),
+        signups: count(last30d, 'signup'),
+      },
+      promptPopularity,
+      variants: byVariant,
+    });
+  } catch (err) { next(err); }
+});
+
 // ── GET /api/admin/signups — pre-launch interest signups ────────────────────
 router.get('/signups', async (req, res, next) => {
   try {

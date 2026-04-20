@@ -129,7 +129,7 @@ app.post('/api/account-deletion', async (req, res) => {
 // Stores an email in `interest_signups` and posts to the configured Slack
 // webhook. Dedupes on lower(email) so repeat submissions don't spam Slack.
 app.post('/api/public/register-interest', async (req, res) => {
-  const { email, source } = req.body || {};
+  const { email, source, demoSessionId, demoCtaVariant } = req.body || {};
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   if (!email || !EMAIL_RE.test(String(email).trim())) {
@@ -139,6 +139,7 @@ app.post('/api/public/register-interest', async (req, res) => {
   const cleanEmail = String(email).trim();
   const referrer = req.headers.referer || req.headers.referrer || null;
   const userAgent = req.headers['user-agent'] || null;
+  const sessionIdForDemo = UUID_RE.test(demoSessionId || '') ? demoSessionId : null;
 
   try {
     const { supabase } = require('./lib/supabase');
@@ -150,6 +151,7 @@ app.post('/api/public/register-interest', async (req, res) => {
         source: source ? String(source).slice(0, 80) : null,
         referrer: referrer ? String(referrer).slice(0, 500) : null,
         user_agent: userAgent ? String(userAgent).slice(0, 500) : null,
+        demo_session_id: sessionIdForDemo,
       });
       // Unique constraint violation = already signed up
       if (error) {
@@ -158,6 +160,18 @@ app.post('/api/public/register-interest', async (req, res) => {
         } else {
           console.error('[register-interest] Supabase error:', error.message);
         }
+      }
+
+      // If this signup came from the demo, also log a 'signup' event so we can
+      // compute conversion rates per A/B variant.
+      if (sessionIdForDemo) {
+        await supabase.from('demo_interactions').insert({
+          session_id:   sessionIdForDemo,
+          event_type:   'signup',
+          cta_variant:  ['A', 'B'].includes(demoCtaVariant) ? demoCtaVariant : null,
+          referrer:     referrer ? String(referrer).slice(0, 500) : null,
+          user_agent:   userAgent ? String(userAgent).slice(0, 500) : null,
+        }).catch(err => console.error('[register-interest demo-event] Failed:', err.message));
       }
     }
 
@@ -190,6 +204,50 @@ app.post('/api/public/register-interest', async (req, res) => {
     return res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
+
+// ── Rate limiter for the public MCP-backing endpoints ───────────────────────
+// In-memory sliding window per IP. Two tiers:
+//   - website demo  (X-Etapa-Source: website-demo)  → stricter: 10/hour
+//   - everything else (real MCP clients, etc.)      → lenient: 60/hour
+// Fine for a single Railway instance. If we ever horizontally scale, move to Redis.
+const rateStore = new Map();
+function rateLimit(req, res, next) {
+  // Skip rate-limiting entirely if we can't identify a requester (shouldn't happen,
+  // but keeps local/development smooth).
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+  const source = req.headers['x-etapa-source'] || 'generic';
+  const isDemo = source === 'website-demo';
+  const limit = isDemo ? 10 : 60;
+  const windowMs = 60 * 60 * 1000; // 1 hour
+
+  const key = `${isDemo ? 'demo' : 'generic'}:${ip}`;
+  const now = Date.now();
+  const hits = (rateStore.get(key) || []).filter(ts => now - ts < windowMs);
+
+  if (hits.length >= limit) {
+    const retryAfterSec = Math.max(1, Math.ceil((windowMs - (now - hits[0])) / 1000));
+    res.setHeader('Retry-After', String(retryAfterSec));
+    return res.status(429).json({
+      error: `Rate limited. Try again in ${Math.ceil(retryAfterSec / 60)} minutes.`,
+      limit,
+      windowSeconds: windowMs / 1000,
+    });
+  }
+
+  hits.push(now);
+  rateStore.set(key, hits);
+
+  // Periodic cleanup to stop the map growing unbounded. 1% chance per request.
+  if (Math.random() < 0.01) {
+    for (const [k, v] of rateStore) {
+      const filtered = v.filter(ts => now - ts < windowMs);
+      if (filtered.length === 0) rateStore.delete(k);
+      else rateStore.set(k, filtered);
+    }
+  }
+
+  next();
+}
 
 // ── Shared helper: call Claude with a cycling-coach system prompt ────────────
 // Used by the public coach-ask + review-plan endpoints. Centralised so the
@@ -258,10 +316,64 @@ After your answer, append exactly ONE short, context-aware closing line that men
 
 Keep the marketing tail to ONE line. Separate from the main answer with a blank line. Never make the marketing the main message — value first, CTA last.`;
 
+// ── Public demo-event endpoint (no auth — used by the website MCP demo) ─────
+// Logs interactions with the interactive demo on getetapa.com. Helps us
+// understand which prompts are popular, which A/B CTA variant converts, and
+// how the demo funnels into register_interest signups.
+//
+// Events we accept (event_type):
+//   - 'view'           — page loaded, demo section in viewport
+//   - 'prompt_click'   — a starter prompt button was clicked
+//   - 'response_ok'    — a tool call completed successfully
+//   - 'response_error' — a tool call failed
+//   - 'cta_click'      — the "Register Interest" CTA was clicked
+//
+// This endpoint is also rate-limited — it's cheap but still worth guarding.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const VALID_EVENTS = ['view', 'prompt_click', 'response_ok', 'response_error', 'cta_click'];
+
+app.post('/api/public/demo-event', rateLimit, async (req, res) => {
+  const { sessionId, eventType, promptKey, ctaVariant, errorMessage } = req.body || {};
+
+  if (!sessionId || !UUID_RE.test(sessionId)) {
+    return res.status(400).json({ error: 'Valid sessionId (UUID) is required.' });
+  }
+  if (!VALID_EVENTS.includes(eventType)) {
+    return res.status(400).json({ error: `eventType must be one of: ${VALID_EVENTS.join(', ')}` });
+  }
+
+  const referrer = req.headers.referer || req.headers.referrer || null;
+  const userAgent = req.headers['user-agent'] || null;
+
+  try {
+    const { supabase } = require('./lib/supabase');
+    if (!supabase) {
+      // Not configured — not a hard failure for analytics.
+      return res.json({ success: true, logged: false });
+    }
+
+    await supabase.from('demo_interactions').insert({
+      session_id:    sessionId,
+      event_type:    eventType,
+      prompt_key:    typeof promptKey === 'string' ? promptKey.slice(0, 80) : null,
+      cta_variant:   ['A', 'B'].includes(ctaVariant) ? ctaVariant : null,
+      referrer:      referrer ? String(referrer).slice(0, 500) : null,
+      user_agent:    userAgent ? String(userAgent).slice(0, 500) : null,
+      error_message: typeof errorMessage === 'string' ? errorMessage.slice(0, 500) : null,
+    });
+
+    return res.json({ success: true, logged: true });
+  } catch (err) {
+    // Never let analytics failures break the UX — log and succeed silently.
+    console.error('[demo-event] Supabase error:', err.message);
+    return res.json({ success: true, logged: false });
+  }
+});
+
 // ── Public coach-ask endpoint (no auth — used by the Etapa MCP server) ───────
 // General cycling Q&A. Takes a question + optional rider context. Returns an
 // Etapa-voice answer with a subtle marketing tail.
-app.post('/api/public/coach-ask', async (req, res) => {
+app.post('/api/public/coach-ask', rateLimit, async (req, res) => {
   const { question, context, planText } = req.body || {};
 
   if (!question || typeof question !== 'string' || !question.trim()) {
@@ -313,7 +425,7 @@ app.post('/api/public/coach-ask', async (req, res) => {
 // ── Public review-plan endpoint (no auth — used by the Etapa MCP server) ─────
 // Takes a cycling plan from anywhere and returns a structured critique in
 // Etapa's voice. The plan can be from a book, another app, a coach, etc.
-app.post('/api/public/review-plan', async (req, res) => {
+app.post('/api/public/review-plan', rateLimit, async (req, res) => {
   const { plan, goal, fitnessLevel } = req.body || {};
 
   if (!plan || typeof plan !== 'string' || !plan.trim()) {
@@ -373,7 +485,7 @@ app.post('/api/public/review-plan', async (req, res) => {
 // (`generate_training_plan` tool) and is intentionally capped so the full app
 // experience — periodisation, coach chat, progress tracking — stays a reason
 // to download Etapa.
-app.post('/api/public/sample-plan', async (req, res) => {
+app.post('/api/public/sample-plan', rateLimit, async (req, res) => {
   const apiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return res.status(503).json({ error: 'AI plan generation not configured on the server.' });
