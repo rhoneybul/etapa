@@ -1,6 +1,6 @@
 {
   "name": "etapa-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Etapa MCP server — cycling training plans and beginner guidance via the Etapa API",
   "type": "module",
   "main": "src/index.js",
