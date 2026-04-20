@@ -1,7 +1,7 @@
 {
   "name": "etapa-mcp",
   "mcpName": "io.github.rhoneybul/etapa-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Etapa MCP server — cycling training plans and beginner guidance via the Etapa API",
   "type": "module",
   "main": "src/index.js",
