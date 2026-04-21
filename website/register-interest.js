@@ -46,9 +46,17 @@
     '.ri-modal h2 span{color:#E8458B}' +
     '.ri-modal p.ri-lead{font-size:15px;color:#aaa;line-height:1.6;font-weight:300;margin:0 0 24px}' +
     '.ri-form{display:flex;flex-direction:column;gap:12px}' +
-    '.ri-form input[type=email]{background:#111;border:1px solid #232323;border-radius:14px;padding:14px 18px;font-family:\'Poppins\',sans-serif;font-size:15px;color:#fff;width:100%;transition:border-color .2s,background .2s;box-sizing:border-box}' +
-    '.ri-form input[type=email]:focus{outline:none;border-color:#E8458B;background:#141414}' +
-    '.ri-form input[type=email]::placeholder{color:#555}' +
+    '.ri-form input[type=email],.ri-form input[type=text]{background:#111;border:1px solid #232323;border-radius:14px;padding:14px 18px;font-family:\'Poppins\',sans-serif;font-size:15px;color:#fff;width:100%;transition:border-color .2s,background .2s;box-sizing:border-box}' +
+    '.ri-form input[type=email]:focus,.ri-form input[type=text]:focus{outline:none;border-color:#E8458B;background:#141414}' +
+    '.ri-form input[type=email]::placeholder,.ri-form input[type=text]::placeholder{color:#555}' +
+    /* Cycling-level segmented control */
+    '.ri-level-label{font-size:12px;color:#999;font-weight:500;margin-top:4px;margin-bottom:-4px;letter-spacing:.3px}' +
+    '.ri-level{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}' +
+    '.ri-level label{cursor:pointer;background:#111;border:1px solid #232323;border-radius:12px;padding:10px 8px;font-size:12px;font-weight:500;color:#bbb;text-align:center;transition:all .15s;line-height:1.3;box-sizing:border-box}' +
+    '.ri-level label:hover{border-color:#333;color:#fff}' +
+    '.ri-level input[type=radio]{position:absolute;opacity:0;pointer-events:none}' +
+    '.ri-level input[type=radio]:checked+span{color:#E8458B}' +
+    '.ri-level label:has(input[type=radio]:checked){border-color:#E8458B;background:rgba(232,69,139,.08);color:#fff}' +
     '.ri-form button{background:#E8458B;color:#000;font-family:\'Poppins\',sans-serif;border:none;padding:14px 24px;border-radius:100px;font-size:15px;font-weight:600;cursor:pointer;transition:background .2s,transform .1s;display:inline-flex;align-items:center;justify-content:center;gap:8px}' +
     '.ri-form button:hover:not(:disabled){background:#F472B6}' +
     '.ri-form button:disabled{opacity:.6;cursor:not-allowed}' +
@@ -93,7 +101,14 @@
         '<h2 id="ri-title">Etapa is <span>almost here</span>.</h2>' +
         '<p class="ri-lead">We\'re putting the finishing touches on Etapa — your AI cycling coach for beginners and every rider after that. Drop your email below and we\'ll let you know the moment it\'s live.</p>' +
         '<form class="ri-form" novalidate>' +
+          '<input type="text" name="firstName" placeholder="First name (optional)" autocomplete="given-name" maxlength="80">' +
           '<input type="email" name="email" placeholder="you@example.com" required autocomplete="email">' +
+          '<div class="ri-level-label">How often do you cycle?</div>' +
+          '<div class="ri-level" role="radiogroup" aria-label="Cycling experience">' +
+            '<label><input type="radio" name="cyclingLevel" value="new"><span>New to cycling</span></label>' +
+            '<label><input type="radio" name="cyclingLevel" value="sometimes"><span>Ride sometimes</span></label>' +
+            '<label><input type="radio" name="cyclingLevel" value="regular"><span>Ride regularly</span></label>' +
+          '</div>' +
           '<button type="submit">Register Interest</button>' +
           '<div class="ri-msg" aria-live="polite"></div>' +
         '</form>' +
@@ -146,7 +161,12 @@
       successView.style.display = 'none';
       msg.textContent = '';
       msg.className = 'ri-msg';
-      setTimeout(function () { input.focus(); }, 50);
+      // Focus the first (name) input so users can just start typing.
+      // Falls back to email if the name field isn't present for any reason.
+      setTimeout(function () {
+        var focusTarget = form.querySelector('input[name=firstName]') || input;
+        focusTarget.focus();
+      }, 50);
     }
 
     function close() {
@@ -176,6 +196,12 @@
         return;
       }
 
+      // Optional profile fields — captured if the user filled them in.
+      var firstNameInput = form.querySelector('input[name=firstName]');
+      var firstName = firstNameInput ? (firstNameInput.value || '').trim().slice(0, 80) : '';
+      var levelRadio = form.querySelector('input[name=cyclingLevel]:checked');
+      var cyclingLevel = levelRadio ? levelRadio.value : null;
+
       button.disabled = true;
       button.innerHTML = '<span class="ri-spin"></span> Submitting…';
 
@@ -188,6 +214,8 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: email,
+          firstName: firstName || null,
+          cyclingLevel: cyclingLevel,
           source: PAGE_SOURCE,
           demoSessionId: demoMeta.sessionId || null,
           demoCtaVariant: demoMeta.ctaVariant || null,

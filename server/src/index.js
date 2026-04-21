@@ -131,8 +131,9 @@ app.post('/api/account-deletion', async (req, res) => {
 // Stores an email in `interest_signups` and posts to the configured Slack
 // webhook. Dedupes on lower(email) so repeat submissions don't spam Slack.
 app.post('/api/public/register-interest', async (req, res) => {
-  const { email, source, demoSessionId, demoCtaVariant } = req.body || {};
+  const { email, source, demoSessionId, demoCtaVariant, firstName, cyclingLevel } = req.body || {};
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const VALID_LEVELS = ['new', 'sometimes', 'regular'];
 
   if (!email || !EMAIL_RE.test(String(email).trim())) {
     return res.status(400).json({ error: 'Please enter a valid email address.' });
@@ -142,6 +143,13 @@ app.post('/api/public/register-interest', async (req, res) => {
   const referrer = req.headers.referer || req.headers.referrer || null;
   const userAgent = req.headers['user-agent'] || null;
   const sessionIdForDemo = UUID_RE.test(demoSessionId || '') ? demoSessionId : null;
+
+  // Normalise the optional profile fields. Names get trimmed and capped;
+  // cycling level is validated against the allowed set or dropped entirely.
+  const cleanFirstName = firstName && typeof firstName === 'string'
+    ? firstName.trim().slice(0, 80) || null
+    : null;
+  const cleanCyclingLevel = VALID_LEVELS.includes(cyclingLevel) ? cyclingLevel : null;
 
   try {
     const { supabase } = require('./lib/supabase');
@@ -154,6 +162,8 @@ app.post('/api/public/register-interest', async (req, res) => {
         referrer: referrer ? String(referrer).slice(0, 500) : null,
         user_agent: userAgent ? String(userAgent).slice(0, 500) : null,
         demo_session_id: sessionIdForDemo,
+        first_name: cleanFirstName,
+        cycling_level: cleanCyclingLevel,
       });
       // Unique constraint violation = already signed up
       if (error) {
@@ -185,7 +195,17 @@ app.post('/api/public/register-interest', async (req, res) => {
         process.env.SLACK_SUBSCRIPTIONS_WEBHOOK_URL;
 
       if (SLACK_WEBHOOK_URL) {
-        const text = `🎉 *${cleanEmail}* registered interest${source ? ` (from \`${source}\`)` : ''}`;
+        const levelLabel = cleanCyclingLevel === 'new' ? 'new to cycling'
+          : cleanCyclingLevel === 'sometimes' ? 'rides sometimes'
+          : cleanCyclingLevel === 'regular' ? 'rides regularly'
+          : null;
+        const bits = [
+          `*${cleanFirstName ? cleanFirstName + ' · ' : ''}${cleanEmail}*`,
+          'registered interest',
+          source ? `(from \`${source}\`)` : null,
+          levelLabel ? `— ${levelLabel}` : null,
+        ].filter(Boolean);
+        const text = bits.join(' ');
         fetch(SLACK_WEBHOOK_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
