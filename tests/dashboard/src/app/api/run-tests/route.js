@@ -258,7 +258,27 @@ function validate(plan, scenario) {
     }
   }
 
-  if (goal.goalType === 'beginner' || (goal.goalType === 'distance' && config.fitnessLevel === 'beginner')) {
+  // Beginner with explicit target distance — strict. Peak long ride must
+  // reach 80%+ of target AND final two weeks must contain a ride within
+  // 15% of the target (the "graduation" ride).
+  if (goal.goalType === 'beginner' && goal.targetDistance) {
+    const targetDist = goal.targetDistance;
+    const allRideDistances = acts.filter(a => a.type === 'ride').map(a => a.distanceKm || 0);
+    const peakRide = Math.max(...allRideDistances, 0);
+    if (peakRide < targetDist * 0.8) {
+      errors.push(
+        `Beginner-with-target (${targetDist}km): peak long ride is only ${Math.round(peakRide)}km ` +
+        `(must reach ≥${Math.round(targetDist * 0.8)}km to prepare the athlete safely).`
+      );
+    }
+    const lastTwoRides = acts.filter(a => (a.week === plan.weeks || a.week === plan.weeks - 1) && a.type === 'ride');
+    const longestInFinale = Math.max(...lastTwoRides.map(a => a.distanceKm || 0), 0);
+    if (longestInFinale < targetDist * 0.85) {
+      errors.push(
+        `Beginner-with-target (${targetDist}km): no graduation ride in last 2 weeks — longest is ${Math.round(longestInFinale)}km.`
+      );
+    }
+  } else if (goal.goalType === 'distance' && config.fitnessLevel === 'beginner') {
     const targetDist = goal.targetDistance || 40;
     const lastWeekRides = acts.filter(a => a.week === plan.weeks && a.type === 'ride');
     const longestLastWeek = Math.max(...lastWeekRides.map(a => a.distanceKm || 0), 0);

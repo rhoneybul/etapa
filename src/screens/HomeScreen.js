@@ -435,11 +435,11 @@ export default function HomeScreen({ navigation, route }) {
                 <Text style={s.beginnerBadgeText}>{t('home.pathway.beginner.badge')}</Text>
               </View>
               <Text style={s.beginnerTitle}>{t('home.pathway.beginner.title')}</Text>
-              <Text style={s.beginnerSub}>
+              <Text style={s.beginnerSub} numberOfLines={2}>
                 {t('home.pathway.beginner.description')}
               </Text>
               <View style={s.cardFeatureRow}>
-                {['8–20 week programme', 'Guided sessions', 'Goal milestones'].map(f => (
+                {['12-week programme', 'Guided sessions', 'Goal milestones'].map(f => (
                   <View key={f} style={s.cardFeaturePill}>
                     <Text style={s.cardFeaturePillText}>{f}</Text>
                   </View>
@@ -458,7 +458,7 @@ export default function HomeScreen({ navigation, route }) {
                 <Text style={s.beginnerBadgeText}>{t('home.pathway.plan.badge')}</Text>
               </View>
               <Text style={s.createBtnTitle}>{t('home.pathway.plan.title')}</Text>
-              <Text style={s.createBtnSub}>
+              <Text style={s.createBtnSub} numberOfLines={2}>
                 {t('home.pathway.plan.description')}
               </Text>
               <View style={s.cardFeatureRow}>
@@ -481,7 +481,7 @@ export default function HomeScreen({ navigation, route }) {
                 <Text style={s.beginnerBadgeText}>{t('home.pathway.quick.badge')}</Text>
               </View>
               <Text style={s.createBtnTitle}>{t('home.pathway.quick.title')}</Text>
-              <Text style={s.createBtnSub}>
+              <Text style={s.createBtnSub} numberOfLines={2}>
                 {t('home.pathway.quick.description')}
               </Text>
               <View style={s.cardFeatureRow}>
@@ -1597,36 +1597,38 @@ const s = StyleSheet.create({
   bgImage: { opacity: 0.08 },
   bgOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.15)' },
 
-  // Empty plan state
-  emptyPlanWrap: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 32, paddingBottom: 40 },
-  emptyTitle: { fontSize: 24, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 6 },
-  emptySub: { fontSize: 15, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginBottom: 28 },
+  // Empty plan state — compacted so all three pathway cards fit in one viewport
+  // on standard phone sizes (~820pt tall). Previous sizing pushed the third
+  // "Just get better" card below the fold, making it effectively invisible.
+  emptyPlanWrap: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 20, paddingBottom: 32 },
+  emptyTitle: { fontSize: 22, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
+  emptySub: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginBottom: 16 },
   beginnerCard: {
-    backgroundColor: 'rgba(232,69,139,0.06)', borderRadius: 18, padding: 22,
-    borderWidth: 1.5, borderColor: 'rgba(232,69,139,0.22)', marginBottom: 16,
+    backgroundColor: 'rgba(232,69,139,0.06)', borderRadius: 16, padding: 16,
+    borderWidth: 1.5, borderColor: 'rgba(232,69,139,0.22)', marginBottom: 10,
   },
   beginnerBadge: {
     alignSelf: 'flex-start', backgroundColor: 'rgba(232,69,139,0.14)',
-    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, marginBottom: 12,
+    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 8,
   },
   beginnerBadgeText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, letterSpacing: 0.8 },
-  beginnerTitle: { fontSize: 19, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 6 },
-  beginnerSub: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 20, marginBottom: 0 },
+  beginnerTitle: { fontSize: 17, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
+  beginnerSub: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 18, marginBottom: 0 },
   createBtn: {
     // Same pink family as beginner card but inverted — solid-ish border, slightly brighter surface
-    backgroundColor: 'rgba(232,69,139,0.04)', borderRadius: 18, padding: 22,
-    borderWidth: 2, borderColor: 'rgba(232,69,139,0.35)', marginBottom: 16,
+    backgroundColor: 'rgba(232,69,139,0.04)', borderRadius: 16, padding: 16,
+    borderWidth: 2, borderColor: 'rgba(232,69,139,0.35)', marginBottom: 10,
   },
-  createBtnTitle: { fontSize: 19, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 6 },
-  createBtnSub: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 20, marginBottom: 0 },
+  createBtnTitle: { fontSize: 17, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
+  createBtnSub: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 18, marginBottom: 0 },
 
-  // Feature pills shared between cards
-  cardFeatureRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 14 },
+  // Feature pills shared between cards — smaller so three cards fit on screen
+  cardFeatureRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 10 },
   cardFeaturePill: {
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 7,
     backgroundColor: 'rgba(232,69,139,0.1)', borderWidth: 1, borderColor: 'rgba(232,69,139,0.18)',
   },
-  cardFeaturePillText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary },
+  cardFeaturePillText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary },
 
   // Week calendar strip
   // ── Today hero card ────────────────────────────────────────────────────

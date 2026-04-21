@@ -54,15 +54,15 @@ on:
           - build           # Native build, don't submit
           - build-submit    # Native build + submit to App Store
       bump:
-        description: 'Version bump (app.json)'
+        description: 'Version bump (patch is almost always what you want). "none" is only valid for OTA updates.'
         required: true
         default: 'patch'
         type: choice
         options:
-          - none
           - patch
           - minor
           - major
+          - none
       platform:
         description: 'Platform(s)'
         required: true
@@ -242,6 +242,21 @@ jobs:
         run: |
           git fetch --tags origin 2>/dev/null || true
 
+          RELEASE_TYPE="${{ needs.decide.outputs.release_type }}"
+          BUMP="${{ needs.decide.outputs.bump }}"
+
+          # ── Guard: bump=none is only valid for OTA ─────────────────────────
+          # OTA updates reuse the current version deliberately. Native builds
+          # (build / build-submit) MUST bump — otherwise we collide with a
+          # previously-submitted version and Apple/Google reject the upload.
+          if [ "$BUMP" = "none" ] && [ "$RELEASE_TYPE" != "ota" ]; then
+            echo ""
+            echo "::error::bump=none is only valid for release_type=ota."
+            echo "::error::Native builds (build / build-submit) must always bump the version, otherwise you'll hit the 'same version already submitted' error."
+            echo "::error::Re-run with bump=patch (or higher)."
+            exit 1
+          fi
+
           # Highest release tag (semver sort). Falls back to app.json if no
           # tags exist yet (first-ever run).
           HIGHEST_TAG=$(git tag -l 'app-v*' | sed 's/^app-v//' | sort -V | tail -1)
@@ -270,12 +285,22 @@ jobs:
             V="${GITHUB_REF#refs/tags/app-v}"
             NEW=$(node scripts/bump-app-version.js "$V")
           else
-            NEW=$(node scripts/bump-app-version.js "${{ needs.decide.outputs.bump }}")
+            NEW=$(node scripts/bump-app-version.js "$BUMP")
           fi
 
           echo "→ Target version: $NEW"
           echo "new=$NEW" >> "$GITHUB_OUTPUT"
           echo "## Version: \`$NEW\`" >> "$GITHUB_STEP_SUMMARY"
+
+          # ── No-op guard — native build must actually change the version ───
+          # If NEW == BASELINE for a native build, something is wrong. Fail
+          # loudly before burning EAS build time on a duplicate.
+          if [ "$NEW" = "$BASELINE" ] && [ "$RELEASE_TYPE" != "ota" ]; then
+            echo ""
+            echo "::error::Resolved version ($NEW) is the same as the baseline ($BASELINE) — no bump actually applied."
+            echo "::error::This would ship a duplicate version. Re-run with a bigger bump (patch/minor/major)."
+            exit 1
+          fi
 
           # ── Collision precheck — fail fast, before burning 40 min of EAS ─
           # If a tag for this version already exists (i.e. we've already

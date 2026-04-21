@@ -681,6 +681,31 @@ const SCENARIOS = [
   { name: 'EDGE (getting-started): mid-month start date 15th',
     goal: { id: 'ebg13', goalType: 'beginner', cyclingType: 'road', planName: 'Get Into Cycling' },
     config: { id: 'cebg13', daysPerWeek: 3, weeks: 8, trainingTypes: ['outdoor'], availableDays: ['monday', 'wednesday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-15' } },
+
+  // ─── Beginner programme with explicit target distance — 3 tiers ────────
+  // Locks in the "user picked 100 km, plan peaked at 27 km" fix. Every plan
+  // here MUST build a long ride within 10 km of targetDistance by the end.
+  { name: 'BEGINNER TARGET: 25 km habit goal, 12 weeks',
+    goal: { id: 'bt1', goalType: 'beginner', cyclingType: 'road', targetDistance: 25, planName: 'Get Into Cycling' },
+    config: { id: 'cbt1', daysPerWeek: 3, weeks: 12, trainingTypes: ['outdoor'], availableDays: ['tuesday', 'thursday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06', longRideDay: 'saturday' } },
+  { name: 'BEGINNER TARGET: 50 km endurance goal, 12 weeks',
+    goal: { id: 'bt2', goalType: 'beginner', cyclingType: 'road', targetDistance: 50, planName: 'Get Into Cycling' },
+    config: { id: 'cbt2', daysPerWeek: 3, weeks: 12, trainingTypes: ['outdoor'], availableDays: ['tuesday', 'thursday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06', longRideDay: 'saturday' } },
+  { name: 'BEGINNER TARGET: 100 km century goal, 12 weeks',
+    goal: { id: 'bt3', goalType: 'beginner', cyclingType: 'road', targetDistance: 100, planName: 'Get Into Cycling' },
+    config: { id: 'cbt3', daysPerWeek: 3, weeks: 12, trainingTypes: ['outdoor'], availableDays: ['tuesday', 'thursday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06', longRideDay: 'saturday' } },
+  { name: 'BEGINNER TARGET: 100 km century, 4 days/week incl strength',
+    goal: { id: 'bt4', goalType: 'beginner', cyclingType: 'road', targetDistance: 100, planName: 'Get Into Cycling' },
+    config: { id: 'cbt4', daysPerWeek: 4, weeks: 12, trainingTypes: ['outdoor', 'strength'], sessionCounts: { outdoor: 3, strength: 1 }, availableDays: ['tuesday', 'wednesday', 'thursday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06', longRideDay: 'saturday' } },
+  { name: 'BEGINNER TARGET: 50 km on 2 days/week',
+    goal: { id: 'bt5', goalType: 'beginner', cyclingType: 'road', targetDistance: 50, planName: 'Get Into Cycling' },
+    config: { id: 'cbt5', daysPerWeek: 2, weeks: 12, trainingTypes: ['outdoor'], availableDays: ['wednesday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06', longRideDay: 'saturday' } },
+  { name: 'BEGINNER TARGET: 100 km e-bike century 12 weeks',
+    goal: { id: 'bt6', goalType: 'beginner', cyclingType: 'ebike', targetDistance: 100, planName: 'Get Into Cycling' },
+    config: { id: 'cbt6', daysPerWeek: 3, weeks: 12, trainingTypes: ['outdoor'], availableDays: ['tuesday', 'thursday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06', longRideDay: 'saturday' } },
+  { name: 'BEGINNER TARGET: 25 km, 8 weeks (short programme)',
+    goal: { id: 'bt7', goalType: 'beginner', cyclingType: 'road', targetDistance: 25, planName: 'Get Into Cycling' },
+    config: { id: 'cbt7', daysPerWeek: 3, weeks: 8, trainingTypes: ['outdoor'], availableDays: ['tuesday', 'thursday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06', longRideDay: 'saturday' } },
 ];
 
 // ── Edit/mutation test scenarios ─────────────────────────────────────────────
@@ -1296,12 +1321,37 @@ function validate(plan, scenario) {
     }
   }
 
-  // ── Beginner "Get Into Cycling" plans: final ride should approach target distance ──
-  if (goal.goalType === 'beginner' || (goal.goalType === 'distance' && config.fitnessLevel === 'beginner')) {
-    const targetDist = goal.targetDistance || 40; // beginner default is ~40km
+  // ── Beginner plan with explicit target distance — strict assertion ──
+  // If a beginner picks the "Ride my first 100 km" option (targetDistance=100),
+  // the plan MUST actually train them for that ride. Peak long ride needs to
+  // reach 80%+ of target, AND the final week must contain a graduation ride
+  // within 15% of target distance. These are HARD failures, not warnings.
+  if (goal.goalType === 'beginner' && goal.targetDistance) {
+    const targetDist = goal.targetDistance;
+    const allRideDistances = acts.filter(a => a.type === 'ride').map(a => a.distanceKm || 0);
+    const peakRide = Math.max(...allRideDistances, 0);
+    if (peakRide < targetDist * 0.8) {
+      errors.push(
+        `Beginner-with-target (${targetDist}km): peak long ride is only ${Math.round(peakRide)}km. ` +
+        `The whole plan is built around this target — the longest ride must reach at least ${Math.round(targetDist * 0.8)}km ` +
+        `to prepare the athlete safely. Plan is NOT honouring the chosen target.`
+      );
+    }
+    // Graduation ride: final week OR the penultimate week (in case of taper day-after logic).
+    const lastTwoWeeksRides = acts.filter(a => (a.week === plan.weeks || a.week === plan.weeks - 1) && a.type === 'ride');
+    const longestInFinale = Math.max(...lastTwoWeeksRides.map(a => a.distanceKm || 0), 0);
+    if (longestInFinale < targetDist * 0.85) {
+      errors.push(
+        `Beginner-with-target (${targetDist}km): no graduation ride close to target found in the last two weeks. ` +
+        `Longest in weeks ${plan.weeks - 1}–${plan.weeks} is ${Math.round(longestInFinale)}km. ` +
+        `A beginner programme must culminate in a ride at (or within 15% of) the chosen target.`
+      );
+    }
+  } else if (goal.goalType === 'distance' && config.fitnessLevel === 'beginner') {
+    // Legacy fallback — distance goal with beginner level, softer check.
+    const targetDist = goal.targetDistance || 40;
     const lastWeekRides = acts.filter(a => a.week === plan.weeks && a.type === 'ride');
     const longestLastWeek = Math.max(...lastWeekRides.map(a => a.distanceKm || 0), 0);
-    // The second-to-last week might have the "graduation ride" if last week is taper
     const penultimateRides = acts.filter(a => a.week === plan.weeks - 1 && a.type === 'ride');
     const longestPenultimate = Math.max(...penultimateRides.map(a => a.distanceKm || 0), 0);
     const longestFinalRide = Math.max(longestLastWeek, longestPenultimate);

@@ -717,18 +717,40 @@ ${goal.goalType === 'beginner' ? `
 ### BEGINNER PROGRAM — GET INTO CYCLING
 This is a "Get into Cycling" program for a complete beginner. The tone must be FRIENDLY, WARM, and INCLUSIVE throughout.
 
-Key principles:
+${(() => {
+  const td = goal.targetDistance || 25;
+  const weeksN = weeks;
+  // Anchor rides: start (week 1), quarter, half, 3/4, taper, graduation.
+  // For a typical 12-week plan these give roughly the right curve for
+  // 25 / 50 / 100 km targets. For other durations we scale proportionally.
+  const pct = (p) => Math.max(1, Math.round(weeksN * p));
+  const start = td <= 30 ? 8 : td <= 60 ? 12 : 14; // week 1 long ride
+  const taperLong = Math.round(td * 0.85); // longest ride 1–2 weeks before end
+  const quarter = Math.round((start + (taperLong - start) * 0.25) / 1) ;
+  const half = Math.round(start + (taperLong - start) * 0.50);
+  const threeQ = Math.round(start + (taperLong - start) * 0.75);
+  return `**Target distance**: ${td} km by the final week. The whole plan builds toward this. Do NOT cap the long ride below ~${taperLong} km — the athlete chose this distance deliberately and the plan has to train them for it safely.
+
+Progression milestones (long ride, weekend day):
+- Week 1:              ~${start} km — gentle opener, "just get on the bike"
+- Week ${pct(0.25)}:   ~${quarter} km
+- Week ${pct(0.5)}:    ~${half} km
+- Week ${pct(0.75)}:   ~${threeQ} km
+- Week ${Math.max(1, weeksN - 1)}: ~${taperLong} km — longest training ride, 1–2 weeks before graduation
+- Week ${weeksN}:      **${td} km graduation ride** — the whole plan exists for this ride. Title it accordingly ("${td} km Graduation", "Century Day", etc.) and write the notes like a letter from their coach on the morning of their biggest ride to date.
+
+Weekly volume should grow roughly in line with the long ride. At peak, total weekly km ≈ 1.3–1.6× the long ride.`;
+})()}
+
+Key principles (beginner-friendly regardless of distance):
 - Start VERY gently — week 1 should feel easy and fun, not intimidating
-- First rides: 20–30 minutes, mostly flat, comfortable pace. "Just enjoy being on the bike."
-- Build up slowly: add 5–10 minutes per week maximum
+- Week 1: flat, mostly flat, comfortable pace. "Just enjoy being on the bike."
+- Build up progressively but safely — no single ride more than ~25% longer than the previous week's longest.
 - Include rest days between every ride day
-- NO interval training, NO tempo rides — everything is easy or moderate effort
-- Every 3rd week: slightly easier "confidence week" — shorter rides, celebrating progress
-- Final week: a "graduation ride" — their longest ride yet, with a celebratory note
+- NO interval training, NO tempo rides — everything is easy or moderate effort, even on longer build rides
+- Every 3rd or 4th week: a "confidence week" — shorter rides, celebrating progress, setting up the next build block
+- Final week: the graduation ride named for the target distance, with a celebratory note
 ${config.trainingTypes?.includes('strength') ? '- Include 1 strength session per week from week 3 onwards (bodyweight, 20 min, core + legs)' : '- Do NOT include strength sessions — the athlete did not request strength training.'}
-- By week 6: comfortable riding 30–45 minutes
-- By week 10: comfortable riding 60+ minutes / 20+ km
-- By week 12: confident to ride 30–40 km at own pace
 
 LANGUAGE RULES — STRICT. Every session title, description, and notes field must use plain, warm, everyday English.
 BANNED WORDS — never use: FTP, TSS, CTL, VO2, zone 1/2/3/4/5, polarised, periodisation, progressive overload, threshold, lactate, wattage, anaerobic, aerobic base, cadence targets, power output.
@@ -782,7 +804,8 @@ ${sessionCounts.strength ? `3. Does EVERY week contain ${sessionCounts.strength}
 ${weeks >= 6 ? `${sessionCounts.strength ? '5.' : '4.'} Is there at least one clear deload week where volume drops 25–40%? ` : ''}
 ${sessionCounts.strength ? (weeks >= 6 ? '6.' : '5.') : (weeks >= 6 ? '5.' : '4.')}. Are week-over-week volume jumps all ≤30%? No week more than ${goal.targetDistance ? Math.round(goal.targetDistance * 1.6) : Math.round(benchmark.maxComfortableDistKm * 2.2)} km total.
 ${(Object.keys(crossTrainingDays || {}).length > 0 || crossTrainingDaysFull) ? `Next: for every high-impact cross-training day in the inputs, is the day after NOT a hard/interval cycling session? If it is, swap it to easy/recovery.` : ''}
-${goal.targetDistance ? `Next: does the peak-phase longest ride reach at least ${Math.round(goal.targetDistance * 0.8)} km? If not, grow the long ride more aggressively in the Build phase.` : ''}
+${goal.targetDistance ? `Next: does the peak-phase longest ride reach at least ${Math.round(goal.targetDistance * 0.8)} km, and does the FINAL week include a ride at or very close to the ${goal.targetDistance} km target? If the longest training ride in the plan is less than ${Math.round(goal.targetDistance * 0.7)} km, the athlete will NOT be prepared for the event and the plan is broken. Rebuild the long-ride progression to actually reach the target.` : ''}
+${goal.goalType === 'beginner' && goal.targetDistance ? `Next: open the final week of the plan. Is there a ride titled to celebrate the ${goal.targetDistance} km target (e.g. "${goal.targetDistance} km Graduation", "Century Day")? Is its distanceKm close to ${goal.targetDistance}? If not, fix it — this ride is the single most important ride in the whole plan.` : ''}
 
 Return ONLY the JSON array, no other text.`;
 }
