@@ -149,20 +149,22 @@ export default function SignInScreen({ navigation }) {
             />
           </View>
           <Text style={s.title}>Etapa</Text>
-          <Text style={s.tagline}>Your coach, your plan. The stage is yours.</Text>
+          <Text style={s.tagline}>Cycling coaching that meets you where you are.</Text>
 
-          {/* Benefit chips — surface the value prop so a new user understands
-              what Etapa does before committing to auth. These are deliberately
-              short (3 words each) so they scan in a glance. */}
+          {/* Benefit chips — surface the brand promise. "AI training plans" and
+              "Built for beginners" were too narrow: we serve complete beginners,
+              returning riders, women put off by cycling's gatekept culture, and
+              experienced riders who just want guidance without jargon. These
+              chips lean coaching-and-guidance first, AI in the background. */}
           <View style={s.benefitChips}>
             <View style={s.benefitChip}>
-              <Text style={s.benefitChipText}>AI training plans</Text>
+              <Text style={s.benefitChipText}>Any goal, any level</Text>
             </View>
             <View style={s.benefitChip}>
-              <Text style={s.benefitChipText}>Personal coach</Text>
+              <Text style={s.benefitChipText}>A coach in your pocket</Text>
             </View>
             <View style={s.benefitChip}>
-              <Text style={s.benefitChipText}>Built for beginners</Text>
+              <Text style={s.benefitChipText}>Plans that fit real life</Text>
             </View>
           </View>
         </Animated.View>
