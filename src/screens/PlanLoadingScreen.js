@@ -359,6 +359,24 @@ export default function PlanLoadingScreen({ navigation, route }) {
               You can leave the app — we'll send you a notification when your plan is ready.
             </Text>
           </View>
+
+          {/* ── Health & AI disclaimer ─────────────────────────────────────
+              Visible legal notice shown every time a plan is built. This is
+              defensive copy — explicit assumption-of-risk and "not medical
+              advice" language. Pairs with the more detailed health-disclaimer
+              in the Terms of Service. Do not remove without legal review. */}
+          <View style={s.disclaimerCard}>
+            <Text style={s.disclaimerTitle}>Before you ride</Text>
+            <Text style={s.disclaimerBody}>
+              Etapa's plans are AI-generated guidance, not medical advice.
+              Cycling and structured training carry real risk of injury.
+              Consult a doctor before starting — especially if you have a
+              heart or lung condition, are pregnant, are returning from injury,
+              or are over 50. Stop and see a doctor if you experience chest
+              pain, dizziness, or persistent pain. By using Etapa, you accept
+              you are training at your own risk.
+            </Text>
+          </View>
         </ScrollView>
 
         {/* Bottom: cancel button + powered by */}
@@ -427,6 +445,27 @@ const s = StyleSheet.create({
     borderColor: colors.border, padding: 14, marginBottom: 20, alignItems: 'center',
   },
   bgNoteText: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center', lineHeight: 18 },
+
+  // ── Health / AI disclaimer card ────────────────────────────────────────────
+  // Distinct from the friendly bgNote above. Subtler border in amber/caution
+  // tones so users register it's a notice, not a tip.
+  disclaimerCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.25)',      // soft amber
+    backgroundColor: 'rgba(245, 158, 11, 0.06)',
+    padding: 14,
+    marginBottom: 24,
+  },
+  disclaimerTitle: {
+    fontSize: 11, fontWeight: '600', fontFamily: FF.semibold,
+    color: '#F59E0B', letterSpacing: 0.8, textTransform: 'uppercase',
+    marginBottom: 6, textAlign: 'center',
+  },
+  disclaimerBody: {
+    fontSize: 12, fontWeight: '400', fontFamily: FF.regular,
+    color: colors.textMid, textAlign: 'center', lineHeight: 18,
+  },
 
   // ── Bottom ─────────────────────────────────────────────────────────────────
   bottom: { paddingHorizontal: 24, paddingBottom: 16 + BOTTOM_INSET, alignItems: 'center' },

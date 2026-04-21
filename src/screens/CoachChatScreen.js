@@ -317,17 +317,14 @@ export default function CoachChatScreen({ navigation, route }) {
       allActivities,
     };
 
-    // Add Strava actual data so coach can compare planned vs actual
-    if (stravaActivities.length > 0) {
-      context.stravaActivities = buildStravaContextForAI(stravaActivities);
-      // Build week-by-week comparison for the coach
-      const weekComparisons = [];
-      for (let w = 1; w <= plan.weeks; w++) {
-        const cmp = weekComparisonSummary(plan, stravaActivities, w);
-        if (cmp.actualRides > 0 || cmp.plannedRides > 0) weekComparisons.push(cmp);
-      }
-      if (weekComparisons.length > 0) context.weekComparisons = weekComparisons;
-    }
+    // ── Strava data deliberately NOT sent to the AI coach ────────────────
+    // Strava's API Agreement (as of Nov 2024) explicitly prohibits using data
+    // obtained via their API in AI models or similar applications. We keep
+    // Strava integration for on-device display + planned-vs-actual comparison
+    // on the user's own screen, but we do not forward Strava activities into
+    // Claude's context. If you need to restore this behaviour, it requires a
+    // commercial partnership with Strava first — do NOT silently re-enable.
+    // See LEGAL_AUDIT.md for context.
 
     if (weekNum) {
       context.weekNum = weekNum;
@@ -591,6 +588,14 @@ export default function CoachChatScreen({ navigation, route }) {
                     </TouchableOpacity>
                   ))}
                 </View>
+
+                {/* AI + medical disclosure — required by Apple's AI disclosure
+                    rules and as a defensive notice. Keep this text visible. */}
+                <Text style={s.emptyAiNote}>
+                  Responses are AI-generated. Your coach is a cycling guide,
+                  not a doctor {'\u2014'} for medical questions, always speak
+                  to a qualified professional.
+                </Text>
               </View>
             )}
 
@@ -738,6 +743,13 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border,
   },
   suggestionText: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid },
+  // Small AI/medical disclosure below the suggestion chips.
+  emptyAiNote: {
+    fontSize: 11, fontWeight: '400', fontFamily: FF.regular,
+    color: colors.textMuted, textAlign: 'center', lineHeight: 16,
+    marginTop: 24, paddingHorizontal: 8,
+    fontStyle: 'italic',
+  },
 
   // Bubbles
   bubble: { marginBottom: 12, maxWidth: '88%', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12 },

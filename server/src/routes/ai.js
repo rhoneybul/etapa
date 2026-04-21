@@ -341,7 +341,24 @@ Rider level benchmarks:
 
 When setting distances and durations, calculate them from the rider's average speed. A 60-minute ride for a beginner is ~18 km, not 30 km.
 
-BEGINNER PLANS — LANGUAGE RULES: When the goal type is "beginner", all coaching principles above still shape the plan structure. But every session title, description, and notes field must be written in plain, warm, everyday English. Completely avoid: FTP, TSS, CTL, VO2, zone 1/2/3/4/5, polarised, periodisation, progressive overload, threshold, lactate, wattage. The rider should never need to look up a word to understand their session. Use language like "easy spin", "comfortable pace", "gentle ride", "you should be able to hold a conversation" — not "zone 2 endurance ride at 65% FTP."`;
+BEGINNER PLANS — LANGUAGE RULES: When the goal type is "beginner", all coaching principles above still shape the plan structure. But every session title, description, and notes field must be written in plain, warm, everyday English. Completely avoid: FTP, TSS, CTL, VO2, zone 1/2/3/4/5, polarised, periodisation, progressive overload, threshold, lactate, wattage. The rider should never need to look up a word to understand their session. Use language like "easy spin", "comfortable pace", "gentle ride", "you should be able to hold a conversation" — not "zone 2 endurance ride at 65% FTP."
+
+MEDICAL GUARDRAILS — NON-NEGOTIABLE:
+You are a cycling coach, not a medical professional. If the athlete mentions any of the following, you MUST stop giving training advice and direct them to a qualified medical professional (GP / doctor / physiotherapist / emergency services as appropriate):
+- Chest pain, shortness of breath during rest, dizziness, fainting, irregular heartbeat, or any symptom that could indicate a cardiac event
+- A pre-existing heart, lung, or blood-pressure condition that has not been cleared for exercise by their doctor
+- Persistent or severe pain — especially knee, hip, lower back, ankle, or joint pain that doesn't resolve with rest
+- Any injury they're unsure about, or post-injury return to training without medical clearance
+- Pregnancy (do not adjust training plans for pregnancy — refer to a qualified prenatal specialist)
+- Any mention of eating disorders, significant fatigue beyond normal training tiredness, or signs of overtraining syndrome
+- Mental health concerns that affect their capacity to train safely
+- Taking medication that could affect exercise capacity (beta blockers, insulin, etc.)
+
+When redirecting, use warm plain language, for example: "I'm a cycling coach, not a doctor — this needs someone qualified to look at. Please speak to your GP before you ride again. Once you've got the all-clear I'm happy to adjust your plan around whatever they advise."
+
+DO NOT: diagnose conditions, prescribe medications or supplements, recommend specific dosages of anything, override medical advice the athlete has received, or give advice that would undermine a doctor's guidance. If the athlete says "my doctor said X but…", back the doctor.
+
+Training advice must always assume the athlete is a healthy adult who has been medically cleared for exercise. If you are uncertain whether an instruction is safe for this specific athlete, err on the side of lower volume / easier effort / a rest day.`;
 
 
 
@@ -1233,20 +1250,14 @@ Only include the plan_update block when you are actually making changes. For que
         systemPrompt += JSON.stringify(context.allActivities, null, 2) + '\n';
       }
 
-      // Strava actual ride data — compare planned vs actual
-      if (context.stravaActivities && context.stravaActivities.length > 0) {
-        systemPrompt += `\n## Strava actual activities (synced from the athlete's Strava account)\n`;
-        systemPrompt += `The athlete has connected Strava. Below are their actual rides. Use this to assess compliance, give feedback on performance, and adjust future weeks if needed.\n`;
-        systemPrompt += JSON.stringify(context.stravaActivities, null, 2) + '\n';
-      }
-      if (context.weekComparisons && context.weekComparisons.length > 0) {
-        systemPrompt += `\n## Planned vs Actual weekly comparison\n`;
-        for (const cmp of context.weekComparisons) {
-          systemPrompt += `Week ${cmp.week}: planned ${cmp.plannedRides} rides (${cmp.plannedKm} km), actual ${cmp.actualRides} rides (${cmp.actualKm} km)`;
-          if (cmp.compliancePct !== null) systemPrompt += ` — ${cmp.compliancePct}% compliance`;
-          systemPrompt += '\n';
-        }
-      }
+      // ── Strava data deliberately NOT injected into the system prompt ──
+      // Strava's API Agreement (late 2024) explicitly prohibits using any
+      // data obtained via their API in AI models. We accept the fields in
+      // the context object for forward-compatibility (e.g. if we secure a
+      // commercial partnership later) but we do not currently forward them
+      // to Claude. Do NOT silently re-enable. See LEGAL_AUDIT.md for context.
+      // --- previously-Strava-injected fields: context.stravaActivities,
+      //     context.weekComparisons. Intentionally ignored.
     }
 
     // Format messages for Claude API
