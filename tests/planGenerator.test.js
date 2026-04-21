@@ -10,7 +10,7 @@
  *   node --import ./tests/loader.mjs tests/planGenerator.test.js --api http://localhost:3001
  *
  * Run against production (requires TEST_API_KEY set on server):
- *   node --import ./tests/loader.mjs tests/planGenerator.test.js --api https://etapa-production.up.railway.app --key YOUR_TEST_API_KEY
+ *   node --import ./tests/loader.mjs tests/planGenerator.test.js --api https://etapa.up.railway.app --key YOUR_TEST_API_KEY
  */
 
 import { generatePlan, suggestWeeks } from '../src/services/planGenerator.js';
@@ -502,6 +502,103 @@ const SCENARIOS = [
       crossTrainingDays: { wednesday: 'running', friday: 'running', sunday: 'yoga' },
     },
   },
+
+  // ─── 31–34. REGRESSION tests ───────────────────────────────────────────────
+  // Each one locks down a specific bug reported in April 2026. If any of these
+  // starts failing, the bug has returned.
+
+  // Bug: user selected 3 rides per week, got 1 ride + 1 strength session. Root
+  // cause: ambiguous session-count prompt + uninvited strength from beginner
+  // block + strength example present even when not requested.
+  {
+    name: 'REGRESSION: 3 rides/week outdoor only, NO strength',
+    goal: { id: 'reg1', goalType: 'improve', cyclingType: 'road', planName: 'Reg #1' },
+    config: {
+      id: 'creg1', daysPerWeek: 3, weeks: 6, trainingTypes: ['outdoor'],
+      sessionCounts: { outdoor: 3 },
+      availableDays: ['monday', 'wednesday', 'saturday'],
+      fitnessLevel: 'intermediate', startDate: '2026-04-06',
+    },
+  },
+
+  // Bug: beginner flow unconditionally added strength from week 3.
+  {
+    name: 'REGRESSION: beginner flow, outdoor only, NO strength',
+    goal: { id: 'reg2', goalType: 'beginner', cyclingType: 'road', planName: 'Reg #2' },
+    config: {
+      id: 'creg2', daysPerWeek: 3, weeks: 12, trainingTypes: ['outdoor'],
+      sessionCounts: { outdoor: 3 },
+      availableDays: ['tuesday', 'thursday', 'saturday'],
+      fitnessLevel: 'beginner', startDate: '2026-04-06',
+    },
+  },
+
+  // Positive test: strength IS requested — must include the correct count.
+  {
+    name: 'REGRESSION: 3 rides + 1 strength explicitly requested',
+    goal: { id: 'reg3', goalType: 'improve', cyclingType: 'road', planName: 'Reg #3' },
+    config: {
+      id: 'creg3', daysPerWeek: 4, weeks: 6, trainingTypes: ['outdoor', 'strength'],
+      sessionCounts: { outdoor: 3, strength: 1 },
+      availableDays: ['monday', 'wednesday', 'friday', 'saturday'],
+      fitnessLevel: 'intermediate', startDate: '2026-04-06',
+    },
+  },
+
+  // High-count test: 5 rides/week must be honoured in build phase.
+  {
+    name: 'REGRESSION: 5 rides/week honoured in build phase',
+    goal: { id: 'reg4', goalType: 'distance', cyclingType: 'road', targetDistance: 120, planName: 'Reg #4' },
+    config: {
+      id: 'creg4', daysPerWeek: 5, weeks: 8, trainingTypes: ['outdoor'],
+      sessionCounts: { outdoor: 5 },
+      availableDays: ['monday', 'tuesday', 'thursday', 'saturday', 'sunday'],
+      fitnessLevel: 'advanced', startDate: '2026-04-06',
+    },
+  },
+
+  // ─── "Just get better" flow (goalType: 'improve') coverage ───────────────
+  { name: 'JUST GET BETTER: beginner 2 days/week 4 weeks',
+    goal: { id: 'jgb1', goalType: 'improve', cyclingType: 'mixed', planName: 'Keep improving' },
+    config: { id: 'cjgb1', daysPerWeek: 2, weeks: 4, trainingTypes: ['outdoor'], availableDays: ['wednesday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06' } },
+  { name: 'JUST GET BETTER: intermediate 3 days/week 8 weeks',
+    goal: { id: 'jgb2', goalType: 'improve', cyclingType: 'mixed', planName: 'Keep improving' },
+    config: { id: 'cjgb2', daysPerWeek: 3, weeks: 8, trainingTypes: ['outdoor'], availableDays: ['tuesday', 'thursday', 'saturday'], fitnessLevel: 'intermediate', startDate: '2026-04-06' } },
+  { name: 'JUST GET BETTER: intermediate 4 days + strength 12 weeks',
+    goal: { id: 'jgb3', goalType: 'improve', cyclingType: 'mixed', planName: 'Keep improving' },
+    config: { id: 'cjgb3', daysPerWeek: 4, weeks: 12, trainingTypes: ['outdoor', 'strength'], availableDays: ['monday', 'wednesday', 'friday', 'saturday'], fitnessLevel: 'intermediate', startDate: '2026-04-06' } },
+  { name: 'JUST GET BETTER: advanced 5 days outdoor+indoor 10 weeks',
+    goal: { id: 'jgb4', goalType: 'improve', cyclingType: 'road', planName: 'Keep improving' },
+    config: { id: 'cjgb4', daysPerWeek: 5, weeks: 10, trainingTypes: ['outdoor', 'indoor'], availableDays: ['monday', 'tuesday', 'thursday', 'saturday', 'sunday'], fitnessLevel: 'advanced', startDate: '2026-04-06' } },
+  { name: 'JUST GET BETTER: e-bike intermediate 3 days 6 weeks',
+    goal: { id: 'jgb5', goalType: 'improve', cyclingType: 'ebike', planName: 'Keep improving' },
+    config: { id: 'cjgb5', daysPerWeek: 3, weeks: 6, trainingTypes: ['outdoor'], availableDays: ['tuesday', 'thursday', 'sunday'], fitnessLevel: 'intermediate', startDate: '2026-04-06' } },
+  { name: 'JUST GET BETTER: long ride on Sunday picked explicitly',
+    goal: { id: 'jgb6', goalType: 'improve', cyclingType: 'road', planName: 'Keep improving' },
+    config: { id: 'cjgb6', daysPerWeek: 4, weeks: 8, trainingTypes: ['outdoor'], availableDays: ['tuesday', 'thursday', 'saturday', 'sunday'], fitnessLevel: 'intermediate', startDate: '2026-04-06', longRideDay: 'sunday' } },
+
+  // ─── "Getting started" flow (goalType: 'beginner') coverage ──────────────
+  { name: 'GETTING STARTED: 2 days/week 6 weeks, pure outdoor',
+    goal: { id: 'gs1', goalType: 'beginner', cyclingType: 'road', planName: 'Get Into Cycling' },
+    config: { id: 'cgs1', daysPerWeek: 2, weeks: 6, trainingTypes: ['outdoor'], availableDays: ['wednesday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06' } },
+  { name: 'GETTING STARTED: 3 days/week 8 weeks, pure outdoor',
+    goal: { id: 'gs2', goalType: 'beginner', cyclingType: 'road', planName: 'Get Into Cycling' },
+    config: { id: 'cgs2', daysPerWeek: 3, weeks: 8, trainingTypes: ['outdoor'], availableDays: ['tuesday', 'thursday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06' } },
+  { name: 'GETTING STARTED: 3 days/week 12 weeks, full couch-to-25km',
+    goal: { id: 'gs3', goalType: 'beginner', cyclingType: 'road', planName: 'Get Into Cycling' },
+    config: { id: 'cgs3', daysPerWeek: 3, weeks: 12, trainingTypes: ['outdoor'], availableDays: ['monday', 'wednesday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06' } },
+  { name: 'GETTING STARTED: 2 days/week 12 weeks, slow build',
+    goal: { id: 'gs4', goalType: 'beginner', cyclingType: 'road', planName: 'Get Into Cycling' },
+    config: { id: 'cgs4', daysPerWeek: 2, weeks: 12, trainingTypes: ['outdoor'], availableDays: ['wednesday', 'sunday'], fitnessLevel: 'beginner', startDate: '2026-04-06' } },
+  { name: 'GETTING STARTED: 3 rides + 1 strength, 10 weeks',
+    goal: { id: 'gs5', goalType: 'beginner', cyclingType: 'road', planName: 'Get Into Cycling' },
+    config: { id: 'cgs5', daysPerWeek: 4, weeks: 10, trainingTypes: ['outdoor', 'strength'], sessionCounts: { outdoor: 3, strength: 1 }, availableDays: ['tuesday', 'wednesday', 'thursday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06' } },
+  { name: 'GETTING STARTED: e-bike 2 days/week 8 weeks',
+    goal: { id: 'gs6', goalType: 'beginner', cyclingType: 'ebike', planName: 'Get Into Cycling' },
+    config: { id: 'cgs6', daysPerWeek: 2, weeks: 8, trainingTypes: ['outdoor'], availableDays: ['wednesday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06' } },
+  { name: 'GETTING STARTED: long ride pre-set to Sunday',
+    goal: { id: 'gs7', goalType: 'beginner', cyclingType: 'road', planName: 'Get Into Cycling' },
+    config: { id: 'cgs7', daysPerWeek: 3, weeks: 8, trainingTypes: ['outdoor'], availableDays: ['tuesday', 'thursday', 'sunday'], fitnessLevel: 'beginner', startDate: '2026-04-06', longRideDay: 'sunday' } },
 ];
 
 // ── Edit/mutation test scenarios ─────────────────────────────────────────────

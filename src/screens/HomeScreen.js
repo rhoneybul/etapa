@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import { getCurrentUser } from '../services/authService';
-import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig, getUserPrefs, isOnboardingDone, setOnboardingDone } from '../services/storageService';
+import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig, getUserPrefs, isOnboardingDone, setOnboardingDone, saveGoal } from '../services/storageService';
 import OnboardingTour from '../components/OnboardingTour';
 import { isSubscribed, getSubscriptionStatus, openCheckout, getPrices } from '../services/subscriptionService';
 import UpgradePrompt from '../components/UpgradePrompt';
@@ -77,7 +77,11 @@ function getPlanStats(plan) {
 }
 
 export default function HomeScreen({ navigation, route }) {
-  // When arriving from plan creation, freshPlanId is set — skip the loading screen
+  // When arriving from plan creation, freshPlanId is set — skip the Home
+  // pulsing-logo loading state AND the no-plan empty state until the new
+  // plan has loaded into local state. Without this guard, the user sees
+  // a brief flash of Home's loader (or worse, the "no plan" CTA) between
+  // PlanLoadingScreen and the populated plan view.
   const freshPlanId = route?.params?.freshPlanId || null;
   const [name, setName] = useState(null);
   const [plans, setPlans] = useState([]);
@@ -86,7 +90,10 @@ export default function HomeScreen({ navigation, route }) {
   const [currentWeek, setCurrentWeek] = useState(1);
   const [stravaOk, setStravaOk] = useState(false);
   const [activePlanConfig, setActivePlanConfig] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // If freshPlanId is set, suppress the pulsing-logo initial loader —
+  // PlanLoadingScreen has just shown the user a polished loading UI, and we
+  // don't want a jarring second loader on top of it.
+  const [loading, setLoading] = useState(!freshPlanId);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [subPlan, setSubPlan] = useState(null); // 'starter' | 'monthly' | 'annual' | null
@@ -294,12 +301,32 @@ export default function HomeScreen({ navigation, route }) {
     navigation.navigate('GoalSetup', { requirePaywall: !subscribed });
   };
 
-  // Third pathway — minimal "just improve" flow. Skips goal wizard, jumps
-  // straight to a level + duration + days/week screen that pre-fills a
-  // sensible goal (improve / mixed) then generates the plan.
+  // Third pathway — "Just get better". Skips the goal wizard (no target
+  // distance / event name / target date to pick), but still goes through
+  // the full PlanConfigScreen so the user can pick training types, long
+  // ride day, schedule sessions, duration, and coach — same UI as the
+  // other flows, just with the target-specific questions removed.
   const handleQuickPlan = async () => {
     const subscribed = __DEV__ ? false : await isSubscribed();
-    navigation.navigate('QuickPlan', { requirePaywall: !subscribed });
+    try {
+      const goal = await saveGoal({
+        cyclingType: 'mixed',
+        goalType: 'improve',
+        planName: 'Keep improving',
+        targetDistance: null,
+        targetElevation: null,
+        targetTime: null,
+        targetDate: null,
+        eventName: null,
+      });
+      analytics.events?.quickPlanStarted?.({ entry: 'home_card' });
+      navigation.navigate('PlanConfig', { goal, requirePaywall: !subscribed });
+    } catch (err) {
+      console.error('[handleQuickPlan] saveGoal failed:', err);
+      // Fall back to the old minimal screen if the goal save fails for any
+      // reason — better than a dead-end tap.
+      navigation.navigate('QuickPlan', { requirePaywall: !subscribed });
+    }
   };
 
   const handleUpgrade = () => {
@@ -359,6 +386,14 @@ export default function HomeScreen({ navigation, route }) {
   }
 
   // ── No plan state ─────────────────────────────────────────────────────────
+  // Guard: if we just arrived from plan generation (`freshPlanId`) and plans
+  // haven't hydrated yet, don't flash the empty-state "Make me a plan" CTA.
+  // Render a blank matching surface for the handful of frames it takes for
+  // getPlans() to populate `plans`.
+  if (plans.length === 0 && freshPlanId) {
+    return <View style={[s.container, { backgroundColor: colors.bg }]} />;
+  }
+
   if (plans.length === 0) {
     return (
       <ImageBackground

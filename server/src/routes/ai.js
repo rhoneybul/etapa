@@ -401,7 +401,6 @@ Training advice must always assume the athlete is a healthy adult who has been m
 // ── Build plan prompt ──────────────────────────────────────────────────────
 function buildPlanPrompt(goal, config) {
   const {
-    sessionCounts = {},
     availableDays = [],
     fitnessLevel = 'beginner',
     crossTrainingDays = {},
@@ -409,10 +408,44 @@ function buildPlanPrompt(goal, config) {
     longRideDay = null,
     recurringRides = [],
     oneOffRides = [],
+    trainingTypes = ['outdoor'],
+    daysPerWeek,
   } = config;
   const weeks = config.weeks || 8;
   const hasTargetDate = !!goal.targetDate;
   const benchmark = RIDER_BENCHMARKS[fitnessLevel] || RIDER_BENCHMARKS.beginner;
+
+  // ── Derive a usable sessionCounts ────────────────────────────────────────
+  // If the client sends sessionCounts, use it. Otherwise reconstruct it from
+  // daysPerWeek + trainingTypes — the QuickPlan / server-call paths don't
+  // always carry sessionCounts, and a blank {} used to collapse the prompt
+  // to "0 sessions per week" which made Claude return empty plans.
+  let sessionCounts = config.sessionCounts && Object.keys(config.sessionCounts).length > 0
+    ? { ...config.sessionCounts }
+    : null;
+
+  if (!sessionCounts) {
+    const perWeek = Number(daysPerWeek) > 0 ? Number(daysPerWeek) : 3;
+    // Strength is a "bonus" session that sits alongside cycling, so if it's
+    // in trainingTypes we reserve 1 session for it and split the rest across
+    // outdoor / indoor. This mirrors the client's default sessionCounts.
+    const hasStrength = trainingTypes.includes('strength');
+    const cyclingTypes = trainingTypes.filter(t => t === 'outdoor' || t === 'indoor');
+    const cyclingSlots = Math.max(1, hasStrength ? perWeek - 1 : perWeek);
+    sessionCounts = {};
+    if (cyclingTypes.length === 0) {
+      sessionCounts.outdoor = cyclingSlots;
+    } else if (cyclingTypes.length === 1) {
+      sessionCounts[cyclingTypes[0]] = cyclingSlots;
+    } else {
+      // Favour outdoor slightly when both outdoor + indoor are selected.
+      const outdoorCount = Math.ceil(cyclingSlots / 2);
+      const indoorCount = Math.max(0, cyclingSlots - outdoorCount);
+      if (outdoorCount > 0) sessionCounts.outdoor = outdoorCount;
+      if (indoorCount > 0) sessionCounts.indoor = indoorCount;
+    }
+    if (hasStrength) sessionCounts.strength = 1;
+  }
 
   // Recurring/organised rides description
   const dayNamesLower = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -569,13 +602,13 @@ CRITICAL — INJURY PREVENTION: The athlete does these activities in ADDITION to
 
 ${activityGuidance.join('\n\n')}
 
-### General cross-training rules:
-- Do NOT schedule hard cycling sessions (intervals, tempo, hill repeats) on the same day as HIGH-impact cross-training
-- The day AFTER a HIGH-impact cross-training day (running, rowing, heavy gym) should be an easy/recovery cycling day or a rest day
-- LOW-impact activities (yoga, swimming, pilates) can coexist with normal cycling training
-- Total weekly training stress = cycling + ALL cross-training. Keep the combined load sustainable
-- When in doubt, err on the side of easier cycling around cross-training days — preventing injury is more important than maximising training volume
-- In the notes for sessions adjacent to cross-training days, mention why the effort level was chosen (e.g. "Easy spin — recovery after yesterday's run")`;
+### General cross-training rules (STRICT — violating these is an injury risk):
+- NEVER schedule a HARD cycling session (effort: "hard" or "max", or subType: "intervals") on the SAME DAY OR THE DAY AFTER a HIGH-impact cross-training day. High-impact = running, rowing, weight training, gym, hiking, crossfit.
+- The day AFTER a high-impact cross-training day MUST be one of: rest, easy ride, or recovery ride. No exceptions.
+- Before you finalise the plan, walk through each week and check: for every day that has a high-impact cross-training activity, is the NEXT available cycling day an easy/recovery/rest day? If not, fix it.
+- LOW-impact activities (yoga, swimming, pilates) can coexist with normal cycling training.
+- Total weekly training stress = cycling + ALL cross-training. Keep the combined load sustainable.
+- In the notes for sessions adjacent to cross-training days, mention why the effort level was chosen (e.g. "Easy spin — recovery after yesterday's run").`;
     }
   }
 
@@ -619,10 +652,12 @@ ${Object.entries(sessionCounts).map(([k, v]) => `  • ${v} × ${k === 'outdoor'
 
 This gives a TOTAL of ${Object.values(sessionCounts).reduce((s, v) => s + v, 0)} sessions per week. You MUST match this distribution exactly:
 
+- **Non-negotiable:** every week of this ${weeks}-week plan MUST contain activities. An empty week is never correct. If you generate 0 activities for any week, the plan is broken.
 - Total sessions per week: ${Object.values(sessionCounts).reduce((s, v) => s + v, 0)} (NO more, NO fewer, except deload/taper weeks which may drop by 1)
-- Of those, ${(sessionCounts.outdoor || 0) + (sessionCounts.indoor || 0)} MUST be cycling (type: "ride")${sessionCounts.strength ? ` and ${sessionCounts.strength} MUST be strength (type: "strength")` : ''}
-- ${sessionCounts.strength ? '' : 'Do NOT include any strength sessions — the athlete did not request strength training. '}Do NOT invent additional session types.
+- Of those, ${(sessionCounts.outdoor || 0) + (sessionCounts.indoor || 0)} MUST be cycling (type: "ride")${sessionCounts.strength ? ` and EXACTLY ${sessionCounts.strength} strength session(s) per week (type: "strength")` : ''}
+${sessionCounts.strength ? `- STRENGTH IS REQUIRED. Every week must include ${sessionCounts.strength} strength session(s). If you return a plan with zero strength sessions, the plan is invalid. Place strength on a cycling-free day or on a day after an easy ride. Do not substitute strength with extra rides.` : `- Do NOT include any strength sessions — the athlete did not request strength training. Do NOT invent additional session types.`}
 - Each session MUST be on one of the available days listed above. Never use a day that isn't available.
+- Total expected activity count for the full plan: approximately ${weeks * Object.values(sessionCounts).reduce((s, v) => s + v, 0)} (give or take a few for deload/taper). If your output has dramatically fewer activities than this, something is wrong — fix it before returning.
 
 ${longRideDay ? `- Long ride day: ${dayNames[typeof longRideDay === 'number' ? longRideDay : dayNames.findIndex(n => n.toLowerCase().startsWith(String(longRideDay).toLowerCase()))] || longRideDay}. The athlete's longest/endurance ride each week MUST be scheduled on this day. This is their preferred day for long rides.` : ''}
 - CRITICAL: The plan is EXACTLY ${weeks} weeks long. Do NOT generate any activities with week > ${weeks}. The last activity must be in week ${weeks}.
@@ -645,7 +680,8 @@ ${hasTargetDate ? `
 ### Progressive overload & safety
 - Start week 1 at distances/durations the rider can COMFORTABLY do right now.
 - Increase weekly volume by no more than 6–8% per phase.
-- Every 3rd or 4th week: deload (reduce volume 30%, easy efforts only).
+- **Week-to-week volume limit:** total cycling km in week N+1 must be no more than 30% higher than week N. A spike of 40%+ is a failure. If the desired peak is far from the start, spread the build across more weeks rather than jumping.
+${weeks >= 6 ? `- **Deload is MANDATORY** for a ${weeks}-week plan. Put a deload week on week ${weeks >= 12 ? '4 and week 8' : weeks >= 8 ? '4' : '3'} where weekly volume drops by 25–40% vs. the prior week, efforts are easy/recovery only, and there are no intervals. Without a deload the plan is invalid.` : '- If the plan is long enough to warrant one (≥6 weeks), include a deload week with ~30% reduced volume.'}
 - Long ride should start at ~${Math.round(benchmark.maxComfortableDistKm * 0.5)} km and build to ${goal.targetDistance ? '~' + Math.round(goal.targetDistance * 0.85) + '–' + goal.targetDistance + ' km' : '~' + benchmark.maxComfortableDistKm + ' km'} by the peak phase.
 - NEVER set a ride more than 20% longer than the previous week's longest.
 - All distances must be achievable at ~${benchmark.avgSpeedKmh} km/h average speed.
@@ -733,9 +769,20 @@ Field rules:
 - For taper weeks, add "(Taper)" to the title
 - For deload weeks, add "(Deload)" to the title
 
-${config.trainingTypes?.includes('strength') ? `STRENGTH SESSIONS REQUIRED: The athlete has requested strength training. You MUST include at least 1 strength session per week (type: "strength"). These should complement the cycling — focus on legs, core, and stability. Strength sessions do not count towards the cycling session limit.` : ''}
-
 IMPORTANT: Do NOT include recurring rides in your output — they are automatically added. Only generate planned training sessions and strength sessions. The available days listed above are the days you should schedule sessions on, EXCLUDING days that have a recurring ride (since those are auto-injected).
+
+## Final self-check — DO THIS BEFORE RETURNING
+
+Mentally run through this checklist. If any answer is "no", fix it first.
+
+1. Does the plan cover EVERY week from 1 to ${weeks}, with zero empty weeks? (Empty week = plan is broken.)
+2. Does each build-phase week have ${Object.values(sessionCounts).reduce((s, v) => s + v, 0)} sessions (deload/taper weeks may drop by 1)?
+${sessionCounts.strength ? `3. Does EVERY week contain ${sessionCounts.strength} strength session(s)? If any week has zero strength, fix it.
+4.` : '3.'} Is there NO strength session where the user hasn't asked for one? ${sessionCounts.strength ? '' : '(If not requested — zero strength activities anywhere.)'}
+${weeks >= 6 ? `${sessionCounts.strength ? '5.' : '4.'} Is there at least one clear deload week where volume drops 25–40%? ` : ''}
+${sessionCounts.strength ? (weeks >= 6 ? '6.' : '5.') : (weeks >= 6 ? '5.' : '4.')}. Are week-over-week volume jumps all ≤30%? No week more than ${goal.targetDistance ? Math.round(goal.targetDistance * 1.6) : Math.round(benchmark.maxComfortableDistKm * 2.2)} km total.
+${(Object.keys(crossTrainingDays || {}).length > 0 || crossTrainingDaysFull) ? `Next: for every high-impact cross-training day in the inputs, is the day after NOT a hard/interval cycling session? If it is, swap it to easy/recovery.` : ''}
+${goal.targetDistance ? `Next: does the peak-phase longest ride reach at least ${Math.round(goal.targetDistance * 0.8)} km? If not, grow the long ride more aggressively in the Build phase.` : ''}
 
 Return ONLY the JSON array, no other text.`;
 }

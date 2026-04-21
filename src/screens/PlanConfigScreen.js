@@ -236,29 +236,35 @@ export default function PlanConfigScreen({ navigation, route }) {
     existingConfig?.longRideDay || 'saturday'
   );
 
+  // Produce the dayActivities map that reflects the current long ride day +
+  // any recurring rides. Used both by the mount/update effect below and by
+  // step 2's Continue handler when it needs to reset without wiping the
+  // auto-placements.
+  const buildAutoPlacedActivities = (prev = {}) => {
+    let next = { ...prev };
+    if (longRideDayOverride) {
+      const acts = next[longRideDayOverride] || [];
+      if (!acts.includes('outdoor')) {
+        next = { ...next, [longRideDayOverride]: [...acts, 'outdoor'] };
+      }
+    }
+    for (const ride of recurringRides) {
+      const acts = next[ride.day] || [];
+      const outdoorCount = acts.filter(a => a === 'outdoor').length;
+      const needed = ride.day === longRideDayOverride ? 2 : 1;
+      if (outdoorCount < needed) {
+        next = { ...next, [ride.day]: [...acts, 'outdoor'] };
+      }
+    }
+    return next;
+  };
+
   // Auto-place the outdoor ride on the long ride day whenever it changes.
   // Ensures that by the time the user lands on the Build Week step, their
   // long ride day and any recurring rides are already on the grid.
   useEffect(() => {
-    // Long ride day — always ensure there's an outdoor ride there
-    if (longRideDayOverride) {
-      setDayActivities(prev => {
-        const acts = prev[longRideDayOverride] || [];
-        if (acts.includes('outdoor')) return prev;
-        return { ...prev, [longRideDayOverride]: [...acts, 'outdoor'] };
-      });
-    }
-    // Recurring rides — ensure each is placed on its day
-    recurringRides.forEach(ride => {
-      setDayActivities(prev => {
-        const acts = prev[ride.day] || [];
-        // Allow multiple outdoor rides on the same day (long ride + recurring)
-        const outdoorCount = acts.filter(a => a === 'outdoor').length;
-        const needed = ride.day === longRideDayOverride ? 2 : 1;
-        if (outdoorCount >= needed) return prev;
-        return { ...prev, [ride.day]: [...acts, 'outdoor'] };
-      });
-    });
+    setDayActivities(prev => buildAutoPlacedActivities(prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [longRideDayOverride, recurringRides]);
 
   const toggleTrainingType = (type) => {
@@ -558,7 +564,10 @@ export default function PlanConfigScreen({ navigation, route }) {
           trainingTypes.forEach(t => { next[t] = prev[t] || 1; });
           return next;
         });
-        setDayActivities({});
+        // Reset dayActivities when training types change, but preserve the
+        // long ride + recurring auto-placements so they don't disappear from
+        // the Build Your Week grid.
+        setDayActivities(() => buildAutoPlacedActivities({}));
         setSelectedActivity(trainingTypes[0] || 'outdoor');
       }
       if (step === 5) analytics.events.configStepCompleted(3, { sessionsPerWeek: totalSessions, daysPlaced: Object.keys(dayActivities).length });

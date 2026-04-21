@@ -206,6 +206,42 @@ function validate(plan, scenario) {
     }
   }
 
+  // ── Lower-bound session count — regression guard ──
+  // Locks in the fix for "I asked for 3 rides, got 1". Build-phase weeks must
+  // honour the requested count (1 slack for deload); taper weeks (last 25%)
+  // may drop. Excludes recurring/one-off rides which are auto-injected.
+  const requestedPerWeek = Object.values(config.sessionCounts || {}).reduce((s, v) => s + v, 0)
+    || (config.daysPerWeek || 0);
+  if (requestedPerWeek > 0 && plan.weeks >= 1) {
+    const taperStartWeek = Math.max(2, Math.floor(plan.weeks * 0.75) + 1);
+    const buildFloor = Math.max(1, requestedPerWeek - 1);
+    for (let w = 1; w <= plan.weeks; w++) {
+      const weekActs = acts.filter(a => a.week === w && !a.isRecurring && !a.isOneOff);
+      const inTaper = w >= taperStartWeek;
+      const floor = inTaper ? 1 : buildFloor;
+      if (weekActs.length < floor) {
+        const phase = inTaper ? 'taper' : 'build';
+        errors.push(
+          `Week ${w} (${phase}) has only ${weekActs.length} planned session${weekActs.length === 1 ? '' : 's'} but config requests ${requestedPerWeek}/week ` +
+          `(${Object.entries(config.sessionCounts || { outdoor: config.daysPerWeek }).map(([k, v]) => `${v}×${k}`).join(', ')}) — plan is NOT honouring user input.`
+        );
+      }
+    }
+  }
+
+  // ── Uninvited strength — regression guard ──
+  // Locks in the fix for "I got a strength session I didn't ask for". If
+  // trainingTypes doesn't include strength, zero strength activities allowed.
+  if (!config.trainingTypes?.includes('strength')) {
+    const unrequestedStrength = acts.filter(a => a.type === 'strength').length;
+    if (unrequestedStrength > 0) {
+      errors.push(
+        `Found ${unrequestedStrength} strength session(s) but config.trainingTypes does not include 'strength' ` +
+        `(trainingTypes=${JSON.stringify(config.trainingTypes || [])}) — plan inventing session types.`
+      );
+    }
+  }
+
   if (plan.weeks >= 8 && weeklyRideKm.length >= 8) {
     let hasAnyDeload = false;
     for (let w = 2; w < weeklyRideKm.length; w++) {

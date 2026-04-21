@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { SCENARIOS, EDIT_SCENARIOS } from '@/lib/scenarios';
 
 export default function ResultsPage() {
-  const [serverUrl, setServerUrl] = useState('https://etapa-production.up.railway.app');
+  const [serverUrl, setServerUrl] = useState('https://etapa.up.railway.app');
   const [apiKey, setApiKey] = useState('');
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState([]);

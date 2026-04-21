@@ -65,7 +65,9 @@ export default function PlanLoadingScreen({ navigation, route }) {
   // startAsync* call and poll directly.
   const { goal, config, requirePaywall, defaultPlan, existingJobId, isRegenerate } = route.params;
   const [message, setMessage] = useState('Building your plan...');
-  const [activities, setActivities] = useState([]);
+  // `activities` state kept intentionally unused — previously drove the
+  // "Sessions being planned" preview which we removed. Left here in case we
+  // want to wire up a different in-progress indicator later.
   const [tipIndex, setTipIndex] = useState(0);
   const [cancelling, setCancelling] = useState(false);
   // Abandon tracking — set true right before we navigate away on successful
@@ -189,10 +191,10 @@ export default function PlanLoadingScreen({ navigation, route }) {
         // Update progress message
         if (job.progress) handleProgress(job.progress);
 
-        // Update live activity preview
-        if (job.activities?.length > 0) {
-          setActivities(job.activities);
-        }
+        // (Intentionally not updating activities state — the loading UI
+        // stays on "Building your plan" with tips until navigation fires.
+        // The old "Sessions being planned" preview was removed to keep the
+        // experience calm and prevent leaking partial/revisable data.)
 
         if (job.status === 'completed' && job.plan) {
           clearInterval(pollRef.current);
@@ -305,7 +307,6 @@ export default function PlanLoadingScreen({ navigation, route }) {
   });
 
   const tip = MARKETING_TIPS[tipIndex];
-  const previewActivities = activities.slice(0, 6);
 
   return (
     <View style={s.container}>
@@ -325,27 +326,7 @@ export default function PlanLoadingScreen({ navigation, route }) {
             </View>
           </Animated.View>
 
-          {/* Live activity preview */}
-          {previewActivities.length > 0 && (
-            <View style={s.previewSection}>
-              <Text style={s.previewTitle}>Sessions being planned</Text>
-              {previewActivities.map((a, i) => (
-                <View key={a.id || i} style={s.previewRow}>
-                  <View style={[s.previewDot, { backgroundColor: a.type === 'strength' ? '#2563EB' : colors.primary }]} />
-                  <View style={s.previewContent}>
-                    <Text style={s.previewName} numberOfLines={1}>{a.title}</Text>
-                    <Text style={s.previewMeta}>
-                      Week {a.week} · {a.type}{a.durationMins ? ` · ${a.durationMins}m` : ''}{a.distanceKm ? ` · ${a.distanceKm}km` : ''}
-                    </Text>
-                  </View>
-                  <View style={[s.effortDot, { backgroundColor: a.effort === 'easy' ? '#22C55E' : a.effort === 'hard' ? '#EF4444' : colors.primary }]} />
-                </View>
-              ))}
-              {activities.length > 6 && (
-                <Text style={s.previewMore}>+{activities.length - 6} more sessions...</Text>
-              )}
-            </View>
-          )}
+          {/* Activity preview intentionally removed — keep loading UI calm. */}
 
           {/* Marketing tip card */}
           <Animated.View style={[s.tipCard, { opacity: tipFade }]}>
