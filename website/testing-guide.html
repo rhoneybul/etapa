@@ -198,6 +198,98 @@ a:hover { color: var(--accent-hover); }
     max-width: 64ch; margin-bottom: 40px; line-height: 1.6;
   }
 
+  /* ───────── Install hero — the two direct links ───────── */
+  .install-hero {
+    margin-top: 32px;
+    padding: 28px 28px 24px;
+    background: var(--surface);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--r-lg);
+    /* Subtle pink glow so it reads as a hero, not just another card */
+    box-shadow: 0 0 0 1px var(--accent-soft) inset;
+  }
+  .install-hero-eyebrow {
+    font-size: var(--fs-label);
+    font-weight: var(--w-semibold);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .install-hero-title {
+    font-size: var(--fs-h3);
+    letter-spacing: var(--tracking-tight);
+    margin-bottom: 6px;
+  }
+  .install-hero-lede {
+    color: var(--fg-2);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    max-width: 54ch;
+    margin-bottom: 20px;
+  }
+  .install-links-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .install-link {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: var(--r-md);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    text-decoration: none;
+    min-width: 0; /* lets the URL span shrink inside the flex item */
+    transition: border-color var(--dur-fast) var(--ease-out),
+                background    var(--dur-fast) var(--ease-out);
+  }
+  .install-link:hover {
+    background: var(--surface-hover);
+    border-color: var(--accent-border);
+  }
+  .install-link-icon {
+    flex: 0 0 auto;
+    width: 36px; height: 36px; border-radius: 10px;
+    background: var(--surface-hover);
+    border: 1px solid var(--border-strong);
+    display: grid; place-items: center;
+    color: var(--fg);
+  }
+  .install-link-icon svg { width: 20px; height: 20px; }
+  .install-link-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0; /* critical — allows text-overflow inside a flex child */
+    gap: 2px;
+  }
+  .install-link-label {
+    font-size: var(--fs-label);
+    font-weight: var(--w-semibold);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--fg-3);
+  }
+  .install-link-url {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 13px;
+    font-weight: var(--w-medium);
+    color: var(--fg);
+    /* Prevent overflow — allow breaks if space is really tight */
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.35;
+  }
+  .install-hero-fallback {
+    margin-top: 18px;
+    font-size: var(--fs-small);
+    color: var(--fg-3);
+    line-height: var(--lh-body);
+  }
+
   /* ───────── Install ───────── */
   .platforms { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
   .platform {
@@ -261,6 +353,46 @@ a:hover { color: var(--accent-hover); }
     color: var(--fg);
     padding: 2px 8px;
     border-radius: 6px;
+  }
+
+  /* Subheads within a platform card (Installing / Getting updates / Common problems) */
+  .platform .subhead {
+    font-size: var(--fs-label);
+    font-weight: var(--w-semibold);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--fg-3);
+    margin: 24px 0 12px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  .platform .subhead:first-of-type {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  /* "Common problems" list — structured Q&A bullets inside a platform card */
+  ul.issues {
+    list-style: none;
+    margin: 0; padding: 0;
+  }
+  ul.issues > li {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  ul.issues > li:last-child { border-bottom: none; padding-bottom: 0; }
+  ul.issues > li:first-child { padding-top: 0; }
+  ul.issues > li strong {
+    display: block;
+    font-size: 14px; font-weight: var(--w-semibold);
+    color: var(--fg); margin-bottom: 4px;
+    letter-spacing: -0.01em;
+  }
+  ul.issues > li p {
+    font-size: 13.5px; color: var(--fg-2);
+    line-height: 1.55; font-weight: var(--w-light);
+    margin: 0;
   }
 
   .platform .cta-row {
@@ -501,7 +633,14 @@ a:hover { color: var(--accent-hover); }
     .hero h1 { font-size: 38px; }
     .hero .lede { font-size: 17px; }
     .platforms, .test-areas, .tips { grid-template-columns: 1fr; }
-    .install-links-grid { grid-template-columns: 1fr !important; }
+    .install-hero { padding: 20px 18px; margin-top: 20px; }
+    .install-hero-title { font-size: 22px; }
+    .install-hero-lede { font-size: 15px; margin-bottom: 14px; }
+    .install-links-grid { grid-template-columns: 1fr; gap: 10px; }
+    .install-link { padding: 12px 14px; }
+    .install-link-icon { width: 32px; height: 32px; }
+    .install-link-icon svg { width: 18px; height: 18px; }
+    .install-link-url { font-size: 12.5px; }
     .feedback { grid-template-columns: 1fr; }
     .feedback-copy { border-right: none; border-bottom: 1px solid var(--border); }
     .section-head h2 { font-size: 28px; }
@@ -610,33 +749,36 @@ a:hover { color: var(--accent-hover); }
 
     <!-- ── Direct install links — front and centre ──────────────────────
          These are the two URLs that actually get Etapa onto a phone. Put
-         them above everything else so testers never have to hunt. Keep the
-         styling bold so they can't be missed. -->
-    <div class="install-hero" role="region" aria-label="Direct install links" style="margin-top: 32px; padding: 24px; border-radius: 16px; background: linear-gradient(135deg, rgba(232,69,139,0.12), rgba(75,107,143,0.12)); border: 1px solid rgba(232,69,139,0.35);">
-      <div style="font-size: 12px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: #E8458B; margin-bottom: 8px;">Install Etapa right now</div>
-      <h2 style="margin: 0 0 6px; font-size: 22px;">Two links. That&rsquo;s it.</h2>
-      <p style="margin: 0 0 20px; color: #666; font-size: 15px;">Tap the link for your phone on the device you want to install on. The store apps handle the rest.</p>
-      <div class="install-links-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
-        <a href="https://testflight.apple.com/join/u995w5vr" target="_blank" rel="noopener"
-           style="display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 12px; background: #000; color: #fff; text-decoration: none; font-weight: 600; transition: transform .15s;">
-          <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor" aria-hidden="true"><path d="M17.543 12.54c-.023-2.42 1.974-3.58 2.064-3.637-1.123-1.64-2.875-1.866-3.5-1.893-1.49-.15-2.907.876-3.66.876-.765 0-1.927-.854-3.168-.83-1.63.024-3.134.947-3.973 2.404-1.695 2.936-.433 7.28 1.216 9.666.807 1.166 1.767 2.477 3.028 2.43 1.216-.05 1.676-.787 3.147-.787 1.47 0 1.883.787 3.168.76 1.307-.022 2.134-1.186 2.932-2.36.924-1.353 1.305-2.665 1.328-2.732-.03-.013-2.553-.983-2.58-3.897zm-2.422-7.16c.67-.814 1.123-1.943.999-3.068-.966.04-2.136.644-2.83 1.458-.62.72-1.164 1.875-1.019 2.977 1.08.084 2.18-.55 2.85-1.367z"/></svg>
-          <div>
-            <div style="font-size: 11px; letter-spacing: 1px; text-transform: uppercase; opacity: .6;">iPhone &middot; TestFlight</div>
-            <div style="font-size: 16px; font-weight: 700;">testflight.apple.com/join/u995w5vr</div>
-          </div>
+         them above everything else so testers never have to hunt. Styled
+         with the page's own design tokens so they sit inside the rest of
+         the guide naturally. -->
+    <div class="install-hero" role="region" aria-label="Direct install links">
+      <div class="install-hero-eyebrow">Install Etapa right now</div>
+      <h2 class="install-hero-title">Two links. That&rsquo;s it.</h2>
+      <p class="install-hero-lede">Tap the link for your phone on the device you want to install on. The store apps handle the rest.</p>
+      <div class="install-links-grid">
+        <a class="install-link install-link-ios" href="https://testflight.apple.com/join/u995w5vr" target="_blank" rel="noopener">
+          <span class="install-link-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.543 12.54c-.023-2.42 1.974-3.58 2.064-3.637-1.123-1.64-2.875-1.866-3.5-1.893-1.49-.15-2.907.876-3.66.876-.765 0-1.927-.854-3.168-.83-1.63.024-3.134.947-3.973 2.404-1.695 2.936-.433 7.28 1.216 9.666.807 1.166 1.767 2.477 3.028 2.43 1.216-.05 1.676-.787 3.147-.787 1.47 0 1.883.787 3.168.76 1.307-.022 2.134-1.186 2.932-2.36.924-1.353 1.305-2.665 1.328-2.732-.03-.013-2.553-.983-2.58-3.897zm-2.422-7.16c.67-.814 1.123-1.943.999-3.068-.966.04-2.136.644-2.83 1.458-.62.72-1.164 1.875-1.019 2.977 1.08.084 2.18-.55 2.85-1.367z"/></svg>
+          </span>
+          <span class="install-link-body">
+            <span class="install-link-label">iPhone &middot; TestFlight</span>
+            <span class="install-link-url">testflight.apple.com/join/u995w5vr</span>
+          </span>
         </a>
-        <a href="https://play.google.com/store/apps/details?id=com.etapa.app" target="_blank" rel="noopener"
-           style="display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 12px; background: #0f9d58; color: #fff; text-decoration: none; font-weight: 600; transition: transform .15s;">
-          <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor" aria-hidden="true"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85-.29-.15-.65-.06-.83.22l-1.88 3.24a11.43 11.43 0 0 0-8.94 0L5.65 5.67a.64.64 0 0 0-1.11.63L6.38 9.48A10.81 10.81 0 0 0 1 18h22a10.81 10.81 0 0 0-5.4-8.52zM7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z"/></svg>
-          <div>
-            <div style="font-size: 11px; letter-spacing: 1px; text-transform: uppercase; opacity: .8;">Android &middot; Play Store</div>
-            <div style="font-size: 16px; font-weight: 700;">play.google.com/store/apps/details?id=com.etapa.app</div>
-          </div>
+        <a class="install-link install-link-android" href="https://play.google.com/store/apps/details?id=com.etapa.app" target="_blank" rel="noopener">
+          <span class="install-link-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85-.29-.15-.65-.06-.83.22l-1.88 3.24a11.43 11.43 0 0 0-8.94 0L5.65 5.67a.64.64 0 0 0-1.11.63L6.38 9.48A10.81 10.81 0 0 0 1 18h22a10.81 10.81 0 0 0-5.4-8.52zM7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z"/></svg>
+          </span>
+          <span class="install-link-body">
+            <span class="install-link-label">Android &middot; Play Store</span>
+            <span class="install-link-url">play.google.com/store/apps/details?id=com.etapa.app</span>
+          </span>
         </a>
       </div>
-      <p style="margin: 18px 0 0; font-size: 13px; color: #555;">
+      <p class="install-hero-fallback">
         If the TestFlight link says &ldquo;This beta is full&rdquo; or the Play Store listing isn&rsquo;t visible yet,
-        email <a href="mailto:helloetapa@gmail.com" style="color: #E8458B;">helloetapa@gmail.com</a> and we&rsquo;ll add you manually.
+        email <a class="inline" href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a> and we&rsquo;ll add you manually.
       </p>
     </div>
 
@@ -753,37 +895,122 @@ a:hover { color: var(--accent-hover); }
           </a>
         </div>
 
+        <h4 class="subhead">Installing Etapa (first time)</h4>
         <ol class="steps">
           <li>
-            <div class="step-title">Send us the email on your Google account</div>
+            <div class="step-title">Send us your Google account email</div>
             <div class="step-body">
-              We need to add it to our tester list before you can install.
-              Email <a class="inline" href="mailto:helloetapa@gmail.com?subject=Android%20tester%20access">helloetapa@gmail.com</a>
-              with the Google address tied to your Play Store.
+              Google Play internal testing is invite-only &mdash; only whitelisted Google accounts can see the listing.
+              Email <a class="inline" href="mailto:helloetapa@gmail.com?subject=Android%20tester%20access">helloetapa@gmail.com</a> with
+              <strong>the exact Google address your Play Store is signed in with</strong>. This is usually a Gmail address but can be
+              any Google-linked email &mdash; whichever one shows up in Play Store &rarr; profile icon (top right) &rarr; &ldquo;Manage accounts&rdquo;.
+              Adding you takes a couple of minutes on our side.
+            </div>
+          </li>
+          <li>
+            <div class="step-title">Wait ~5 minutes after we confirm you're added</div>
+            <div class="step-body">
+              Google Play caches tester lists aggressively. If you open the install link before Google has propagated the change you'll get
+              a &ldquo;not available&rdquo; error even though everything is set up correctly. Five minutes is almost always enough; up to 30 in rare cases.
             </div>
           </li>
           <li>
             <div class="step-title">Open the Play Store link on your phone</div>
             <div class="step-body">
               Tap <a class="inline" href="https://play.google.com/store/apps/details?id=com.etapa.app" target="_blank" rel="noopener">
-              https://play.google.com/store/apps/details?id=com.etapa.app</a> on your Android device.
-              You should see an <em>&ldquo;Internal testing&rdquo;</em> badge on the listing &mdash; that&rsquo;s the build we want you on.
+              https://play.google.com/store/apps/details?id=com.etapa.app</a> on the Android device you want to test on.
+              The listing <strong>must show an &ldquo;Internal testing&rdquo; label under the app name</strong> &mdash; that's the confirmation
+              you're looking at the tester build. If you only see a normal Play Store listing without that badge, you're either on the wrong Google
+              account or the propagation delay hasn't finished.
             </div>
           </li>
           <li>
             <div class="step-title">Tap Install</div>
             <div class="step-body">
-              If you see &ldquo;App not available&rdquo; or no install button, your Google address hasn&rsquo;t been added yet &mdash;
-              email us and we&rsquo;ll fix it in a few hours. Future updates install automatically, like any other Play Store app.
+              Standard Play Store install &mdash; download, then Open. No sideloading, no developer settings, no unknown-sources warnings.
+              The first launch can take a few extra seconds while Android verifies the install.
             </div>
           </li>
           <li>
             <div class="step-title">Open Etapa and sign in</div>
             <div class="step-body">
-              Same email as your tester invite. You&rsquo;ll land on the home screen &mdash; ready to ride.
+              Use the email address your invite was sent to. You&rsquo;ll land on the home screen &mdash; ready to ride.
             </div>
           </li>
         </ol>
+
+        <h4 class="subhead">Getting updates</h4>
+        <ol class="steps">
+          <li>
+            <div class="step-title">Updates install automatically in the background</div>
+            <div class="step-body">
+              As long as Play Store auto-update is on (default), new builds roll out silently within a few hours of us pushing them.
+              You don't need to do anything. You'll just notice the app has restarted and maybe a new feature appeared.
+            </div>
+          </li>
+          <li>
+            <div class="step-title">To force an update right now</div>
+            <div class="step-body">
+              Open the <a class="inline" href="https://play.google.com/store/apps/details?id=com.etapa.app" target="_blank" rel="noopener">install link</a>
+              again. If there's a newer version available, the primary button changes from &ldquo;Open&rdquo; to <strong>&ldquo;Update&rdquo;</strong>.
+              Alternatively: Play Store &rarr; profile icon &rarr; <strong>Manage apps &amp; device</strong> &rarr; <strong>Updates available</strong> &rarr; find Etapa.
+            </div>
+          </li>
+          <li>
+            <div class="step-title">Check which version you're running</div>
+            <div class="step-body">
+              In the app: <strong>Settings &rarr; About</strong> shows the version + build number. In Play Store: the listing scrolls down to
+              &ldquo;About this app&rdquo; &rarr; version. If we've asked you to reproduce a bug and the build numbers don't match, try forcing an update first.
+            </div>
+          </li>
+          <li>
+            <div class="step-title">Something feels broken after an update?</div>
+            <div class="step-body">
+              Usually a stale cache. <strong>Force-close Etapa</strong> (recent apps &rarr; swipe up on Etapa), then re-open. If the problem persists,
+              Settings (device) &rarr; Apps &rarr; Etapa &rarr; Storage &rarr; <strong>Clear cache</strong>. Don't tap &ldquo;Clear storage&rdquo; unless we ask &mdash;
+              that signs you out and loses any locally-queued data.
+            </div>
+          </li>
+        </ol>
+
+        <h4 class="subhead">Common Android problems</h4>
+        <ul class="issues">
+          <li>
+            <strong>&ldquo;App not available for your device&rdquo; or &ldquo;Item not found&rdquo;</strong>
+            <p>
+              Your Google account isn't on the tester list yet, or the propagation hasn't finished. Confirm with us that the email address is right
+              and wait 5&ndash;30 minutes. If you recently changed the Google account your Play Store uses, you may also need to log out and back in of
+              the Play Store app.
+            </p>
+          </li>
+          <li>
+            <strong>Install button is greyed out or says &ldquo;Not compatible&rdquo;</strong>
+            <p>
+              Etapa requires Android 7.0+ (Nougat) and a reasonably modern processor. If you're on Android 6 or earlier, or a very old device, we can't
+              install. Check: Settings (device) &rarr; About phone &rarr; Android version. Any device from 2018 or later will work.
+            </p>
+          </li>
+          <li>
+            <strong>Multiple Google accounts on the phone</strong>
+            <p>
+              Play Store defaults to the primary account. If you asked us to add a secondary Google account, switch to it explicitly: Play Store &rarr;
+              profile icon &rarr; account switcher &rarr; pick the one we whitelisted. Then re-open the install link.
+            </p>
+          </li>
+          <li>
+            <strong>Uninstalled Etapa &mdash; can I reinstall?</strong>
+            <p>
+              Yes, straight from the same install link. Your tester status stays active even after uninstalling, so there's nothing to re-accept.
+            </p>
+          </li>
+          <li>
+            <strong>Stuck on a particular screen, or the app crashes</strong>
+            <p>
+              We want to know. In the app: <strong>Settings &rarr; Send feedback</strong> (a screenshot is included automatically). Or email
+              <a class="inline" href="mailto:helloetapa@gmail.com?subject=Android%20bug">helloetapa@gmail.com</a> with a screenshot and the build number.
+            </p>
+          </li>
+        </ul>
 
         <div class="cta-row">
           <a class="btn primary" href="https://play.google.com/store/apps/details?id=com.etapa.app" target="_blank" rel="noopener">
