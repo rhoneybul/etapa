@@ -101,6 +101,19 @@ openssl rand -base64 48
 
 Store it in Railway's env vars. **Do not put it in git.** If it leaks, rotating it invalidates every outstanding unsubscribe link, which is annoying but not catastrophic (users who have already unsubscribed stay unsubscribed — the row is in the DB).
 
+## Sending via MailerLite (or similar ESP)
+
+MailerLite handles its own unsubscribe flow. Put the merge tag `{$unsubscribe}` in your template's footer — MailerLite replaces it with a tracked URL and handles the opt-out on their side. They'll reject a campaign that doesn't have one.
+
+To keep our own `email_unsubscribes` table in sync (so future sends from our own server / a different provider still honour the opt-out), configure a webhook:
+
+- MailerLite → Integrations → Webhooks → Create webhook
+- URL: `https://etapa-production.up.railway.app/api/public/mailerlite/webhook`
+- Events: `subscriber.unsubscribed`, `subscriber.bounced`, `subscriber.marked_as_spam`, `subscriber.complained`
+- Signature: generate a random 32-byte token, paste it into MailerLite, and set the same value as `MAILERLITE_WEBHOOK_SECRET` in Railway env.
+
+The webhook mirrors every opt-out / bounce / spam complaint into our DB with an appropriate `source` label.
+
 ## What the user sees
 
 1. User clicks the footer link → lands on `https://getetapa.com/unsubscribe?t=<token>`

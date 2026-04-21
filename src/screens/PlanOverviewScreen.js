@@ -496,6 +496,26 @@ export default function PlanOverviewScreen({ navigation, route }) {
               )}
             </View>
 
+            {/* Plan actions — regenerate / version history */}
+            <View style={s.planActionsRow}>
+              <TouchableOpacity
+                style={s.planActionCard}
+                onPress={() => navigation.navigate('RegeneratePlan', { plan })}
+                activeOpacity={0.85}
+              >
+                <Text style={s.planActionTitle}>Regenerate plan</Text>
+                <Text style={s.planActionSub}>Rebuild with updated settings</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.planActionCard}
+                onPress={() => navigation.navigate('PlanVersionHistory', { planId: plan.id })}
+                activeOpacity={0.85}
+              >
+                <Text style={s.planActionTitle}>Version history</Text>
+                <Text style={s.planActionSub}>Revert to a previous plan</Text>
+              </TouchableOpacity>
+            </View>
+
             <View style={{ height: 100 }} />
           </ScrollView>
 
@@ -646,4 +666,26 @@ const s = StyleSheet.create({
   },
   recurringAddTriggerPlus: { fontSize: 20, color: colors.primary, fontWeight: '600' },
   recurringAddTriggerText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
+
+  // Regenerate / Version history — two-up row above bottom bar
+  planActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 16,
+    marginTop: 20,
+  },
+  planActionCard: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.border,
+    borderRadius: 16, padding: 16,
+  },
+  planActionTitle: {
+    fontSize: 15, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.text, marginBottom: 4,
+  },
+  planActionSub: {
+    fontSize: 12, lineHeight: 16,
+    color: colors.textMuted, fontFamily: FF.regular, fontWeight: '300',
+  },
 });

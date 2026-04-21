@@ -66,6 +66,19 @@ export const api = {
     delete: (id)       => request('DELETE', `/api/plans/${id}`),
     updateActivity: (planId, actId, updates) =>
       request('PATCH', `/api/plans/${planId}/activities/${actId}`, updates),
+    // Regenerate — takes an automatic pre-regenerate snapshot, then kicks
+    // off async generation. Returns { jobId, snapshotId } — the client polls
+    // the normal /api/ai/plan-job/:jobId endpoint as for a fresh generate.
+    regenerate: (planId, { goal, config }) =>
+      request('POST', `/api/plans/${planId}/regenerate`, { goal, config }),
+    // Version history
+    versions: {
+      list:   (planId) => request('GET', `/api/plans/${planId}/versions`),
+      revert: (planId, snapshotId) =>
+        request('POST', `/api/plans/${planId}/versions/${snapshotId}/revert`),
+      delete: (planId, snapshotId) =>
+        request('DELETE', `/api/plans/${planId}/versions/${snapshotId}`),
+    },
   },
 
   planConfigs: {

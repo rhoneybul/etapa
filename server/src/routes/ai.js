@@ -1219,41 +1219,61 @@ Only include the plan_update block when you are actually making changes. For que
 });
 
 // ── Async plan generation ────────────────────────────────────────────────────
-// POST /api/ai/generate-plan-async — kick off generation, return jobId immediately
-router.post('/generate-plan-async', (req, res) => {
+/**
+ * startGenerationJob — extracted so other routes (e.g. plans/regenerate) can
+ * kick off the same async flow without duplicating the job-bookkeeping.
+ *
+ * If `replacePlanId` is set, runAsyncGeneration will reuse that plan id when
+ * saving (so the existing row is updated in place and its activities are
+ * replaced). If not, a fresh plan is created. Either path yields the same
+ * polling contract via GET /api/ai/plan-job/:jobId.
+ */
+async function startGenerationJob({ userId, goal, config, replacePlanId = null, reason = 'generate' }) {
   const apiKey = getAnthropicKey();
   if (!apiKey) {
-    return res.status(503).json({ error: 'AI plan generation not configured.' });
+    const err = new Error('AI plan generation not configured.');
+    err.status = 503;
+    throw err;
   }
-
-  const { goal, config } = req.body;
   if (!goal || !config) {
-    return res.status(400).json({ error: 'Missing goal or config.' });
+    const err = new Error('Missing goal or config.');
+    err.status = 400;
+    throw err;
   }
 
-  const userId = req.user?.id;
   const jobId = `pj_${crypto.randomBytes(8).toString('hex')}`;
-
   const job = {
     id: jobId,
     userId,
-    status: 'generating',       // generating | completed | failed | cancelled
-    progress: 'Building your plan...',
-    activities: [],             // partial results streamed in
-    plan: null,                 // final plan object
+    status: 'generating',
+    progress: reason === 'regenerate' ? 'Rebuilding your plan...' : 'Building your plan...',
+    activities: [],
+    plan: null,
     error: null,
     createdAt: Date.now(),
     goal,
     config,
+    replacePlanId,
+    reason,
   };
   planJobs.set(jobId, job);
 
-  // Fire and forget — run generation in background
-  runAsyncGeneration(jobId, apiKey, goal, config, userId).catch(err => {
+  runAsyncGeneration(jobId, apiKey, goal, config, userId, { replacePlanId }).catch(err => {
     console.error(`[async-gen] Job ${jobId} failed:`, err);
   });
 
-  res.json({ jobId });
+  return jobId;
+}
+
+// POST /api/ai/generate-plan-async — kick off generation, return jobId immediately
+router.post('/generate-plan-async', async (req, res) => {
+  try {
+    const { goal, config } = req.body;
+    const jobId = await startGenerationJob({ userId: req.user?.id, goal, config });
+    res.json({ jobId });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'Generation failed' });
+  }
 });
 
 // GET /api/ai/plan-job/:jobId — poll for status
@@ -1303,9 +1323,10 @@ router.delete('/plan-job/:jobId', (req, res) => {
  * Updates the job object in-memory as it progresses.
  * When done, saves the plan to Supabase and sends a push notification.
  */
-async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
+async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}) {
   const job = planJobs.get(jobId);
   if (!job) return;
+  const { replacePlanId = null } = opts;
 
   const progressSteps = [
     'Consulting your AI coach...',
@@ -1408,7 +1429,10 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
     const planMondayStr = `${planMonday.getFullYear()}-${String(planMonday.getMonth() + 1).padStart(2, '0')}-${String(planMonday.getDate()).padStart(2, '0')}`;
     const dayNamesArr = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
-    const planId = `plan_${crypto.randomBytes(8).toString('hex')}`;
+    // If this job is a regenerate for an existing plan, keep the existing
+    // plan id so the row updates in place (activities are deleted + re-inserted
+    // below). Otherwise create a fresh id.
+    const planId = replacePlanId || `plan_${crypto.randomBytes(8).toString('hex')}`;
     const activities = rawActivities.map((a, i) => ({
       id: `act_${crypto.randomBytes(6).toString('hex')}_${i}`,
       planId,
@@ -1600,6 +1624,16 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
         };
         await supabase.from('plans').upsert(planRow, { onConflict: 'id' });
 
+        // When regenerating, delete the old activities before inserting the
+        // new ones. Without this, a new plan with fewer sessions would leave
+        // orphan rows from the previous version.
+        if (replacePlanId) {
+          await supabase.from('activities')
+            .delete()
+            .eq('plan_id', planId)
+            .eq('user_id', userId);
+        }
+
         const actRows = activities.map(a => ({
           id: a.id,
           user_id: userId,
@@ -1649,3 +1683,5 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId) {
 }
 
 module.exports = router;
+// Named exports for other routes (e.g. plans.js regenerate)
+module.exports.startGenerationJob = startGenerationJob;

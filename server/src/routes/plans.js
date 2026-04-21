@@ -153,6 +153,194 @@ router.patch('/:planId/activities/:activityId', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Plan snapshots / versions ───────────────────────────────────────────────
+// Snapshots are taken automatically before destructive operations (regenerate,
+// revert) so the user can always roll back. The shape is deliberately simple:
+// one row per version, with the plan meta + activities + config stored as JSONB.
+
+/**
+ * Internal helper: capture the current state of a plan as a snapshot row.
+ * Called from the revert endpoint and from runAsyncGeneration when it's
+ * processing a regenerate (see server/src/routes/ai.js).
+ *
+ * Returns the new snapshot id, or null if the plan doesn't exist.
+ */
+async function takeSnapshot({ userId, planId, reason = 'pre-regenerate', label = null }) {
+  // Fetch the plan row + activities + config in parallel
+  const [planR, actsR, configR] = await Promise.all([
+    supabase.from('plans').select('*').eq('id', planId).eq('user_id', userId).maybeSingle(),
+    supabase.from('activities').select('*').eq('plan_id', planId).eq('user_id', userId),
+    supabase.from('plan_configs').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(1),
+  ]);
+  if (planR.error) throw planR.error;
+  if (!planR.data) return null;  // nothing to snapshot
+
+  const snapshotId = `ps_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const { error } = await supabase.from('plan_snapshots').insert({
+    id: snapshotId,
+    plan_id: planId,
+    user_id: userId,
+    label: label || defaultSnapshotLabel(reason),
+    reason,
+    plan_meta: planR.data,
+    activities: actsR.data || [],
+    config_snapshot: configR.data?.[0] || null,
+  });
+  if (error) throw error;
+  return snapshotId;
+}
+
+function defaultSnapshotLabel(reason) {
+  switch (reason) {
+    case 'pre-regenerate': return 'Before regenerate';
+    case 'pre-revert':     return 'Before revert';
+    case 'manual':         return 'Manual save';
+    default:               return 'Snapshot';
+  }
+}
+
+// GET /api/plans/:id/versions — list all snapshots for a plan, newest first
+router.get('/:id/versions', async (req, res, next) => {
+  try {
+    const { data, error } = await supabase
+      .from('plan_snapshots')
+      .select('id, plan_id, label, reason, created_at, plan_meta, config_snapshot, activities')
+      .eq('plan_id', req.params.id)
+      .eq('user_id', req.user.id)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    res.json((data || []).map(row => ({
+      id: row.id,
+      planId: row.plan_id,
+      label: row.label,
+      reason: row.reason,
+      createdAt: row.created_at,
+      // Surface just enough meta for the history list — not the full activities
+      // (which can be large). The full blob comes back on revert.
+      summary: {
+        weeks: row.plan_meta?.weeks || null,
+        currentWeek: row.plan_meta?.current_week || null,
+        activityCount: Array.isArray(row.activities) ? row.activities.length : 0,
+        fitnessLevel: row.config_snapshot?.fitness_level || null,
+        daysPerWeek:  row.config_snapshot?.days_per_week || row.config_snapshot?.sessions_per_week || null,
+      },
+    })));
+  } catch (err) { next(err); }
+});
+
+// POST /api/plans/:id/versions/:snapshotId/revert
+// Restores a snapshot. Before replacing, we snapshot the CURRENT state as
+// reason='pre-revert' so revert is also reversible.
+router.post('/:id/versions/:snapshotId/revert', async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { id: planId, snapshotId } = req.params;
+
+    // 1. Fetch the target snapshot (must belong to this user + plan)
+    const { data: snap, error: fetchErr } = await supabase
+      .from('plan_snapshots')
+      .select('*')
+      .eq('id', snapshotId)
+      .eq('plan_id', planId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (fetchErr) throw fetchErr;
+    if (!snap) return res.status(404).json({ error: 'Snapshot not found' });
+
+    // 2. Snapshot the current state first (so this revert is reversible)
+    await takeSnapshot({ userId, planId, reason: 'pre-revert' });
+
+    // 3. Restore plan meta (only fields the user can meaningfully go back)
+    const meta = snap.plan_meta || {};
+    await supabase
+      .from('plans')
+      .update({
+        name:         meta.name || null,
+        status:       meta.status || 'active',
+        start_date:   meta.start_date || null,
+        weeks:        meta.weeks || null,
+        current_week: meta.current_week || 1,
+      })
+      .eq('id', planId)
+      .eq('user_id', userId);
+
+    // 4. Replace activities with the snapshot's activities
+    await supabase.from('activities').delete().eq('plan_id', planId).eq('user_id', userId);
+    const acts = Array.isArray(snap.activities) ? snap.activities : [];
+    if (acts.length > 0) {
+      // Each activity row comes out with user_id, plan_id already set from its
+      // original row. We re-stamp user_id defensively in case a user's auth.uid
+      // changed (shouldn't happen, but belt-and-braces).
+      const rows = acts.map(a => ({ ...a, user_id: userId, plan_id: planId }));
+      const { error: insErr } = await supabase.from('activities').upsert(rows, { onConflict: 'id' });
+      if (insErr) throw insErr;
+    }
+
+    res.json({ ok: true, planId, restoredFrom: snapshotId });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/plans/:id/versions/:snapshotId — remove a saved version
+router.delete('/:id/versions/:snapshotId', async (req, res, next) => {
+  try {
+    const { error } = await supabase
+      .from('plan_snapshots')
+      .delete()
+      .eq('id', req.params.snapshotId)
+      .eq('plan_id', req.params.id)
+      .eq('user_id', req.user.id);
+    if (error) throw error;
+    res.status(204).end();
+  } catch (err) { next(err); }
+});
+
+// POST /api/plans/:id/regenerate
+// Takes an automatic pre-regenerate snapshot, then kicks off async generation
+// with the goal + (possibly tweaked) config. Returns a jobId the client can
+// poll via the existing /api/ai/plan-job/:jobId endpoint.
+//
+// Body: { goal, config }  where config may contain tweaked fitness/weeks/days
+router.post('/:id/regenerate', async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const planId = req.params.id;
+    const { goal, config } = req.body || {};
+    if (!goal || !config) {
+      return res.status(400).json({ error: 'goal and config are required' });
+    }
+
+    // 1. Verify the plan belongs to this user
+    const { data: plan, error: planErr } = await supabase
+      .from('plans')
+      .select('id')
+      .eq('id', planId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (planErr) throw planErr;
+    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+
+    // 2. Snapshot current state
+    const snapshotId = await takeSnapshot({ userId, planId, reason: 'pre-regenerate' });
+
+    // 3. Delegate to the existing async generation endpoint by calling its
+    //    helper directly. To keep the wiring clean, we import lazily.
+    //    When generation completes, runAsyncGeneration writes activities with
+    //    planId === job.plan.id. We pass `replacePlanId` so it overwrites this
+    //    plan's activities rather than creating a new plan.
+    const { startGenerationJob } = require('./ai');
+    const jobId = await startGenerationJob({
+      userId,
+      goal,
+      config,
+      replacePlanId: planId,
+      reason: 'regenerate',
+    });
+
+    res.json({ ok: true, jobId, snapshotId });
+  } catch (err) { next(err); }
+});
+
 // ── Mappers ──────────────────────────────────────────────────────────────────
 function planToRow(p, userId) {
   return {
@@ -228,3 +416,5 @@ function activityToClient(row) {
 }
 
 module.exports = router;
+// Named export so ai.js / admin.js can take snapshots without duplicating logic
+module.exports.takeSnapshot = takeSnapshot;

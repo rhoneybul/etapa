@@ -60,7 +60,10 @@ const ASYNC_PROGRESS_MAP = {
 };
 
 export default function PlanLoadingScreen({ navigation, route }) {
-  const { goal, config, requirePaywall, defaultPlan } = route.params;
+  // `existingJobId` is set when a caller (e.g. RegeneratePlanScreen) has
+  // already kicked off generation via a different endpoint. We skip the
+  // startAsync* call and poll directly.
+  const { goal, config, requirePaywall, defaultPlan, existingJobId, isRegenerate } = route.params;
   const [message, setMessage] = useState('Building your plan...');
   const [activities, setActivities] = useState([]);
   const [tipIndex, setTipIndex] = useState(0);
@@ -217,6 +220,14 @@ export default function PlanLoadingScreen({ navigation, route }) {
 
   const generate = async () => {
     analytics.events.planGenerationStarted({ weeks: config.weeks, coachId: config.coachId });
+
+    // If a jobId was handed to us (e.g. by RegeneratePlanScreen after calling
+    // POST /api/plans/:id/regenerate), skip the fresh kickoff and poll it.
+    if (existingJobId) {
+      jobIdRef.current = existingJobId;
+      startPolling(existingJobId);
+      return;
+    }
 
     // Try async server-side generation first
     try {

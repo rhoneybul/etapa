@@ -63,9 +63,23 @@
   <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#000000;">
     I'm building a cycling app for people getting into the sport — and I'd love your help testing it before launch.
   </div>
+
+  <!-- Web-view link above the card so people with images blocked still see it -->
   <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" class="bg-outer" style="background-color:#000000;">
     <tr>
-      <td align="center" style="padding: 32px 16px;">
+      <td align="center" style="padding: 16px 16px 0 16px;">
+        <table role="presentation" class="container" width="600" border="0" cellpadding="0" cellspacing="0" style="max-width:600px; width:100%;">
+          <tr>
+            <td align="right" style="font-family:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:11px; color:#606068;" class="px">
+              Trouble reading this? <a href="{$url}" style="color:#A0A0A8; text-decoration:underline;">View in browser</a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td align="center" style="padding: 16px 16px 32px 16px;">
         <!-- Container -->
         <table role="presentation" class="container card" width="600" border="0" cellpadding="0" cellspacing="0" style="max-width:600px; width:100%; background-color:#111113; border-radius:14px; overflow:hidden; border:1px solid #222226;">
           <!-- Brand bar -->
@@ -97,12 +111,12 @@
           <!-- Body copy -->
           <tr>
             <td style="padding: 20px 40px 8px 40px; font-family:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:16px; line-height:26px; color:#A0A0A8;" class="px">
-              <p style="margin:0 0 16px 0; color:#FFFFFF;">Hey {$name},</p>
+              <p style="margin:0 0 16px 0; color:#FFFFFF;">Hey {$name|default:"there"},</p>
               <p style="margin:0 0 16px 0;">
                 I've been building something called <strong style="color:#FFFFFF; font-weight:600;">Etapa</strong> — an AI cycling coach mainly aimed at people who are getting into the sport, but also to help any cyclist enjoy the sport more.
               </p>
               <p style="margin:0 0 16px 0;">
-                It's close enough now that I want a small group of people to try it before launch. I'd love to get honest feedback from — whether you're a passionate cyclist or you've never thought about it before, both are useful.
+                It's close enough now that I want a small group of people to try it before launch. I'd love to get honest feedback from you — whether you're a passionate cyclist or you've never thought about it before, both are useful.
               </p>
               <p style="margin:0 0 16px 0;">
                 I've put together a short testing guide that walks you through what to try and what kind of feedback helps most. It should take about 20 minutes end-to-end.
@@ -159,6 +173,9 @@
             <td style="background-color:#000000; padding: 24px 40px; border-top:1px solid #222226; font-family:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:18px; color:#606068; text-align:center;" class="px">
               <p style="margin:0 0 8px 0;">
                 You're receiving this because you signed up for early access or Rob invited you directly.
+              </p>
+              <p style="margin:0 0 10px 0;">
+                Etapa &middot; London, UK
               </p>
               <p style="margin:0;">
                 <a href="mailto:helloetapa@gmail.com" style="color:#A0A0A8; text-decoration:underline;">helloetapa@gmail.com</a>

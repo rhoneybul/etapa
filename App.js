@@ -42,6 +42,8 @@ import ChangeCoachScreen   from './src/screens/ChangeCoachScreen';
 import PaywallScreen       from './src/screens/PaywallScreen';
 import BeginnerProgramScreen from './src/screens/BeginnerProgramScreen';
 import QuickPlanScreen       from './src/screens/QuickPlanScreen';
+import RegeneratePlanScreen  from './src/screens/RegeneratePlanScreen';
+import PlanVersionHistoryScreen from './src/screens/PlanVersionHistoryScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import AboutScreen         from './src/screens/AboutScreen';
 import MaintenanceScreen   from './src/screens/MaintenanceScreen';
@@ -330,6 +332,8 @@ function App() {
               <Stack.Screen name="Paywall"        component={PaywallScreen} />
               <Stack.Screen name="BeginnerProgram" component={BeginnerProgramScreen} />
               <Stack.Screen name="QuickPlan"      component={QuickPlanScreen} />
+              <Stack.Screen name="RegeneratePlan" component={RegeneratePlanScreen} />
+              <Stack.Screen name="PlanVersionHistory" component={PlanVersionHistoryScreen} />
               <Stack.Screen name="Notifications"  component={NotificationsScreen} />
               <Stack.Screen name="About"          component={AboutScreen} />
             </Stack.Navigator>
