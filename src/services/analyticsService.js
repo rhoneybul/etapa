@@ -50,6 +50,13 @@ function track(event, properties = {}) {
   posthog.capture(event, properties);
 }
 
+// Alias — matches PostHog's native API name. Many existing call sites use
+// `analytics.capture(...)` expecting this to exist. Before this alias was
+// added, those calls silently no-op'd because of `?.` chaining.
+function capture(event, properties = {}) {
+  return track(event, properties);
+}
+
 function screen(screenName, properties = {}) {
   if (!posthog) return;
   posthog.screen(screenName, properties);
@@ -70,6 +77,9 @@ function flush() {
 
 const events = {
 
+  // ── App lifecycle ──────────────────────────────────────────────────────────
+  appOpened: (props = {})                => track('app_opened', props),
+
   // ── Auth ───────────────────────────────────────────────────────────────────
   signedIn:    (method = 'google')      => track('signed_in', { method }),
   signedOut:   ()                        => track('signed_out'),
@@ -86,6 +96,12 @@ const events = {
   planGenerationStarted: (props = {})    => track('plan_generation_started', props),
   planGenerated: (props = {})            => track('plan_generated', props),
   planGenerationFailed: (error)          => track('plan_generation_failed', { error }),
+
+  // Fired when the user exits a plan-creation screen without completing the
+  // next step (e.g. hits back from GoalSetup or PlanConfig, or force-closes
+  // PlanLoading). `atScreen` is the screen they abandoned at; `step` is the
+  // sub-step inside that screen if any (GoalSetup has 3 steps).
+  planFunnelAbandoned: (props = {})      => track('plan_funnel_abandoned', props),
 
   // ── Post-plan usage ────────────────────────────────────────────────────────
   planViewed: (props = {})               => track('plan_viewed', props),
@@ -107,6 +123,36 @@ const events = {
   chatMessageSent: (props = {})          => track('chat_message_sent', props),
   chatPlanUpdateApplied: (coachId)       => track('chat_plan_update_applied', { coachId }),
 
+  // Multi-turn engagement — fired when user message count crosses a milestone
+  // (2, 4, 6, 10). Tells us whether conversations go deep or stay shallow.
+  chatConversationMilestone: (props = {})=> track('chat_conversation_milestone', props),
+
+  // Fired when user navigates away from the chat. Includes total turns + duration
+  // so we can see whether users have long productive sessions or bail fast.
+  chatClosed: (props = {})               => track('chat_closed', props),
+
+  // Subset of chat_closed — fires when user exits within 10s of the coach's last
+  // reply. Signal that the coach's answer didn't land well.
+  chatExitedShortlyAfterResponse: (props = {}) => track('chat_exited_shortly_after_response', props),
+
+  // Fired when Claude's reply contains a structured plan-change suggestion.
+  // Pair with chat_plan_update_applied to compute suggestion accept rate.
+  chatPlanSuggestionReceived: (props = {}) => track('chat_plan_suggestion_received', props),
+
+  // ── Paywall ────────────────────────────────────────────────────────────────
+  // Fired when the paywall screen mounts (someone saw the paywall).
+  paywallViewed: (props = {})            => track('paywall_viewed', props),
+  // Fired each time a user taps a tier to select it (before they subscribe).
+  paywallTierSelected: (tier, from)      => track('paywall_tier_selected', { tier, from }),
+  // Fired when the user dismisses the paywall without purchasing.
+  paywallDismissed: (props = {})         => track('paywall_dismissed', props),
+  // Fired after a successful subscription confirmed by RevenueCat.
+  purchaseCompleted: (props = {})        => track('purchase_completed', props),
+  // Fired when a purchase attempt fails (rejected card, network, etc.).
+  purchaseFailed: (props = {})           => track('purchase_failed', props),
+  // Fired when the user cancels the Apple/Google payment sheet.
+  purchaseCancelled: (props = {})        => track('purchase_cancelled', props),
+
   // ── Connections & settings ─────────────────────────────────────────────────
   stravaConnected:    ()                 => track('strava_connected'),
   stravaDisconnected: ()                 => track('strava_disconnected'),
@@ -121,6 +167,7 @@ export const analytics = {
   init,
   identify,
   track,
+  capture,   // Alias for track — matches PostHog's native API name.
   screen,
   reset,
   flush,

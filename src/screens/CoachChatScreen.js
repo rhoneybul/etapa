@@ -98,6 +98,18 @@ export default function CoachChatScreen({ navigation, route }) {
   const [stravaActivities, setStravaActivities] = useState([]);
   const scrollRef = useRef(null);
 
+  // ── Telemetry refs ─────────────────────────────────────────────────────────
+  // Opened-at timestamp — used to compute session duration on close.
+  const sessionOpenedAtRef = useRef(Date.now());
+  // Timestamp of the most recent coach reply. If the user leaves within 10s
+  // of this, we fire `chat_exited_shortly_after_response` — a signal that
+  // the reply didn't land well.
+  const lastCoachResponseAtRef = useRef(null);
+  // Latest user message count, kept in a ref so the unmount cleanup can read it.
+  const userMsgCountRef = useRef(0);
+  // Latest coach id, kept in a ref so the unmount cleanup can read it.
+  const coachIdRef = useRef(null);
+
   // Load plan, goal, chat history, and user name
   useEffect(() => {
     (async () => {
@@ -172,12 +184,62 @@ export default function CoachChatScreen({ navigation, route }) {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   }, [messages]);
 
+  // Keep refs in sync so the unmount cleanup below can read the latest values.
+  useEffect(() => {
+    userMsgCountRef.current = messages.filter(m => m.role === 'user').length;
+  }, [messages]);
+  useEffect(() => {
+    coachIdRef.current = planConfig?.coachId || null;
+  }, [planConfig]);
+
+  // Chat-closed telemetry — fires on unmount with the session totals. Also
+  // fires `chat_exited_shortly_after_response` if the user bailed within 10s
+  // of the coach's last reply (a signal that the reply was unsatisfying).
+  useEffect(() => {
+    return () => {
+      const durationSec = Math.round((Date.now() - sessionOpenedAtRef.current) / 1000);
+      const turns = userMsgCountRef.current;
+      const coachId = coachIdRef.current;
+      const scope = weekNum ? 'week' : 'plan';
+
+      // Only log sessions where the user actually sent a message — skip the
+      // "opened the chat, looked around, backed out" case which is tracked
+      // separately by coach_chat_opened vs chat_message_sent in funnels.
+      if (turns > 0) {
+        analytics.events.chatClosed({
+          coachId, turns, durationSec, scope,
+        });
+      }
+
+      // Shortly-after-response: if the most recent event was a coach reply
+      // AND the user's last action was to leave within 10 seconds of it,
+      // that's a "meh, not helpful" signal we want to catch.
+      const last = lastCoachResponseAtRef.current;
+      if (last && Date.now() - last <= 10_000) {
+        analytics.events.chatExitedShortlyAfterResponse({
+          coachId, turns, secondsSinceResponse: Math.round((Date.now() - last) / 1000), scope,
+        });
+      }
+    };
+  }, [weekNum]);
+
   const handleSend = async () => {
     if (!input.trim() || sending || !plan) return;
     const userMsg = { role: 'user', content: input.trim(), ts: Date.now() };
     const updated = [...messages, userMsg];
     const userMsgCount = updated.filter(m => m.role === 'user').length;
     analytics.events.chatMessageSent({ coachId: planConfig?.coachId || null, messageLength: input.trim().length, messageIndex: userMsgCount, scope: weekNum ? 'week' : 'plan' });
+
+    // Fire a conversation-depth milestone when user crosses 2, 4, 6, 10 turns.
+    // Tells us whether coach chats go deep (multi-turn) or stay shallow.
+    const milestones = [2, 4, 6, 10];
+    if (milestones.includes(userMsgCount)) {
+      analytics.events.chatConversationMilestone({
+        coachId: planConfig?.coachId || null,
+        turnCount: userMsgCount,
+        scope: weekNum ? 'week' : 'plan',
+      });
+    }
     setMessages(updated);
     setInput('');
     setSending(true);
@@ -289,9 +351,19 @@ export default function CoachChatScreen({ navigation, route }) {
         // If the coach returned plan modifications, store them
         if (result.updatedActivities && result.updatedActivities.length > 0) {
           setPendingUpdate({ activities: result.updatedActivities, msgIndex: newMsgs.length - 1 });
+          // Track the suggestion. Compare to chat_plan_update_applied to compute
+          // the user's suggestion-accept rate — a strong signal of coach quality.
+          analytics.events.chatPlanSuggestionReceived({
+            coachId: planConfig?.coachId || null,
+            activityCount: result.updatedActivities.length,
+            scope: weekNum ? 'week' : 'plan',
+          });
         }
         return newMsgs;
       });
+      // Record the moment the coach reply landed — used by the unmount
+      // handler to decide whether the user bailed "shortly after a response".
+      lastCoachResponseAtRef.current = Date.now();
     } catch {
       setLastFailedMsg(userMsg.content);
       setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong.', ts: Date.now(), failed: true }]);

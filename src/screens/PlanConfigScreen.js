@@ -140,6 +140,10 @@ export default function PlanConfigScreen({ navigation, route }) {
   const requirePaywall = route.params?.requirePaywall || false;
   const defaultPlan = route.params?.defaultPlan || null;
 
+  // Abandon tracking — set true right before advancing to PlanLoading. Used
+  // by the beforeRemove listener to distinguish progress from back/close.
+  const completedRef = useRef(false);
+
   // If coming from a plan adjustment, pre-fill from existing config and jump to step 3
   const adjustmentDefaults = adjustment && existingConfig ? {
     fitnessLevel: existingConfig.fitnessLevel,
@@ -153,6 +157,24 @@ export default function PlanConfigScreen({ navigation, route }) {
   } : null;
 
   const [step, setStep] = useState(beginnerDefaults ? 3 : adjustmentDefaults ? 5 : 1); // adjustments skip to build week
+
+  // Keep step in a ref so the abandon listener can read the current value
+  // at exit time (the listener captures step at mount).
+  const stepRef = useRef(step);
+  useEffect(() => { stepRef.current = step; }, [step]);
+
+  // Abandon tracking — fires plan_funnel_abandoned if user leaves PlanConfig
+  // without advancing to PlanLoading.
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', () => {
+      if (completedRef.current) return;
+      analytics.events.planFunnelAbandoned({
+        atScreen: 'PlanConfig',
+        atStep: stepRef.current,
+      });
+    });
+    return unsub;
+  }, [navigation]);
   const [fitnessLevel, setFitnessLevel] = useState(
     adjustmentDefaults?.fitnessLevel || beginnerDefaults?.fitnessLevel || null
   );
@@ -584,6 +606,7 @@ export default function PlanConfigScreen({ navigation, route }) {
       daysPerWeek: availableDays.length,
     });
 
+    completedRef.current = true;
     navigation.replace('PlanLoading', { goal, config, requirePaywall, defaultPlan });
   };
 

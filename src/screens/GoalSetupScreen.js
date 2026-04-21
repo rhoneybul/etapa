@@ -4,7 +4,7 @@
  *  Step 2: Goal type (race / distance / improve)
  *  Step 3: Goal details (plan name, target distance/elevation, date, event name)
  */
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, StyleSheet, ScrollView, Keyboard, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { colors, fontFamily } from '../theme';
 import WizardShell, { OptionCard } from '../components/WizardShell';
@@ -33,6 +33,25 @@ const GOAL_TYPES = [
 export default function GoalSetupScreen({ navigation, route }) {
   const requirePaywall = route?.params?.requirePaywall || false;
   const [step, setStep] = useState(1);
+  // Used by the abandon-tracking effect below to distinguish "user progressed
+  // to the next screen" (set true on success) from "user hit back / closed".
+  const completedRef = useRef(false);
+  // Keep the latest step in a ref so the abandon listener can read it at exit time.
+  const stepRef = useRef(step);
+  useEffect(() => { stepRef.current = step; }, [step]);
+
+  // Fire plan_funnel_abandoned if the user leaves this screen without
+  // advancing to PlanConfig. Includes the step they bailed on.
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', () => {
+      if (completedRef.current) return; // They advanced successfully — not an abandon.
+      analytics.events.planFunnelAbandoned({
+        atScreen: 'GoalSetup',
+        atStep: stepRef.current,
+      });
+    });
+    return unsub;
+  }, [navigation]);
   const [cyclingType, setCyclingType] = useState(null);
   const [goalType, setGoalType] = useState(null);
   const [planName, setPlanName] = useState('');
@@ -109,6 +128,7 @@ export default function GoalSetupScreen({ navigation, route }) {
       eventName: eventName || null,
     });
 
+    completedRef.current = true; // Tell the abandon listener this is a successful advance.
     navigation.replace('PlanConfig', { goal, requirePaywall });
   };
 

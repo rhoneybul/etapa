@@ -13,6 +13,7 @@ const _fetch = typeof globalThis.fetch === 'function'
 
 const { supabase } = require('../lib/supabase');
 const { sendPushToUser } = require('../lib/pushService');
+const { logClaudeUsage } = require('../lib/claudeLogger');
 const crypto = require('crypto');
 
 const getAnthropicKey = () => process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY || null;
@@ -126,6 +127,8 @@ router.post('/generate-plan', async (req, res) => {
     const systemWithCoach = COACH_SYSTEM_PROMPT + getCoachPromptBlock(config.coachId);
     const estimatedActs = (config.weeks || 8) * (config.daysPerWeek || 3);
     const planMaxTokens = Math.min(16384, Math.max(8192, estimatedActs * 120));
+    const _claudeModel = 'claude-sonnet-4-20250514';
+    const _claudeStartedAt = Date.now();
 
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -135,7 +138,7 @@ router.post('/generate-plan', async (req, res) => {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: _claudeModel,
         max_tokens: planMaxTokens,
         system: systemWithCoach,
         messages: [{ role: 'user', content: prompt }],
@@ -145,10 +148,21 @@ router.post('/generate-plan', async (req, res) => {
     if (!response.ok) {
       const errBody = await response.text();
       console.error('Anthropic API error:', response.status, errBody);
+      logClaudeUsage({
+        userId: req.user?.id, feature: 'plan_gen', model: _claudeModel,
+        data: {}, response, durationMs: Date.now() - _claudeStartedAt,
+        status: 'api_error',
+        metadata: { weeks: config.weeks, daysPerWeek: config.daysPerWeek, coachId: config.coachId, goalType: goal?.goalType, http: response.status },
+      });
       return res.status(502).json({ error: 'AI service error', detail: response.status });
     }
 
     const data = await response.json();
+    logClaudeUsage({
+      userId: req.user?.id, feature: 'plan_gen', model: _claudeModel,
+      data, response, durationMs: Date.now() - _claudeStartedAt,
+      metadata: { weeks: config.weeks, daysPerWeek: config.daysPerWeek, coachId: config.coachId, goalType: goal?.goalType },
+    });
     const text = data?.content?.[0]?.text || '[]';
     const jsonMatch = text.match(/\[[\s\S]*\]/);
 
@@ -179,6 +193,8 @@ router.post('/edit-plan', async (req, res) => {
   try {
     const prompt = buildEditPrompt(plan, goal, instruction, scope, currentWeek);
     const systemWithCoach = COACH_SYSTEM_PROMPT + getCoachPromptBlock(coachId);
+    const _claudeModel = 'claude-sonnet-4-20250514';
+    const _claudeStartedAt = Date.now();
 
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -188,7 +204,7 @@ router.post('/edit-plan', async (req, res) => {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: _claudeModel,
         max_tokens: 8192,
         system: systemWithCoach,
         messages: [{ role: 'user', content: prompt }],
@@ -198,10 +214,21 @@ router.post('/edit-plan', async (req, res) => {
     if (!response.ok) {
       const errBody = await response.text();
       console.error('Anthropic API error:', response.status, errBody);
+      logClaudeUsage({
+        userId: req.user?.id, feature: 'plan_edit', model: _claudeModel,
+        data: {}, response, durationMs: Date.now() - _claudeStartedAt,
+        status: 'api_error',
+        metadata: { scope, coachId, http: response.status },
+      });
       return res.status(502).json({ error: 'AI service error', detail: response.status });
     }
 
     const data = await response.json();
+    logClaudeUsage({
+      userId: req.user?.id, feature: 'plan_edit', model: _claudeModel,
+      data, response, durationMs: Date.now() - _claudeStartedAt,
+      metadata: { scope, coachId },
+    });
     const text = data?.content?.[0]?.text || '[]';
     const jsonMatch = text.match(/\[[\s\S]*\]/);
 
@@ -232,6 +259,8 @@ router.post('/edit-activity', async (req, res) => {
   try {
     const prompt = buildActivityEditPrompt(activity, goal, instruction);
     const systemWithCoach = COACH_SYSTEM_PROMPT + getCoachPromptBlock(coachId);
+    const _claudeModel = 'claude-sonnet-4-20250514';
+    const _claudeStartedAt = Date.now();
 
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -241,7 +270,7 @@ router.post('/edit-activity', async (req, res) => {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: _claudeModel,
         max_tokens: 2048,
         system: systemWithCoach,
         messages: [{ role: 'user', content: prompt }],
@@ -251,10 +280,20 @@ router.post('/edit-activity', async (req, res) => {
     if (!response.ok) {
       const errBody = await response.text();
       console.error('Anthropic API error:', response.status, errBody);
+      logClaudeUsage({
+        userId: req.user?.id, feature: 'activity_edit', model: _claudeModel,
+        data: {}, response, durationMs: Date.now() - _claudeStartedAt,
+        status: 'api_error', metadata: { coachId, http: response.status },
+      });
       return res.status(502).json({ error: 'AI service error' });
     }
 
     const data = await response.json();
+    logClaudeUsage({
+      userId: req.user?.id, feature: 'activity_edit', model: _claudeModel,
+      data, response, durationMs: Date.now() - _claudeStartedAt,
+      metadata: { coachId, activityId: activity?.id },
+    });
     const text = data?.content?.[0]?.text || '{}';
     const jsonMatch = text.match(/\{[\s\S]*\}/);
 
@@ -1166,6 +1205,9 @@ Only include the plan_update block when you are actually making changes. For que
       content: m.content,
     }));
 
+    const _claudeModel = 'claude-sonnet-4-20250514';
+    const _claudeStartedAt = Date.now();
+
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -1174,7 +1216,7 @@ Only include the plan_update block when you are actually making changes. For que
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: _claudeModel,
         max_tokens: 8192,
         system: systemPrompt,
         messages: apiMessages,
@@ -1184,10 +1226,21 @@ Only include the plan_update block when you are actually making changes. For que
     if (!response.ok) {
       const errBody = await response.text();
       console.error('Coach chat error:', response.status, errBody);
+      logClaudeUsage({
+        userId: req.user?.id, feature: 'coach_chat', model: _claudeModel,
+        data: {}, response, durationMs: Date.now() - _claudeStartedAt,
+        status: 'api_error',
+        metadata: { coachId: context?.coachId, turnCount: apiMessages?.length, http: response.status },
+      });
       return res.status(502).json({ error: 'AI service error' });
     }
 
     const data = await response.json();
+    logClaudeUsage({
+      userId: req.user?.id, feature: 'coach_chat', model: _claudeModel,
+      data, response, durationMs: Date.now() - _claudeStartedAt,
+      metadata: { coachId: context?.coachId, turnCount: apiMessages?.length, scope: context?.weekNum ? 'week' : 'plan' },
+    });
     const rawReply = data?.content?.[0]?.text || 'Sorry, I could not generate a response.';
 
     // Check for plan_update block in the response
@@ -1354,6 +1407,9 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
     const estimatedActivities = (config.weeks || 8) * (config.daysPerWeek || 3);
     const planMaxTokens = Math.min(16384, Math.max(8192, estimatedActivities * 120));
 
+    const _claudeModel = 'claude-sonnet-4-20250514';
+    const _claudeStartedAt = Date.now();
+
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -1362,7 +1418,7 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: _claudeModel,
         max_tokens: planMaxTokens,
         system: systemWithCoach,
         messages: [{ role: 'user', content: prompt }],
@@ -1371,11 +1427,29 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
 
     clearInterval(progressInterval);
 
-    if (job.status === 'cancelled') return;
+    if (job.status === 'cancelled') {
+      // Still log the usage — we paid for the tokens even if the user bailed.
+      try {
+        const data = await response.json();
+        logClaudeUsage({
+          userId, feature: 'plan_gen', model: _claudeModel,
+          data, response, durationMs: Date.now() - _claudeStartedAt,
+          status: 'ok',
+          metadata: { async: true, cancelled: true, weeks: config.weeks, daysPerWeek: config.daysPerWeek, coachId: config.coachId, goalType: goal?.goalType },
+        });
+      } catch {}
+      return;
+    }
 
     if (!response.ok) {
       const errBody = await response.text();
       console.error(`[async-gen] Job ${jobId} API error:`, response.status, errBody);
+      logClaudeUsage({
+        userId, feature: 'plan_gen', model: _claudeModel,
+        data: {}, response, durationMs: Date.now() - _claudeStartedAt,
+        status: 'api_error',
+        metadata: { async: true, weeks: config.weeks, daysPerWeek: config.daysPerWeek, coachId: config.coachId, goalType: goal?.goalType, http: response.status },
+      });
       job.status = 'failed';
       job.error = 'AI service error';
       job.progress = 'Something went wrong';
@@ -1383,6 +1457,11 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
     }
 
     const data = await response.json();
+    logClaudeUsage({
+      userId, feature: 'plan_gen', model: _claudeModel,
+      data, response, durationMs: Date.now() - _claudeStartedAt,
+      metadata: { async: true, weeks: config.weeks, daysPerWeek: config.daysPerWeek, coachId: config.coachId, goalType: goal?.goalType },
+    });
     const text = data?.content?.[0]?.text || '[]';
     const jsonMatch = text.match(/\[[\s\S]*\]/);
 

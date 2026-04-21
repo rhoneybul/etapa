@@ -68,6 +68,27 @@ export default function PlanLoadingScreen({ navigation, route }) {
   const [activities, setActivities] = useState([]);
   const [tipIndex, setTipIndex] = useState(0);
   const [cancelling, setCancelling] = useState(false);
+  // Abandon tracking — set true right before we navigate away on successful
+  // plan generation. Used by the beforeRemove listener below.
+  const completedRef = useRef(false);
+  // Record when generation started so we can log how long the user waited
+  // before bailing.
+  const generationStartedAtRef = useRef(Date.now());
+
+  // Plan-generation abandon: user left before the plan finished generating.
+  // This is its own important funnel stage — plan generation takes 10-30s
+  // and users often bail if it's too slow.
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', () => {
+      if (completedRef.current) return;
+      analytics.events.planFunnelAbandoned({
+        atScreen: 'PlanLoading',
+        reason: 'cancelled_or_backed_out',
+        waitedMs: Date.now() - generationStartedAtRef.current,
+      });
+    });
+    return unsub;
+  }, [navigation]);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const progressAnim = useRef(new Animated.Value(0.02)).current;
@@ -208,9 +229,10 @@ export default function PlanLoadingScreen({ navigation, route }) {
     });
 
     if (mountedRef.current) {
+      completedRef.current = true; // Prevent abandon event from firing on the nav below.
       if (requirePaywall) {
         // Trial expired or payment required — go to paywall before home
-        navigation.replace('Paywall', { nextScreen: 'Home', nextParams: { freshPlanId: plan.id }, defaultPlan });
+        navigation.replace('Paywall', { nextScreen: 'Home', nextParams: { freshPlanId: plan.id }, defaultPlan, source: 'plan_ready' });
       } else {
         // Go straight to Home — skip the loading screen by passing freshPlanId
         navigation.replace('Home', { freshPlanId: plan.id });

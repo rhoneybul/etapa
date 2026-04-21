@@ -146,6 +146,13 @@ function App() {
     });
 
     analytics.init();
+    // Fire an app_opened event on every cold start. We deliberately fire this
+    // BEFORE identify() — so if the user isn't logged in yet, it lands against
+    // an anonymous distinct_id which later merges when they sign in.
+    analytics.events.appOpened({
+      version: APP_VERSION,
+      platform: require('react-native').Platform.OS,
+    });
 
     // Initialise RevenueCat early (before auth — it works with anonymous users too)
     configureRevenueCat(null).catch(() => {});
@@ -212,6 +219,10 @@ function App() {
     // revoked, account deleted), reset to SignIn immediately.
     const unsubAuth = onAuthStateChange((user) => {
       if (!user && initialRoute && initialRoute !== 'SignIn') {
+        // Clear analytics identity so subsequent events aren't attributed
+        // to the signed-out user. Critical for correct cohort analysis.
+        try { analytics.events.signedOut(); } catch {}
+        try { analytics.reset(); } catch {}
         const nav = navigationRef.current;
         if (nav) {
           nav.reset({ index: 0, routes: [{ name: 'SignIn' }] });

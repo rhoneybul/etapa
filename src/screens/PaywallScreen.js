@@ -6,7 +6,7 @@
  * Display prices are fetched from the server (admin console); hardcoded defaults
  * are only used as a last-resort offline fallback.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, ScrollView, Image, Platform, TextInput, Linking,
 } from 'react-native';
@@ -181,6 +181,38 @@ export default function PaywallScreen({ navigation, route }) {
   const nextScreen = route?.params?.nextScreen || 'Home';
   const nextParams = route?.params?.nextParams || {};
 
+  // The entry point that brought the user to the paywall — essential for
+  // segmenting paywall conversion rate by source (onboarding, settings,
+  // feature gate, etc).
+  const paywallSource = route?.params?.source || 'unknown';
+  // Track whether the user actually completed a purchase — used by the
+  // dismissal event to distinguish "bailed" from "completed".
+  const purchasedRef = useRef(false);
+
+  // paywall_viewed — single highest-value event on this screen. Fires once
+  // per mount with the entry source and the default tier selected.
+  useEffect(() => {
+    analytics.events.paywallViewed({
+      source: paywallSource,
+      defaultTier: route?.params?.defaultPlan || 'lifetime',
+    });
+    // When the screen unmounts, if the user didn't purchase, it's a dismissal.
+    return () => {
+      if (!purchasedRef.current) {
+        analytics.events.paywallDismissed({
+          source: paywallSource,
+          tierAtExit: selectedRef.current,
+        });
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep the latest selected tier in a ref so the unmount cleanup above
+  // can access the current value (useEffect cleanups close over initial state).
+  const selectedRef = useRef(selected);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+
   // Fetch live prices from server on mount.
   // Server prices (GBP, admin-configured) are used for display.
   // RevenueCat packages are fetched separately for the purchase transaction.
@@ -272,9 +304,16 @@ export default function PaywallScreen({ navigation, route }) {
       if (couponAppliesToSelected) {
         const result = await redeemCoupon(couponCode.trim());
         if (result?.success) {
-          analytics.capture?.('subscription_started', { plan: selected, source: 'coupon' });
+          analytics.capture('subscription_started', { plan: selected, source: 'coupon' });
+          analytics.events.purchaseCompleted({
+            plan: selected, source: 'coupon', paywallSource,
+          });
+          purchasedRef.current = true;
           navigation.replace(nextScreen, nextParams);
         } else {
+          analytics.events.purchaseFailed({
+            plan: selected, source: 'coupon', reason: result?.error || 'unknown',
+          });
           Alert.alert('Could not apply code', result?.error || 'Please try again.');
         }
         return;
@@ -303,14 +342,28 @@ export default function PaywallScreen({ navigation, route }) {
       const result = await openCheckout(selected, rcPkg?._package || null);
 
       if (result.cancelled) {
-        // User cancelled — stay on paywall silently
+        // User cancelled the Apple/Google sheet — stay on paywall silently.
+        // Still track the cancel so we can see how often users back out of checkout.
+        analytics.events.purchaseCancelled({
+          plan: selected, source: 'revenuecat', paywallSource,
+        });
       } else if (result.success) {
-        analytics.capture?.('subscription_started', { plan: selected, source: 'revenuecat' });
+        analytics.capture('subscription_started', { plan: selected, source: 'revenuecat' });
+        analytics.events.purchaseCompleted({
+          plan: selected, source: 'revenuecat', paywallSource,
+        });
+        purchasedRef.current = true;
         navigation.replace(nextScreen, nextParams);
       } else if (result.error) {
+        analytics.events.purchaseFailed({
+          plan: selected, source: 'revenuecat', reason: result.error, paywallSource,
+        });
         Alert.alert('Something went wrong', result.error);
       }
     } catch (err) {
+      analytics.events.purchaseFailed({
+        plan: selected, source: 'revenuecat', reason: err?.message || 'exception', paywallSource,
+      });
       Alert.alert('Something went wrong', err.message || 'Please try again.');
     } finally {
       setLoading(false);
@@ -322,7 +375,8 @@ export default function PaywallScreen({ navigation, route }) {
     try {
       const result = await restorePurchases();
       if (result.active) {
-        analytics.capture?.('purchases_restored');
+        analytics.capture('purchases_restored', { paywallSource });
+        purchasedRef.current = true; // Don't count this as a dismissal.
         Alert.alert('Purchases restored', 'Welcome back! Your subscription is active.', [
           { text: 'Continue', onPress: () => navigation.replace(nextScreen, nextParams) },
         ]);
@@ -353,7 +407,8 @@ export default function PaywallScreen({ navigation, route }) {
     try {
       const result = await startFreeTrial();
       if (result.success || result.alreadyActive) {
-        analytics.capture?.('free_trial_started', { source: 'paywall_skip' });
+        analytics.capture('free_trial_started', { source: 'paywall_skip', paywallSource });
+        purchasedRef.current = true; // Free trial start = paywall converted, not dismissed.
         navigation.replace(nextScreen, nextParams);
       } else {
         Alert.alert('Could not start trial', result.error || 'Please try again.');
@@ -407,7 +462,13 @@ export default function PaywallScreen({ navigation, route }) {
               <TouchableOpacity
                 key={p.id}
                 style={[s.planCard, isSelected && s.planCardSelected]}
-                onPress={() => setSelected(p.id)}
+                onPress={() => {
+                  // Don't spam the event if the user taps the already-selected tier.
+                  if (selected !== p.id) {
+                    analytics.events.paywallTierSelected(p.id, selected);
+                  }
+                  setSelected(p.id);
+                }}
                 activeOpacity={0.8}
               >
                 {/* Badge */}
