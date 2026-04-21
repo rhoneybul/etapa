@@ -501,6 +501,7 @@ a:hover { color: var(--accent-hover); }
     .hero h1 { font-size: 38px; }
     .hero .lede { font-size: 17px; }
     .platforms, .test-areas, .tips { grid-template-columns: 1fr; }
+    .install-links-grid { grid-template-columns: 1fr !important; }
     .feedback { grid-template-columns: 1fr; }
     .feedback-copy { border-right: none; border-bottom: 1px solid var(--border); }
     .section-head h2 { font-size: 28px; }
@@ -607,10 +608,40 @@ a:hover { color: var(--accent-hover); }
       </div>
     </dl>
 
+    <!-- ── Direct install links — front and centre ──────────────────────
+         These are the two URLs that actually get Etapa onto a phone. Put
+         them above everything else so testers never have to hunt. Keep the
+         styling bold so they can't be missed. -->
+    <div class="install-hero" role="region" aria-label="Direct install links" style="margin-top: 32px; padding: 24px; border-radius: 16px; background: linear-gradient(135deg, rgba(232,69,139,0.12), rgba(75,107,143,0.12)); border: 1px solid rgba(232,69,139,0.35);">
+      <div style="font-size: 12px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: #E8458B; margin-bottom: 8px;">Install Etapa right now</div>
+      <h2 style="margin: 0 0 6px; font-size: 22px;">Two links. That&rsquo;s it.</h2>
+      <p style="margin: 0 0 20px; color: #666; font-size: 15px;">Tap the link for your phone on the device you want to install on. The store apps handle the rest.</p>
+      <div class="install-links-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+        <a href="https://testflight.apple.com/join/u995w5vr" target="_blank" rel="noopener"
+           style="display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 12px; background: #000; color: #fff; text-decoration: none; font-weight: 600; transition: transform .15s;">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor" aria-hidden="true"><path d="M17.543 12.54c-.023-2.42 1.974-3.58 2.064-3.637-1.123-1.64-2.875-1.866-3.5-1.893-1.49-.15-2.907.876-3.66.876-.765 0-1.927-.854-3.168-.83-1.63.024-3.134.947-3.973 2.404-1.695 2.936-.433 7.28 1.216 9.666.807 1.166 1.767 2.477 3.028 2.43 1.216-.05 1.676-.787 3.147-.787 1.47 0 1.883.787 3.168.76 1.307-.022 2.134-1.186 2.932-2.36.924-1.353 1.305-2.665 1.328-2.732-.03-.013-2.553-.983-2.58-3.897zm-2.422-7.16c.67-.814 1.123-1.943.999-3.068-.966.04-2.136.644-2.83 1.458-.62.72-1.164 1.875-1.019 2.977 1.08.084 2.18-.55 2.85-1.367z"/></svg>
+          <div>
+            <div style="font-size: 11px; letter-spacing: 1px; text-transform: uppercase; opacity: .6;">iPhone &middot; TestFlight</div>
+            <div style="font-size: 16px; font-weight: 700;">testflight.apple.com/join/u995w5vr</div>
+          </div>
+        </a>
+        <a href="https://play.google.com/store/apps/details?id=com.etapa.app" target="_blank" rel="noopener"
+           style="display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 12px; background: #0f9d58; color: #fff; text-decoration: none; font-weight: 600; transition: transform .15s;">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor" aria-hidden="true"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85-.29-.15-.65-.06-.83.22l-1.88 3.24a11.43 11.43 0 0 0-8.94 0L5.65 5.67a.64.64 0 0 0-1.11.63L6.38 9.48A10.81 10.81 0 0 0 1 18h22a10.81 10.81 0 0 0-5.4-8.52zM7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z"/></svg>
+          <div>
+            <div style="font-size: 11px; letter-spacing: 1px; text-transform: uppercase; opacity: .8;">Android &middot; Play Store</div>
+            <div style="font-size: 16px; font-weight: 700;">play.google.com/store/apps/details?id=com.etapa.app</div>
+          </div>
+        </a>
+      </div>
+      <p style="margin: 18px 0 0; font-size: 13px; color: #555;">
+        If the TestFlight link says &ldquo;This beta is full&rdquo; or the Play Store listing isn&rsquo;t visible yet,
+        email <a href="mailto:helloetapa@gmail.com" style="color: #E8458B;">helloetapa@gmail.com</a> and we&rsquo;ll add you manually.
+      </p>
+    </div>
+
     <!-- ── Sandbox-payments reassurance ──────────────────────────────────
-         Unmissable notice that the beta build uses sandbox purchases. Goes
-         above everything else so nobody worries about being charged when
-         they tap through the paywall during testing. -->
+         Unmissable notice that the beta build uses sandbox purchases. -->
     <div class="callout" role="note" style="margin-top: 32px;">
       <div class="icon" aria-hidden="true">&pound;</div>
       <div class="body">
@@ -654,6 +685,13 @@ a:hover { color: var(--accent-hover); }
           </div>
         </header>
 
+        <div class="callout" role="note" style="margin: 0 0 16px; padding: 14px 16px; border-radius: 10px; background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.3);">
+          <strong style="display: block; margin-bottom: 4px;">Your TestFlight link &mdash; tap this on your iPhone:</strong>
+          <a class="inline" href="https://testflight.apple.com/join/u995w5vr" target="_blank" rel="noopener" style="font-size: 15px; font-weight: 600; word-break: break-all;">
+            https://testflight.apple.com/join/u995w5vr
+          </a>
+        </div>
+
         <ol class="steps">
           <li>
             <div class="step-title">Install TestFlight from the App Store</div>
@@ -663,11 +701,13 @@ a:hover { color: var(--accent-hover); }
             </div>
           </li>
           <li>
-            <div class="step-title">Open the invite link on your phone</div>
+            <div class="step-title">Open our public link on your phone</div>
             <div class="step-body">
-              You&rsquo;ll receive a TestFlight invite from us either by <strong>email</strong> (tap <em>View in TestFlight</em>)
-              or as a <strong>public link</strong> we share directly. Open whichever you were sent &mdash; it launches straight into TestFlight.
-              Don&rsquo;t have one yet? Email <a class="inline" href="mailto:helloetapa@gmail.com?subject=TestFlight%20invite">helloetapa@gmail.com</a> and we&rsquo;ll send one.
+              Tap <a class="inline" href="https://testflight.apple.com/join/u995w5vr" target="_blank" rel="noopener">
+              https://testflight.apple.com/join/u995w5vr</a> &mdash; it launches straight into TestFlight.
+              If it says the beta is full or you can&rsquo;t open it, email
+              <a class="inline" href="mailto:helloetapa@gmail.com?subject=TestFlight%20invite">helloetapa@gmail.com</a>
+              and we&rsquo;ll add you directly.
             </div>
           </li>
           <li>
@@ -686,11 +726,11 @@ a:hover { color: var(--accent-hover); }
         </ol>
 
         <div class="cta-row">
-          <a class="btn primary" href="mailto:helloetapa@gmail.com?subject=TestFlight%20invite">
-            Request TestFlight invite
+          <a class="btn primary" href="https://testflight.apple.com/join/u995w5vr" target="_blank" rel="noopener">
+            Join the TestFlight beta
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
           </a>
-          <a class="btn ghost" href="https://apps.apple.com/app/testflight/id899247664" target="_blank" rel="noopener">Get TestFlight</a>
+          <a class="btn ghost" href="https://apps.apple.com/app/testflight/id899247664" target="_blank" rel="noopener">Get TestFlight app</a>
         </div>
       </article>
 
@@ -706,6 +746,13 @@ a:hover { color: var(--accent-hover); }
           </div>
         </header>
 
+        <div class="callout" role="note" style="margin: 0 0 16px; padding: 14px 16px; border-radius: 10px; background: rgba(15,157,88,0.10); border: 1px solid rgba(15,157,88,0.35);">
+          <strong style="display: block; margin-bottom: 4px;">Your Play Store link &mdash; tap this on your Android phone:</strong>
+          <a class="inline" href="https://play.google.com/store/apps/details?id=com.etapa.app" target="_blank" rel="noopener" style="font-size: 15px; font-weight: 600; word-break: break-all;">
+            https://play.google.com/store/apps/details?id=com.etapa.app
+          </a>
+        </div>
+
         <ol class="steps">
           <li>
             <div class="step-title">Send us the email on your Google account</div>
@@ -716,32 +763,34 @@ a:hover { color: var(--accent-hover); }
             </div>
           </li>
           <li>
-            <div class="step-title">Accept the tester invitation</div>
+            <div class="step-title">Open the Play Store link on your phone</div>
             <div class="step-body">
-              You&rsquo;ll get an email from Google Play. Tap <strong>Become a tester</strong>. This opts you into the internal build &mdash;
-              no sideloading, no settings changes.
+              Tap <a class="inline" href="https://play.google.com/store/apps/details?id=com.etapa.app" target="_blank" rel="noopener">
+              https://play.google.com/store/apps/details?id=com.etapa.app</a> on your Android device.
+              You should see an <em>&ldquo;Internal testing&rdquo;</em> badge on the listing &mdash; that&rsquo;s the build we want you on.
             </div>
           </li>
           <li>
-            <div class="step-title">Open the download link</div>
+            <div class="step-title">Tap Install</div>
             <div class="step-body">
-              The same email has a link to Etapa on the Play Store. Open it on your phone and tap <strong>Install</strong>.
-              The listing shows an <em>&ldquo;Internal testing&rdquo;</em> badge so you know you&rsquo;ve got the right build.
+              If you see &ldquo;App not available&rdquo; or no install button, your Google address hasn&rsquo;t been added yet &mdash;
+              email us and we&rsquo;ll fix it in a few hours. Future updates install automatically, like any other Play Store app.
             </div>
           </li>
           <li>
             <div class="step-title">Open Etapa and sign in</div>
             <div class="step-body">
-              Same email as your tester invite. Future updates install automatically, like any other Play Store app.
+              Same email as your tester invite. You&rsquo;ll land on the home screen &mdash; ready to ride.
             </div>
           </li>
         </ol>
 
         <div class="cta-row">
-          <a class="btn primary" href="mailto:helloetapa@gmail.com?subject=Android%20tester%20access">
-            Request Android access
+          <a class="btn primary" href="https://play.google.com/store/apps/details?id=com.etapa.app" target="_blank" rel="noopener">
+            Open on Play Store
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
           </a>
+          <a class="btn ghost" href="mailto:helloetapa@gmail.com?subject=Android%20tester%20access">Request tester access</a>
         </div>
       </article>
     </div>
