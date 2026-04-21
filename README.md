@@ -122,7 +122,9 @@ Eight top-level docs covering everything you need to pick up where we left off:
 | [`BRAND.md`](./BRAND.md) | Brand bible — voice, tone, audience, visual style |
 | [`MARKET_RESEARCH.md`](./MARKET_RESEARCH.md) | Competitive landscape + positioning research |
 | [`STRATEGY.md`](./STRATEGY.md) | **Marketing playbook** — pillars, 30-day social launch plan, Holo production playbook, SEO content strategy. Everything about how we go to market. |
+| [`LAUNCH_PLAN.md`](./LAUNCH_PLAN.md) | **Launch runbook** — 3-phase plan to get real users testing in 7 days, then public launch in 5 weeks. Includes every outreach template. |
 | [`FOUNDER_STORY.md`](./FOUNDER_STORY.md) | The founder narrative + the intro-video outline in one file. Read before recording the YouTube video. |
+| [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md) | **Design system** — tokens, components, layout patterns, voice-in-UI. Paste at the top of any design chat with Claude. |
 | [`THIS_WEEK.md`](./THIS_WEEK.md) | Rolling tactical file — the current week's Instagram content plan. Overwritten every Sunday. |
 | [`mcp-server/README.md`](./mcp-server/README.md) | MCP technical docs + deployment + npm publishing |
 | [`mcp-server/PLAN.md`](./mcp-server/PLAN.md) | MCP release checkpoints + distribution templates (directory submissions, Reddit post, Show HN, etc.) |

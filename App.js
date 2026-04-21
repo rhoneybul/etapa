@@ -41,6 +41,7 @@ import SupportChatScreen   from './src/screens/SupportChatScreen';
 import ChangeCoachScreen   from './src/screens/ChangeCoachScreen';
 import PaywallScreen       from './src/screens/PaywallScreen';
 import BeginnerProgramScreen from './src/screens/BeginnerProgramScreen';
+import QuickPlanScreen       from './src/screens/QuickPlanScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import AboutScreen         from './src/screens/AboutScreen';
 import MaintenanceScreen   from './src/screens/MaintenanceScreen';
@@ -48,6 +49,7 @@ import ForceUpgradeScreen  from './src/screens/ForceUpgradeScreen';
 import WebWrapper          from './src/components/WebWrapper';
 import { registerForPushNotifications, addNotificationResponseListener } from './src/services/notificationService';
 import { api } from './src/services/api';
+import remoteConfig from './src/services/remoteConfig';
 
 import Constants from 'expo-constants';
 
@@ -113,6 +115,10 @@ function App() {
   });
 
   useEffect(() => {
+    // Boot the remote config service — loads cache, fires background refresh.
+    // Non-blocking: the app renders immediately with cached / default values.
+    remoteConfig.init().catch(() => {});
+
     // Check remote config for maintenance mode & minimum version (before auth)
     api.appConfig.get().then(config => {
       // Maintenance mode
@@ -323,6 +329,7 @@ function App() {
               <Stack.Screen name="ChangeCoach"    component={ChangeCoachScreen} />
               <Stack.Screen name="Paywall"        component={PaywallScreen} />
               <Stack.Screen name="BeginnerProgram" component={BeginnerProgramScreen} />
+              <Stack.Screen name="QuickPlan"      component={QuickPlanScreen} />
               <Stack.Screen name="Notifications"  component={NotificationsScreen} />
               <Stack.Screen name="About"          component={AboutScreen} />
             </Stack.Navigator>

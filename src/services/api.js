@@ -85,7 +85,13 @@ export const api = {
     submit:   (feedback)    => request('POST', '/api/feedback', feedback),
     list:     ()            => request('GET', '/api/feedback'),
     messages: (feedbackId)  => request('GET', `/api/feedback/${feedbackId}/messages`),
-    reply:    (feedbackId, message) => request('POST', `/api/feedback/${feedbackId}/messages`, { message }),
+    reply:    (feedbackId, payload) => request(
+      'POST',
+      `/api/feedback/${feedbackId}/messages`,
+      // Accept either a string (legacy) or { message, attachments } (new)
+      typeof payload === 'string' ? { message: payload } : payload
+    ),
+    attachmentUploadUrl: (payload) => request('POST', '/api/feedback/attachment-upload-url', payload),
   },
 
   notifications: {

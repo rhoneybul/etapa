@@ -24,12 +24,23 @@ interface FeedbackItem {
   createdAt: string;
 }
 
+interface Attachment {
+  id: string;
+  messageId: string | null;
+  mimeType: string;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+  url: string | null;
+}
+
 interface ThreadMessage {
   id: string;
   senderRole: "user" | "admin";
   senderName: string;
   message: string;
   createdAt: string;
+  attachments?: Attachment[];
 }
 
 interface ThreadData {
@@ -42,8 +53,41 @@ interface ThreadData {
     message: string;
     status: string;
     createdAt: string;
+    attachments?: Attachment[];
   };
   messages: ThreadMessage[];
+}
+
+/** Renders a row of screenshot thumbnails. Each thumb opens the full image. */
+function AttachmentGrid({ attachments }: { attachments?: Attachment[] }) {
+  if (!attachments || attachments.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {attachments.map((a) => (
+        <a
+          key={a.id}
+          href={a.url || "#"}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block w-24 h-24 rounded-lg overflow-hidden border border-etapa-border bg-etapa-surfaceLight hover:border-etapa-primary transition"
+          title={`${a.mimeType} · ${Math.round(a.sizeBytes / 1024)} KB`}
+        >
+          {a.url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={a.url}
+              alt="Screenshot"
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-[10px] text-etapa-textFaint">
+              Unavailable
+            </div>
+          )}
+        </a>
+      ))}
+    </div>
+  );
 }
 
 // ── Thread Panel ────────────────────────────────────────────────────────────
@@ -201,6 +245,7 @@ function ThreadPanel({
                 <div className="mt-1 text-sm text-etapa-textMid leading-relaxed whitespace-pre-wrap bg-etapa-surfaceLight rounded-lg px-3 py-2 border border-etapa-border">
                   {feedbackItem.message}
                 </div>
+                <AttachmentGrid attachments={thread?.feedback?.attachments} />
                 {feedbackItem.appVersion && (
                   <p className="mt-1 text-[10px] text-etapa-textFaint">
                     v{feedbackItem.appVersion} &middot;{" "}
@@ -240,15 +285,18 @@ function ThreadPanel({
                       {new Date(msg.createdAt).toLocaleString()}
                     </span>
                   </div>
-                  <div
-                    className={`mt-1 text-sm leading-relaxed whitespace-pre-wrap rounded-lg px-3 py-2 border ${
-                      msg.senderRole === "admin"
-                        ? "bg-etapa-primary/5 border-etapa-primary/20 text-etapa-textMid"
-                        : "bg-etapa-surfaceLight border-etapa-border text-etapa-textMid"
-                    }`}
-                  >
-                    {msg.message}
-                  </div>
+                  {msg.message && (
+                    <div
+                      className={`mt-1 text-sm leading-relaxed whitespace-pre-wrap rounded-lg px-3 py-2 border ${
+                        msg.senderRole === "admin"
+                          ? "bg-etapa-primary/5 border-etapa-primary/20 text-etapa-textMid"
+                          : "bg-etapa-surfaceLight border-etapa-border text-etapa-textMid"
+                      }`}
+                    >
+                      {msg.message}
+                    </div>
+                  )}
+                  <AttachmentGrid attachments={msg.attachments} />
                 </div>
               </div>
             ))}

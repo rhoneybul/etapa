@@ -12,8 +12,33 @@
  *   LINEAR_SUPPORT_LABEL_ID — Linear label ID for support
  */
 const express = require('express');
+const crypto = require('crypto');
 const { supabase } = require('../lib/supabase');
 const router  = express.Router();
+
+const ATTACHMENT_BUCKET = 'feedback-attachments';
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10 MB per file
+const MAX_ATTACHMENTS_PER_FEEDBACK = 6;
+const ALLOWED_IMAGE_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
+]);
+
+/**
+ * Build a signed read URL valid for 1 hour. Used in Linear issue descriptions
+ * and the admin dashboard. Returns null on failure so the caller can degrade
+ * gracefully (render a broken-image placeholder rather than 500).
+ */
+async function signedDownloadUrl(storagePath, expiresInSeconds = 3600) {
+  try {
+    const { data, error } = await supabase.storage
+      .from(ATTACHMENT_BUCKET)
+      .createSignedUrl(storagePath, expiresInSeconds);
+    if (error || !data?.signedUrl) return null;
+    return data.signedUrl;
+  } catch {
+    return null;
+  }
+}
 
 // ── Slack helper ──────────────────────────────────────────────────────────────
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || process.env.SLACK_SUBSCRIPTIONS_WEBHOOK_URL;
@@ -56,7 +81,7 @@ const PRIORITY_MAP = {
 /**
  * Create a Linear issue via the GraphQL API.
  */
-async function createLinearIssue({ category, message, appVersion, deviceInfo, userEmail }) {
+async function createLinearIssue({ category, message, appVersion, deviceInfo, userEmail, attachmentUrls = [] }) {
   if (!LINEAR_API_KEY || !LINEAR_TEAM_ID) {
     throw new Error('Linear not configured — set LINEAR_API_KEY and LINEAR_TEAM_ID');
   }
@@ -64,7 +89,7 @@ async function createLinearIssue({ category, message, appVersion, deviceInfo, us
   const categoryLabel = category.charAt(0).toUpperCase() + category.slice(1);
   const title = `[${categoryLabel}] ${message.slice(0, 80)}${message.length > 80 ? '...' : ''}`;
 
-  const description = [
+  const parts = [
     `## User Feedback — ${categoryLabel}`,
     '',
     message,
@@ -78,7 +103,17 @@ async function createLinearIssue({ category, message, appVersion, deviceInfo, us
     `| Device | ${deviceInfo || 'Unknown'} |`,
     `| User | ${userEmail || 'Unknown'} |`,
     `| Submitted | ${new Date().toISOString()} |`,
-  ].join('\n');
+  ];
+
+  if (attachmentUrls.length) {
+    parts.push('', '---', '', `### Screenshots (${attachmentUrls.length})`);
+    parts.push('_Signed URLs expire in 7 days — re-open the ticket in the admin dashboard for fresh links._', '');
+    attachmentUrls.forEach((url, i) => {
+      parts.push(`![Screenshot ${i + 1}](${url})`);
+    });
+  }
+
+  const description = parts.join('\n');
 
   const labelIds = LABEL_MAP[category] ? [LABEL_MAP[category]] : [];
 
@@ -125,13 +160,64 @@ async function createLinearIssue({ category, message, appVersion, deviceInfo, us
   throw new Error(`Linear issue creation failed: ${JSON.stringify(json.errors || json)}`);
 }
 
+// POST /api/feedback/attachment-upload-url
+// Reserves a storage path and returns a short-lived signed upload URL.
+// The client uploads the file bytes directly to that URL, then includes the
+// returned `storagePath` in its subsequent POST /api/feedback payload.
+//
+// Body: { contentType: 'image/jpeg', sizeBytes: 123456 }
+// Returns: { uploadUrl, token, storagePath, expiresIn }
+router.post('/attachment-upload-url', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { contentType, sizeBytes } = req.body || {};
+
+    if (!contentType || !ALLOWED_IMAGE_TYPES.has(contentType)) {
+      return res.status(400).json({
+        error: `Only image uploads allowed (${Array.from(ALLOWED_IMAGE_TYPES).join(', ')})`,
+      });
+    }
+    if (typeof sizeBytes !== 'number' || sizeBytes <= 0 || sizeBytes > MAX_ATTACHMENT_BYTES) {
+      return res.status(400).json({
+        error: `File must be 1 byte to ${MAX_ATTACHMENT_BYTES} bytes (got ${sizeBytes})`,
+      });
+    }
+
+    // Build a path under the user's folder so RLS and folder-based policies work.
+    const ext = contentType.split('/')[1] || 'jpg';
+    const uuid = crypto.randomUUID();
+    const storagePath = `${userId}/pending/${uuid}.${ext}`;
+
+    const { data, error } = await supabase.storage
+      .from(ATTACHMENT_BUCKET)
+      .createSignedUploadUrl(storagePath);
+
+    if (error || !data?.signedUrl) {
+      console.error('[feedback] createSignedUploadUrl failed:', error);
+      return res.status(500).json({ error: 'Failed to create upload URL' });
+    }
+
+    res.json({
+      uploadUrl: data.signedUrl,
+      token: data.token,
+      storagePath,
+      expiresIn: 120, // seconds — Supabase signed upload URLs are short-lived
+    });
+  } catch (err) {
+    console.error('[feedback] upload-url error:', err);
+    res.status(500).json({ error: 'Failed to create upload URL' });
+  }
+});
+
 // POST /api/feedback — submit feedback → create Linear issue → persist to Supabase
 router.post('/', async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
-    const { category, message, appVersion, deviceInfo } = req.body;
+    const { category, message, appVersion, deviceInfo, attachments } = req.body;
 
     if (!category || !message) {
       return res.status(400).json({ error: 'Category and message are required' });
@@ -142,13 +228,51 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: `Category must be one of: ${valid.join(', ')}` });
     }
 
+    // Validate attachments (if any). Keep this defensive — attachments are
+    // supplied by the client, so we don't trust the shape.
+    const cleanAttachments = [];
+    if (Array.isArray(attachments)) {
+      if (attachments.length > MAX_ATTACHMENTS_PER_FEEDBACK) {
+        return res.status(400).json({ error: `Max ${MAX_ATTACHMENTS_PER_FEEDBACK} attachments per feedback` });
+      }
+      for (const a of attachments) {
+        if (!a || typeof a.storagePath !== 'string' || !a.storagePath.startsWith(`${userId}/`)) {
+          return res.status(400).json({ error: 'Invalid attachment path' });
+        }
+        if (!ALLOWED_IMAGE_TYPES.has(a.mimeType)) {
+          return res.status(400).json({ error: `Unsupported attachment type: ${a.mimeType}` });
+        }
+        if (typeof a.sizeBytes !== 'number' || a.sizeBytes <= 0 || a.sizeBytes > MAX_ATTACHMENT_BYTES) {
+          return res.status(400).json({ error: 'Attachment size out of range' });
+        }
+        cleanAttachments.push({
+          storagePath: a.storagePath,
+          mimeType:    a.mimeType,
+          sizeBytes:   a.sizeBytes,
+          width:       typeof a.width  === 'number' ? a.width  : null,
+          height:      typeof a.height === 'number' ? a.height : null,
+        });
+      }
+    }
+
     const userEmail = req.user?.email || null;
+
+    // Pre-sign download URLs so Linear issue description can embed images.
+    // These expire in 7 days — enough for triage. Admin UI issues fresh URLs
+    // when it renders the thread.
+    const linearAttachmentLinks = [];
+    for (const a of cleanAttachments) {
+      const url = await signedDownloadUrl(a.storagePath, 60 * 60 * 24 * 7);
+      if (url) linearAttachmentLinks.push(url);
+    }
+
     const issue = await createLinearIssue({
       category,
       message: message.trim(),
       appVersion,
       deviceInfo,
       userEmail,
+      attachmentUrls: linearAttachmentLinks,
     });
 
     // Persist feedback to Supabase with Linear reference
@@ -169,13 +293,36 @@ router.post('/', async (req, res) => {
       console.error('[feedback] Failed to persist to DB (Linear issue was still created):', dbError);
     }
 
+    // Persist attachment rows. Best-effort — if one fails, keep going; we've
+    // already created the Linear issue and the feedback row.
+    for (const a of cleanAttachments) {
+      const attId = `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const { error: attErr } = await supabase.from('feedback_attachments').insert({
+        id: attId,
+        feedback_id: feedbackId,
+        message_id: null,
+        user_id: userId,
+        storage_path: a.storagePath,
+        mime_type: a.mimeType,
+        size_bytes: a.sizeBytes,
+        width: a.width,
+        height: a.height,
+      });
+      if (attErr) console.error('[feedback] attachment insert failed:', attErr);
+    }
+
     // Notify Slack
     const categoryEmoji = { bug: '🐛', feature: '💡', support: '🆘', general: '💬' }[category] || '📝';
     const preview = message.trim().slice(0, 120) + (message.length > 120 ? '...' : '');
-    notifySlack(`${categoryEmoji} *New ${category} feedback* from ${userEmail || 'anonymous'}\n>${preview}\n<${issue.url}|View in Linear (${issue.identifier})>`);
+    const attachmentNote = cleanAttachments.length
+      ? `\n_${cleanAttachments.length} screenshot${cleanAttachments.length === 1 ? '' : 's'} attached_`
+      : '';
+    notifySlack(`${categoryEmoji} *New ${category} feedback* from ${userEmail || 'anonymous'}\n>${preview}${attachmentNote}\n<${issue.url}|View in Linear (${issue.identifier})>`);
 
     res.status(201).json({
       success: true,
+      feedbackId,
+      attachmentCount: cleanAttachments.length,
       issue: {
         id:         issue.id,
         identifier: issue.identifier,
@@ -244,6 +391,35 @@ router.get('/:id/messages', async (req, res) => {
 
     if (msgErr) throw msgErr;
 
+    // Fetch attachments for this feedback + sign URLs for rendering
+    const { data: attachmentRows } = await supabase
+      .from('feedback_attachments')
+      .select('*')
+      .eq('feedback_id', id);
+
+    const attachments = [];
+    for (const a of (attachmentRows || [])) {
+      const url = await signedDownloadUrl(a.storage_path, 3600);
+      attachments.push({
+        id: a.id,
+        messageId: a.message_id,
+        mimeType: a.mime_type,
+        sizeBytes: a.size_bytes,
+        width: a.width,
+        height: a.height,
+        url,
+      });
+    }
+
+    // Group attachments by target (feedback vs message) for easy rendering
+    const feedbackAttachments = attachments.filter(a => !a.messageId);
+    const messageAttachments = {};
+    for (const a of attachments) {
+      if (a.messageId) {
+        (messageAttachments[a.messageId] = messageAttachments[a.messageId] || []).push(a);
+      }
+    }
+
     res.json({
       feedback: {
         id: feedback.id,
@@ -251,12 +427,14 @@ router.get('/:id/messages', async (req, res) => {
         message: feedback.message,
         status: feedback.status || 'open',
         createdAt: feedback.created_at,
+        attachments: feedbackAttachments,
       },
       messages: (messages || []).map(m => ({
         id: m.id,
         senderRole: m.sender_role,
         message: m.message,
         createdAt: m.created_at,
+        attachments: messageAttachments[m.id] || [],
       })),
     });
   } catch (err) {
@@ -272,10 +450,16 @@ router.post('/:id/messages', async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
-    const { message } = req.body;
+    const { message, attachments } = req.body;
 
-    if (!message?.trim()) {
-      return res.status(400).json({ error: 'message is required' });
+    // Allow empty message if there's at least one attachment (screenshot-only reply).
+    const hasMessage = !!message?.trim();
+    const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+    if (!hasMessage && !hasAttachments) {
+      return res.status(400).json({ error: 'message or attachments required' });
+    }
+    if (hasAttachments && attachments.length > MAX_ATTACHMENTS_PER_FEEDBACK) {
+      return res.status(400).json({ error: `Max ${MAX_ATTACHMENTS_PER_FEEDBACK} attachments per message` });
     }
 
     // Verify the feedback belongs to the user
@@ -296,10 +480,31 @@ router.post('/:id/messages', async (req, res) => {
       feedback_id: id,
       sender_role: 'user',
       sender_id: userId,
-      message: message.trim(),
+      message: hasMessage ? message.trim() : '',
     });
 
     if (insertErr) throw insertErr;
+
+    // Persist attachment rows for this reply (best-effort).
+    if (hasAttachments) {
+      for (const a of attachments) {
+        if (!a?.storagePath?.startsWith(`${userId}/`)) continue;
+        if (!ALLOWED_IMAGE_TYPES.has(a.mimeType)) continue;
+        if (typeof a.sizeBytes !== 'number' || a.sizeBytes > MAX_ATTACHMENT_BYTES) continue;
+        const attId = `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        await supabase.from('feedback_attachments').insert({
+          id: attId,
+          feedback_id: id,
+          message_id: msgId,
+          user_id: userId,
+          storage_path: a.storagePath,
+          mime_type: a.mimeType,
+          size_bytes: a.sizeBytes,
+          width: typeof a.width === 'number' ? a.width : null,
+          height: typeof a.height === 'number' ? a.height : null,
+        });
+      }
+    }
 
     // Re-open the thread if it was resolved/closed
     await supabase.from('feedback').update({ status: 'open' }).eq('id', id);

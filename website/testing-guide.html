@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Etapa — Testing guide</title>
+
+<!-- Hidden page: not indexed, not linked from nav/sitemap. Shareable by direct URL only. -->
+<meta name="robots" content="noindex, nofollow, noarchive" />
+<meta name="referrer" content="no-referrer" />
+
+<!-- Open Graph for when we share the link in Slack / iMessage / email -->
+<meta property="og:title" content="Etapa — Testing guide" />
+<meta property="og:description" content="How to install the Etapa beta, what to test, and where to send feedback." />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="/icon-72.png" />
+
+<link rel="icon" href="/icon-72.png" />
+
+<!-- ============================================================
+     Design tokens (inlined — single-file page, easier to share)
+     Source: design-source/project/assets/etapa-tokens.css
+     ============================================================ -->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* Surfaces */
+  --bg:              #000000;
+  --bg-deep:         #000000;
+  --bg-raised:       #0a0a0a;
+  --surface:         #111113;
+  --surface-hover:   #1a1a1e;
+  --surface-pressed: #0d0d10;
+
+  /* Borders */
+  --border:          #1a1a1a;
+  --border-strong:   #222226;
+  --border-faint:    #111113;
+
+  /* Text */
+  --fg:              #FFFFFF;
+  --fg-2:            #A0A0A8;
+  --fg-3:            #606068;
+  --fg-4:            #35353D;
+
+  /* Accent — warm magenta */
+  --accent:          #E8458B;
+  --accent-hover:    #F472B6;
+  --accent-pressed:  #C4306E;
+  --accent-soft:     rgba(232, 69, 139, 0.08);
+  --accent-softer:   rgba(232, 69, 139, 0.14);
+  --accent-border:   rgba(232, 69, 139, 0.32);
+
+  /* Typography */
+  --font-sans: 'Poppins', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --w-light:    300;
+  --w-regular:  400;
+  --w-medium:   500;
+  --w-semibold: 600;
+
+  --fs-display: 56px;
+  --fs-h1:      40px;
+  --fs-h2:      32px;
+  --fs-h3:      24px;
+  --fs-h4:      20px;
+  --fs-body:    16px;
+  --fs-small:   14px;
+  --fs-caption: 12px;
+  --fs-label:   11px;
+
+  --lh-tight:   1.1;
+  --lh-snug:    1.25;
+  --lh-body:    1.55;
+  --lh-loose:   1.7;
+
+  --tracking-tight:  -0.02em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.08em;
+
+  /* Radii */
+  --r-sm:   12px;
+  --r-md:   16px;
+  --r-lg:   20px;
+  --r-xl:   28px;
+  --r-pill: 100px;
+
+  /* Motion */
+  --ease-out:     cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast:     120ms;
+  --dur-base:     200ms;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-weight: var(--w-light);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-sans);
+  font-weight: var(--w-semibold);
+  color: var(--fg);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--lh-tight);
+  margin: 0;
+  text-wrap: balance;
+}
+p { margin: 0; color: var(--fg-2); font-weight: var(--w-light); line-height: var(--lh-body); text-wrap: pretty; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hover); }
+*, *::before, *::after { box-sizing: border-box; }
+</style>
+
+<!-- ============================================================
+     Page styles — adapted verbatim from design-source/project/Testing Guide.html
+     Dark-first editorial layout. Prints well via the Save as PDF button.
+     ============================================================ -->
+<style>
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+  body { font-weight: var(--w-light); }
+
+  a.inline { color: var(--accent); border-bottom: 1px solid var(--accent-border); padding-bottom: 1px; }
+  a.inline:hover { color: var(--accent-hover); border-bottom-color: var(--accent-hover); }
+
+  .page { max-width: 960px; margin: 0 auto; padding: 64px 48px 96px; }
+
+  /* ───────── Hero ───────── */
+  .hero {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.85) 60%, var(--bg-raised) 100%),
+      url('/testing-guide-assets/bg-mountain.jpg') center/cover no-repeat;
+    padding: 56px 48px 48px;
+    margin-bottom: 72px;
+  }
+  .hero .eyebrow { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
+  .hero .eyebrow img { width: 28px; height: 28px; border-radius: 8px; }
+  .hero .eyebrow .mark {
+    font-size: var(--fs-label); font-weight: var(--w-semibold);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg);
+  }
+  .hero .eyebrow .divider { color: var(--fg-3); }
+  .hero .eyebrow .tag {
+    font-size: var(--fs-label); font-weight: var(--w-medium);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--accent);
+  }
+  .hero h1 {
+    font-size: clamp(40px, 6vw, 64px);
+    line-height: 1.05;
+    margin-bottom: 20px;
+    max-width: 18ch;
+  }
+  .hero .lede {
+    font-size: 20px; line-height: 1.55;
+    color: var(--fg-2); max-width: 56ch;
+    font-weight: var(--w-light);
+  }
+  .hero .meta {
+    display: flex; flex-wrap: wrap; gap: 32px;
+    margin-top: 40px; padding-top: 28px;
+    border-top: 1px solid var(--border-strong);
+  }
+  .hero .meta dt {
+    font-size: var(--fs-label); font-weight: var(--w-medium);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase;
+    color: var(--fg-3); margin-bottom: 6px;
+  }
+  .hero .meta dd { margin: 0; font-size: var(--fs-small); color: var(--fg); font-weight: var(--w-light); }
+  .hero .meta dd.accent { color: var(--accent); }
+
+  /* ───────── Section rhythm ───────── */
+  section { margin-bottom: 80px; }
+  .section-head {
+    display: flex; align-items: baseline; gap: 16px;
+    margin-bottom: 32px; padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-head .num {
+    font-size: var(--fs-label); font-weight: var(--w-semibold);
+    letter-spacing: var(--tracking-wide); color: var(--accent);
+    font-variant-numeric: tabular-nums; min-width: 32px;
+  }
+  .section-head h2 { font-size: 36px; flex: 1; }
+  .section-head .aside { font-size: var(--fs-small); color: var(--fg-3); }
+
+  .section-intro {
+    font-size: 17px; color: var(--fg-2);
+    max-width: 64ch; margin-bottom: 40px; line-height: 1.6;
+  }
+
+  /* ───────── Install ───────── */
+  .platforms { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .platform {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 32px;
+    display: flex; flex-direction: column;
+  }
+  .platform header {
+    display: flex; align-items: center; gap: 14px;
+    padding-bottom: 20px; margin-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .platform .os-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: var(--surface-hover);
+    border: 1px solid var(--border-strong);
+    display: grid; place-items: center;
+    color: var(--fg);
+  }
+  .platform .os-icon svg { width: 22px; height: 22px; }
+  .platform h3 { font-size: 22px; letter-spacing: var(--tracking-tight); }
+  .platform .via { font-size: var(--fs-small); color: var(--fg-3); margin-top: 2px; }
+
+  ol.steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
+  ol.steps > li {
+    position: relative;
+    padding: 18px 0 18px 56px;
+    border-bottom: 1px solid var(--border);
+    counter-increment: step;
+  }
+  ol.steps > li:last-child { border-bottom: none; padding-bottom: 0; }
+  ol.steps > li:first-child { padding-top: 0; }
+  ol.steps > li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 16px;
+    width: 36px; height: 36px; border-radius: 100px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
+    color: var(--accent);
+    font-size: 14px; font-weight: var(--w-semibold);
+    display: grid; place-items: center;
+    font-variant-numeric: tabular-nums;
+  }
+  ol.steps > li:first-child::before { top: -2px; }
+  ol.steps .step-title {
+    font-size: 16px; font-weight: var(--w-semibold);
+    color: var(--fg); margin-bottom: 4px;
+    letter-spacing: -0.01em;
+  }
+  ol.steps .step-body {
+    font-size: 14px; color: var(--fg-2);
+    line-height: 1.55; font-weight: var(--w-light);
+  }
+  ol.steps code, .code {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 12.5px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-strong);
+    color: var(--fg);
+    padding: 2px 8px;
+    border-radius: 6px;
+  }
+
+  .platform .cta-row {
+    margin-top: 24px; padding-top: 20px;
+    border-top: 1px solid var(--border);
+    display: flex; gap: 12px; flex-wrap: wrap;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 20px;
+    border-radius: var(--r-pill);
+    font-family: var(--font-sans);
+    font-size: 14px; font-weight: var(--w-medium);
+    letter-spacing: -0.005em;
+    cursor: pointer; border: 1px solid transparent;
+    transition: all var(--dur-base) var(--ease-out);
+    text-decoration: none;
+  }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.primary:hover { background: var(--accent-hover); }
+  .btn.ghost { background: transparent; color: var(--fg); border-color: var(--border-strong); }
+  .btn.ghost:hover { border-color: var(--accent-border); color: var(--accent); }
+  .btn svg { width: 14px; height: 14px; }
+
+  /* ───────── Callout ───────── */
+  .callout {
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--r-md);
+    padding: 20px 24px;
+    display: flex; gap: 16px;
+    margin-top: 32px;
+  }
+  .callout .icon {
+    flex-shrink: 0;
+    width: 32px; height: 32px; border-radius: 100px;
+    background: var(--accent); color: #fff;
+    display: grid; place-items: center;
+    font-weight: var(--w-semibold); font-size: 14px;
+  }
+  .callout .body { font-size: 14px; color: var(--fg); line-height: 1.55; }
+  .callout .body strong { font-weight: var(--w-semibold); }
+  .callout .body p { color: var(--fg-2); margin-top: 4px; font-size: 13.5px; }
+
+  /* ───────── What to test ───────── */
+  .test-areas { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .area {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 24px;
+    transition: border-color var(--dur-base) var(--ease-out);
+  }
+  .area:hover { border-color: var(--border-strong); }
+  .area .tag {
+    display: inline-block;
+    font-size: var(--fs-label); font-weight: var(--w-medium);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .area h3 { font-size: 19px; margin-bottom: 10px; letter-spacing: -0.01em; }
+  .area > p { font-size: 14px; color: var(--fg-2); line-height: 1.55; margin-bottom: 14px; }
+  .area ul {
+    list-style: none; margin: 0; padding: 0;
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+  }
+  .area ul li {
+    font-size: 13px; color: var(--fg-2); line-height: 1.5;
+    padding: 6px 0 6px 18px; position: relative;
+  }
+  .area ul li::before {
+    content: ''; position: absolute;
+    left: 2px; top: 13px;
+    width: 4px; height: 4px; border-radius: 100px;
+    background: var(--accent);
+  }
+
+  /* ───────── Feedback ───────── */
+  .feedback {
+    display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+  }
+  .feedback-copy { padding: 40px; border-right: 1px solid var(--border); }
+  .feedback-copy h3 { font-size: 24px; margin-bottom: 16px; letter-spacing: -0.01em; }
+  .feedback-copy p { font-size: 15px; color: var(--fg-2); margin-bottom: 24px; line-height: 1.6; }
+  .channel-row { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  .channel {
+    display: flex; gap: 14px; padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--bg-raised);
+  }
+  .channel .num-badge {
+    flex-shrink: 0;
+    width: 28px; height: 28px; border-radius: 100px;
+    background: var(--accent); color: #fff;
+    font-size: 13px; font-weight: var(--w-semibold);
+    display: grid; place-items: center;
+  }
+  .channel .txt { flex: 1; min-width: 0; }
+  .channel .label {
+    font-size: 11px; font-weight: var(--w-medium);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase;
+    color: var(--fg-3); margin-bottom: 3px;
+  }
+  .channel .value { font-size: 14.5px; color: var(--fg); font-weight: var(--w-medium); word-break: break-word; }
+  .channel .hint {
+    font-size: 12.5px; color: var(--fg-2);
+    margin-top: 4px; line-height: 1.45;
+    font-weight: var(--w-light);
+  }
+
+  .feedback-visual {
+    background: var(--bg-raised);
+    padding: 40px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 20px; position: relative;
+  }
+  .phone-wrap {
+    position: relative;
+    width: 220px; height: 220px;
+    border-radius: 28px; overflow: hidden;
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 40px 80px rgba(0,0,0,0.5);
+    background: var(--bg);
+  }
+  .phone-wrap img {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin-top: -180px;
+  }
+  .phone-wrap::after {
+    content: '';
+    position: absolute; inset: 0 0 auto 0;
+    height: 40px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, transparent 100%);
+    pointer-events: none;
+  }
+  .phone-callout {
+    position: absolute;
+    left: -28px; bottom: 22%;
+    background: var(--accent); color: #fff;
+    font-size: 11px; font-weight: var(--w-semibold);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase;
+    padding: 6px 10px; border-radius: 100px;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(232,69,139,0.4);
+    z-index: 2;
+  }
+  .phone-callout::after {
+    content: '';
+    position: absolute; right: -6px; top: 50%;
+    transform: translateY(-50%) rotate(45deg);
+    width: 8px; height: 8px;
+    background: var(--accent);
+  }
+  .phone-hint {
+    text-align: center;
+    font-size: 12.5px; color: var(--fg-2);
+    line-height: 1.5; max-width: 24ch;
+  }
+  .phone-hint strong { color: var(--fg); font-weight: var(--w-medium); }
+
+  /* ───────── Tips ───────── */
+  .tips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 8px; }
+  .tip {
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 24px;
+    background: var(--surface);
+  }
+  .tip .num {
+    font-size: 28px; font-weight: var(--w-semibold);
+    color: var(--accent); font-variant-numeric: tabular-nums;
+    letter-spacing: var(--tracking-tight);
+    margin-bottom: 8px; line-height: 1;
+  }
+  .tip h4 { font-size: 15px; margin-bottom: 8px; letter-spacing: -0.005em; }
+  .tip p { font-size: 13.5px; color: var(--fg-2); line-height: 1.55; }
+
+  /* ───────── Footer ───────── */
+  footer.foot {
+    padding-top: 48px;
+    border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 24px; flex-wrap: wrap;
+  }
+  footer.foot .thanks {
+    font-size: 15px; color: var(--fg-2);
+    max-width: 48ch; line-height: 1.55;
+  }
+  footer.foot .thanks strong { color: var(--fg); font-weight: var(--w-medium); }
+  footer.foot .sig {
+    font-size: var(--fs-small);
+    color: var(--fg-3);
+    text-align: right;
+  }
+
+  /* ───────── Sticky top bar ───────── */
+  .download-bar {
+    position: sticky; top: 0;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 48px;
+    display: flex; justify-content: space-between; align-items: center;
+    z-index: 10; font-size: 13px;
+  }
+  .download-bar .left { display: flex; align-items: center; gap: 10px; color: var(--fg-3); }
+  .download-bar .left img { width: 18px; height: 18px; border-radius: 5px; }
+  .download-bar .left .brand { color: var(--fg); font-weight: var(--w-medium); }
+  .download-bar button {
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    color: var(--fg);
+    padding: 8px 14px;
+    border-radius: var(--r-pill);
+    font-family: var(--font-sans);
+    font-size: 12.5px; font-weight: var(--w-medium);
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: all var(--dur-base) var(--ease-out);
+  }
+  .download-bar button:hover { border-color: var(--accent-border); color: var(--accent); }
+  .download-bar button svg { width: 13px; height: 13px; }
+
+  /* ───────── Responsive ───────── */
+  @media (max-width: 780px) {
+    .page { padding: 32px 20px 64px; }
+    .hero { padding: 40px 28px 32px; }
+    .hero h1 { font-size: 38px; }
+    .hero .lede { font-size: 17px; }
+    .platforms, .test-areas, .tips { grid-template-columns: 1fr; }
+    .feedback { grid-template-columns: 1fr; }
+    .feedback-copy { border-right: none; border-bottom: 1px solid var(--border); }
+    .section-head h2 { font-size: 28px; }
+    .download-bar { padding: 10px 20px; }
+  }
+
+  /* ───────── Print (Save as PDF) ───────── */
+  @media print {
+    @page { size: A4; margin: 14mm; }
+    html, body { background: #fff !important; color: #111 !important; }
+    .download-bar { display: none; }
+    .page { max-width: none; padding: 0; }
+    .hero {
+      background: #fafafa !important;
+      border: 1px solid #e4e4e4 !important;
+      padding: 32px !important;
+      margin-bottom: 40px;
+    }
+    .hero::before { display: none; }
+    .hero h1, .hero .eyebrow .mark, .hero .meta dd { color: #111 !important; }
+    .hero .lede, .hero .meta dt { color: #555 !important; }
+    .hero .eyebrow .tag, .hero .meta dd.accent { color: var(--accent) !important; }
+    .hero .meta { border-top-color: #e4e4e4 !important; }
+    section { page-break-inside: avoid; margin-bottom: 40px; }
+    .section-head { border-bottom-color: #e4e4e4 !important; }
+    .section-head h2 { color: #111 !important; font-size: 24px; }
+    .section-intro { color: #444 !important; }
+    .platform, .area, .tip, .feedback, .callout, .channel {
+      background: #fff !important;
+      border-color: #e4e4e4 !important;
+      color: #111 !important;
+    }
+    .platform header { border-bottom-color: #e4e4e4 !important; }
+    .platform .os-icon { background: #f4f4f5 !important; border-color: #e4e4e4 !important; color: #111 !important; }
+    .platform h3, .area h3, .tip h4, .feedback-copy h3 { color: #111 !important; }
+    .platform .via, .area > p, .tip p, .feedback-copy p, .channel .hint { color: #555 !important; }
+    ol.steps > li { border-bottom-color: #f0f0f0 !important; }
+    ol.steps > li::before { background: #fde6ef !important; border-color: #f5b8d0 !important; color: var(--accent) !important; }
+    ol.steps .step-title { color: #111 !important; }
+    ol.steps .step-body { color: #444 !important; }
+    ol.steps code, .code { background: #f4f4f5 !important; border-color: #e4e4e4 !important; color: #111 !important; }
+    .area ul { border-top-color: #e4e4e4 !important; }
+    .area ul li { color: #444 !important; }
+    .btn { display: none; }
+    .callout { background: #fde6ef !important; border-color: #f5b8d0 !important; }
+    .callout .body, .callout .body strong { color: #111 !important; }
+    .callout .body p { color: #555 !important; }
+    .channel .value { color: #111 !important; }
+    .channel .label { color: #777 !important; }
+    .feedback-visual { background: #fafafa !important; }
+    .phone-wrap { box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important; }
+    footer.foot { border-top-color: #e4e4e4 !important; }
+    footer.foot .thanks, footer.foot .thanks strong { color: #111 !important; }
+    footer.foot .sig { color: #777 !important; }
+    a.inline { color: var(--accent) !important; border-bottom-color: var(--accent-border) !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="download-bar">
+  <div class="left">
+    <img src="/icon-72.png" alt="" />
+    <span><span class="brand">Etapa</span> &middot; Testing guide</span>
+  </div>
+  <button onclick="window.print()" title="Save as PDF">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Save as PDF
+  </button>
+</div>
+
+<div class="page">
+
+  <!-- ═════════ HERO ═════════ -->
+  <header class="hero">
+    <div class="eyebrow">
+      <img src="/icon-72.png" alt="Etapa" />
+      <span class="mark">Etapa</span>
+      <span class="divider">&middot;</span>
+      <span class="tag">Beta testing</span>
+    </div>
+    <h1>Welcome aboard. Here&rsquo;s how to test Etapa.</h1>
+    <p class="lede">
+      Thanks for riding with us early. This guide walks you through installing the beta on your phone,
+      what to try once you&rsquo;re in, and exactly where to send the feedback that will shape the next build.
+      It takes about five minutes end&#8209;to&#8209;end.
+    </p>
+    <dl class="meta">
+      <div>
+        <dt>Audience</dt>
+        <dd>Invited beta testers</dd>
+      </div>
+      <div>
+        <dt>Platforms</dt>
+        <dd>iOS &middot; Android</dd>
+      </div>
+      <div>
+        <dt>Time to install</dt>
+        <dd>~5 minutes</dd>
+      </div>
+      <div>
+        <dt>Questions</dt>
+        <dd class="accent"><a class="inline" href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a></dd>
+      </div>
+    </dl>
+  </header>
+
+  <!-- ═════════ 01 · INSTALL ═════════ -->
+  <section id="install">
+    <div class="section-head">
+      <span class="num">01</span>
+      <h2>Install the app</h2>
+      <span class="aside">Pick your phone</span>
+    </div>
+    <p class="section-intro">
+      We send invites two ways: a direct link to your inbox, and a public link you can share with anyone
+      we&rsquo;ve cleared. Either one will drop you into the store flow below.
+    </p>
+
+    <div class="platforms">
+
+      <!-- ── iOS / TestFlight ── -->
+      <article class="platform">
+        <header>
+          <div class="os-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.543 12.54c-.023-2.42 1.974-3.58 2.064-3.637-1.123-1.64-2.875-1.866-3.5-1.893-1.49-.15-2.907.876-3.66.876-.765 0-1.927-.854-3.168-.83-1.63.024-3.134.947-3.973 2.404-1.695 2.936-.433 7.28 1.216 9.666.807 1.166 1.767 2.477 3.028 2.43 1.216-.05 1.676-.787 3.147-.787 1.47 0 1.883.787 3.168.76 1.307-.022 2.134-1.186 2.932-2.36.924-1.353 1.305-2.665 1.328-2.732-.03-.013-2.553-.983-2.58-3.897zm-2.422-7.16c.67-.814 1.123-1.943.999-3.068-.966.04-2.136.644-2.83 1.458-.62.72-1.164 1.875-1.019 2.977 1.08.084 2.18-.55 2.85-1.367z"/></svg>
+          </div>
+          <div>
+            <h3>iOS</h3>
+            <div class="via">via TestFlight</div>
+          </div>
+        </header>
+
+        <ol class="steps">
+          <li>
+            <div class="step-title">Install TestFlight from the App Store</div>
+            <div class="step-body">
+              It&rsquo;s Apple&rsquo;s free beta-testing app. Search <span class="code">TestFlight</span> in the App Store and install it.
+              Sign in with the Apple ID you want to use.
+            </div>
+          </li>
+          <li>
+            <div class="step-title">Open the invite link on your phone</div>
+            <div class="step-body">
+              You&rsquo;ll receive a TestFlight invite from us either by <strong>email</strong> (tap <em>View in TestFlight</em>)
+              or as a <strong>public link</strong> we share directly. Open whichever you were sent &mdash; it launches straight into TestFlight.
+              Don&rsquo;t have one yet? Email <a class="inline" href="mailto:helloetapa@gmail.com?subject=TestFlight%20invite">helloetapa@gmail.com</a> and we&rsquo;ll send one.
+            </div>
+          </li>
+          <li>
+            <div class="step-title">Accept and install Etapa</div>
+            <div class="step-body">
+              Tap <strong>Accept</strong>, then <strong>Install</strong>. The beta build downloads alongside your App&nbsp;Store apps &mdash;
+              with a small orange dot next to the icon so you can tell it apart.
+            </div>
+          </li>
+          <li>
+            <div class="step-title">Open Etapa and sign in</div>
+            <div class="step-body">
+              Use the email address your invite was sent to. You&rsquo;ll land on the home screen &mdash; ready to ride.
+            </div>
+          </li>
+        </ol>
+
+        <div class="cta-row">
+          <a class="btn primary" href="mailto:helloetapa@gmail.com?subject=TestFlight%20invite">
+            Request TestFlight invite
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+          </a>
+          <a class="btn ghost" href="https://apps.apple.com/app/testflight/id899247664" target="_blank" rel="noopener">Get TestFlight</a>
+        </div>
+      </article>
+
+      <!-- ── Android / Play Internal ── -->
+      <article class="platform">
+        <header>
+          <div class="os-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85-.29-.15-.65-.06-.83.22l-1.88 3.24a11.43 11.43 0 0 0-8.94 0L5.65 5.67a.64.64 0 0 0-1.11.63L6.38 9.48A10.81 10.81 0 0 0 1 18h22a10.81 10.81 0 0 0-5.4-8.52zM7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z"/></svg>
+          </div>
+          <div>
+            <h3>Android</h3>
+            <div class="via">via Google Play internal testing</div>
+          </div>
+        </header>
+
+        <ol class="steps">
+          <li>
+            <div class="step-title">Send us the email on your Google account</div>
+            <div class="step-body">
+              We need to add it to our tester list before you can install.
+              Email <a class="inline" href="mailto:helloetapa@gmail.com?subject=Android%20tester%20access">helloetapa@gmail.com</a>
+              with the Google address tied to your Play Store.
+            </div>
+          </li>
+          <li>
+            <div class="step-title">Accept the tester invitation</div>
+            <div class="step-body">
+              You&rsquo;ll get an email from Google Play. Tap <strong>Become a tester</strong>. This opts you into the internal build &mdash;
+              no sideloading, no settings changes.
+            </div>
+          </li>
+          <li>
+            <div class="step-title">Open the download link</div>
+            <div class="step-body">
+              The same email has a link to Etapa on the Play Store. Open it on your phone and tap <strong>Install</strong>.
+              The listing shows an <em>&ldquo;Internal testing&rdquo;</em> badge so you know you&rsquo;ve got the right build.
+            </div>
+          </li>
+          <li>
+            <div class="step-title">Open Etapa and sign in</div>
+            <div class="step-body">
+              Same email as your tester invite. Future updates install automatically, like any other Play Store app.
+            </div>
+          </li>
+        </ol>
+
+        <div class="cta-row">
+          <a class="btn primary" href="mailto:helloetapa@gmail.com?subject=Android%20tester%20access">
+            Request Android access
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+          </a>
+        </div>
+      </article>
+    </div>
+
+    <div class="callout">
+      <div class="icon" aria-hidden="true">!</div>
+      <div class="body">
+        <strong>Stuck at any step?</strong>
+        <p>
+          Reply to the invite email or write to <a class="inline" href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a>.
+          A screenshot of where you got stuck is usually all we need to unblock you within a few hours.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════ 02 · WHAT TO TEST ═════════ -->
+  <section id="what-to-test">
+    <div class="section-head">
+      <span class="num">02</span>
+      <h2>What to test</h2>
+      <span class="aside">Six focus areas</span>
+    </div>
+    <p class="section-intro">
+      You don&rsquo;t need to cover everything. Pick the areas that match how you&rsquo;d actually use Etapa and go deep.
+      Every note helps &mdash; even &ldquo;this felt fine&rdquo; is data.
+    </p>
+
+    <div class="test-areas">
+
+      <article class="area">
+        <span class="tag">Start here</span>
+        <h3>Onboarding &amp; goal setup</h3>
+        <p>The first five minutes decide whether a new rider stays. This is the highest-signal area to test.</p>
+        <ul>
+          <li>Does anything feel confusing, unnecessary, or too &ldquo;coach-y&rdquo;?</li>
+          <li>Were any questions hard to answer honestly?</li>
+          <li>Did the generated plan match what you told us?</li>
+        </ul>
+      </article>
+
+      <article class="area">
+        <span class="tag">Core loop</span>
+        <h3>Your plan &amp; the week ahead</h3>
+        <p>This is the screen most riders will open daily. It needs to be glanceable and trustworthy.</p>
+        <ul>
+          <li>Can you tell at a glance what today&rsquo;s session is?</li>
+          <li>Is moving or skipping a session obvious?</li>
+          <li>Does the week feel realistic for your schedule?</li>
+        </ul>
+      </article>
+
+      <article class="area">
+        <span class="tag">The voice</span>
+        <h3>Coach chat</h3>
+        <p>Ask your coach anything &mdash; session advice, nutrition, recovery, pacing. Push it and see where it breaks.</p>
+        <ul>
+          <li>Did the answers sound like a real, helpful person?</li>
+          <li>Any jargon slip through that needs plain English?</li>
+          <li>Did it ever feel preachy, generic, or off-tone?</li>
+        </ul>
+      </article>
+
+      <article class="area">
+        <span class="tag">Connections</span>
+        <h3>Strava sync</h3>
+        <p>Connect Strava from <em>Settings</em>, then go for a ride. Check that it appears in Etapa.</p>
+        <ul>
+          <li>Did the connection flow work first time?</li>
+          <li>Did your ride show up, with correct distance &amp; time?</li>
+          <li>Any rides missing or duplicated?</li>
+        </ul>
+      </article>
+
+      <article class="area">
+        <span class="tag">Reliability</span>
+        <h3>Bugs &amp; crashes</h3>
+        <p>Anything that feels broken, slow, or wrong. Screenshots &amp; the moment it happened are gold.</p>
+        <ul>
+          <li>App crashes or freezes</li>
+          <li>Loading states that never finish</li>
+          <li>Text overflow, cut-off buttons, wonky layout</li>
+        </ul>
+      </article>
+
+      <article class="area">
+        <span class="tag">Tone</span>
+        <h3>Copy &amp; feel</h3>
+        <p>Etapa is supposed to read like a knowledgeable friend. Tell us where it doesn&rsquo;t.</p>
+        <ul>
+          <li>Sentences that felt robotic or corporate</li>
+          <li>Anything intimidating for a first-time cyclist</li>
+          <li>Button labels that made you pause</li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <!-- ═════════ 03 · WHERE TO REPORT ═════════ -->
+  <section id="feedback">
+    <div class="section-head">
+      <span class="num">03</span>
+      <h2>Where to send feedback</h2>
+      <span class="aside">Two channels, same inbox</span>
+    </div>
+    <p class="section-intro">
+      Whichever is closer to hand. Both land with the same small team, and we read everything.
+    </p>
+
+    <div class="feedback">
+
+      <div class="feedback-copy">
+        <h3>Send it the way that fits the moment.</h3>
+        <p>
+          If you&rsquo;ve just hit something in the app, use the in-app option &mdash; you&rsquo;ll have the context still in your head.
+          For bigger thoughts, longer screenshots, or anything you want to attach a file to, email works best.
+        </p>
+
+        <div class="channel-row">
+          <div class="channel">
+            <div class="num-badge">1</div>
+            <div class="txt">
+              <div class="label">In the app</div>
+              <div class="value">Settings &rarr; Send Feedback</div>
+              <div class="hint">
+                Open Etapa &rarr; <strong>Settings</strong> &rarr; <strong>Support</strong> &rarr; <strong>Send Feedback</strong>.
+                Report a bug or suggest an improvement &mdash; write it the way you&rsquo;d text a friend.
+              </div>
+            </div>
+          </div>
+          <div class="channel">
+            <div class="num-badge">2</div>
+            <div class="txt">
+              <div class="label">By email</div>
+              <div class="value"><a class="inline" href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a></div>
+              <div class="hint">
+                Best for screenshots, recordings, or anything you want to think through properly.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="feedback-visual" aria-hidden="true">
+        <div class="phone-wrap">
+          <img src="/testing-guide-assets/screens/settings-feedback.png" alt="Etapa settings screen with the Send Feedback row highlighted" />
+        </div>
+        <div class="phone-hint">
+          In <strong>Settings</strong>, scroll to <strong>Support</strong> and tap <strong>Send Feedback</strong>.
+        </div>
+      </div>
+    </div>
+
+    <!-- Writing good feedback -->
+    <div class="tips" style="margin-top: 40px;">
+      <div class="tip">
+        <div class="num">01</div>
+        <h4>Say what you expected</h4>
+        <p>&ldquo;I thought tapping this would take me to the session detail&rdquo; tells us more than &ldquo;this is broken.&rdquo;</p>
+      </div>
+      <div class="tip">
+        <div class="num">02</div>
+        <h4>Screenshots help</h4>
+        <p>A picture of the screen, plus roughly when it happened, makes most bugs reproducible in minutes.</p>
+      </div>
+      <div class="tip">
+        <div class="num">03</div>
+        <h4>Nothing is too small</h4>
+        <p>An awkward word, a button that felt off, a pause that felt too long &mdash; send it. It all adds up.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════ FOOTER ═════════ -->
+  <footer class="foot">
+    <div class="thanks">
+      <strong>Thank you for testing Etapa.</strong>
+      You&rsquo;re helping us build the cycling app we wish had existed when we were starting out. We won&rsquo;t waste your time.
+    </div>
+    <div class="sig">
+      Etapa &middot; Beta testing guide<br/>
+      <a class="inline" href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a>
+    </div>
+  </footer>
+
+</div>
+
+</body>
+</html>

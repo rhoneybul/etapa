@@ -50,6 +50,13 @@
       "expo-font",
       "expo-apple-authentication",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Etapa needs access to your photos so you can attach screenshots to feedback and support requests.",
+          "cameraPermission": "Etapa needs camera access so you can take a photo to attach to feedback."
+        }
+      ],
+      [
         "@sentry/react-native/expo",
         {
           "organization": "etapa",

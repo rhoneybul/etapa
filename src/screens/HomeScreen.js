@@ -21,6 +21,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getCoach } from '../data/coaches';
 import analytics from '../services/analyticsService';
 import api from '../services/api';
+import remoteConfig from '../services/remoteConfig';
+import { t } from '../services/strings';
 import ComingSoon from '../components/ComingSoon';
 import StravaLogo from '../components/StravaLogo';
 import { triggerMaintenanceMode } from '../../App';
@@ -291,6 +293,14 @@ export default function HomeScreen({ navigation, route }) {
     navigation.navigate('GoalSetup', { requirePaywall: !subscribed });
   };
 
+  // Third pathway — minimal "just improve" flow. Skips goal wizard, jumps
+  // straight to a level + duration + days/week screen that pre-fills a
+  // sensible goal (improve / mixed) then generates the plan.
+  const handleQuickPlan = async () => {
+    const subscribed = __DEV__ ? false : await isSubscribed();
+    navigation.navigate('QuickPlan', { requirePaywall: !subscribed });
+  };
+
   const handleUpgrade = () => {
     setShowUpgrade(false);
     navigation.navigate('Paywall', { nextScreen: 'Home' });
@@ -376,42 +386,44 @@ export default function HomeScreen({ navigation, route }) {
             <Text style={s.emptyTitle}>
               {firstName ? `Hey ${firstName}, let's ride` : "Let's ride"}
             </Text>
-            <Text style={s.emptySub}>Choose how you'd like to get started</Text>
+            <Text style={s.emptySub}>{t('home.chooseSub')}</Text>
 
-            {/* Get into Cycling — beginner card */}
+            {/* Pathway 1 — Getting into cycling (beginner program) */}
+            {remoteConfig.getBool('features.beginnerProgram.enabled', true) && (
             <TouchableOpacity
               style={s.beginnerCard}
               onPress={() => navigation.navigate('BeginnerProgram')}
               activeOpacity={0.88}
             >
               <View style={s.beginnerBadge}>
-                <Text style={s.beginnerBadgeText}>BEGINNER FRIENDLY</Text>
+                <Text style={s.beginnerBadgeText}>{t('home.pathway.beginner.badge')}</Text>
               </View>
-              <Text style={s.beginnerTitle}>Get into Cycling</Text>
+              <Text style={s.beginnerTitle}>{t('home.pathway.beginner.title')}</Text>
               <Text style={s.beginnerSub}>
-                A structured program to get you riding regularly and building toward your first big distance goal. No experience needed.
+                {t('home.pathway.beginner.description')}
               </Text>
               <View style={s.cardFeatureRow}>
-                {['8–20 week program', 'Guided sessions', 'Goal milestones'].map(f => (
+                {['8–20 week programme', 'Guided sessions', 'Goal milestones'].map(f => (
                   <View key={f} style={s.cardFeaturePill}>
                     <Text style={s.cardFeaturePillText}>{f}</Text>
                   </View>
                 ))}
               </View>
             </TouchableOpacity>
+            )}
 
-            {/* Build your plan — custom / main feature card */}
+            {/* Pathway 2 — Building a plan (goal-driven) */}
             <TouchableOpacity
               style={s.createBtn}
               onPress={handleMakePlan}
               activeOpacity={0.88}
             >
               <View style={s.beginnerBadge}>
-                <Text style={s.beginnerBadgeText}>AI-POWERED</Text>
+                <Text style={s.beginnerBadgeText}>{t('home.pathway.plan.badge')}</Text>
               </View>
-              <Text style={s.createBtnTitle}>Build your training plan</Text>
+              <Text style={s.createBtnTitle}>{t('home.pathway.plan.title')}</Text>
               <Text style={s.createBtnSub}>
-                Race prep, sportive goals, distance targets or just getting fitter — your AI coach builds a personalised plan around your schedule.
+                {t('home.pathway.plan.description')}
               </Text>
               <View style={s.cardFeatureRow}>
                 {['Fully personalised', 'Any goal or distance', 'Adapts as you train'].map(f => (
@@ -421,6 +433,30 @@ export default function HomeScreen({ navigation, route }) {
                 ))}
               </View>
             </TouchableOpacity>
+
+            {/* Pathway 3 — Just want to improve (quick plan) */}
+            {remoteConfig.getBool('features.quickPlan.enabled', true) && (
+            <TouchableOpacity
+              style={s.createBtn}
+              onPress={handleQuickPlan}
+              activeOpacity={0.88}
+            >
+              <View style={s.beginnerBadge}>
+                <Text style={s.beginnerBadgeText}>{t('home.pathway.quick.badge')}</Text>
+              </View>
+              <Text style={s.createBtnTitle}>{t('home.pathway.quick.title')}</Text>
+              <Text style={s.createBtnSub}>
+                {t('home.pathway.quick.description')}
+              </Text>
+              <View style={s.cardFeatureRow}>
+                {['Quick setup', 'Flexible weeks', 'Built around you'].map(f => (
+                  <View key={f} style={s.cardFeaturePill}>
+                    <Text style={s.cardFeaturePillText}>{f}</Text>
+                  </View>
+                ))}
+              </View>
+            </TouchableOpacity>
+            )}
           </ScrollView>
         </SafeAreaView>
         <UpgradePrompt

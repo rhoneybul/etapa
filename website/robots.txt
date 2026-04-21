@@ -1,0 +1,10 @@
+# https://getetapa.com/robots.txt
+# Crawl the main site; keep the beta-tester guide private.
+
+User-agent: *
+Allow: /
+Disallow: /testing-guide
+Disallow: /testing-guide.html
+Disallow: /testing-guide-assets/
+
+Sitemap: https://getetapa.com/sitemap.xml

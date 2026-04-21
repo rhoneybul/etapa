@@ -751,6 +751,35 @@ router.get('/feedback/:id/messages', async (req, res, next) => {
 
     if (msgErr) throw msgErr;
 
+    // Fetch attachments + sign URLs so admin can render thumbnails inline.
+    const { data: attachmentRows } = await supabase
+      .from('feedback_attachments')
+      .select('*')
+      .eq('feedback_id', id);
+
+    const signed = [];
+    for (const a of (attachmentRows || [])) {
+      const { data: urlData } = await supabase.storage
+        .from('feedback-attachments')
+        .createSignedUrl(a.storage_path, 3600);
+      signed.push({
+        id: a.id,
+        messageId: a.message_id,
+        mimeType: a.mime_type,
+        sizeBytes: a.size_bytes,
+        width: a.width,
+        height: a.height,
+        url: urlData?.signedUrl || null,
+      });
+    }
+    const feedbackAttachments = signed.filter(a => !a.messageId);
+    const messageAttachments = {};
+    for (const a of signed) {
+      if (a.messageId) {
+        (messageAttachments[a.messageId] = messageAttachments[a.messageId] || []).push(a);
+      }
+    }
+
     const user = usersById[feedback.user_id];
     const result = {
       feedback: {
@@ -762,6 +791,7 @@ router.get('/feedback/:id/messages', async (req, res, next) => {
         message: feedback.message,
         status: feedback.status || 'open',
         createdAt: feedback.created_at,
+        attachments: feedbackAttachments,
       },
       messages: (messages || []).map(m => ({
         id: m.id,
@@ -771,6 +801,7 @@ router.get('/feedback/:id/messages', async (req, res, next) => {
           : (usersById[m.sender_id]?.user_metadata?.full_name || 'Admin'),
         message: m.message,
         createdAt: m.created_at,
+        attachments: messageAttachments[m.id] || [],
       })),
     };
 
@@ -871,6 +902,172 @@ router.put('/app-config/:key', async (req, res, next) => {
 
     if (error) throw error;
     res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ── User config overrides (support ticket lever) ─────────────────────────────
+// These let admin grant a free month / unlock coaches / flip a feature FOR
+// a specific user, without changing anything globally or shipping a build.
+// See REMOTE_FIRST_ARCHITECTURE.md.
+//
+// Shape of `overrides` jsonb is freeform but typical keys:
+//   { "features": { "aiCoachChat": { "enabled": true } },
+//     "coachesUnlocked": ["elena", "lars"],
+//     "entitlement": "pro" | "lifetime",
+//     "trial": { "days": 30 },
+//     "banner": { "active": true, "message": "...", "cta": null },
+//     "forceOnboarding": true }
+
+// GET /api/admin/user-overrides?email=foo@bar.com
+// Looks up a user by email and returns their current override record.
+router.get('/user-overrides', async (req, res, next) => {
+  try {
+    const { email, userId } = req.query;
+    if (!email && !userId) {
+      return res.status(400).json({ error: 'email or userId is required' });
+    }
+
+    let resolvedUserId = userId;
+    if (!resolvedUserId) {
+      // Look up the auth user by email.
+      const { data: lookup, error: lookupErr } = await supabase
+        .auth.admin.listUsers({ page: 1, perPage: 200 });
+      if (lookupErr) throw lookupErr;
+      const match = (lookup?.users || []).find(u => (u.email || '').toLowerCase() === String(email).toLowerCase());
+      if (!match) return res.status(404).json({ error: 'User not found for that email' });
+      resolvedUserId = match.id;
+    }
+
+    const { data, error } = await supabase
+      .from('user_config_overrides')
+      .select('user_id, overrides, note, updated_by, updated_at')
+      .eq('user_id', resolvedUserId)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') throw error;
+
+    res.json({
+      userId: resolvedUserId,
+      overrides: data?.overrides || {},
+      note: data?.note || null,
+      updatedBy: data?.updated_by || null,
+      updatedAt: data?.updated_at || null,
+    });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/admin/user-overrides/:userId
+// Body: { overrides: {...}, note?: '...' }
+// Writes (upserts) the override row. Whole-object replace, not merge — keep
+// the payload explicit so the admin UI shows what's live.
+router.put('/user-overrides/:userId', async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { overrides, note } = req.body;
+
+    if (overrides && typeof overrides !== 'object') {
+      return res.status(400).json({ error: 'overrides must be a JSON object' });
+    }
+
+    const row = {
+      user_id: userId,
+      overrides: overrides || {},
+      note: note || null,
+      updated_by: req.user?.id || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from('user_config_overrides')
+      .upsert(row, { onConflict: 'user_id' });
+
+    if (error) throw error;
+    res.json({ ok: true, userId });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/admin/user-overrides/:userId — reset a user to defaults.
+router.delete('/user-overrides/:userId', async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { error } = await supabase
+      .from('user_config_overrides')
+      .delete()
+      .eq('user_id', userId);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/admin/user-overrides/:userId/quick/:action
+// Preset one-tap support actions. Each mutates the existing overrides doc
+// with a well-known patch so the admin UI can stay stupid and mobile-friendly.
+//
+// Actions:
+//   grant-free-month           — trial.days = 30
+//   grant-lifetime             — entitlement = 'lifetime'
+//   grant-pro                  — entitlement = 'pro'
+//   unlock-coaches             — coachesUnlocked = all coach ids
+//   reset-entitlement          — removes entitlement field
+//   force-onboarding           — forceOnboarding = true
+//   enable-feature/:flag       — features[flag].enabled = true
+//   disable-feature/:flag      — features[flag].enabled = false
+router.post('/user-overrides/:userId/quick/:action', async (req, res, next) => {
+  try {
+    const { userId, action } = req.params;
+    const flag = req.body?.flag || req.query?.flag || null;
+
+    // Fetch current overrides
+    const { data: current } = await supabase
+      .from('user_config_overrides')
+      .select('overrides')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    const overrides = current?.overrides ? { ...current.overrides } : {};
+
+    switch (action) {
+      case 'grant-free-month':
+        overrides.trial = { ...(overrides.trial || {}), days: 30 };
+        break;
+      case 'grant-lifetime':
+        overrides.entitlement = 'lifetime';
+        break;
+      case 'grant-pro':
+        overrides.entitlement = 'pro';
+        break;
+      case 'unlock-coaches':
+        overrides.coachesUnlocked = ['clara', 'lars', 'sophie', 'matteo', 'elena', 'tom'];
+        break;
+      case 'reset-entitlement':
+        delete overrides.entitlement;
+        break;
+      case 'force-onboarding':
+        overrides.forceOnboarding = true;
+        break;
+      case 'enable-feature':
+        if (!flag) return res.status(400).json({ error: 'flag is required' });
+        overrides.features = { ...(overrides.features || {}), [flag]: { enabled: true } };
+        break;
+      case 'disable-feature':
+        if (!flag) return res.status(400).json({ error: 'flag is required' });
+        overrides.features = { ...(overrides.features || {}), [flag]: { enabled: false } };
+        break;
+      default:
+        return res.status(400).json({ error: `Unknown action: ${action}` });
+    }
+
+    const { error } = await supabase
+      .from('user_config_overrides')
+      .upsert({
+        user_id: userId,
+        overrides,
+        updated_by: req.user?.id || null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+
+    if (error) throw error;
+    res.json({ ok: true, overrides });
   } catch (err) { next(err); }
 });
 

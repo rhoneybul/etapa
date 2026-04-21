@@ -6,13 +6,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  Alert, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
+  Alert, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Image, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fontFamily } from '../theme';
 import { api } from '../services/api';
 import analytics from '../services/analyticsService';
+import {
+  pickScreenshots,
+  compressIfNeeded,
+  uploadAttachment,
+  ATTACHMENT_LIMITS,
+} from '../services/attachmentService';
 
 const FF = fontFamily;
 
@@ -57,6 +64,13 @@ export default function FeedbackScreen({ navigation }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  // Attachment state: an array of { localId, uri, status, error?, ref? }
+  //   status: 'compressing' | 'uploading' | 'uploaded' | 'failed'
+  //   ref:    the { storagePath, mimeType, sizeBytes, ... } returned by the server,
+  //           only set when status is 'uploaded'.
+  const [attachments, setAttachments] = useState([]);
+  const [pickingAttachment, setPickingAttachment] = useState(false);
+
   const appVersion = Constants.expoConfig?.version || '0.0.0';
   const deviceInfo = `${Platform.OS} ${Platform.Version}`;
 
@@ -78,6 +92,123 @@ export default function FeedbackScreen({ navigation }) {
     return unsub;
   }, [navigation, fetchExisting]);
 
+  // Pick one or more screenshots and upload them. Each upload runs async so
+  // the user can keep typing. Failures are shown inline next to the thumbnail,
+  // with a retry option.
+  const handleAddScreenshots = async () => {
+    if (pickingAttachment) return;
+    setPickingAttachment(true);
+    try {
+      let picked;
+      try {
+        picked = await pickScreenshots({
+          maxCount: ATTACHMENT_LIMITS.maxCount,
+          alreadyPicked: attachments.length,
+        });
+      } catch (err) {
+        if (err.code === 'PERMISSION_DENIED') {
+          Alert.alert(
+            'Photo access needed',
+            'To attach screenshots, please allow Etapa access to your photos in Settings.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings().catch(() => {}) },
+            ],
+          );
+          return;
+        }
+        throw err;
+      }
+
+      if (!picked || picked.length === 0) return;
+
+      // Create placeholder rows immediately so the UI shows thumbnails instantly.
+      const queued = picked.map((p, i) => ({
+        localId: `${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`,
+        uri: p.uri,
+        width: p.width,
+        height: p.height,
+        mimeType: p.mimeType,
+        status: 'compressing',
+        error: null,
+        ref: null,
+      }));
+      setAttachments(curr => [...curr, ...queued]);
+
+      // Process + upload each one (sequentially — kinder on mobile network).
+      for (const item of queued) {
+        try {
+          setAttachments(curr => curr.map(a =>
+            a.localId === item.localId ? { ...a, status: 'compressing' } : a
+          ));
+          const compressed = await compressIfNeeded({
+            uri: item.uri,
+            width: item.width,
+            height: item.height,
+            mimeType: item.mimeType,
+          });
+          setAttachments(curr => curr.map(a =>
+            a.localId === item.localId
+              ? { ...a, uri: compressed.uri, status: 'uploading' }
+              : a
+          ));
+          const ref = await uploadAttachment(compressed);
+          setAttachments(curr => curr.map(a =>
+            a.localId === item.localId ? { ...a, status: 'uploaded', ref } : a
+          ));
+        } catch (err) {
+          console.warn('[feedback] attachment failed:', err.message);
+          setAttachments(curr => curr.map(a =>
+            a.localId === item.localId
+              ? { ...a, status: 'failed', error: err.message || 'Upload failed' }
+              : a
+          ));
+        }
+      }
+    } catch (err) {
+      console.error('[feedback] picker error:', err);
+      Alert.alert('Screenshot error', err.message || 'Could not add screenshot. Please try again.');
+    } finally {
+      setPickingAttachment(false);
+    }
+  };
+
+  const handleRemoveAttachment = (localId) => {
+    setAttachments(curr => curr.filter(a => a.localId !== localId));
+  };
+
+  const handleRetryAttachment = async (localId) => {
+    const item = attachments.find(a => a.localId === localId);
+    if (!item) return;
+    setAttachments(curr => curr.map(a =>
+      a.localId === localId ? { ...a, status: 'compressing', error: null } : a
+    ));
+    try {
+      const compressed = await compressIfNeeded({
+        uri: item.uri,
+        width: item.width,
+        height: item.height,
+        mimeType: item.mimeType,
+      });
+      setAttachments(curr => curr.map(a =>
+        a.localId === localId ? { ...a, uri: compressed.uri, status: 'uploading' } : a
+      ));
+      const ref = await uploadAttachment(compressed);
+      setAttachments(curr => curr.map(a =>
+        a.localId === localId ? { ...a, status: 'uploaded', ref } : a
+      ));
+    } catch (err) {
+      setAttachments(curr => curr.map(a =>
+        a.localId === localId ? { ...a, status: 'failed', error: err.message || 'Upload failed' } : a
+      ));
+    }
+  };
+
+  const anyAttachmentPending = attachments.some(a => a.status === 'uploading' || a.status === 'compressing');
+  const uploadedAttachmentRefs = attachments
+    .filter(a => a.status === 'uploaded' && a.ref)
+    .map(a => a.ref);
+
   const handleSubmit = async () => {
     if (!category) {
       Alert.alert('Choose a category', 'Please select what type of feedback you\u2019re sending.');
@@ -85,6 +216,10 @@ export default function FeedbackScreen({ navigation }) {
     }
     if (!message.trim()) {
       Alert.alert('Add a message', 'Please describe your feedback before submitting.');
+      return;
+    }
+    if (anyAttachmentPending) {
+      Alert.alert('Still uploading', 'Hang on — your screenshots are still uploading.');
       return;
     }
 
@@ -95,12 +230,14 @@ export default function FeedbackScreen({ navigation }) {
         message: message.trim(),
         appVersion,
         deviceInfo,
+        attachments: uploadedAttachmentRefs,
       });
       analytics.events.feedbackSubmitted(category);
 
       // Reset form and show thanks
       setCategory(null);
       setMessage('');
+      setAttachments([]);
       setSubmitted(true);
 
       // Refresh the list in background
@@ -240,16 +377,81 @@ export default function FeedbackScreen({ navigation }) {
               </>
             )}
 
+            {/* Attachments */}
+            {!submitted && category && (
+              <>
+                <Text style={s.sectionLabel}>SCREENSHOTS (OPTIONAL)</Text>
+                <View style={s.attachRow}>
+                  {attachments.map(a => (
+                    <View key={a.localId} style={s.attachThumbWrap}>
+                      <Image source={{ uri: a.uri }} style={s.attachThumb} />
+                      {/* Status overlay */}
+                      {(a.status === 'compressing' || a.status === 'uploading') && (
+                        <View style={s.attachOverlay}>
+                          <ActivityIndicator color="#fff" size="small" />
+                        </View>
+                      )}
+                      {a.status === 'failed' && (
+                        <TouchableOpacity
+                          onPress={() => handleRetryAttachment(a.localId)}
+                          style={[s.attachOverlay, s.attachOverlayFailed]}
+                        >
+                          <MaterialCommunityIcons name="reload" size={20} color="#fff" />
+                          <Text style={s.attachRetryText}>Retry</Text>
+                        </TouchableOpacity>
+                      )}
+                      {/* Remove button */}
+                      <TouchableOpacity
+                        onPress={() => handleRemoveAttachment(a.localId)}
+                        style={s.attachRemove}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <MaterialCommunityIcons name="close" size={14} color="#fff" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+
+                  {attachments.length < ATTACHMENT_LIMITS.maxCount && (
+                    <TouchableOpacity
+                      style={s.attachAddBtn}
+                      onPress={handleAddScreenshots}
+                      disabled={pickingAttachment}
+                      activeOpacity={0.7}
+                    >
+                      {pickingAttachment ? (
+                        <ActivityIndicator color={colors.textMuted} size="small" />
+                      ) : (
+                        <>
+                          <MaterialCommunityIcons name="plus" size={22} color={colors.textMuted} />
+                          <Text style={s.attachAddText}>Add</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {attachments.some(a => a.status === 'failed') && (
+                  <Text style={s.attachHint}>
+                    One or more screenshots failed to upload. Tap to retry or remove them.
+                  </Text>
+                )}
+              </>
+            )}
+
             {/* Submit */}
             {!submitted && category && (
               <TouchableOpacity
-                style={[s.submitBtn, (!message.trim() || submitting) && s.submitBtnDisabled]}
+                style={[
+                  s.submitBtn,
+                  (!message.trim() || submitting || anyAttachmentPending) && s.submitBtnDisabled,
+                ]}
                 onPress={handleSubmit}
-                disabled={!message.trim() || submitting}
+                disabled={!message.trim() || submitting || anyAttachmentPending}
                 activeOpacity={0.8}
               >
                 {submitting ? (
                   <ActivityIndicator color="#fff" size="small" />
+                ) : anyAttachmentPending ? (
+                  <Text style={s.submitBtnText}>Uploading screenshots…</Text>
                 ) : (
                   <Text style={s.submitBtnText}>Submit Feedback</Text>
                 )}
@@ -331,6 +533,54 @@ const s = StyleSheet.create({
     minHeight: 120, maxHeight: 250,
   },
   charCount: { fontSize: 11, fontFamily: FF.regular, color: colors.textFaint, textAlign: 'right', paddingHorizontal: 20, marginTop: 4 },
+
+  // Attachments
+  attachRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    paddingHorizontal: 16,
+  },
+  attachThumbWrap: {
+    width: 72, height: 72,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.border,
+    position: 'relative',
+  },
+  attachThumb: { width: '100%', height: '100%' },
+  attachOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  attachOverlayFailed: { backgroundColor: 'rgba(232,69,139,0.55)' },
+  attachRetryText: {
+    color: '#fff', fontSize: 10, fontWeight: '600', fontFamily: FF.semibold,
+    marginTop: 2,
+  },
+  attachRemove: {
+    position: 'absolute', top: 4, right: 4,
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  attachAddBtn: {
+    width: 72, height: 72,
+    borderRadius: 12,
+    borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed',
+    backgroundColor: colors.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  attachAddText: {
+    fontSize: 11, fontFamily: FF.regular,
+    color: colors.textMuted, marginTop: 2,
+  },
+  attachHint: {
+    fontSize: 11, fontFamily: FF.regular, color: colors.textFaint,
+    paddingHorizontal: 20, marginTop: 6,
+  },
 
   submitBtn: {
     marginHorizontal: 16, marginTop: 20, backgroundColor: colors.primary,

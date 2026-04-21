@@ -3,11 +3,17 @@
  * Each coach has a distinct style, voice, and approach to training.
  * Avatars are rendered as coloured initials circles in the UI.
  *
+ * REMOTE-OVERRIDABLE: `getCoaches()` returns the remote list if one has been
+ * pushed from the admin panel (via app_config.coaches), otherwise the bundled
+ * list below. See REMOTE_FIRST_ARCHITECTURE.md.
+ *
  * Avatar colours use only two values from the app's two-accent palette:
  *   All coaches use a consistent blue: #2563A0
  */
 
-export const COACHES = [
+import remoteConfig from '../services/remoteConfig';
+
+export const BUNDLED_COACHES = [
   {
     id: 'clara',
     name: 'Clara',
@@ -104,8 +110,28 @@ export const COACHES = [
 
 export const DEFAULT_COACH_ID = 'matteo';
 
+/**
+ * Return the active coach list. Uses remote config if available, falls back to
+ * the bundled list if the server hasn't sent one. Validates shape — if remote
+ * is malformed we use bundled.
+ */
+export function getCoaches() {
+  const remote = remoteConfig.getJson('coaches', null);
+  if (Array.isArray(remote) && remote.length > 0 && remote.every(c => c && c.id && c.name)) {
+    return remote;
+  }
+  return BUNDLED_COACHES;
+}
+
+/**
+ * Legacy named export — callers that import `COACHES` directly still get the
+ * bundled list. New code should call `getCoaches()` to get remote overrides.
+ */
+export const COACHES = BUNDLED_COACHES;
+
 export function getCoach(coachId) {
-  return COACHES.find(c => c.id === coachId) || COACHES.find(c => c.id === DEFAULT_COACH_ID);
+  const list = getCoaches();
+  return list.find(c => c.id === coachId) || list.find(c => c.id === DEFAULT_COACH_ID) || BUNDLED_COACHES[0];
 }
 
 export function getCoachSystemPromptAddition(coach) {
