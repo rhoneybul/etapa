@@ -919,6 +919,79 @@ export default function HomeScreen({ navigation, route }) {
             </View>
           )}
 
+          {/* ── Today hero card ─────────────────────────────────────────────
+              The first thing a returning user should see: "here's what you're
+              doing today." Strong CTA to open the session, secondary CTA to
+              ask the coach. Three states: active ride, rest day, done. Only
+              renders when the plan has actually started (pre-start users see
+              the week strip start hint instead). */}
+          {planHasStarted && (() => {
+            const primary = todayActivities.find(a => a.type === 'ride') || todayActivities[0] || null;
+            const coach = getCoach(activePlanConfig?.coachId);
+            const coachFirstName = (coach?.name || 'your coach').split(' ')[0];
+
+            // ── Rest day ────────────────────────────────────────────────
+            if (!primary) {
+              return (
+                <View style={s.todayHero}>
+                  <Text style={s.todayHeroLabel}>TODAY</Text>
+                  <Text style={s.todayHeroTitle}>Rest day</Text>
+                  <Text style={s.todayHeroSub}>Recovery is training too. Your legs will thank you tomorrow.</Text>
+                  <View style={s.todayHeroActions}>
+                    <TouchableOpacity
+                      style={s.todayHeroCoachBtn}
+                      onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={s.todayHeroCoachBtnText}>Ask {coachFirstName}</Text>
+                      <Text style={s.todayHeroCoachBtnArrow}>{'\u203A'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            }
+
+            // ── Active / completed ride ─────────────────────────────────
+            const metaParts = [];
+            if (primary.distanceKm) metaParts.push(`${primary.distanceKm} km`);
+            if (primary.durationMins) metaParts.push(`${primary.durationMins} min`);
+            if (primary.effort) metaParts.push(primary.effort);
+            const meta = metaParts.join(' \u00B7 ');
+            const isDone = !!primary.completed;
+
+            return (
+              <View style={[s.todayHero, isDone && s.todayHeroDone]}>
+                <View style={s.todayHeroHeader}>
+                  <Text style={s.todayHeroLabel}>TODAY</Text>
+                  {isDone && (
+                    <View style={s.todayHeroDoneBadge}>
+                      <Text style={s.todayHeroDoneBadgeText}>{'\u2713'} DONE</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={s.todayHeroTitle} numberOfLines={2}>{primary.title}</Text>
+                {meta ? <Text style={s.todayHeroSub}>{meta}</Text> : null}
+                <View style={s.todayHeroActions}>
+                  <TouchableOpacity
+                    style={[s.todayHeroCta, isDone && s.todayHeroCtaDone]}
+                    onPress={() => navigation.navigate('WeekView', { week: realTodayWeek, planId: activePlan.id })}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={s.todayHeroCtaText}>{isDone ? 'View session' : 'See session'}</Text>
+                    <Text style={s.todayHeroCtaArrow}>{'\u203A'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={s.todayHeroCoachBtn}
+                    onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={s.todayHeroCoachBtnText}>Ask {coachFirstName}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })()}
+
           {/* Week calendar strip with navigation */}
           <View style={s.weekStrip}>
             <View style={s.weekNav}>
@@ -1521,6 +1594,87 @@ const s = StyleSheet.create({
   cardFeaturePillText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary },
 
   // Week calendar strip
+  // ── Today hero card ────────────────────────────────────────────────────
+  // Magenta-accented card that shows the user's session for today at the
+  // top of the screen. This is the "do this now" moment — CTA is deliberately
+  // loud and the coach ask is a clear second action.
+  todayHero: {
+    marginHorizontal: 16, marginBottom: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(232,69,139,0.35)', // subtle magenta glow on the border
+    shadowColor: '#E8458B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  todayHeroDone: {
+    // De-emphasise once complete — the job is done, don't keep shouting.
+    borderColor: colors.border,
+    shadowOpacity: 0,
+  },
+  todayHeroHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  todayHeroLabel: {
+    fontSize: 10, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.primary, letterSpacing: 1.2,
+  },
+  todayHeroDoneBadge: {
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(34,197,94,0.15)',
+  },
+  todayHeroDoneBadgeText: {
+    fontSize: 10, fontWeight: '600', fontFamily: FF.semibold,
+    color: '#22C55E', letterSpacing: 0.6,
+  },
+  todayHeroTitle: {
+    fontSize: 20, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.text, marginBottom: 4, lineHeight: 26,
+  },
+  todayHeroSub: {
+    fontSize: 13, fontWeight: '400', fontFamily: FF.regular,
+    color: colors.textMid, marginBottom: 14, lineHeight: 19,
+  },
+  todayHeroActions: {
+    flexDirection: 'row', gap: 8, alignItems: 'stretch',
+  },
+  todayHeroCta: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    borderRadius: 12, paddingVertical: 13, paddingHorizontal: 16,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+  },
+  todayHeroCtaDone: {
+    backgroundColor: colors.surfaceLight,
+  },
+  todayHeroCtaText: {
+    fontSize: 15, fontWeight: '600', fontFamily: FF.semibold,
+    color: '#FFFFFF',
+  },
+  todayHeroCtaArrow: {
+    fontSize: 18, fontWeight: '400', color: '#FFFFFF', lineHeight: 18,
+  },
+  todayHeroCoachBtn: {
+    paddingVertical: 13, paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1, borderColor: colors.border,
+    backgroundColor: 'transparent',
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+  },
+  todayHeroCoachBtnText: {
+    fontSize: 14, fontWeight: '500', fontFamily: FF.medium,
+    color: colors.text,
+  },
+  todayHeroCoachBtnArrow: {
+    fontSize: 16, color: colors.textMid, lineHeight: 16,
+  },
+
   weekStrip: { backgroundColor: colors.surface, marginHorizontal: 16, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border },
   weekNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   weekNavCenter: { alignItems: 'center', gap: 4 },

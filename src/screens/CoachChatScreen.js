@@ -338,6 +338,28 @@ export default function CoachChatScreen({ navigation, route }) {
 
     try {
       const result = await coachChat(apiMessages, context);
+
+      // Daily AI spend limit reached — server returned 429. Show a friendly
+      // "limit reached" message rather than a generic error and fire a
+      // dedicated analytics event so we can see how often this happens.
+      if (result.rateLimited) {
+        setLastFailedMsg(null);
+        analytics.track('chat_rate_limited', {
+          coachId: planConfig?.coachId || null,
+          spentUsd: result.spentUsd ?? null,
+          capUsd: result.capUsd ?? null,
+          scope: weekNum ? 'week' : 'plan',
+        });
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: 'You\'ve reached today\'s coach limit. It resets in 24 hours — thanks for chatting so much. Come back tomorrow.',
+          ts: Date.now(),
+          rateLimited: true,
+        }]);
+        setSending(false);
+        return;
+      }
+
       const coachMsg = {
         role: 'assistant',
         content: result.reply,

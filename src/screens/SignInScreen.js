@@ -150,6 +150,21 @@ export default function SignInScreen({ navigation }) {
           </View>
           <Text style={s.title}>Etapa</Text>
           <Text style={s.tagline}>Your coach, your plan. The stage is yours.</Text>
+
+          {/* Benefit chips — surface the value prop so a new user understands
+              what Etapa does before committing to auth. These are deliberately
+              short (3 words each) so they scan in a glance. */}
+          <View style={s.benefitChips}>
+            <View style={s.benefitChip}>
+              <Text style={s.benefitChipText}>AI training plans</Text>
+            </View>
+            <View style={s.benefitChip}>
+              <Text style={s.benefitChipText}>Personal coach</Text>
+            </View>
+            <View style={s.benefitChip}>
+              <Text style={s.benefitChipText}>Built for beginners</Text>
+            </View>
+          </View>
         </Animated.View>
 
         {/* Auth section — pinned to bottom */}
@@ -248,6 +263,23 @@ const s = StyleSheet.create({
   tagline: {
     fontSize: 15, fontWeight: '300', fontFamily: FF.light,
     color: 'rgba(240,240,242,0.35)', marginTop: 8, letterSpacing: 1,
+  },
+
+  // Benefit chips — three small pills under the tagline.
+  benefitChips: {
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center',
+    marginTop: 24, gap: 8, paddingHorizontal: 24,
+  },
+  benefitChip: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.25)',
+    backgroundColor: 'rgba(232,69,139,0.08)',
+  },
+  benefitChipText: {
+    fontSize: 11, fontWeight: '500', fontFamily: FF.medium,
+    color: 'rgba(240,240,242,0.85)',
+    letterSpacing: 0.3,
   },
 
   // Bottom auth section

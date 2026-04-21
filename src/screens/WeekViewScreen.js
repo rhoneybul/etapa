@@ -2,10 +2,10 @@
  * Weekly plan view — dark theme. Activities grouped by day.
  * Shows month label, week navigation, no off-track badge.
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, RefreshControl,
-  TextInput, ActivityIndicator, Alert, Modal, KeyboardAvoidingView, Platform,
+  TextInput, ActivityIndicator, Alert, Modal, KeyboardAvoidingView, Platform, Animated, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
@@ -46,6 +46,17 @@ export default function WeekViewScreen({ navigation, route }) {
 
   // Background adjustment flag — must live here (before any early return) to satisfy Rules of Hooks
   const [adjustingInBackground, setAdjustingInBackground] = useState(false);
+
+  // ── Week completion celebration ────────────────────────────────────────
+  // Shown once when the user marks the LAST incomplete session of a week as
+  // complete. Totals are captured at trigger time so they reflect the week
+  // the user just finished (not whichever week they nav to afterwards).
+  const [celebration, setCelebration] = useState(null);
+  const celebrateScale = useRef(new Animated.Value(0.85)).current;
+  const celebrateOpacity = useRef(new Animated.Value(0)).current;
+  // Tracks the week we've already celebrated in this session so a user
+  // toggling a session off/on doesn't re-trigger the modal repeatedly.
+  const celebratedWeeksRef = useRef(new Set());
 
   // Compute the actual date for a given day index in the current week
   const getWeekDayInfo = (dayIdx) => {
@@ -135,6 +146,50 @@ export default function WeekViewScreen({ navigation, route }) {
     }
     await markActivityComplete(id);
     await loadPlan();
+
+    // ── Trigger week-complete celebration ─────────────────────────────
+    // We check *after* loadPlan has refreshed the plan so the completion
+    // state is accurate. Only fire when the user is marking DONE (not
+    // un-marking), and only once per week per session.
+    if (act && !act.completed && !celebratedWeeksRef.current.has(week)) {
+      // Re-read fresh plan to count incomplete — storageService is the source of truth
+      const fresh = await getPlan(planId).catch(() => null);
+      if (fresh) {
+        const freshWeekActs = getWeekActivities(fresh, week);
+        const incomplete = freshWeekActs.filter(a => !a.completed).length;
+        if (freshWeekActs.length > 0 && incomplete === 0) {
+          const totalKm = freshWeekActs.reduce((s, a) => s + (a.distanceKm || 0), 0);
+          const totalMins = freshWeekActs.reduce((s, a) => s + (a.durationMins || 0), 0);
+          const totalHrs = totalMins / 60;
+          celebratedWeeksRef.current.add(week);
+          analytics.track('week_completed', {
+            week, sessionCount: freshWeekActs.length,
+            totalKm: Math.round(totalKm), totalHrs: Math.round(totalHrs * 10) / 10,
+          });
+          setCelebration({
+            week,
+            sessionCount: freshWeekActs.length,
+            totalKm: Math.round(totalKm),
+            totalHrs: Math.round(totalHrs * 10) / 10,
+            weeksRemaining: Math.max(0, (fresh.weeks || 0) - week),
+          });
+          // Animate in
+          celebrateScale.setValue(0.85);
+          celebrateOpacity.setValue(0);
+          Animated.parallel([
+            Animated.spring(celebrateScale, { toValue: 1, tension: 60, friction: 8, useNativeDriver: true }),
+            Animated.timing(celebrateOpacity, { toValue: 1, duration: 260, useNativeDriver: true }),
+          ]).start();
+        }
+      }
+    }
+  };
+
+  const dismissCelebration = () => {
+    Animated.parallel([
+      Animated.timing(celebrateScale, { toValue: 0.9, duration: 180, useNativeDriver: true }),
+      Animated.timing(celebrateOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+    ]).start(() => setCelebration(null));
   };
 
   // Add organised ride to current week
@@ -559,9 +614,64 @@ export default function WeekViewScreen({ navigation, route }) {
             </View>
           </KeyboardAvoidingView>
         </Modal>
+
+        {/* ── Week completion celebration ──────────────────────────────
+            Full-screen overlay shown once when user completes the final
+            session of a week. Tap anywhere to dismiss. Animation is a
+            gentle scale + fade so it feels celebratory without being
+            annoying. Copy is coach-voiced based on planConfig.coachId. */}
+        {celebration && (() => {
+          const coachId = planConfig?.coachId;
+          const coachVoice = coachVoicedWeekDoneLine(coachId, celebration.weeksRemaining);
+          return (
+            <Pressable onPress={dismissCelebration} style={s.celebrateOverlay}>
+              <Animated.View style={[
+                s.celebrateCard,
+                { opacity: celebrateOpacity, transform: [{ scale: celebrateScale }] },
+              ]}>
+                <View style={s.celebrateCheckWrap}>
+                  <Text style={s.celebrateCheck}>{'\u2713'}</Text>
+                </View>
+                <Text style={s.celebrateTitle}>Week {celebration.week} — done.</Text>
+                <Text style={s.celebrateSub}>
+                  {celebration.sessionCount} sessions
+                  {celebration.totalKm > 0 ? ` \u00B7 ${celebration.totalKm} km` : ''}
+                  {celebration.totalHrs > 0 ? ` \u00B7 ${celebration.totalHrs} hrs` : ''}
+                </Text>
+                <Text style={s.celebrateCoach}>{coachVoice}</Text>
+                <Text style={s.celebrateDismiss}>Tap to dismiss</Text>
+              </Animated.View>
+            </Pressable>
+          );
+        })()}
       </SafeAreaView>
     </View>
   );
+}
+
+// ── Coach-voiced one-liner when a week is complete ────────────────────────
+// Each coach has a slightly different tone — see BRAND.md and the coach
+// personas in server/src/routes/ai.js. Keep these short and genuine.
+function coachVoicedWeekDoneLine(coachId, weeksRemaining) {
+  const suffix = weeksRemaining > 0
+    ? ` ${weeksRemaining} week${weeksRemaining === 1 ? '' : 's'} to go.`
+    : ' That was the last week — you did it.';
+  switch (coachId) {
+    case 'clara':
+      return 'Beautiful. Every week you show up, you\'re building something real.' + suffix;
+    case 'lars':
+      return 'Good week. Consistency is the fitness.' + suffix;
+    case 'sophie':
+      return 'Solid training load. Your aerobic base is growing.' + suffix;
+    case 'matteo':
+      return 'Nice rhythm this week. Ride, rest, repeat.' + suffix;
+    case 'elena':
+      return 'Strong work. This is how race weeks get won.' + suffix;
+    case 'tom':
+      return 'Cracking week, that. Nice one.' + suffix;
+    default:
+      return 'Great week. You\'re building fitness one session at a time.' + suffix;
+  }
 }
 
 function parseDateLocal(dateStr) {
@@ -795,4 +905,54 @@ const s = StyleSheet.create({
   stravaRideBody: { flex: 1, padding: 14, gap: 4 },
   stravaRideName: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
   stravaRideMeta: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: '#FC4C02' },
+
+  // ── Week completion celebration overlay ───────────────────────────────
+  celebrateOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.82)',
+    alignItems: 'center', justifyContent: 'center',
+    padding: 24,
+    zIndex: 1000,
+  },
+  celebrateCard: {
+    width: '100%', maxWidth: 360,
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    paddingVertical: 32, paddingHorizontal: 28,
+    alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.35)',
+    shadowColor: '#E8458B',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  celebrateCheckWrap: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 20,
+    shadowColor: '#E8458B', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5, shadowRadius: 12, elevation: 8,
+  },
+  celebrateCheck: {
+    fontSize: 40, color: '#FFFFFF', lineHeight: 44, fontWeight: '600',
+  },
+  celebrateTitle: {
+    fontSize: 24, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.text, textAlign: 'center', marginBottom: 8, letterSpacing: -0.3,
+  },
+  celebrateSub: {
+    fontSize: 14, fontWeight: '500', fontFamily: FF.medium,
+    color: colors.textMid, textAlign: 'center', marginBottom: 18,
+  },
+  celebrateCoach: {
+    fontSize: 15, fontWeight: '400', fontFamily: FF.regular,
+    color: colors.text, textAlign: 'center', lineHeight: 22,
+    marginBottom: 24, paddingHorizontal: 4,
+  },
+  celebrateDismiss: {
+    fontSize: 11, fontWeight: '500', fontFamily: FF.medium,
+    color: colors.textFaint, letterSpacing: 0.8, textTransform: 'uppercase',
+  },
 });
