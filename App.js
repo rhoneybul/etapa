@@ -311,6 +311,11 @@ function App() {
                 const current = navigationRef.current?.getCurrentRoute()?.name;
                 if (current && current !== prev) {
                   analytics.events.screenViewed(current);
+                  // Force-start session replay for high-value screens
+                  // (paywall, onboarding). No-op if already recording or the
+                  // screen is not in the force-record list — in which case
+                  // the dashboard baseline sample rate still applies.
+                  analytics.maybeStartRecordingForScreen(current);
                 }
                 routeNameRef.current = current;
               }}

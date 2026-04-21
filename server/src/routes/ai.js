@@ -14,6 +14,7 @@ const _fetch = typeof globalThis.fetch === 'function'
 const { supabase } = require('../lib/supabase');
 const { sendPushToUser } = require('../lib/pushService');
 const { logClaudeUsage } = require('../lib/claudeLogger');
+const { checkAndBlockIfOverCap } = require('../lib/claudeCostCap');
 const crypto = require('crypto');
 
 const getAnthropicKey = () => process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY || null;
@@ -180,6 +181,11 @@ router.post('/generate-plan', async (req, res) => {
 
 // ── Edit plan endpoint ─────────────────────────────────────────────────────
 router.post('/edit-plan', async (req, res) => {
+  // Daily per-user Claude cost cap — circuit breaker against runaway spend.
+  // Returns 429 if the user is over their 24h budget; client should render a
+  // friendly "limit reached" message.
+  if (await checkAndBlockIfOverCap(req, res, { feature: 'plan_edit' })) return;
+
   const apiKey = getAnthropicKey();
   if (!apiKey) {
     return res.status(503).json({ error: 'AI editing not configured. Set ANTHROPIC_API_KEY.' });
@@ -246,6 +252,8 @@ router.post('/edit-plan', async (req, res) => {
 
 // ── Edit activity endpoint (single session AI chat) ────────────────────────
 router.post('/edit-activity', async (req, res) => {
+  if (await checkAndBlockIfOverCap(req, res, { feature: 'activity_edit' })) return;
+
   const apiKey = getAnthropicKey();
   if (!apiKey) {
     return res.status(503).json({ error: 'AI not configured.' });
@@ -875,6 +883,8 @@ Rules:
 Return ONLY the JSON object, no other text.`;
 
     const systemPrompt = COACH_SYSTEM_PROMPT + coachBlock;
+    const _claudeModel = 'claude-sonnet-4-20250514';
+    const _claudeStartedAt = Date.now();
 
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -884,7 +894,7 @@ Return ONLY the JSON object, no other text.`;
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: _claudeModel,
         max_tokens: 1024,
         system: systemPrompt,
         messages: [{ role: 'user', content: prompt }],
@@ -894,10 +904,20 @@ Return ONLY the JSON object, no other text.`;
     if (!response.ok) {
       const errBody = await response.text();
       console.error('Anthropic API error:', response.status, errBody);
+      logClaudeUsage({
+        userId: req.user?.id, feature: 'assess_plan', model: _claudeModel,
+        data: {}, response, durationMs: Date.now() - _claudeStartedAt,
+        status: 'api_error', metadata: { coachId: config?.coachId, http: response.status },
+      });
       return res.status(502).json({ error: 'AI service error' });
     }
 
     const data = await response.json();
+    logClaudeUsage({
+      userId: req.user?.id, feature: 'assess_plan', model: _claudeModel,
+      data, response, durationMs: Date.now() - _claudeStartedAt,
+      metadata: { coachId: config?.coachId },
+    });
     const text = data?.content?.[0]?.text || '{}';
     const jsonMatch = text.match(/\{[\s\S]*\}/);
 
@@ -951,6 +971,9 @@ Rules:
 
 Return ONLY the JSON object, no other text.`;
 
+    const _claudeModel = 'claude-sonnet-4-20250514';
+    const _claudeStartedAt = Date.now();
+
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -959,17 +982,27 @@ Return ONLY the JSON object, no other text.`;
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: _claudeModel,
         max_tokens: 512,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
 
     if (!response.ok) {
+      logClaudeUsage({
+        userId: req.user?.id, feature: 'race_lookup', model: _claudeModel,
+        data: {}, response, durationMs: Date.now() - _claudeStartedAt,
+        status: 'api_error', metadata: { raceName, http: response.status },
+      });
       return res.status(502).json({ error: 'AI service error' });
     }
 
     const data = await response.json();
+    logClaudeUsage({
+      userId: req.user?.id, feature: 'race_lookup', model: _claudeModel,
+      data, response, durationMs: Date.now() - _claudeStartedAt,
+      metadata: { raceName },
+    });
     const text = data?.content?.[0]?.text || '{}';
     const jsonMatch = text.match(/\{[\s\S]*\}/);
 
@@ -986,9 +1019,12 @@ Return ONLY the JSON object, no other text.`;
 });
 
 // ── Topic guard — lightweight check that the message is about cycling/plan ────
-async function checkTopicGuard(apiKey, userMessage) {
+async function checkTopicGuard(apiKey, userMessage, userId = null) {
   // Short messages that are clearly conversational greetings — allow through
   if (userMessage.length < 5) return { allowed: true };
+
+  const _claudeModel = 'claude-haiku-4-5-20251001';
+  const _claudeStartedAt = Date.now();
 
   try {
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
@@ -999,7 +1035,7 @@ async function checkTopicGuard(apiKey, userMessage) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: _claudeModel,
         max_tokens: 20,
         system: `You are a topic classifier for a cycling coaching app. The user is talking to their AI cycling coach.
 
@@ -1028,11 +1064,21 @@ Answer "no" if the message is:
     });
 
     if (!response.ok) {
+      logClaudeUsage({
+        userId, feature: 'content_guard', model: _claudeModel,
+        data: {}, response, durationMs: Date.now() - _claudeStartedAt,
+        status: 'api_error', metadata: { messageLength: userMessage.length, http: response.status },
+      });
       // If guard fails, allow through rather than blocking legitimate messages
       return { allowed: true };
     }
 
     const data = await response.json();
+    logClaudeUsage({
+      userId, feature: 'content_guard', model: _claudeModel,
+      data, response, durationMs: Date.now() - _claudeStartedAt,
+      metadata: { messageLength: userMessage.length },
+    });
     const answer = (data?.content?.[0]?.text || '').trim().toLowerCase();
     return { allowed: answer.startsWith('yes') };
   } catch {
@@ -1043,6 +1089,10 @@ Answer "no" if the message is:
 
 // ── Coach chat endpoint (multi-turn conversation) ────────────────────────
 router.post('/coach-chat', async (req, res) => {
+  // Highest-volume endpoint — most likely to run up a bill, most important to cap.
+  // A chatty user on a slow afternoon can easily hit the limit.
+  if (await checkAndBlockIfOverCap(req, res, { feature: 'coach_chat' })) return;
+
   const apiKey = getAnthropicKey();
   if (!apiKey) {
     return res.status(503).json({ error: 'AI not configured. Set ANTHROPIC_API_KEY.' });
@@ -1057,7 +1107,7 @@ router.post('/coach-chat', async (req, res) => {
     // ── Topic guard: check the latest user message ──────────────────────
     const latestUserMsg = [...messages].reverse().find(m => m.role === 'user');
     if (latestUserMsg) {
-      const guard = await checkTopicGuard(apiKey, latestUserMsg.content);
+      const guard = await checkTopicGuard(apiKey, latestUserMsg.content, req.user?.id);
       if (!guard.allowed) {
         return res.json({
           reply: "Sorry, I can only help with questions about your training plan, cycling, nutrition, gear, and fitness. If you think this was a mistake, let us know and we'll look into it.",

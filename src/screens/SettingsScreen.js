@@ -44,7 +44,10 @@ export default function SettingsScreen({ navigation }) {
   const goPaywall = useCallback((params) => {
     if (navigatingRef.current) return;
     navigatingRef.current = true;
-    navigation.navigate('Paywall', params);
+    // Default the source to 'settings' so paywall funnels can segment entry
+    // point — individual call sites may override by passing a more specific
+    // `source` in params.
+    navigation.navigate('Paywall', { source: 'settings', ...params });
     setTimeout(() => { navigatingRef.current = false; }, 1000);
   }, [navigation]);
   const [nameInput, setNameInput] = useState('');

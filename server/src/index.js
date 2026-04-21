@@ -254,9 +254,15 @@ function rateLimit(req, res, next) {
 // ── Shared helper: call Claude with a cycling-coach system prompt ────────────
 // Used by the public coach-ask + review-plan endpoints. Centralised so the
 // voice, safety rails, and marketing tail stay consistent.
-async function callCyclingCoach({ systemPrompt, userPrompt, maxTokens = 1024 }) {
+// `feature` is passed through to claude_usage_log so we can break down cost
+// per public endpoint (these are anonymous calls — userId will be null).
+async function callCyclingCoach({ systemPrompt, userPrompt, maxTokens = 1024, feature = 'public_coach' }) {
+  const { logClaudeUsage } = require('./lib/claudeLogger');
   const apiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('AI not configured on the server');
+
+  const model = 'claude-haiku-4-5-20251001';
+  const startedAt = Date.now();
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -266,7 +272,7 @@ async function callCyclingCoach({ systemPrompt, userPrompt, maxTokens = 1024 }) 
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
+      model,
       max_tokens: maxTokens,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
@@ -274,6 +280,11 @@ async function callCyclingCoach({ systemPrompt, userPrompt, maxTokens = 1024 }) 
   });
 
   if (!res.ok) {
+    logClaudeUsage({
+      userId: null, feature, model,
+      data: {}, response: res, durationMs: Date.now() - startedAt,
+      status: 'api_error', metadata: { public: true, http: res.status },
+    });
     const err = await res.text().catch(() => '');
     const e = new Error(`AI service error (${res.status}): ${err}`);
     e.status = 502;
@@ -281,6 +292,11 @@ async function callCyclingCoach({ systemPrompt, userPrompt, maxTokens = 1024 }) 
   }
 
   const data = await res.json();
+  logClaudeUsage({
+    userId: null, feature, model,
+    data, response: res, durationMs: Date.now() - startedAt,
+    metadata: { public: true },
+  });
   return data?.content?.[0]?.text?.trim() || '';
 }
 
@@ -402,6 +418,7 @@ app.post('/api/public/coach-ask', rateLimit, async (req, res) => {
       systemPrompt: ETAPA_COACH_VOICE + ETAPA_MARKETING_TAIL,
       userPrompt,
       maxTokens: 1024,
+      feature: 'public_coach_ask',
     });
 
     if (!answer) {
@@ -460,6 +477,7 @@ app.post('/api/public/review-plan', rateLimit, async (req, res) => {
       systemPrompt: ETAPA_COACH_VOICE + ETAPA_MARKETING_TAIL,
       userPrompt,
       maxTokens: 1536,
+      feature: 'public_review_plan',
     });
 
     if (!critique) {
@@ -546,6 +564,10 @@ app.post('/api/public/sample-plan', rateLimit, async (req, res) => {
     'IMPORTANT: Output valid JSON only. No commentary, no markdown fences.',
   ].filter(Boolean).join('\n');
 
+  const { logClaudeUsage } = require('./lib/claudeLogger');
+  const _claudeModel = 'claude-haiku-4-5-20251001';
+  const _claudeStartedAt = Date.now();
+
   try {
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -555,7 +577,7 @@ app.post('/api/public/sample-plan', rateLimit, async (req, res) => {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: _claudeModel,
         max_tokens: 4096,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -564,10 +586,20 @@ app.post('/api/public/sample-plan', rateLimit, async (req, res) => {
     if (!aiRes.ok) {
       const errBody = await aiRes.text().catch(() => '');
       console.error('[sample-plan] Anthropic error:', aiRes.status, errBody);
+      logClaudeUsage({
+        userId: null, feature: 'public_sample_plan', model: _claudeModel,
+        data: {}, response: aiRes, durationMs: Date.now() - _claudeStartedAt,
+        status: 'api_error', metadata: { public: true, http: aiRes.status },
+      });
       return res.status(502).json({ error: 'AI service error', status: aiRes.status });
     }
 
     const data = await aiRes.json();
+    logClaudeUsage({
+      userId: null, feature: 'public_sample_plan', model: _claudeModel,
+      data, response: aiRes, durationMs: Date.now() - _claudeStartedAt,
+      metadata: { public: true },
+    });
     const text = data?.content?.[0]?.text || '';
     // Extract the first JSON object in the response (strips any stray markdown)
     const jsonMatch = text.match(/\{[\s\S]*\}/);

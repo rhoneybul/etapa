@@ -460,11 +460,11 @@ export default function PlanReadyScreen({ navigation, route }) {
                 navigatingRef.current = true;
                 try {
                   if (requirePaywall) {
-                    navigation.navigate('Paywall', { nextScreen: 'Home', defaultPlan });
+                    navigation.navigate('Paywall', { nextScreen: 'Home', defaultPlan, source: 'plan_ready_required' });
                   } else {
                     const subscribed = await isSubscribed();
                     if (!subscribed) {
-                      navigation.navigate('Paywall', { nextScreen: 'Home', defaultPlan });
+                      navigation.navigate('Paywall', { nextScreen: 'Home', defaultPlan, source: 'plan_ready_not_subscribed' });
                     } else {
                       navigation.replace('Home');
                     }

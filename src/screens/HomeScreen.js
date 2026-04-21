@@ -177,6 +177,7 @@ export default function HomeScreen({ navigation, route }) {
           navigation.replace('Paywall', {
             fromHome: true,
             nextScreen: 'Home',
+            source: 'trial_expired',
             ...(hasBeginnerPlan && { defaultPlan: 'starter' }),
           });
           return;
@@ -303,7 +304,7 @@ export default function HomeScreen({ navigation, route }) {
 
   const handleUpgrade = () => {
     setShowUpgrade(false);
-    navigation.navigate('Paywall', { nextScreen: 'Home' });
+    navigation.navigate('Paywall', { nextScreen: 'Home', source: 'home_upgrade_banner' });
   };
 
   /** Pay for a pending (locked) plan to unlock it */
@@ -751,6 +752,7 @@ export default function HomeScreen({ navigation, route }) {
                   || goals.some(gl => gl.goalType === 'beginner');
                 navigation.navigate('Paywall', {
                   nextScreen: 'Home',
+                  source: 'home_subscribe_banner',
                   ...(hasBeginnerPlan && { defaultPlan: 'starter' }),
                 });
               }}

@@ -19,6 +19,44 @@ let isInitialised = false;
 const API_KEY = process.env.EXPO_PUBLIC_POSTHOG_API_KEY || '';
 const HOST    = process.env.EXPO_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com';
 
+// ── Session replay config ─────────────────────────────────────────────────────
+// PostHog dashboard handles the baseline sample rate (currently 5% —
+// configured in Project Settings → Session Replay). This table FORCES
+// recording on specific high-value screens, overriding that baseline.
+//
+//   rate = 1.0  → always start recording when this screen is entered
+//                 (overrides the 5% dashboard sample so EVERY session on
+//                 this screen is captured)
+//   rate = 0.0  → do nothing — fall back to dashboard's 5% baseline
+//   rate = 0.5  → 50% chance to force-start on this screen (stacks with
+//                 the 5% dashboard baseline that still applies otherwise)
+//
+// Once a session is recording, it continues across screens — PostHog
+// captures the entire session, not just the specific screen that triggered
+// the recording. So these are really "screens that should guarantee the
+// session is captured" rather than "only record this screen".
+const SCREEN_REPLAY_SAMPLE_RATES = {
+  // Money / conversion screens — 100% so we never miss a paywall drop-off
+  Paywall:          1.0,
+  // Onboarding funnel — 100% so we see exactly where new users get stuck
+  GoalSetup:        1.0,
+  PlanConfig:       1.0,
+  PlanLoading:      1.0,
+  PlanReady:        1.0,
+  BeginnerProgram:  1.0,
+  // Everything else: 0.0 = leave to the dashboard 5% baseline
+  _default:         0.0,
+};
+
+function sampleRateForScreen(screenName) {
+  if (screenName in SCREEN_REPLAY_SAMPLE_RATES) return SCREEN_REPLAY_SAMPLE_RATES[screenName];
+  return SCREEN_REPLAY_SAMPLE_RATES._default;
+}
+
+// Tracks whether the current session has already started recording — avoids
+// repeatedly calling startSessionRecording() on every screen transition.
+let hasStartedRecordingThisSession = false;
+
 // ── Initialisation ────────────────────────────────────────────────────────────
 async function init() {
   if (isInitialised) return;
@@ -31,11 +69,63 @@ async function init() {
 
   try {
     const PostHog = require('posthog-react-native').PostHog;
-    posthog = new PostHog(API_KEY, { host: HOST });
-    console.log('[analytics] PostHog initialised.');
+    posthog = new PostHog(API_KEY, {
+      host: HOST,
+      // Session replay enabled at SDK level, but NOT started automatically.
+      // We control start/stop programmatically via maybeStartRecordingForScreen()
+      // so we can apply per-screen sampling rather than a flat global rate.
+      enableSessionReplay: true,
+      sessionReplayConfig: {
+        // Mask anything that could leak PII or secrets. Essential for GDPR.
+        maskAllTextInputs: true,
+        maskAllImages: false, // images are mostly cycling screenshots, safe
+        captureLog: false,    // don't capture console logs — noisy + PII risk
+        captureNetworkTelemetry: false, // requests carry auth tokens — skip
+        // Debounce so we don't record every single touch event — saves quota
+        iOSdebouncerDelayMs: 500,
+        androidDebouncerDelayMs: 500,
+      },
+    });
+    console.log('[analytics] PostHog initialised (session replay = programmatic).');
   } catch (err) {
     console.warn('[analytics] PostHog init failed:', err.message);
   }
+}
+
+// ── Session replay controls ───────────────────────────────────────────────────
+
+/**
+ * Decide whether to start recording based on the current screen's sample rate.
+ * Idempotent — once a session is already recording, this is a no-op (we don't
+ * restart per screen; PostHog sessions are continuous across screens).
+ *
+ * Called from App.js's NavigationContainer.onStateChange after each navigation.
+ */
+function maybeStartRecordingForScreen(screenName) {
+  if (!posthog) return;
+  if (hasStartedRecordingThisSession) return;
+  const rate = sampleRateForScreen(screenName);
+  if (rate <= 0) return;
+  if (Math.random() > rate) return;
+  try {
+    posthog.startSessionRecording();
+    hasStartedRecordingThisSession = true;
+    console.log(`[analytics] session replay started (screen=${screenName}, rate=${rate}).`);
+  } catch (err) {
+    console.warn('[analytics] startSessionRecording failed:', err.message);
+  }
+}
+
+/** Force-start recording regardless of sample rate. Use for manual QA or support cases. */
+function startRecording() {
+  if (!posthog) return;
+  try { posthog.startSessionRecording(); hasStartedRecordingThisSession = true; } catch {}
+}
+
+/** Stop recording the current session. */
+function stopRecording() {
+  if (!posthog) return;
+  try { posthog.stopSessionRecording(); hasStartedRecordingThisSession = false; } catch {}
 }
 
 // ── Core methods ──────────────────────────────────────────────────────────────
@@ -172,6 +262,10 @@ export const analytics = {
   reset,
   flush,
   events,
+  // Session replay controls — programmatic, overrides dashboard sample rate
+  maybeStartRecordingForScreen,
+  startRecording,
+  stopRecording,
 };
 
 export default analytics;
