@@ -1,5 +1,15 @@
 # Etapa — Claude Code Context
 
+## First-time setup
+
+Run once after cloning:
+
+```
+./scripts/install-hooks.sh
+```
+
+This enables a pre-commit hook that catches the common CI blockers (lock-file drift, accidentally staged secrets/credentials, oversized binaries). Bypass with `git commit --no-verify` only if you know what you're doing.
+
 ## What This Project Is
 
 **Etapa** is an AI-powered cycling training app (iOS + Android) built with React Native / Expo. It generates personalised cycling training plans using Claude (Anthropic) as the AI backbone, and provides an AI coach chat interface. Users connect Strava, set a goal, and get a structured plan with a conversational AI coach.

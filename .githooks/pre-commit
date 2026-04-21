@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+# Etapa pre-commit hook
+#
+# Catches the handful of issues that have repeatedly blocked CI:
+#
+#   1. package.json / package-lock.json drift (the single biggest cause of
+#      `npm ci` failures in GitHub Actions). Checks every npm project in the
+#      repo whose package.json or package-lock.json is in the staged changes.
+#
+#   2. Accidentally committed .env files or Google service-account JSONs
+#      (we already have `etapa-491811-*.json` at the repo root — don't want
+#      more of those slipping in).
+#
+#   3. Staged files over 5 MB (usually a .apk/.ipa/.mobileprovision that
+#      shouldn't be committed).
+#
+# To bypass for a legitimate emergency: `git commit --no-verify`.
+# Install: run `./scripts/install-hooks.sh` once after cloning.
+# ─────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+fail() {
+  echo -e "${RED}✖${NC} $1" >&2
+}
+ok() {
+  echo -e "${GREEN}✓${NC} $1"
+}
+warn() {
+  echo -e "${YELLOW}⚠${NC} $1" >&2
+}
+
+# List of staged files (added / copied / modified)
+staged=$(git diff --cached --name-only --diff-filter=ACM || true)
+
+if [ -z "$staged" ]; then
+  exit 0
+fi
+
+# ── 1. Lock-file sync check ─────────────────────────────────────────────────
+# For every directory containing a staged package.json or package-lock.json,
+# confirm `npm ci` would pass. This is the exact check CI runs.
+
+pkg_dirs=$(echo "$staged" \
+  | grep -E '(^|/)package(-lock)?\.json$' \
+  | xargs -I {} dirname {} \
+  | sort -u || true)
+
+if [ -n "$pkg_dirs" ]; then
+  for dir in $pkg_dirs; do
+    dir=${dir:-.}
+
+    if [ ! -f "$dir/package.json" ] || [ ! -f "$dir/package-lock.json" ]; then
+      continue
+    fi
+
+    echo "📦 Verifying $dir/ lock file is in sync…"
+
+    # `npm ci --dry-run` exits non-zero if lock file is out of sync with
+    # package.json. Silent unless it errors, then we surface the tail of output.
+    if ! out=$(cd "$dir" && npm ci --dry-run --no-audit --no-fund --silent 2>&1); then
+      echo ""
+      fail "$dir/package-lock.json is out of sync with $dir/package.json"
+      echo ""
+      echo "This is the error CI will hit. Here's a sample of what's missing:"
+      echo "$out" | grep -E "^npm error Missing:" | head -5 | sed 's/^/    /'
+      echo ""
+      echo "Fix:"
+      echo "    cd $dir && npm install --package-lock-only"
+      echo "    git add $dir/package-lock.json"
+      echo ""
+      echo "(Bypass with --no-verify if you really know what you're doing.)"
+      exit 1
+    fi
+  done
+  ok "lock files in sync"
+fi
+
+# ── 2. Secret-file check ────────────────────────────────────────────────────
+# Block .env, service-account-looking JSON, and .pem/.p12 files from being
+# committed unless they're already tracked. Low-effort, high-value.
+
+secret_pattern='(^|/)(\.env(\..+)?$|.*-[0-9a-f]{6,}\.json$|.*\.pem$|.*\.p12$|.*\.mobileprovision$|.*\.keystore$)'
+
+for f in $staged; do
+  # Skip files that are already tracked — they're someone else's problem now
+  if git ls-files --error-unmatch "$f" > /dev/null 2>&1; then
+    # Actually this exits 0 for ALREADY tracked files. We want: skip if tracked
+    # on HEAD, check if newly added. Use git diff against HEAD instead.
+    if git diff --cached --diff-filter=A --name-only | grep -Fxq "$f"; then
+      :  # Newly added, fall through to pattern check
+    else
+      continue  # Previously tracked, skip
+    fi
+  fi
+
+  if echo "$f" | grep -qE "$secret_pattern"; then
+    fail "Refusing to commit possible secret file: $f"
+    echo ""
+    echo "If this is a false positive, add an entry to .gitignore or bypass with --no-verify."
+    echo "If it's a real secret (API key, service account, signing cert) — rotate it and unstage."
+    exit 1
+  fi
+done
+ok "no obvious secret files staged"
+
+# ── 3. Oversized-file check ─────────────────────────────────────────────────
+# Anything over 5MB is almost certainly a build artefact or binary that
+# should not be in Git. Threshold is generous — tweak if needed.
+
+MAX_BYTES=$((5 * 1024 * 1024))
+
+for f in $staged; do
+  if [ -f "$f" ]; then
+    size=$(wc -c < "$f" | tr -d ' ')
+    if [ "$size" -gt "$MAX_BYTES" ]; then
+      fail "$f is $(($size / 1024 / 1024))MB — probably shouldn't be committed"
+      echo "    Add to .gitignore or use Git LFS. Bypass with --no-verify if intentional."
+      exit 1
+    fi
+  fi
+done
+ok "no oversized files staged"
+
+exit 0
