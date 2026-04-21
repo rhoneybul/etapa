@@ -30,6 +30,41 @@ const { supabase } = require('./supabase');
 // Default daily cap in USD. Override per-feature or via env var.
 const DEFAULT_DAILY_CAP_USD = parseFloat(process.env.CLAUDE_DAILY_CAP_USD || '2.00');
 
+// ── Whitelist — users who bypass the cap entirely ──────────────────────────
+// Used for test accounts running the dashboard regression suite, and for the
+// founder's own account during development. Comma-separated list, each entry
+// matched against both the user's id (Supabase UUID) and email (case-insensitive).
+//
+// Set on the server env:
+//   CLAUDE_COST_CAP_WHITELIST=robert.honeybul@sylvera.io,test@etapa.app
+//   CLAUDE_COST_CAP_WHITELIST=8b2a...-UUID,another@email.com
+//
+// To also give whitelisted users a higher (not unlimited) cap, set
+//   CLAUDE_COST_CAP_WHITELIST_USD=50
+// Leave unset for an unlimited bypass.
+const WHITELIST_RAW = process.env.CLAUDE_COST_CAP_WHITELIST || '';
+const WHITELIST_SET = new Set(
+  WHITELIST_RAW
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean)
+);
+const WHITELIST_CAP_USD = process.env.CLAUDE_COST_CAP_WHITELIST_USD
+  ? parseFloat(process.env.CLAUDE_COST_CAP_WHITELIST_USD)
+  : null; // null → truly unlimited
+
+/**
+ * Returns true if the request's user is on the cost-cap whitelist. Matches
+ * on either their Supabase user id OR their email (case-insensitive).
+ */
+function isUserWhitelisted(req) {
+  if (WHITELIST_SET.size === 0) return false;
+  const u = req?.user;
+  if (!u) return false;
+  const candidates = [u.id, u.email].filter(Boolean).map(v => String(v).toLowerCase());
+  return candidates.some(v => WHITELIST_SET.has(v));
+}
+
 // In-memory cache of recent cost lookups to avoid pounding Supabase from
 // the coach-chat endpoint. Keyed by userId. 60s TTL.
 const costCache = new Map();
@@ -109,16 +144,29 @@ async function checkAndBlockIfOverCap(req, res, { feature, capUsd = DEFAULT_DAIL
   // No user id → no cap check (public/anon endpoints shouldn't call this).
   if (!userId) return false;
 
+  // Whitelisted users either get a raised cap or an unlimited bypass.
+  const whitelisted = isUserWhitelisted(req);
+  if (whitelisted && WHITELIST_CAP_USD === null) {
+    // Unlimited — log once per cache TTL so we have some audit trail but
+    // don't spam the log during high-frequency endpoints like coach-chat.
+    if (cacheGet(userId) === null) {
+      console.info(`[claudeCostCap] user=${userId} email=${req.user?.email || '?'} WHITELISTED (unlimited) feature=${feature}`);
+      cacheSet(userId, 0);
+    }
+    return false;
+  }
+  const effectiveCap = whitelisted ? WHITELIST_CAP_USD : capUsd;
+
   const spent = await getUserCost24h(userId);
-  if (spent < capUsd) return false;
+  if (spent < effectiveCap) return false;
 
   console.warn(
-    `[claudeCostCap] user=${userId} feature=${feature} spent=$${spent.toFixed(4)} cap=$${capUsd.toFixed(2)} — BLOCKED`
+    `[claudeCostCap] user=${userId} feature=${feature} spent=$${spent.toFixed(4)} cap=$${effectiveCap.toFixed(2)}${whitelisted ? ' (whitelist-raised)' : ''} — BLOCKED`
   );
   res.status(429).json({
     error: 'Daily AI limit reached',
     detail: 'You\'ve hit your daily AI usage limit. It resets in 24 hours.',
-    cap_usd: capUsd,
+    cap_usd: effectiveCap,
     spent_usd: Math.round(spent * 100) / 100,
     feature,
   });
@@ -129,5 +177,6 @@ module.exports = {
   checkAndBlockIfOverCap,
   getUserCost24h,
   invalidateCache,
+  isUserWhitelisted,
   DEFAULT_DAILY_CAP_USD,
 };
