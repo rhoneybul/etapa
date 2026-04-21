@@ -11,6 +11,8 @@ interface Signup {
   referrer: string | null;
   userAgent: string | null;
   createdAt: string;
+  unsubscribedAt: string | null;
+  unsubscribeSource: string | null;
 }
 
 function formatDate(ts: string) {
@@ -63,23 +65,34 @@ export default function SignupsPage() {
     if (res.ok) fetchSignups();
   };
 
+  // Safer-by-default: "Copy emails" copies ONLY subscribed (opt-in) emails
+  // so you can paste into a sender without accidentally hitting people who
+  // unsubscribed. Unsubscribed emails are still visible in the table and
+  // still exported in the CSV with a column marking their status.
   const handleCopyAll = async () => {
-    const text = filtered.map((s) => s.email).join("\n");
+    const subscribed = filtered.filter((s) => !s.unsubscribedAt);
+    const excluded = filtered.length - subscribed.length;
+    const text = subscribed.map((s) => s.email).join("\n");
     try {
       await navigator.clipboard.writeText(text);
-      alert(`Copied ${filtered.length} email${filtered.length === 1 ? "" : "s"} to clipboard`);
+      alert(
+        `Copied ${subscribed.length} email${subscribed.length === 1 ? "" : "s"} to clipboard` +
+        (excluded > 0 ? ` (${excluded} unsubscribed address${excluded === 1 ? "" : "es"} excluded)` : "")
+      );
     } catch {
       alert("Copy failed");
     }
   };
 
   const handleExportCsv = () => {
-    const header = ["email", "source", "referrer", "created_at"];
+    const header = ["email", "source", "referrer", "created_at", "unsubscribed_at", "unsubscribe_source"];
     const rows = filtered.map((s) => [
       s.email,
       s.source || "",
       s.referrer || "",
       s.createdAt,
+      s.unsubscribedAt || "",
+      s.unsubscribeSource || "",
     ]);
     const csv = [header, ...rows]
       .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
@@ -193,11 +206,24 @@ export default function SignupsPage() {
               </tr>
             ) : (
               filtered.map((s) => (
-                <tr key={s.id} className="hover:bg-etapa-surfaceLight">
+                <tr
+                  key={s.id}
+                  className={`hover:bg-etapa-surfaceLight ${s.unsubscribedAt ? "opacity-60" : ""}`}
+                >
                   <td className="px-4 py-3 font-medium text-white">
-                    <a href={`mailto:${s.email}`} className="hover:text-etapa-primary">
-                      {s.email}
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <a href={`mailto:${s.email}`} className="hover:text-etapa-primary">
+                        {s.email}
+                      </a>
+                      {s.unsubscribedAt && (
+                        <span
+                          title={`Unsubscribed ${formatDate(s.unsubscribedAt)}${s.unsubscribeSource ? " via " + s.unsubscribeSource : ""}`}
+                          className="text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 whitespace-nowrap"
+                        >
+                          Unsubscribed
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-etapa-textMid">
                     {s.source ? (
@@ -234,10 +260,20 @@ export default function SignupsPage() {
           </div>
         ) : (
           filtered.map((s) => (
-            <div key={s.id} className="bg-etapa-surface rounded-xl border border-etapa-border p-4">
+            <div
+              key={s.id}
+              className={`bg-etapa-surface rounded-xl border border-etapa-border p-4 ${s.unsubscribedAt ? "opacity-60" : ""}`}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium text-white text-sm truncate">{s.email}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-white text-sm truncate">{s.email}</p>
+                    {s.unsubscribedAt && (
+                      <span className="text-[9px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 shrink-0">
+                        Unsub
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-etapa-textMuted mt-1">
                     {formatDate(s.createdAt)}
                     {s.source ? ` · ${s.source}` : ""}

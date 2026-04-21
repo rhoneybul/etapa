@@ -1167,21 +1167,38 @@ router.get('/demo-stats', async (req, res, next) => {
 });
 
 // ── GET /api/admin/signups — pre-launch interest signups ────────────────────
+// Also annotates each row with its current marketing opt-out status so we can
+// exclude unsubscribed emails from any future marketing send.
 router.get('/signups', async (req, res, next) => {
   try {
-    const { data, error } = await supabase
-      .from('interest_signups')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    res.json((data || []).map(row => ({
-      id: row.id,
-      email: row.email,
-      source: row.source,
-      referrer: row.referrer,
-      userAgent: row.user_agent,
-      createdAt: row.created_at,
-    })));
+    const [signupsRes, unsubsRes] = await Promise.all([
+      supabase.from('interest_signups').select('*').order('created_at', { ascending: false }),
+      supabase.from('email_unsubscribes').select('email, unsubscribed_at, source'),
+    ]);
+    if (signupsRes.error) throw signupsRes.error;
+    if (unsubsRes.error && unsubsRes.error.code !== 'PGRST116') {
+      console.warn('[admin/signups] unsubscribes lookup failed:', unsubsRes.error.message);
+    }
+
+    // Build a map so per-row lookup is O(1).
+    const unsubByEmail = new Map();
+    for (const u of (unsubsRes.data || [])) {
+      unsubByEmail.set(String(u.email).toLowerCase(), u);
+    }
+
+    res.json((signupsRes.data || []).map(row => {
+      const unsub = unsubByEmail.get(String(row.email).toLowerCase()) || null;
+      return {
+        id: row.id,
+        email: row.email,
+        source: row.source,
+        referrer: row.referrer,
+        userAgent: row.user_agent,
+        createdAt: row.created_at,
+        unsubscribedAt: unsub?.unsubscribed_at || null,
+        unsubscribeSource: unsub?.source || null,
+      };
+    }));
   } catch (err) { next(err); }
 });
 

@@ -25,6 +25,7 @@ const supportRouter       = require('./routes/support');
 const notificationsRouter = require('./routes/notifications');
 const preferencesRouter   = require('./routes/preferences');
 const appConfigRouter     = require('./routes/appConfig');
+const unsubscribeRouter   = require('./routes/unsubscribe');
 const coachCheckinRouter  = require('./routes/coachCheckin');
 const subscriptionRouter  = require('./routes/subscription');
 const { revenueCatWebhookHandler } = require('./routes/revenueCatWebhook');
@@ -650,6 +651,7 @@ app.use('/api/support', authMiddleware, supportRouter);
 app.use('/api/notifications', authMiddleware, notificationsRouter);
 app.use('/api/preferences', authMiddleware, preferencesRouter);
 app.use('/api/app-config', appConfigRouter); // no auth — app checks before login
+app.use('/api/public', unsubscribeRouter); // no auth — unsubscribe must work from email link
 app.use('/api/coach-checkin', coachCheckinRouter); // auth via CRON_SECRET or ADMIN_API_KEY
 app.use('/api/admin', adminRouter); // admin router has its own auth (API key or Supabase JWT)
 app.use('/api/coupons', authMiddleware, couponsRouter);

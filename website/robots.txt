@@ -6,5 +6,7 @@ Allow: /
 Disallow: /testing-guide
 Disallow: /testing-guide.html
 Disallow: /testing-guide-assets/
+Disallow: /unsubscribe
+Disallow: /unsubscribe.html
 
 Sitemap: https://getetapa.com/sitemap.xml

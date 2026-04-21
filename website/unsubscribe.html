@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unsubscribe — Etapa</title>
+  <meta name="description" content="Unsubscribe from Etapa marketing emails.">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="apple-touch-icon" href="icon-72.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg:            #000;
+      --surface:       #111113;
+      --border:        #1a1a1a;
+      --border-strong: #222226;
+      --fg:            #fff;
+      --fg-2:          #A0A0A8;
+      --fg-3:          #606068;
+      --accent:        #E8458B;
+      --accent-hover:  #F472B6;
+      --good:          #22C55E;
+      --warn:          #EF4444;
+    }
+    body {
+      font-family: 'Poppins', -apple-system, sans-serif;
+      background: var(--bg); color: var(--fg);
+      font-weight: 300;
+      min-height: 100vh;
+      display: grid; place-items: center;
+      padding: 24px;
+    }
+
+    .page { width: 100%; max-width: 520px; }
+
+    .brand {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px; margin-bottom: 40px;
+    }
+    .brand img { width: 32px; height: 32px; border-radius: 8px; }
+    .brand-name {
+      font-size: 12px; font-weight: 600; color: var(--fg);
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 40px 32px;
+      text-align: center;
+    }
+
+    .state-icon {
+      width: 56px; height: 56px; border-radius: 50%;
+      display: grid; place-items: center;
+      margin: 0 auto 20px;
+      font-size: 24px;
+    }
+    .state-icon.success { background: rgba(232,69,139,0.14); color: var(--accent); }
+    .state-icon.info    { background: rgba(160,160,168,0.10); color: var(--fg-2); }
+    .state-icon.error   { background: rgba(239,68,68,0.14);   color: var(--warn); }
+
+    h1 {
+      font-size: 28px; font-weight: 600; letter-spacing: -0.02em;
+      line-height: 1.15; margin-bottom: 12px;
+    }
+    .lede {
+      font-size: 16px; line-height: 1.55; color: var(--fg-2);
+      margin-bottom: 24px;
+    }
+    .email-pill {
+      display: inline-block;
+      background: #0a0a0a; border: 1px solid var(--border-strong);
+      border-radius: 100px;
+      padding: 6px 14px;
+      font-size: 13px; color: var(--fg);
+      font-variant-numeric: tabular-nums;
+      margin-bottom: 24px;
+      max-width: 100%;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .actions {
+      display: flex; flex-direction: column; gap: 10px;
+      margin-top: 16px;
+    }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 14px 22px;
+      border-radius: 100px;
+      font-family: inherit;
+      font-size: 14px; font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 200ms cubic-bezier(0.22, 1, 0.36, 1);
+      text-decoration: none;
+      gap: 8px;
+    }
+    .btn.primary { background: var(--accent); color: #fff; }
+    .btn.primary:hover { background: var(--accent-hover); }
+    .btn.ghost { background: transparent; color: var(--fg); border-color: var(--border-strong); }
+    .btn.ghost:hover { border-color: rgba(232,69,139,0.32); color: var(--accent); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .hint {
+      margin-top: 24px;
+      font-size: 13px; color: var(--fg-3);
+      line-height: 1.5;
+    }
+    .hint a { color: var(--accent); text-decoration: none; }
+    .hint a:hover { color: var(--accent-hover); }
+
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.25);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 520px) {
+      .card { padding: 32px 24px; }
+      h1 { font-size: 24px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+  <div class="brand">
+    <img src="/icon-72.png" alt="Etapa" />
+    <span class="brand-name">Etapa</span>
+  </div>
+
+  <!-- ───────── Loading state ───────── -->
+  <div id="state-loading" class="card">
+    <div class="state-icon info"><span class="spinner"></span></div>
+    <h1>Checking your preferences…</h1>
+    <p class="lede">One moment.</p>
+  </div>
+
+  <!-- ───────── Success (just unsubscribed) ───────── -->
+  <div id="state-unsubscribed" class="card hidden">
+    <div class="state-icon success">&check;</div>
+    <h1>You&rsquo;re unsubscribed</h1>
+    <p class="lede">
+      We won&rsquo;t send you any more marketing emails. You&rsquo;ll still get essential account-related messages if you have an Etapa account (receipts, security alerts, things like that).
+    </p>
+    <span class="email-pill" id="email-pill-unsub"></span>
+    <div class="actions">
+      <button class="btn ghost" id="btn-resubscribe">Changed your mind? Re-subscribe</button>
+    </div>
+    <p class="hint">
+      Mistake, or unsubscribed the wrong address? Email
+      <a href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a> and we&rsquo;ll sort it.
+    </p>
+  </div>
+
+  <!-- ───────── Already unsubscribed (came back to page) ───────── -->
+  <div id="state-already" class="card hidden">
+    <div class="state-icon info">i</div>
+    <h1>You&rsquo;re already unsubscribed</h1>
+    <p class="lede">
+      This email is already opted out of Etapa marketing. Nothing more to do.
+    </p>
+    <span class="email-pill" id="email-pill-already"></span>
+    <div class="actions">
+      <button class="btn ghost" id="btn-resubscribe-2">Re-subscribe instead</button>
+    </div>
+  </div>
+
+  <!-- ───────── Re-subscribed ───────── -->
+  <div id="state-resubscribed" class="card hidden">
+    <div class="state-icon success">&check;</div>
+    <h1>Welcome back.</h1>
+    <p class="lede">
+      You&rsquo;ll hear from us about launches, updates, and the occasional bit of cycling news. Nothing spammy.
+    </p>
+    <span class="email-pill" id="email-pill-resub"></span>
+    <div class="actions">
+      <a class="btn ghost" href="/">Back to getetapa.com</a>
+    </div>
+  </div>
+
+  <!-- ───────── Invalid / missing token ───────── -->
+  <div id="state-invalid" class="card hidden">
+    <div class="state-icon error">!</div>
+    <h1>Link not valid</h1>
+    <p class="lede">
+      This unsubscribe link is missing or was mangled by your email client. No problem &mdash; email us and we&rsquo;ll remove you manually.
+    </p>
+    <div class="actions">
+      <a class="btn primary" href="mailto:helloetapa@gmail.com?subject=Unsubscribe%20me">
+        Email helloetapa@gmail.com
+      </a>
+    </div>
+  </div>
+
+  <!-- ───────── Generic error ───────── -->
+  <div id="state-error" class="card hidden">
+    <div class="state-icon error">!</div>
+    <h1>Something went wrong</h1>
+    <p class="lede">
+      We couldn&rsquo;t process that request. Please try again in a moment &mdash; or email us and we&rsquo;ll handle it by hand.
+    </p>
+    <div class="actions">
+      <button class="btn primary" id="btn-retry">Try again</button>
+      <a class="btn ghost" href="mailto:helloetapa@gmail.com?subject=Unsubscribe%20me">
+        Email us instead
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    // Configure API base at build-time / hardcoded for production; falls back
+    // to same-origin during local dev when running against a proxy.
+    var API_BASE = 'https://etapa-production.up.railway.app';
+
+    var params = new URLSearchParams(window.location.search);
+    var token  = params.get('t');
+    var done   = params.get('done') === '1';   // redirected from server after GET unsubscribe
+
+    function show(id) {
+      ['loading','unsubscribed','already','resubscribed','invalid','error']
+        .forEach(function (s) {
+          var el = document.getElementById('state-' + s);
+          if (el) el.classList.add('hidden');
+        });
+      var target = document.getElementById('state-' + id);
+      if (target) target.classList.remove('hidden');
+    }
+
+    function setEmail(id, email) {
+      var el = document.getElementById(id);
+      if (el && email) el.textContent = email;
+    }
+
+    function fetchStatus() {
+      if (!token) { show('invalid'); return; }
+      fetch(API_BASE + '/api/public/unsubscribe-status?t=' + encodeURIComponent(token), {
+        credentials: 'omit',
+      })
+        .then(function (r) {
+          if (r.status === 400) { show('invalid'); return null; }
+          if (!r.ok) throw new Error('status ' + r.status);
+          return r.json();
+        })
+        .then(function (data) {
+          if (!data) return;
+          if (done || data.unsubscribed) {
+            setEmail('email-pill-unsub',   data.email);
+            setEmail('email-pill-already', data.email);
+            show(done ? 'unsubscribed' : 'already');
+          } else {
+            // Landed on the page but not yet unsubscribed — call POST to do it.
+            doUnsubscribe();
+          }
+        })
+        .catch(function () { show('error'); });
+    }
+
+    function doUnsubscribe() {
+      fetch(API_BASE + '/api/public/unsubscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 't=' + encodeURIComponent(token),
+        credentials: 'omit',
+      })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+        .then(function (data) {
+          setEmail('email-pill-unsub', data.email);
+          show('unsubscribed');
+        })
+        .catch(function () { show('error'); });
+    }
+
+    function doResubscribe() {
+      fetch(API_BASE + '/api/public/resubscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ t: token }),
+        credentials: 'omit',
+      })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+        .then(function (data) {
+          setEmail('email-pill-resub', data.email);
+          show('resubscribed');
+        })
+        .catch(function () { show('error'); });
+    }
+
+    // Wire buttons (both live on different states — wire all)
+    document.addEventListener('click', function (e) {
+      if (e.target.id === 'btn-resubscribe' || e.target.id === 'btn-resubscribe-2') {
+        doResubscribe();
+      } else if (e.target.id === 'btn-retry') {
+        show('loading');
+        fetchStatus();
+      }
+    });
+
+    // Boot
+    fetchStatus();
+  })();
+</script>
+
+</body>
+</html>
