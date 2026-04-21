@@ -626,14 +626,44 @@ a:hover { color: var(--accent-hover); }
   .download-bar button:hover { border-color: var(--accent-border); color: var(--accent); }
   .download-bar button svg { width: 13px; height: 13px; }
 
-  /* ───────── Responsive ───────── */
+  /* ───────── Global mobile guards ─────────
+     Prevent any single element (long URLs, code blocks) from pushing the
+     page wider than the viewport. Keep tap targets comfortable everywhere. */
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body { overflow-x: hidden; }
+  img, svg { max-width: 100%; height: auto; }
+
+  /* ───────── Tablet / small desktop ───────── */
   @media (max-width: 780px) {
-    .page { padding: 32px 20px 64px; }
-    .hero { padding: 40px 28px 32px; }
-    .hero h1 { font-size: 38px; }
-    .hero .lede { font-size: 17px; }
-    .platforms, .test-areas, .tips { grid-template-columns: 1fr; }
-    .install-hero { padding: 20px 18px; margin-top: 20px; }
+    .page { padding: 24px 16px 48px; }
+
+    /* Hero — trim padding and type size for narrower viewports */
+    .hero { padding: 28px 20px 24px; border-radius: 20px; }
+    .hero h1 { font-size: 34px; line-height: 1.1; letter-spacing: -0.02em; }
+    .hero .lede { font-size: 16px; line-height: 1.55; margin-bottom: 24px; }
+    .hero .eyebrow { gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .hero .eyebrow img { width: 24px; height: 24px; }
+    .hero .eyebrow .tag { padding: 4px 8px; font-size: 10px; }
+    .hero .meta { padding-top: 20px; gap: 12px 24px; margin-top: 24px; }
+    .hero .meta > div { flex: 1 1 calc(50% - 12px); min-width: 0; }
+    .hero .meta dd { text-align: left; font-size: 13px; }
+
+    /* Sticky top bar — keep brand + button on one line, smaller */
+    .download-bar { padding: 10px 16px; font-size: 12px; }
+    .download-bar .left { gap: 8px; }
+    .download-bar .left img { width: 16px; height: 16px; }
+    .download-bar button { padding: 7px 12px; font-size: 11.5px; }
+
+    /* Section rhythm — don't waste vertical space on mobile */
+    section { margin-bottom: 56px; }
+    .section-head { margin-bottom: 24px; padding-bottom: 16px; gap: 10px; }
+    .section-head .num { min-width: 22px; font-size: 10px; }
+    .section-head h2 { font-size: 24px; line-height: 1.2; letter-spacing: -0.02em; }
+    .section-head .aside { display: none; }
+    .section-intro { font-size: 15px; margin-bottom: 24px; }
+
+    /* Install hero — compacted */
+    .install-hero { padding: 20px 18px; margin-top: 20px; border-radius: 16px; }
     .install-hero-title { font-size: 22px; }
     .install-hero-lede { font-size: 15px; margin-bottom: 14px; }
     .install-links-grid { grid-template-columns: 1fr; gap: 10px; }
@@ -641,10 +671,78 @@ a:hover { color: var(--accent-hover); }
     .install-link-icon { width: 32px; height: 32px; }
     .install-link-icon svg { width: 18px; height: 18px; }
     .install-link-url { font-size: 12.5px; }
-    .feedback { grid-template-columns: 1fr; }
+    .install-hero-fallback { font-size: 13px; margin-top: 14px; }
+
+    /* Platform cards (install steps) */
+    .platforms, .test-areas, .tips { grid-template-columns: 1fr; gap: 14px; }
+    .platform { padding: 20px 18px; border-radius: 16px; }
+    .platform header { padding-bottom: 14px; margin-bottom: 16px; gap: 12px; }
+    .platform .os-icon { width: 34px; height: 34px; }
+    .platform .os-icon svg { width: 18px; height: 18px; }
+    .platform h3 { font-size: 19px; }
+    .platform .via { font-size: 12.5px; }
+
+    /* Steps — tighter spacing, smaller number badge */
+    ol.steps > li { padding: 14px 0 14px 44px; }
+    ol.steps > li::before { width: 28px; height: 28px; font-size: 12.5px; top: 14px; }
+    ol.steps > li:first-child::before { top: -4px; }
+    ol.steps .step-title { font-size: 15px; margin-bottom: 3px; }
+    ol.steps .step-body { font-size: 13.5px; line-height: 1.5; }
+
+    /* Common problems / issues list */
+    ul.issues > li { padding: 12px 0; }
+    ul.issues > li strong { font-size: 13.5px; }
+    ul.issues > li p { font-size: 13px; line-height: 1.5; }
+
+    /* CTA rows — stack full-width buttons on narrow screens */
+    .platform .cta-row { margin-top: 18px; padding-top: 16px; gap: 10px; }
+    .btn { padding: 12px 18px; font-size: 14px; width: 100%; justify-content: center; }
+
+    /* Callouts and channel cards */
+    .callout { padding: 16px; gap: 12px; border-radius: 14px; }
+    .callout .icon { width: 28px; height: 28px; font-size: 13px; }
+    .callout .body { font-size: 13.5px; }
+    .callout .body p { font-size: 13px; }
+
+    /* Test areas (the "what to test" cards) */
+    .area { padding: 18px; border-radius: 14px; }
+    .area h3 { font-size: 17px; }
+    .area > p, .area ul li { font-size: 13.5px; }
+
+    /* Tips */
+    .tip { padding: 18px; }
+    .tip h4 { font-size: 15px; }
+
+    /* Feedback card — stack columns, trim padding */
+    .feedback { grid-template-columns: 1fr; border-radius: 16px; }
+    .feedback-copy, .feedback-form { padding: 20px; }
     .feedback-copy { border-right: none; border-bottom: 1px solid var(--border); }
-    .section-head h2 { font-size: 28px; }
-    .download-bar { padding: 10px 20px; }
+  }
+
+  /* ───────── Small phone (iPhone SE, older Android) ───────── */
+  @media (max-width: 420px) {
+    .page { padding: 16px 12px 40px; }
+    .hero { padding: 22px 16px 20px; }
+    .hero h1 { font-size: 28px; }
+    .hero .lede { font-size: 15px; margin-bottom: 18px; }
+    .hero .meta { grid-template-columns: 1fr; gap: 10px; padding-top: 16px; }
+    .hero .meta dd { text-align: left; }
+    .download-bar { padding: 8px 12px; }
+    .download-bar .left .brand::after { content: ''; }
+    .download-bar button span { display: none; }
+    section { margin-bottom: 40px; }
+    .section-head h2 { font-size: 22px; }
+    .install-hero { padding: 16px 14px; }
+    .install-hero-title { font-size: 20px; }
+    .install-hero-lede { font-size: 14px; }
+    .install-link { padding: 10px 12px; gap: 10px; }
+    .install-link-icon { width: 28px; height: 28px; }
+    .install-link-url { font-size: 12px; }
+    .install-link-label { font-size: 10px; }
+    .platform { padding: 16px 14px; }
+    .platform h3 { font-size: 18px; }
+    ol.steps > li { padding-left: 40px; }
+    ol.steps > li::before { width: 26px; height: 26px; font-size: 12px; }
   }
 
   /* ───────── Print (Save as PDF) ───────── */
