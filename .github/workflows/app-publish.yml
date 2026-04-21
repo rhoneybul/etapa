@@ -23,6 +23,21 @@
 #   - Preflight (lint-only): expo-doctor + TypeScript check + Metro compile
 #     check. Runs on Ubuntu in ~2 min. No API tests, no Maestro E2E —
 #     those are handled separately or not at all.
+#
+# Versioning (important):
+#   Release version is derived from the highest `app-v*` tag on origin,
+#   NOT from app.json on main. We used to commit bumped app.json back to
+#   main, but something in the repo/org config silently drops those pushes
+#   (tags push fine, branch updates don't). Using tags as the source of
+#   truth sidesteps this entirely and the workflow is robust regardless
+#   of the state of app.json on main. The `Tag + GitHub Release` step at
+#   the end pushes the new tag on success.
+#
+# Build order (important):
+#   When platform=all, iOS builds/submits FIRST, Android second. This is
+#   deliberate: iOS review takes longer, testers pick up TestFlight within
+#   minutes, so iOS going into the queue first minimises total wall time
+#   to "everyone has the new build".
 # ──────────────────────────────────────────────────────────────────────────────
 name: Publish Etapa App
 
@@ -211,46 +226,67 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      # ── Resolve target version from git tags (the real source of truth) ──
+      # We used to derive the next version by bumping app.json on main, then
+      # commit the bumped file back. That commit was being silently dropped
+      # by some repo/org policy (confirmed: tags push fine, branch pushes
+      # don't), so app.json on main stayed stale and every run kept landing
+      # on the same already-submitted version.
+      #
+      # Now: fetch all release tags (`app-v*`), take the highest, and bump
+      # from there. Tags are guaranteed to reflect what's actually been
+      # shipped because the `Tag + GitHub Release` step at the end of each
+      # successful run pushes them — and those tag pushes DO work.
       - name: Resolve target version
         id: version
         run: |
+          git fetch --tags origin 2>/dev/null || true
+
+          # Highest release tag (semver sort). Falls back to app.json if no
+          # tags exist yet (first-ever run).
+          HIGHEST_TAG=$(git tag -l 'app-v*' | sed 's/^app-v//' | sort -V | tail -1)
+          APPJSON_VER=$(node -e "console.log(JSON.parse(require('fs').readFileSync('app.json','utf8')).expo.version)")
+
+          # Baseline = max(highest tag, app.json) so neither source being
+          # stale can cause a regression.
+          if [ -z "$HIGHEST_TAG" ]; then
+            BASELINE="$APPJSON_VER"
+          else
+            BASELINE=$(printf '%s\n%s\n' "$HIGHEST_TAG" "$APPJSON_VER" | sort -V | tail -1)
+          fi
+
+          echo "→ Highest release tag: ${HIGHEST_TAG:-(none)}"
+          echo "→ app.json version:    $APPJSON_VER"
+          echo "→ Baseline for bump:   $BASELINE"
+
+          # Temporarily rewrite app.json in the runner to the real baseline
+          # before bumping. This is purely ephemeral — we don't push it back.
+          if [ "$BASELINE" != "$APPJSON_VER" ]; then
+            node scripts/bump-app-version.js "$BASELINE" > /dev/null
+            echo "→ Synced app.json up to baseline $BASELINE (runner-local only)"
+          fi
+
           if [[ "${{ github.ref }}" == refs/tags/app-v* ]]; then
-            # Tag drives the version — extract + sync app.json
             V="${GITHUB_REF#refs/tags/app-v}"
-            echo "→ Syncing app.json to match tag: $V"
             NEW=$(node scripts/bump-app-version.js "$V")
           else
             NEW=$(node scripts/bump-app-version.js "${{ needs.decide.outputs.bump }}")
           fi
+
+          echo "→ Target version: $NEW"
           echo "new=$NEW" >> "$GITHUB_OUTPUT"
-          echo "→ app.json version is now $NEW"
           echo "## Version: \`$NEW\`" >> "$GITHUB_STEP_SUMMARY"
 
-      # ── Commit the version bump BEFORE building ────────────────────────────
-      # If this push fails (branch protection, token scope, etc.) we abort
-      # the whole workflow — otherwise we'd burn 30+ minutes on an EAS Build
-      # that ships a version number our repo never persisted, leading to
-      # duplicate version submissions on the next run.
-      - name: Commit version change back to main
-        if: needs.decide.outputs.dry_run != 'true'
-        run: |
-          git add app.json
-          if git diff --staged --quiet; then
-            echo "→ No version change to commit (file already matched)"
-            exit 0
-          fi
-
-          git commit -m "chore(app): sync to v${{ steps.version.outputs.new }}"
-
-          if ! git push origin HEAD:main 2>&1; then
+          # ── Collision precheck — fail fast, before burning 40 min of EAS ─
+          # If a tag for this version already exists (i.e. we've already
+          # shipped it), refuse to build. User needs to pick a bigger bump.
+          if git rev-parse "refs/tags/app-v$NEW" >/dev/null 2>&1; then
             echo ""
-            echo "::error::Failed to push version bump to main."
-            echo "::error::Most common cause: branch protection on 'main' blocks direct pushes from GITHUB_TOKEN."
-            echo "::error::Fix: Settings → Branches → Edit rule for 'main' → either (a) add github-actions[bot] to the allow-list, or (b) use a PAT with write access via \${{ secrets.PUSH_TOKEN }}."
-            echo "::error::Aborting now — if we continued, EAS would build v${{ steps.version.outputs.new }} but app.json on main would stay stale, guaranteeing a duplicate-version rejection on the next run."
+            echo "::error::Tag app-v$NEW already exists — this version has already been built and submitted."
+            echo "::error::Re-running would create a duplicate submission that Apple/Google will reject."
+            echo "::error::Fix: re-run the workflow with a bigger bump (patch → minor → major), or delete the stale tag if you're sure."
             exit 1
           fi
-          echo "→ Pushed version sync to main"
 
       - name: Setup EAS
         uses: expo/expo-github-action@v8
@@ -276,29 +312,43 @@ jobs:
           echo "- Published OTA update to **$CHANNEL** channel" >> "$GITHUB_STEP_SUMMARY"
 
       # ── Native build path ───────────────────────────────────────────────────
+      # When platform=all we run iOS first, then Android — iOS reviews take
+      # longer and testers pick up TestFlight within minutes, so getting the
+      # iOS submission in the queue first is the priority.
       - name: EAS Build
-        if: (needs.decide.outputs.release_type == 'build' || needs.decide.outputs.release_type == 'build-submit') && needs.decide.outputs.dry_run != 'true'
+        if: needs.decide.outputs.release_type == 'build' && needs.decide.outputs.dry_run != 'true'
         run: |
           PLATFORM="${{ needs.decide.outputs.platform }}"
-          eas build \
-            --profile production \
-            --platform "$PLATFORM" \
-            --non-interactive \
-            --no-wait
-          echo "- Kicked off EAS Build on **$PLATFORM**" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PLATFORM" = "all" ]; then
+            echo "→ Platform=all: kicking iOS first, then Android…"
+            eas build --profile production --platform ios --non-interactive --no-wait
+            echo "→ iOS kicked off. Now Android…"
+            eas build --profile production --platform android --non-interactive --no-wait
+            echo "- Kicked off EAS Build on **iOS** then **Android**" >> "$GITHUB_STEP_SUMMARY"
+          else
+            eas build --profile production --platform "$PLATFORM" --non-interactive --no-wait
+            echo "- Kicked off EAS Build on **$PLATFORM**" >> "$GITHUB_STEP_SUMMARY"
+          fi
           echo "- Watch it at https://expo.dev/accounts/rhoneybul/projects/etapa/builds" >> "$GITHUB_STEP_SUMMARY"
 
       # ── Submit path ────────────────────────────────────────────────────────
+      # Same iOS-first sequencing for build-submit. Waits for each platform's
+      # submission before starting the next so TestFlight is live before the
+      # Play Store build kicks off.
       - name: EAS Build + Submit (wait)
         if: needs.decide.outputs.release_type == 'build-submit' && needs.decide.outputs.dry_run != 'true'
         run: |
           PLATFORM="${{ needs.decide.outputs.platform }}"
-          eas build \
-            --profile production \
-            --platform "$PLATFORM" \
-            --non-interactive \
-            --auto-submit
-          echo "- Auto-submitted to the stores" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PLATFORM" = "all" ]; then
+            echo "→ Platform=all: building + submitting iOS first, then Android…"
+            eas build --profile production --platform ios --non-interactive --auto-submit
+            echo "→ iOS submitted. Starting Android…"
+            eas build --profile production --platform android --non-interactive --auto-submit
+            echo "- Auto-submitted **iOS** then **Android** to the stores" >> "$GITHUB_STEP_SUMMARY"
+          else
+            eas build --profile production --platform "$PLATFORM" --non-interactive --auto-submit
+            echo "- Auto-submitted to the store" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       # ── Tag + Release (version commit already happened pre-build) ──────────
       - name: Tag + GitHub Release
