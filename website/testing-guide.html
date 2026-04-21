@@ -606,6 +606,26 @@ a:hover { color: var(--accent-hover); }
         <dd class="accent"><a class="inline" href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a></dd>
       </div>
     </dl>
+
+    <!-- ── Sandbox-payments reassurance ──────────────────────────────────
+         Unmissable notice that the beta build uses sandbox purchases. Goes
+         above everything else so nobody worries about being charged when
+         they tap through the paywall during testing. -->
+    <div class="callout" role="note" style="margin-top: 32px;">
+      <div class="icon" aria-hidden="true">&pound;</div>
+      <div class="body">
+        <strong>No real payments. This is a sandbox build.</strong>
+        <p>
+          The beta app runs on Apple&rsquo;s TestFlight &amp; Google&rsquo;s internal-testing
+          track, which means every purchase &mdash; Monthly, Annual, Lifetime, or Starter &mdash;
+          goes through the store&rsquo;s <em>sandbox</em> environment. No card is charged, no money
+          moves. Feel free to tap the paywall, pick a tier, and complete the purchase flow &mdash;
+          it&rsquo;s exactly how we need you to test it. If Apple or Google asks you to sign in with
+          a &ldquo;sandbox tester&rdquo; account, that&rsquo;s normal &mdash; just use your regular
+          Apple ID or Google account and the store will handle the rest.
+        </p>
+      </div>
+    </div>
   </header>
 
   <!-- ═════════ 01 · INSTALL ═════════ -->
@@ -794,6 +814,21 @@ a:hover { color: var(--accent-hover); }
           <li>Did your ride show up, with correct distance &amp; time?</li>
           <li>Any rides missing or duplicated?</li>
         </ul>
+      </article>
+
+      <article class="area">
+        <span class="tag">Paywall</span>
+        <h3>Plans &amp; purchase flow</h3>
+        <p>Please <em>do</em> try buying a plan &mdash; the sandbox makes it free, but we need eyes on the whole flow.</p>
+        <ul>
+          <li>Is the pricing clear at a glance? Which tier felt best value?</li>
+          <li>Did the Apple / Google purchase sheet work end-to-end?</li>
+          <li>Anything about the page that made you want to close it?</li>
+          <li>Once &ldquo;purchased&rdquo;, did the app unlock correctly?</li>
+        </ul>
+        <p style="color: var(--fg-2); font-size: 13px; margin-top: 6px;">
+          Reminder: payments are sandbox &mdash; no real money moves.
+        </p>
       </article>
 
       <article class="area">
