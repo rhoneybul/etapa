@@ -226,6 +226,32 @@ jobs:
           echo "→ app.json version is now $NEW"
           echo "## Version: \`$NEW\`" >> "$GITHUB_STEP_SUMMARY"
 
+      # ── Commit the version bump BEFORE building ────────────────────────────
+      # If this push fails (branch protection, token scope, etc.) we abort
+      # the whole workflow — otherwise we'd burn 30+ minutes on an EAS Build
+      # that ships a version number our repo never persisted, leading to
+      # duplicate version submissions on the next run.
+      - name: Commit version change back to main
+        if: needs.decide.outputs.dry_run != 'true'
+        run: |
+          git add app.json
+          if git diff --staged --quiet; then
+            echo "→ No version change to commit (file already matched)"
+            exit 0
+          fi
+
+          git commit -m "chore(app): sync to v${{ steps.version.outputs.new }}"
+
+          if ! git push origin HEAD:main 2>&1; then
+            echo ""
+            echo "::error::Failed to push version bump to main."
+            echo "::error::Most common cause: branch protection on 'main' blocks direct pushes from GITHUB_TOKEN."
+            echo "::error::Fix: Settings → Branches → Edit rule for 'main' → either (a) add github-actions[bot] to the allow-list, or (b) use a PAT with write access via \${{ secrets.PUSH_TOKEN }}."
+            echo "::error::Aborting now — if we continued, EAS would build v${{ steps.version.outputs.new }} but app.json on main would stay stale, guaranteeing a duplicate-version rejection on the next run."
+            exit 1
+          fi
+          echo "→ Pushed version sync to main"
+
       - name: Setup EAS
         uses: expo/expo-github-action@v8
         with:
@@ -274,19 +300,7 @@ jobs:
             --auto-submit
           echo "- Auto-submitted to the stores" >> "$GITHUB_STEP_SUMMARY"
 
-      # ── Commit version bump + tag + release ────────────────────────────────
-      - name: Commit version change back to main
-        if: needs.decide.outputs.dry_run != 'true'
-        run: |
-          git add app.json
-          if git diff --staged --quiet; then
-            echo "→ No version change to commit (file already matched)"
-          else
-            git commit -m "chore(app): sync to v${{ steps.version.outputs.new }}"
-            git push origin HEAD:main
-            echo "→ Pushed version sync to main"
-          fi
-
+      # ── Tag + Release (version commit already happened pre-build) ──────────
       - name: Tag + GitHub Release
         if: needs.decide.outputs.dry_run != 'true'
         env:
