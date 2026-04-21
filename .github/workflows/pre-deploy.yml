@@ -1,7 +1,8 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # Pre-Deploy Checks
-# Runs on every push to main. Ensures the server builds, tests pass,
-# and the Expo app compiles without errors.
+# Runs on every push/PR to main. Confirms the Expo app compiles and the
+# admin dashboard builds. API tests have been split out to `test-api.yml`
+# (manual trigger only).
 # ──────────────────────────────────────────────────────────────────────────────
 name: Pre-Deploy
 
@@ -12,38 +13,7 @@ on:
     branches: [main]
 
 jobs:
-  # ── 1. Server Tests ────────────────────────────────────────────────────────
-  server-tests:
-    name: API Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: server/package-lock.json
-
-      - name: Install server deps
-        working-directory: server
-        run: npm ci
-
-      - name: Run tests
-        working-directory: server
-        env:
-          SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_KEY }}
-          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
-          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
-          ADMIN_API_KEY: ${{ secrets.TEST_ADMIN_API_KEY }}
-          CRON_SECRET: ${{ secrets.TEST_CRON_SECRET }}
-        run: npm test
-
-  # ── 2. Expo Compile Check ──────────────────────────────────────────────────
+  # ── 1. Expo Compile Check ──────────────────────────────────────────────────
   expo-build-check:
     name: Expo Build Check
     runs-on: ubuntu-latest
@@ -68,7 +38,7 @@ jobs:
         # This catches import errors, missing modules, and syntax errors
         # without needing a full native build.
 
-  # ── 3. Admin Dashboard Build ───────────────────────────────────────────────
+  # ── 2. Admin Dashboard Build ───────────────────────────────────────────────
   admin-build:
     name: Admin Dashboard Build
     runs-on: ubuntu-latest

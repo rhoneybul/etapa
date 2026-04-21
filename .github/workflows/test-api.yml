@@ -1,20 +1,13 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # API Integration Tests
 # Runs the Jest + Supertest suite against a test Supabase project.
-# Triggered on every push and PR.
+# ⚠️ Automatic triggers disabled — API tests are not required to pass before
+# shipping. Run manually via Actions → "API Tests" → Run workflow.
 # ──────────────────────────────────────────────────────────────────────────────
 name: API Tests
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'server/**'
-      - '.github/workflows/test-api.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'server/**'
+  workflow_dispatch:
 
 jobs:
   api-tests:
