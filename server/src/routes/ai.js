@@ -172,6 +172,42 @@ router.post('/generate-plan', async (req, res) => {
     }
 
     const activities = JSON.parse(jsonMatch[0]);
+
+    // ── Sanity-check session count against what was requested ───────────────
+    // Doesn't fail the request (Claude occasionally drops 1 in a deload week)
+    // but flags cases where it's ignoring the session distribution badly — the
+    // most common cause of "I asked for 3 rides, I got 1" bug reports.
+    try {
+      const requestedPerWeek = Object.values(config.sessionCounts || {}).reduce((s, v) => s + v, 0)
+        || (config.daysPerWeek || 0);
+      if (requestedPerWeek > 0) {
+        const weeksInPlan = config.weeks || 8;
+        const countsByWeek = {};
+        for (const a of activities) {
+          if (typeof a?.week === 'number' && a.week >= 1 && a.week <= weeksInPlan) {
+            countsByWeek[a.week] = (countsByWeek[a.week] || 0) + 1;
+          }
+        }
+        const shortWeeks = [];
+        for (let w = 1; w <= weeksInPlan; w++) {
+          const got = countsByWeek[w] || 0;
+          // Allow 1 session of slack for deload / taper weeks.
+          if (got < requestedPerWeek - 1) shortWeeks.push({ week: w, got, expected: requestedPerWeek });
+        }
+        if (shortWeeks.length > 0) {
+          console.warn(
+            `[generate-plan] Claude returned fewer sessions than requested.`,
+            `userId=${req.user?.id} expected=${requestedPerWeek}/wk`,
+            `shortWeeks=${JSON.stringify(shortWeeks.slice(0, 5))}`,
+            `totalActivities=${activities.length} weeks=${weeksInPlan}`
+          );
+        }
+      }
+    } catch (checkErr) {
+      // Never let the sanity check itself break generation.
+      console.warn('[generate-plan] session-count check errored:', checkErr.message);
+    }
+
     res.json({ activities });
   } catch (err) {
     console.error('AI plan generation error:', err);
@@ -569,16 +605,26 @@ ${goal.targetDate ? `- Event/target date: ${goal.targetDate}` : ''}
 
 ## Plan structure
 - Total weeks: ${weeks}
-- Training days per week: ${config.daysPerWeek || 3}
 - Available days: ${availableDayNames.map((name, i) => {
     const idx = dayNames.indexOf(name);
     return idx >= 0 ? `${name} (dayOfWeek=${idx})` : name;
   }).join(', ')} (the athlete can ONLY train on these days)
 - Day number mapping: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6
 - IMPORTANT: dayOfWeek values MUST exactly match the available days listed above. Do NOT use any other dayOfWeek values.
-- Session distribution: ${Object.entries(sessionCounts).map(([k, v]) => `${v}x ${k}`).join(', ')}
+
+### Session count — read this carefully, it is the most common source of errors
+
+The athlete's SELECTED session distribution is:
+${Object.entries(sessionCounts).map(([k, v]) => `  • ${v} × ${k === 'outdoor' ? 'outdoor cycling' : k === 'indoor' ? 'indoor cycling' : k} session${v === 1 ? '' : 's'} per week`).join('\n')}
+
+This gives a TOTAL of ${Object.values(sessionCounts).reduce((s, v) => s + v, 0)} sessions per week. You MUST match this distribution exactly:
+
+- Total sessions per week: ${Object.values(sessionCounts).reduce((s, v) => s + v, 0)} (NO more, NO fewer, except deload/taper weeks which may drop by 1)
+- Of those, ${(sessionCounts.outdoor || 0) + (sessionCounts.indoor || 0)} MUST be cycling (type: "ride")${sessionCounts.strength ? ` and ${sessionCounts.strength} MUST be strength (type: "strength")` : ''}
+- ${sessionCounts.strength ? '' : 'Do NOT include any strength sessions — the athlete did not request strength training. '}Do NOT invent additional session types.
+- Each session MUST be on one of the available days listed above. Never use a day that isn't available.
+
 ${longRideDay ? `- Long ride day: ${dayNames[typeof longRideDay === 'number' ? longRideDay : dayNames.findIndex(n => n.toLowerCase().startsWith(String(longRideDay).toLowerCase()))] || longRideDay}. The athlete's longest/endurance ride each week MUST be scheduled on this day. This is their preferred day for long rides.` : ''}
-- CRITICAL: You MUST generate EXACTLY ${config.daysPerWeek || 3} sessions per week (unless it's a deload/taper week where you may reduce by 1). Each session MUST be on one of the available days listed above. Do NOT add extra sessions.
 - CRITICAL: The plan is EXACTLY ${weeks} weeks long. Do NOT generate any activities with week > ${weeks}. The last activity must be in week ${weeks}.
 ${crossTrainingNote}
 ${recurringRidesNote}
@@ -643,7 +689,7 @@ Key principles:
 - NO interval training, NO tempo rides — everything is easy or moderate effort
 - Every 3rd week: slightly easier "confidence week" — shorter rides, celebrating progress
 - Final week: a "graduation ride" — their longest ride yet, with a celebratory note
-- Include 1 strength session per week from week 3 onwards (bodyweight, 20 min, core + legs)
+${config.trainingTypes?.includes('strength') ? '- Include 1 strength session per week from week 3 onwards (bodyweight, 20 min, core + legs)' : '- Do NOT include strength sessions — the athlete did not request strength training.'}
 - By week 6: comfortable riding 30–45 minutes
 - By week 10: comfortable riding 60+ minutes / 20+ km
 - By week 12: confident to ride 30–40 km at own pace
@@ -673,8 +719,8 @@ Example ride activity (intermediate/event plan):
 Example ride activity (beginner plan):
 {"week":1,"dayOfWeek":0,"type":"ride","subType":"endurance","title":"First Adventure","description":"Head out for a gentle spin — flat roads, easy pace, no pressure. If you feel good, keep going. If you want to stop early, that's fine too. Just enjoy being on the bike.","notes":"You did it! Bring water and don't worry about speed or distance — just get comfortable on the bike.","durationMins":25,"distanceKm":8,"effort":"easy"}
 
-Example strength activity (MUST be included if training types include strength):
-{"week":1,"dayOfWeek":1,"type":"strength","subType":null,"title":"Core & Legs","description":"Squats, lunges, planks, glute bridges — 3 sets of 12 each","notes":"Base phase — building supporting muscles","durationMins":30,"distanceKm":null,"effort":"moderate"}
+${config.trainingTypes?.includes('strength') ? `Example strength activity (include these — the athlete requested strength training):
+{"week":1,"dayOfWeek":1,"type":"strength","subType":null,"title":"Core & Legs","description":"Squats, lunges, planks, glute bridges — 3 sets of 12 each","notes":"Base phase — building supporting muscles","durationMins":30,"distanceKm":null,"effort":"moderate"}` : `(The athlete did NOT request strength training — do not include any activities with type:"strength".)`}
 
 Field rules:
 - dayOfWeek: 0=Monday, 1=Tuesday, ..., 6=Sunday

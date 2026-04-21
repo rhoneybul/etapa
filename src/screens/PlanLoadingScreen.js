@@ -447,19 +447,20 @@ const s = StyleSheet.create({
   bgNoteText: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center', lineHeight: 18 },
 
   // ── Health / AI disclaimer card ────────────────────────────────────────────
-  // Distinct from the friendly bgNote above. Subtler border in amber/caution
-  // tones so users register it's a notice, not a tip.
+  // Distinct from the friendly bgNote above. Uses the theme's secondary
+  // (steel blue) so it reads as an informational notice — still calm, but
+  // visually distinct from the pink primary and the warm tip card.
   disclaimerCard: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.25)',      // soft amber
-    backgroundColor: 'rgba(245, 158, 11, 0.06)',
+    borderColor: 'rgba(75, 107, 143, 0.35)',     // secondary at ~35% opacity
+    backgroundColor: 'rgba(75, 107, 143, 0.10)', // secondary at ~10% opacity
     padding: 14,
     marginBottom: 24,
   },
   disclaimerTitle: {
     fontSize: 11, fontWeight: '600', fontFamily: FF.semibold,
-    color: '#F59E0B', letterSpacing: 0.8, textTransform: 'uppercase',
+    color: colors.secondary, letterSpacing: 0.8, textTransform: 'uppercase',
     marginBottom: 6, textAlign: 'center',
   },
   disclaimerBody: {

@@ -848,28 +848,21 @@ export default function PlanConfigScreen({ navigation, route }) {
             </View>
           )}
 
-          {/* ── Activity palette ── */}
+          {/* ── Activity palette ──
+              Cross-training activities (run, swim, yoga, rowing, etc.) are
+              hidden for now — per April 2026 product decision, Build Your Week
+              only places cycling + strength + indoor sessions. The long ride
+              is already auto-placed on the day chosen in step 4. To re-enable
+              cross-training later: restore the <ScrollView>…</ScrollView>
+              block and the crossTrainingNote below from git history. */}
           <Text style={s.placeSub}>
-            Select an activity, then tap a day to place it. Tap a placed item to remove it.
+            Select a session type, then tap a day to place it. Tap a placed item to remove it.
           </Text>
 
-          {/* Search box for activities — above the palette */}
-          <View style={s.activitySearchWrap}>
-            <TextInput
-              style={s.activitySearchInput}
-              placeholder="Search activities (e.g. row, swim, yoga)"
-              placeholderTextColor={colors.textFaint}
-              value={activitySearch}
-              onChangeText={setActivitySearch}
-              returnKeyType="search"
-            />
-          </View>
-
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.paletteScroll} contentContainerStyle={s.paletteContent}>
-            {/* Cycling types */}
+            {/* Cycling + strength types only */}
             {cyclingPalette.map(cp => {
               const isSelected = selectedActivity === cp.key;
-              const remaining = cp.target - cp.placed;
               return (
                 <TouchableOpacity
                   key={cp.key}
@@ -882,39 +875,13 @@ export default function PlanConfigScreen({ navigation, route }) {
                 </TouchableOpacity>
               );
             })}
-            {/* Divider + cross-training label */}
-            <View style={s.paletteDivider} />
-            <View style={s.paletteSectionLabel}>
-              <Text style={s.paletteSectionText}>Other activities</Text>
-            </View>
-            {CROSS_TRAINING_TYPES.filter(ct => {
-              if (!activitySearch.trim()) return true;
-              const q = activitySearch.toLowerCase();
-              return ct.label.toLowerCase().includes(q) || ct.key.toLowerCase().includes(q);
-            }).map(ct => {
-              const isSelected = selectedActivity === ct.key;
-              const isUsed = Object.values(dayActivities).some(acts => acts.includes(ct.key));
-              return (
-                <TouchableOpacity
-                  key={ct.key}
-                  style={[s.palettePill, isSelected && s.palettePillSelected, isSelected && { borderColor: CT_COLOR, backgroundColor: CT_COLOR + '30' }, isUsed && !isSelected && { borderColor: CT_COLOR + '66' }]}
-                  onPress={() => { setSelectedActivity(ct.key); setActivitySearch(''); }}
-                  activeOpacity={0.7}
-                >
-                  <MaterialCommunityIcons name={getActivityIcon(ct.key)} size={14} color={CT_COLOR} />
-                  <Text style={[s.paletteLabel, isSelected && { color: CT_COLOR }]}>{ct.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
           </ScrollView>
 
           {/* Selected activity indicator */}
-          {selectedActivity && (
+          {selectedActivity && isCyclingType(selectedActivity) && (
             <View style={[s.selectedIndicator, { borderColor: getActivityColor(selectedActivity), backgroundColor: getActivityColor(selectedActivity) + '14' }]}>
               <MaterialCommunityIcons
-                name={getActivityIcon(isCyclingType(selectedActivity)
-                  ? { type: selectedActivity === 'strength' ? 'strength' : 'ride', subType: selectedActivity === 'indoor' ? 'indoor' : undefined, title: selectedActivity }
-                  : selectedActivity)}
+                name={getActivityIcon({ type: selectedActivity === 'strength' ? 'strength' : 'ride', subType: selectedActivity === 'indoor' ? 'indoor' : undefined, title: selectedActivity })}
                 size={14}
                 color={getActivityColor(selectedActivity)}
               />
@@ -923,11 +890,6 @@ export default function PlanConfigScreen({ navigation, route }) {
               </Text>
               <Text style={s.selectedIndicatorHint}>{'\u2014'} tap a day to place</Text>
             </View>
-          )}
-          {selectedActivity && !isCyclingType(selectedActivity) && (
-            <Text style={s.crossTrainingNote}>
-              This won't be scheduled in your plan, but your coach will factor it into recovery and load planning.
-            </Text>
           )}
 
           {/* ── Unified day grid ── */}
@@ -1007,13 +969,7 @@ export default function PlanConfigScreen({ navigation, route }) {
 
           <Text style={s.dayHint}>Multiple activities can share a day {'\u00B7'} your coach will balance the load</Text>
 
-          {hasCrossTraining && (
-            <View style={s.crossTrainNote}>
-              <Text style={s.crossTrainNoteText}>
-                Your AI coach will factor other training in {'\u2014'} scheduling easier cycling sessions near hard cross-training days and managing your total training load.
-              </Text>
-            </View>
-          )}
+          {/* Cross-training note hidden while palette is cycling-only. */}
 
           <View style={{ height: 20 }} />
         </ScrollView>

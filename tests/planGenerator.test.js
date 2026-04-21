@@ -1050,6 +1050,49 @@ function validate(plan, scenario) {
     }
   }
 
+  // ── Total weekly sessions should not be FAR FEWER than daysPerWeek ──
+  // This catches the bug the user reported: "I asked for 3 rides, got 1".
+  // Rules:
+  //   - Build-phase weeks (first 75% of the plan) must honour the full count,
+  //     allowing 1 session of slack for deload weeks.
+  //   - Peak/taper weeks (last 25%) may drop more — taper is an intentional
+  //     volume reduction. We still flag weeks with zero planned sessions
+  //     because that's never correct.
+  //   - Recurring + one-off rides don't count, since they're auto-injected
+  //     and would otherwise mask the bug.
+  const requestedPerWeek = Object.values(config.sessionCounts || {}).reduce((s, v) => s + v, 0)
+    || (config.daysPerWeek || 0);
+  if (requestedPerWeek > 0 && plan.weeks >= 1) {
+    const taperStartWeek = Math.max(2, Math.floor(plan.weeks * 0.75) + 1);
+    const buildFloor = Math.max(1, requestedPerWeek - 1); // 1 slack for deload
+    for (let w = 1; w <= plan.weeks; w++) {
+      const weekActs = acts.filter(a => a.week === w && !a.isRecurring && !a.isOneOff);
+      const inTaper = w >= taperStartWeek;
+      const floor = inTaper ? 1 : buildFloor;
+      if (weekActs.length < floor) {
+        const phase = inTaper ? 'taper' : 'build';
+        errors.push(
+          `Week ${w} (${phase}) has only ${weekActs.length} planned session${weekActs.length === 1 ? '' : 's'} but config requests ${requestedPerWeek}/week ` +
+          `(${Object.entries(config.sessionCounts || { outdoor: config.daysPerWeek }).map(([k, v]) => `${v}×${k}`).join(', ')}) ` +
+          `— plan is NOT honouring the user's input.`
+        );
+      }
+    }
+  }
+
+  // ── Strength sessions should NOT appear if the user didn't request them ──
+  // The user reported "I asked for 3 rides, got 1 ride + 1 strength" — the
+  // strength appearing uninvited is a clear bug.
+  if (!config.trainingTypes?.includes('strength')) {
+    const unrequestedStrength = acts.filter(a => a.type === 'strength').length;
+    if (unrequestedStrength > 0) {
+      errors.push(
+        `Found ${unrequestedStrength} strength session(s) but config.trainingTypes does not include 'strength' ` +
+        `(trainingTypes=${JSON.stringify(config.trainingTypes || [])}) — plan is inventing session types.`
+      );
+    }
+  }
+
   // ── Deload / rest weeks for plans 8+ weeks ──
   // Every 3-4 weeks there should be a noticeably lighter week (at least 20% less volume)
   if (plan.weeks >= 8 && weeklyRideKm.length >= 8) {
