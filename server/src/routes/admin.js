@@ -6,6 +6,7 @@ const { Router } = require('express');
 const { supabase } = require('../lib/supabase');
 const { authMiddleware } = require('../middleware/auth');
 const { sendPushToUser } = require('../lib/pushService');
+const { applyLifetimeGrant } = require('../lib/lifetimeGrant');
 
 const router = Router();
 
@@ -1767,107 +1768,16 @@ router.post('/users/:id/grant-lifetime', async (req, res, next) => {
     if (userError) throw userError;
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const results = {
-      revenueCat: { attempted: false, ok: false, detail: null },
-      override: { attempted: false, ok: false, detail: null },
-      subscription: { attempted: false, ok: false, detail: null },
-    };
+    const { ok, results } = await applyLifetimeGrant(id, {
+      grantRevenueCatLifetime,
+      entitlementId,
+      note,
+      actorId: req.user?.id || null,
+    });
 
-    // 1. RevenueCat grant --------------------------------------------------
-    results.revenueCat.attempted = true;
-    const rcResult = await grantRevenueCatLifetime(id, { entitlementId });
-    if (rcResult.error) {
-      // RC failure is NOT fatal — the override + subscription rows still get
-      // written so the app unlocks immediately. CS rep should be told.
-      results.revenueCat.ok = false;
-      results.revenueCat.detail = rcResult;
-      console.warn(`[admin/grant-lifetime] RevenueCat grant failed for ${id}:`, rcResult);
-    } else {
-      results.revenueCat.ok = true;
-      results.revenueCat.detail = { message: 'Promotional entitlement granted (lifetime)' };
-    }
-
-    // 2. user_config_overrides ---------------------------------------------
-    results.override.attempted = true;
-    const { data: existing } = await supabase
-      .from('user_config_overrides')
-      .select('overrides')
-      .eq('user_id', id)
-      .maybeSingle();
-    const currentOverrides = existing?.overrides ? { ...existing.overrides } : {};
-    currentOverrides.entitlement = 'lifetime';
-    const { error: ovrError } = await supabase
-      .from('user_config_overrides')
-      .upsert({
-        user_id: id,
-        overrides: currentOverrides,
-        note,
-        updated_by: req.user?.id || null,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' });
-    if (ovrError) {
-      results.override.ok = false;
-      results.override.detail = ovrError.message;
-    } else {
-      results.override.ok = true;
-    }
-
-    // 3. subscriptions row --------------------------------------------------
-    results.subscription.attempted = true;
-    const { data: existingSubs } = await supabase
-      .from('subscriptions')
-      .select('id')
-      .eq('user_id', id)
-      .eq('plan', 'lifetime')
-      .limit(1);
-
-    const subRow = {
-      user_id: id,
-      plan: 'lifetime',
-      status: 'active',
-      source: 'Promotional',
-      store: null,
-      product_id: 'etapa_lifetime_promotional',
-      trial_end: null,
-      current_period_end: null,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (existingSubs && existingSubs.length > 0) {
-      const { error: updErr } = await supabase
-        .from('subscriptions')
-        .update(subRow)
-        .eq('id', existingSubs[0].id);
-      if (updErr) {
-        results.subscription.ok = false;
-        results.subscription.detail = updErr.message;
-      } else {
-        results.subscription.ok = true;
-        results.subscription.detail = { id: existingSubs[0].id, action: 'updated' };
-      }
-    } else {
-      const { data: inserted, error: insErr } = await supabase
-        .from('subscriptions')
-        .insert({ ...subRow, created_at: new Date().toISOString() })
-        .select('id')
-        .maybeSingle();
-      if (insErr) {
-        results.subscription.ok = false;
-        results.subscription.detail = insErr.message;
-      } else {
-        results.subscription.ok = true;
-        results.subscription.detail = { id: inserted?.id, action: 'inserted' };
-      }
-    }
-
-    // Overall status: succeeds if AT LEAST override + subscription wrote
-    // (these are what the app + admin dashboard read). RC failing degrades
-    // the single-source-of-truth property but doesn't block the grant.
-    const allOk = results.override.ok && results.subscription.ok;
-    const anyFail = !results.revenueCat.ok || !allOk;
-
-    res.status(allOk ? 200 : 502).json({
-      ok: allOk,
+    const anyFail = !results.revenueCat.ok || !ok;
+    res.status(ok ? 200 : 502).json({
+      ok,
       warnings: anyFail ? ['One or more writes failed — see results.'] : [],
       userId: id,
       email: user.email,
@@ -1928,6 +1838,217 @@ router.post('/users/:id/revoke-lifetime', async (req, res, next) => {
     results.subscription.detail = subError?.message || null;
 
     res.json({ ok: results.override.ok && results.subscription.ok, userId: id, results });
+  } catch (err) { next(err); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pre-signup lifetime grants
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Admins can issue lifetime access to an email BEFORE the user signs up.
+// When the user signs up with that email, the redeemPreSignupGrantsForUser
+// helper (called from server/src/routes/users.js) auto-applies lifetime via
+// the same applyLifetimeGrant flow used by the Grant Lifetime button.
+//
+// See supabase/migrations/20260422000004_create_pre_signup_grants.sql.
+
+// Normalise + validate an email. Returns { ok, email } or { ok: false, reason }.
+function normaliseEmail(raw) {
+  if (typeof raw !== 'string') return { ok: false, reason: 'not-a-string' };
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed) return { ok: false, reason: 'empty' };
+  // Deliberately lenient — RFC-strict regex creates more bugs than it prevents.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    return { ok: false, reason: 'bad-format' };
+  }
+  return { ok: true, email: trimmed };
+}
+
+// ── GET /api/admin/pre-signup-grants — list all grants ───────────────────────
+router.get('/pre-signup-grants', async (req, res, next) => {
+  try {
+    const { data, error } = await supabase
+      .from('pre_signup_grants')
+      .select('*')
+      .order('granted_at', { ascending: false });
+    if (error) throw error;
+
+    // Enrich redeemed rows with the actual user email + name so the admin UI
+    // can link through to the user detail page.
+    const redeemedIds = (data || [])
+      .map(r => r.redeemed_user_id)
+      .filter(Boolean);
+    const userLookup = {};
+    if (redeemedIds.length > 0) {
+      const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+      for (const u of (users || [])) {
+        if (redeemedIds.includes(u.id)) {
+          userLookup[u.id] = {
+            id: u.id,
+            email: u.email,
+            name: u.user_metadata?.full_name || u.user_metadata?.name || null,
+          };
+        }
+      }
+    }
+
+    res.json({
+      grants: (data || []).map(g => ({
+        id: g.id,
+        email: g.email,
+        entitlement: g.entitlement,
+        note: g.note,
+        status: g.status,
+        grantedAt: g.granted_at,
+        grantedBy: g.granted_by,
+        redeemedAt: g.redeemed_at,
+        redeemedUser: g.redeemed_user_id ? (userLookup[g.redeemed_user_id] || { id: g.redeemed_user_id }) : null,
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/admin/pre-signup-grants — create one or many ───────────────────
+// Body accepts either:
+//   { email, entitlement?, note? }
+// or:
+//   { emails: ['a@b.com', 'c@d.com'], entitlement?, note? }
+// or:
+//   { bulkText: 'a@b.com\nc@d.com\n', entitlement?, note? }
+//
+// Any existing PENDING grant for the same email is left as-is (so repeated
+// submissions are safe). If the email already belongs to a Supabase user,
+// the response flags it so the admin can use the regular Grant Lifetime
+// button instead.
+router.post('/pre-signup-grants', async (req, res, next) => {
+  try {
+    const { email, emails, bulkText, entitlement = 'lifetime', note = null } = req.body || {};
+
+    // Collect candidate emails from whichever field was used.
+    const raw = [];
+    if (typeof email === 'string' && email.trim()) raw.push(email);
+    if (Array.isArray(emails)) raw.push(...emails);
+    if (typeof bulkText === 'string') {
+      for (const line of bulkText.split(/[\n,;]+/)) {
+        if (line.trim()) raw.push(line);
+      }
+    }
+    if (raw.length === 0) {
+      return res.status(400).json({ error: 'No emails provided.' });
+    }
+
+    // Normalise + dedup (case-insensitive).
+    const seen = new Set();
+    const candidates = [];
+    const invalid = [];
+    for (const r of raw) {
+      const n = normaliseEmail(r);
+      if (!n.ok) { invalid.push({ input: r, reason: n.reason }); continue; }
+      if (seen.has(n.email)) continue;
+      seen.add(n.email);
+      candidates.push(n.email);
+    }
+
+    if (candidates.length === 0) {
+      return res.status(400).json({ error: 'No valid emails in input.', invalid });
+    }
+
+    // Check which of those already have Supabase accounts — the admin should
+    // use the regular lifetime flow for those rather than a pre-signup grant.
+    const { data: { users: allUsers } } = await supabase
+      .auth.admin.listUsers({ perPage: 1000 });
+    const existingEmails = new Set(
+      (allUsers || [])
+        .map(u => (u.email || '').toLowerCase())
+        .filter(Boolean)
+    );
+
+    // Pull any existing pending grants for these emails so we can report them
+    // as "already-pending" rather than trying to re-insert (which would hit
+    // the partial-unique index anyway).
+    const { data: existingGrants } = await supabase
+      .from('pre_signup_grants')
+      .select('id, email, status')
+      .in('email', candidates)
+      .eq('status', 'pending');
+    const alreadyPending = new Set(
+      (existingGrants || []).map(g => g.email.toLowerCase())
+    );
+
+    const toInsert = [];
+    const skipped = [];
+    for (const e of candidates) {
+      if (existingEmails.has(e)) {
+        skipped.push({ email: e, reason: 'user-exists', hint: 'Use the regular Grant Lifetime button on their profile.' });
+        continue;
+      }
+      if (alreadyPending.has(e)) {
+        skipped.push({ email: e, reason: 'already-pending' });
+        continue;
+      }
+      toInsert.push({
+        email: e,
+        entitlement,
+        note,
+        granted_by: req.user?.id || null,
+      });
+    }
+
+    let inserted = [];
+    if (toInsert.length > 0) {
+      const { data, error } = await supabase
+        .from('pre_signup_grants')
+        .insert(toInsert)
+        .select('id, email, entitlement, note, status, granted_at');
+      if (error) throw error;
+      inserted = data || [];
+    }
+
+    res.json({
+      ok: true,
+      summary: {
+        requested: raw.length,
+        valid: candidates.length,
+        invalid: invalid.length,
+        created: inserted.length,
+        skipped: skipped.length,
+      },
+      inserted,
+      skipped,
+      invalid,
+    });
+  } catch (err) {
+    console.error('[admin/pre-signup-grants] create error:', err);
+    next(err);
+  }
+});
+
+// ── DELETE /api/admin/pre-signup-grants/:id — revoke a pending grant ─────────
+router.delete('/pre-signup-grants/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: 'id is required' });
+
+    // Only pending grants are deletable; redeemed ones are audit trail.
+    const { data: existing } = await supabase
+      .from('pre_signup_grants')
+      .select('status')
+      .eq('id', id)
+      .maybeSingle();
+    if (!existing) return res.status(404).json({ error: 'Grant not found' });
+    if (existing.status !== 'pending') {
+      return res.status(400).json({
+        error: `Cannot revoke a grant with status "${existing.status}". Already-redeemed grants are kept as an audit trail — use revoke-lifetime on the user instead.`,
+      });
+    }
+
+    const { error } = await supabase
+      .from('pre_signup_grants')
+      .update({ status: 'revoked' })
+      .eq('id', id);
+    if (error) throw error;
+
+    res.json({ ok: true });
   } catch (err) { next(err); }
 });
 
@@ -2298,3 +2419,11 @@ Write a brief, friendly message (2-3 sentences max) welcoming a new rider and en
 });
 
 module.exports = router;
+// Named exports for shared use by users.js (pre-signup redemption) without
+// creating a require-cycle via the default export.
+module.exports._rcHelpers = {
+  grantRevenueCatLifetime,
+  revokeRevenueCatPromotional,
+  fetchRevenueCatSubscriber,
+  classifyRevenueCatKey,
+};

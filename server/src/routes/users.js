@@ -1,9 +1,75 @@
 const { Router } = require('express');
 const { supabase } = require('../lib/supabase');
+const { applyLifetimeGrant } = require('../lib/lifetimeGrant');
 const router = Router();
 
-// GET /api/users/me — return the authenticated user's profile
-router.get('/me', (req, res) => {
+/**
+ * Pre-signup grant auto-redemption.
+ *
+ * Called on /me for every authenticated request. The vast majority of the
+ * time there is no matching grant, the DB returns null, and we skip. When
+ * a pending grant IS found, we apply lifetime via the shared helper and
+ * mark the grant redeemed. Idempotent — a double-call won't double-grant.
+ */
+async function redeemPreSignupGrantsForUser(user) {
+  if (!user?.email) return { attempted: false };
+  const email = user.email.toLowerCase().trim();
+
+  try {
+    const { data: grant } = await supabase
+      .from('pre_signup_grants')
+      .select('id, email, entitlement, note')
+      .eq('status', 'pending')
+      .ilike('email', email)
+      .limit(1)
+      .maybeSingle();
+
+    if (!grant) return { attempted: false };
+
+    // Lazy require avoids a circular dep between users.js and admin.js.
+    const { grantRevenueCatLifetime } = require('./admin')._rcHelpers || {};
+
+    const { ok, results } = await applyLifetimeGrant(user.id, {
+      grantRevenueCatLifetime,
+      entitlementId: 'pro',
+      note: grant.note
+        ? `Pre-signup grant redeemed: ${grant.note}`
+        : `Pre-signup lifetime redeemed on ${new Date().toISOString().split('T')[0]}`,
+      actorId: null,
+    });
+
+    // Mark redeemed if the two DB-side writes succeeded (the grant should
+    // flip even if RC is down — user already has access via subscription +
+    // override, and admin can retry RC later).
+    if (ok) {
+      await supabase
+        .from('pre_signup_grants')
+        .update({
+          status: 'redeemed',
+          redeemed_at: new Date().toISOString(),
+          redeemed_user_id: user.id,
+        })
+        .eq('id', grant.id);
+      console.log(`[pre-signup] Redeemed grant ${grant.id} for user ${user.id} (${email})`);
+    } else {
+      console.warn(`[pre-signup] Grant ${grant.id} matched but apply failed:`, results);
+    }
+
+    return { attempted: true, ok, grantId: grant.id, results };
+  } catch (err) {
+    console.error('[pre-signup] redeem error:', err);
+    return { attempted: true, ok: false, error: err.message };
+  }
+}
+
+// GET /api/users/me — return the authenticated user's profile.
+// Also checks for pending pre-signup lifetime grants and auto-redeems them.
+router.get('/me', async (req, res) => {
+  // Redemption is best-effort: never block the /me response on it.
+  redeemPreSignupGrantsForUser(req.user).catch((err) => {
+    console.error('[users/me] pre-signup redeem threw:', err);
+  });
+
   res.json({
     id:    req.user.id,
     email: req.user.email,
