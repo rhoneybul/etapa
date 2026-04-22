@@ -156,8 +156,17 @@ export default function PlansPage() {
           { key: "startDate", label: "Start", render: (p: Plan) => (
             <span className="text-xs text-etapa-textMid">{p.startDate ? new Date(p.startDate).toLocaleDateString() : "\u2014"}</span>
           )},
-          { key: "createdAt", label: "Created", render: (p: Plan) => (
-            <span className="text-xs text-etapa-textMid">{new Date(p.createdAt).toLocaleDateString()}</span>
+          // Created uses locale date + time so plans made on the same day
+          // are visibly ordered. Server-side orders by created_at DESC so
+          // no client-side sort is needed; the header still says "CREATED ▼"
+          // implicitly via the server order.
+          { key: "createdAt", label: "Created ↓", render: (p: Plan) => (
+            <span className="text-xs text-etapa-textMid whitespace-nowrap">
+              {new Date(p.createdAt).toLocaleString("en-GB", {
+                day: "2-digit", month: "2-digit", year: "numeric",
+                hour: "2-digit", minute: "2-digit",
+              })}
+            </span>
           )},
           { key: "actions", label: "", render: (p: Plan) => (
             <button

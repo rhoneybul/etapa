@@ -1,13 +1,28 @@
 import { SCENARIOS, EDIT_SCENARIOS } from '@/lib/scenarios';
 import { SPEED_SCENARIOS } from '@/lib/speedScenarios';
 import path from 'path';
+import crypto from 'crypto';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// How many plan generations to run at the same time.
-// Keep at 5 to avoid hammering the AI API with rate limits.
-const CONCURRENCY = 5;
+// How many plan generations to run at the same time. Doubled from 5 to 10
+// because a full 80-scenario run was taking ~15 minutes with Sonnet and the
+// dominant constraint is serial waiting, not Claude rate limits. Override
+// via TEST_CONCURRENCY env on Vercel if you hit 429s from Anthropic.
+const CONCURRENCY = Number(process.env.TEST_CONCURRENCY) || 10;
+
+// ── In-memory run registry ─────────────────────────────────────────────────
+// A run is kicked off by POST /api/run-tests. It gets a runId and a mutable
+// state object tracked here. Clients can:
+//   - Attach to an existing run via GET /api/run-tests?runId=... (SSE stream)
+//   - Cancel a run via POST /api/run-tests/cancel with { runId }
+// The run keeps executing even if all clients disconnect — the fetch stream
+// can be abandoned without stopping the Claude work. The registry is process-
+// scoped (good enough; next reload clears it; not a cluster concern for our
+// single-instance Vercel serverless deployment).
+const runs = new Map();
+function newRunId() { return `run_${crypto.randomBytes(8).toString('hex')}`; }
 
 // Model the test runner uses to GENERATE plans. Matches production by default
 // so the dashboard exercises exactly what customers get. Override via
@@ -434,20 +449,35 @@ export async function POST(req) {
 
   const authHeaders = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
 
-  // ── Cancellation plumbing ──────────────────────────────────────────────────
-  // When the browser cancels the fetch (Cancel button on /results), req.signal
-  // aborts. We track every server-side jobId the test run creates so we can
-  // POST DELETE on each to stop Claude spend from continuing after the user
-  // bailed. Without this, cancelling the page still burns tokens for another
-  // 2-5 minutes per in-flight plan.
+  // ── Cancellation, decoupled from the client stream ─────────────────────────
+  // Earlier we aborted the run the moment the browser disconnected — easy
+  // to reason about but meant "closing the tab" == "wasting every scenario
+  // already in flight". Users want to be able to navigate away and let the
+  // run finish; only EXPLICIT cancel (via the Cancel button) should stop
+  // work.
+  //
+  // How the new flow works:
+  //   1. POST /api/run-tests assigns a runId and registers { isCancelled,
+  //      activeJobIds } in `runs`.
+  //   2. The run continues writing SSE events; if the client disconnects,
+  //      `controller.enqueue` throws which we swallow — the run keeps
+  //      executing in the same function invocation.
+  //   3. POST /api/run-tests/cancel with { runId } flips isCancelled on
+  //      the registry entry; the run sees it on the next cancelled() check
+  //      and short-circuits + sends DELETE to in-flight plan-job ids.
+  //   4. When the run completes or is cancelled, we clean up the registry
+  //      entry so it doesn't leak across invocations.
+  const runId = newRunId();
   const activeJobIds = new Set();
-  let isCancelled = false;
+  const run = { runId, startedAt: Date.now(), isCancelled: false, activeJobIds, authHeaders, serverUrl };
+  runs.set(runId, run);
+
   const trackJob = (id) => { if (id) activeJobIds.add(id); };
-  const cancelled = () => isCancelled;
+  const cancelled = () => run.isCancelled;
 
   async function cancelAllJobs() {
     if (activeJobIds.size === 0) return;
-    console.log(`[run-tests] cancelling ${activeJobIds.size} in-flight jobs`);
+    console.log(`[run-tests ${runId}] cancelling ${activeJobIds.size} in-flight jobs`);
     await Promise.allSettled(
       Array.from(activeJobIds).map(id =>
         fetch(`${serverUrl}/api/ai/plan-job/${id}`, {
@@ -459,10 +489,9 @@ export async function POST(req) {
     activeJobIds.clear();
   }
 
-  req.signal?.addEventListener('abort', () => {
-    isCancelled = true;
-    cancelAllJobs().catch(() => {});
-  });
+  // Expose the per-run cancel function on the registry so the cancel
+  // endpoint can reach it without being in this closure.
+  run.cancelAllJobs = cancelAllJobs;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -482,6 +511,7 @@ export async function POST(req) {
 
       send({
         type: 'start',
+        runId,                              // client stores this to call /cancel
         total: SCENARIOS.length,
         totalEdits: EDIT_SCENARIOS.length,
         totalSpeed: SPEED_SCENARIOS.length,
@@ -678,7 +708,7 @@ export async function POST(req) {
       }
 
       for (let i = 0; i < SPEED_SCENARIOS.length; i++) {
-        if (isCancelled) break;
+        if (run.isCancelled) break;
         const sc = SPEED_SCENARIOS[i];
         send({ type: 'speed-start', index: i, name: sc.name });
 
@@ -786,6 +816,11 @@ export async function POST(req) {
         },
       });
 
+      // Run finished (completed or cancelled) — drop from registry.
+      // Keep the entry around for a few seconds in case the cancel endpoint
+      // races with completion, then delete to avoid memory leaking.
+      setTimeout(() => { runs.delete(runId); }, 5000);
+
       controller.close();
     },
   });
@@ -798,3 +833,11 @@ export async function POST(req) {
     },
   });
 }
+
+// Exported so the cancel route can reach into the process-local registry.
+// On Vercel serverless this is per-function-instance — cancels only work
+// when the same lambda invocation serves both the run and the cancel call.
+// That's almost always the case for a single dashboard session; if you hit
+// a case where cancel doesn't take effect, the run will still finish within
+// Vercel's function timeout.
+export { runs };

@@ -1,8 +1,44 @@
 'use client';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { SCENARIOS, EDIT_SCENARIOS } from '@/lib/scenarios';
 import { SPEED_SCENARIOS } from '@/lib/speedScenarios';
+
+// localStorage key for mid-run persistence. Each run gets its own accumulator
+// here; if the user navigates away + comes back, we rehydrate the partial
+// snapshot so the Download button still works.
+const LS_KEY = 'etapa:testRun:partial';
+
+/**
+ * Rebuild a "currently-known" output object from the streamed state so the
+ * user can download partial results mid-run. Mirrors the shape of
+ * finalOutput (what the server sends on `type: 'complete'`) but with
+ * nulls/zeros filled in for the still-running bits.
+ */
+function buildPartialOutput({ runId, serverUrl, results, editResults, speedResults, runAt }) {
+  const pass = results.filter((r) => r && r.pass).length;
+  const fail = results.filter((r) => r && !r.pass).length;
+  const editPass = editResults.filter((r) => r && r.pass).length;
+  const editFail = editResults.filter((r) => r && !r.pass).length;
+  const speedPass = speedResults.filter((r) => r && r.pass).length;
+  const speedFail = speedResults.filter((r) => r && !r.pass).length;
+  return {
+    partial: true,                      // caller can tell this wasn't a clean run
+    runId,
+    runAt,
+    server: serverUrl,
+    totalScenarios: SCENARIOS.length,
+    passed: pass,
+    failed: fail,
+    results,
+    editResults,
+    editPassed: editPass,
+    editFailed: editFail,
+    speedResults,
+    speedPassed: speedPass,
+    speedFailed: speedFail,
+  };
+}
 
 export default function ResultsPage() {
   const [serverUrl, setServerUrl] = useState('https://etapa.up.railway.app');
@@ -15,11 +51,19 @@ export default function ResultsPage() {
     speedDone: 0, speedTotal: 0,
   });
   const [finalOutput, setFinalOutput] = useState(null);
+
+  // Live accumulators — updated on every scenario-done / edit-done / speed-done
+  // event. Used to build a "partial" output the user can download before the
+  // run is complete, AND persisted to localStorage so navigating away doesn't
+  // lose the in-flight results.
+  const [liveResults, setLiveResults] = useState([]);
+  const [liveEditResults, setLiveEditResults] = useState([]);
+  const [liveSpeedResults, setLiveSpeedResults] = useState([]);
+  const [currentRunId, setCurrentRunId] = useState(null);
+  const [runAt, setRunAt] = useState(null);
+
   const logRef = useRef(null);
-  // AbortController for cancelling the fetch — stored in a ref so the
-  // cancel handler can reach it without re-creating startTests.
   const abortRef = useRef(null);
-  const cancelledRef = useRef(false);
 
   const addLog = useCallback((entry) => {
     setLog(prev => [...prev, entry]);
@@ -28,28 +72,96 @@ export default function ResultsPage() {
     }, 50);
   }, []);
 
-  const cancelRun = useCallback(() => {
-    if (!running) return;
-    cancelledRef.current = true;
+  // ── Rehydrate from localStorage on mount ──────────────────────────────────
+  // If a previous run was in progress when the user navigated away, the
+  // snapshot is waiting. Show a notice + keep the Download button available.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return;
+      const snap = JSON.parse(raw);
+      if (!snap || !snap.runId) return;
+      setCurrentRunId(snap.runId);
+      setRunAt(snap.runAt || null);
+      setLiveResults(snap.results || []);
+      setLiveEditResults(snap.editResults || []);
+      setLiveSpeedResults(snap.speedResults || []);
+      setProgress(snap.progress || { done: 0, total: SCENARIOS.length, editsDone: 0, editsTotal: EDIT_SCENARIOS.length, speedDone: 0, speedTotal: SPEED_SCENARIOS.length });
+      addLog({ type: 'info', text: `Loaded partial results from a previous run (${snap.runId}). Download them before starting a new run if you want to keep them.` });
+    } catch { /* ignore corrupt snapshot */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist every meaningful update so a tab crash doesn't lose results.
+  useEffect(() => {
+    if (!currentRunId) return;
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        runId: currentRunId,
+        runAt,
+        serverUrl,
+        results: liveResults,
+        editResults: liveEditResults,
+        speedResults: liveSpeedResults,
+        progress,
+      }));
+    } catch { /* quota exceeded — ignore */ }
+  }, [currentRunId, runAt, serverUrl, liveResults, liveEditResults, liveSpeedResults, progress]);
+
+  const cancelRun = useCallback(async () => {
+    if (!running) {
+      addLog({ type: 'warn', text: 'No run in progress.' });
+      return;
+    }
+    // Explicit server-side cancel via the new /cancel endpoint. This is how
+    // we stop the work WITHOUT depending on closing the browser tab (which
+    // used to cascade via req.signal — intentionally removed so navigating
+    // away doesn't kill runs).
+    if (currentRunId) {
+      try {
+        await fetch('/api/run-tests/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ runId: currentRunId }),
+        });
+        addLog({ type: 'warn', text: `✖ Cancel signal sent to server for run ${currentRunId}.` });
+      } catch (err) {
+        addLog({ type: 'error', text: `Cancel failed: ${err.message}` });
+      }
+    }
+    // Also abort the client fetch so our UI stops waiting.
     if (abortRef.current) {
       try { abortRef.current.abort(); } catch { /* ignore */ }
     }
-    addLog({ type: 'warn', text: '⚠ Cancellation requested — the server will complete any scenarios already in flight.' });
-  }, [running, addLog]);
+  }, [running, currentRunId, addLog]);
 
   const startTests = useCallback(async () => {
     if (running) return;
-    cancelledRef.current = false;
     abortRef.current = new AbortController();
     setRunning(true);
     setLog([]);
     setFinalOutput(null);
+    setCurrentRunId(null);
+    setRunAt(new Date().toISOString());
+    setLiveResults([]);
+    setLiveEditResults([]);
+    setLiveSpeedResults([]);
     setProgress({
       done: 0, total: SCENARIOS.length,
       editsDone: 0, editsTotal: EDIT_SCENARIOS.length,
       speedDone: 0, speedTotal: SPEED_SCENARIOS.length,
     });
     addLog({ type: 'info', text: `Starting test run against ${serverUrl}...` });
+
+    const handlers = {
+      addLog,
+      setProgress,
+      setFinalOutput,
+      setCurrentRunId,
+      setLiveResults,
+      setLiveEditResults,
+      setLiveSpeedResults,
+    };
 
     try {
       const res = await fetch('/api/run-tests', {
@@ -66,10 +178,6 @@ export default function ResultsPage() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        if (cancelledRef.current) {
-          try { await reader.cancel(); } catch { /* ignore */ }
-          break;
-        }
         buffer += decoder.decode(value, { stream: true });
 
         const lines = buffer.split('\n');
@@ -79,22 +187,22 @@ export default function ResultsPage() {
           if (!line.startsWith('data: ')) continue;
           try {
             const data = JSON.parse(line.slice(6));
-            handleEvent(data, addLog, setProgress, setFinalOutput);
+            handleEvent(data, handlers);
           } catch {}
         }
       }
 
       // Process any remaining buffer
-      if (buffer.startsWith('data: ') && !cancelledRef.current) {
+      if (buffer.startsWith('data: ')) {
         try {
           const data = JSON.parse(buffer.slice(6));
-          handleEvent(data, addLog, setProgress, setFinalOutput);
+          handleEvent(data, handlers);
         } catch {}
       }
 
     } catch (err) {
-      if (err?.name === 'AbortError' || cancelledRef.current) {
-        addLog({ type: 'warn', text: '✖ Run cancelled.' });
+      if (err?.name === 'AbortError') {
+        addLog({ type: 'warn', text: '✖ Stream closed (server may still be running — hit cancel if you want to stop it too).' });
       } else {
         addLog({ type: 'error', text: `Connection error: ${err.message}` });
       }
@@ -104,16 +212,51 @@ export default function ResultsPage() {
     abortRef.current = null;
   }, [serverUrl, apiKey, running, addLog]);
 
+  // Download either the completed finalOutput or — if we're mid-run or the
+  // run was cancelled — whatever partial results have come in so far.
   const downloadResults = useCallback(() => {
-    if (!finalOutput) return;
-    const blob = new Blob([JSON.stringify(finalOutput, null, 2)], { type: 'application/json' });
+    const out = finalOutput || buildPartialOutput({
+      runId: currentRunId,
+      serverUrl,
+      results: liveResults,
+      editResults: liveEditResults,
+      speedResults: liveSpeedResults,
+      runAt,
+    });
+    if (!out) return;
+    const isPartial = !finalOutput;
+    const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `api-results-${finalOutput.runAt?.replace(/[:.]/g, '-').slice(0, 19) || 'latest'}.json`;
+    const stamp = (out.runAt || new Date().toISOString()).replace(/[:.]/g, '-').slice(0, 19);
+    a.download = `api-results-${isPartial ? 'partial-' : ''}${stamp}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [finalOutput]);
+  }, [finalOutput, currentRunId, serverUrl, liveResults, liveEditResults, liveSpeedResults, runAt]);
+
+  // Anything partial available to download?
+  const hasAnything = !!(
+    finalOutput
+    || liveResults.some(Boolean)
+    || liveEditResults.some(Boolean)
+    || liveSpeedResults.some(Boolean)
+  );
+
+  const clearPartial = useCallback(() => {
+    try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
+    setCurrentRunId(null);
+    setLiveResults([]);
+    setLiveEditResults([]);
+    setLiveSpeedResults([]);
+    setFinalOutput(null);
+    setProgress({
+      done: 0, total: SCENARIOS.length,
+      editsDone: 0, editsTotal: EDIT_SCENARIOS.length,
+      speedDone: 0, speedTotal: SPEED_SCENARIOS.length,
+    });
+    addLog({ type: 'muted', text: 'Partial results cleared.' });
+  }, [addLog]);
 
   const totalScenarios = SCENARIOS.length + EDIT_SCENARIOS.length + SPEED_SCENARIOS.length;
   const totalDone = progress.done + progress.editsDone + progress.speedDone;
@@ -204,22 +347,28 @@ export default function ResultsPage() {
           ))}
         </div>
 
-        {/* Actions after complete */}
-        {finalOutput && (
-          <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+        {/* Actions — Download is always available once any result is in.
+            Partial downloads are marked 'partial-' in the filename so you
+            can tell them apart later when auditing. */}
+        {hasAnything && (
+          <div style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
             <button onClick={downloadResults}
               style={{ padding: '8px 20px', borderRadius: 6, border: '1px solid #2d2d3d', background: '#22222f', color: '#e4e4ef', fontWeight: 500, fontSize: 13, cursor: 'pointer' }}>
-              Download Results JSON
+              {finalOutput ? 'Download Results JSON' : 'Download Partial Results JSON'}
             </button>
-            <Link href={{
-              pathname: '/',
-            }} onClick={() => {
-              // Store results in sessionStorage-like approach: we'll use a global
-              if (typeof window !== 'undefined') window.__etapaResults = finalOutput;
-            }}
-              style={{ padding: '8px 20px', borderRadius: 6, background: '#E8458B', color: 'white', fontWeight: 500, fontSize: 13, textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
-              View in Dashboard
-            </Link>
+            {finalOutput && (
+              <Link href={{ pathname: '/' }}
+                onClick={() => { if (typeof window !== 'undefined') window.__etapaResults = finalOutput; }}
+                style={{ padding: '8px 20px', borderRadius: 6, background: '#E8458B', color: 'white', fontWeight: 500, fontSize: 13, textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
+                View in Dashboard
+              </Link>
+            )}
+            {!running && (
+              <button onClick={clearPartial}
+                style={{ padding: '8px 20px', borderRadius: 6, border: '1px solid #2d2d3d', background: 'transparent', color: '#8888a0', fontWeight: 500, fontSize: 13, cursor: 'pointer' }}>
+                Clear
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -227,10 +376,16 @@ export default function ResultsPage() {
   );
 }
 
-function handleEvent(data, addLog, setProgress, setFinalOutput) {
+function handleEvent(data, handlers) {
+  const {
+    addLog, setProgress, setFinalOutput,
+    setCurrentRunId, setLiveResults, setLiveEditResults, setLiveSpeedResults,
+  } = handlers;
+
   switch (data.type) {
     case 'start':
-      addLog({ type: 'info', text: `Starting ${data.total} generation + ${data.totalEdits} edit + ${data.totalSpeed || 0} speed scenarios...` });
+      if (data.runId && setCurrentRunId) setCurrentRunId(data.runId);
+      addLog({ type: 'info', text: `Starting ${data.total} generation + ${data.totalEdits} edit + ${data.totalSpeed || 0} speed scenarios (runId ${data.runId || 'unknown'})…` });
       break;
     case 'scenario-start':
       addLog({ type: 'muted', text: `▶ [${data.index + 1}/${SCENARIOS.length}] ${data.name}...` });
@@ -251,6 +406,22 @@ function handleEvent(data, addLog, setProgress, setFinalOutput) {
         addLog({ type: 'muted', text: `     ⚖︎ ${data.judge.verdict.summary}` });
       }
       setProgress(p => ({ ...p, done: data.index + 1 }));
+      // Capture into the live accumulator so the partial download has this row.
+      if (setLiveResults) {
+        setLiveResults(prev => {
+          const next = prev.slice();
+          next[data.index] = {
+            name: data.name,
+            pass: data.pass,
+            errors: data.errors || [],
+            warnings: data.warnings || [],
+            stats: data.stats || null,
+            durationMs: data.durationMs || null,
+            judge: data.judge || null,
+          };
+          return next;
+        });
+      }
       break;
     }
     case 'edit-start':
@@ -265,6 +436,13 @@ function handleEvent(data, addLog, setProgress, setFinalOutput) {
         data.errors?.forEach(e => addLog({ type: 'fail', text: `     ✗ ${e}` }));
       }
       setProgress(p => ({ ...p, editsDone: data.index + 1 }));
+      if (setLiveEditResults) {
+        setLiveEditResults(prev => {
+          const next = prev.slice();
+          next[data.index] = { name: data.name, pass: data.pass, errors: data.errors || [], durationMs: data.durationMs || null };
+          return next;
+        });
+      }
       break;
     }
     case 'speed-start':
@@ -279,6 +457,13 @@ function handleEvent(data, addLog, setProgress, setFinalOutput) {
         data.errors?.forEach(e => addLog({ type: 'fail', text: `     ✗ ${e}` }));
       }
       setProgress(p => ({ ...p, speedDone: data.index + 1 }));
+      if (setLiveSpeedResults) {
+        setLiveSpeedResults(prev => {
+          const next = prev.slice();
+          next[data.index] = { name: data.name, pass: data.pass, errors: data.errors || [], durationMs: data.durationMs || null, actual: data.actual || null };
+          return next;
+        });
+      }
       break;
     }
     case 'complete': {
