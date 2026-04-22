@@ -77,6 +77,11 @@ export default function PlanLoadingScreen({ navigation, route }) {
   // want to wire up a different in-progress indicator later.
   const [tipIndex, setTipIndex] = useState(0);
   const [cancelling, setCancelling] = useState(false);
+  // Failure state. When the server reports status='failed' (or the generate
+  // call throws before we even start polling), we flip this and show a
+  // proper error screen instead of silently bouncing the user back.
+  const [failure, setFailure] = useState(null);  // { error: string }
+  const [retrying, setRetrying] = useState(false);
   // Abandon tracking — set true right before we navigate away on successful
   // plan generation. Used by the beforeRemove listener below.
   const completedRef = useRef(false);
@@ -210,8 +215,14 @@ export default function PlanLoadingScreen({ navigation, route }) {
         } else if (job.status === 'failed') {
           clearInterval(pollRef.current);
           pollRef.current = null;
-          setMessage('Something went wrong. Retrying...');
-          setTimeout(() => { if (mountedRef.current) navigation.goBack(); }, 2000);
+          // Surface the failure to the user. We used to auto-back after 2s
+          // with a generic "Retrying..." message, which was misleading (no
+          // retry actually happened) and left users with no idea what went
+          // wrong. Now we show a proper error screen with the server's
+          // reason + a Try again button.
+          const serverError = job.error || 'The plan couldn\'t be built. Please try again.';
+          setFailure({ error: serverError });
+          analytics.events.planGenerationFailed(serverError);
         } else if (job.status === 'cancelled') {
           clearInterval(pollRef.current);
           pollRef.current = null;
@@ -278,10 +289,32 @@ export default function PlanLoadingScreen({ navigation, route }) {
     } catch (err) {
       analytics.events.planGenerationFailed(err.message);
       if (!mountedRef.current) return;
-      setMessage('Something went wrong. Retrying...');
-      setTimeout(() => navigation.goBack(), 2000);
+      // Same failure UX as the async polling path.
+      setFailure({ error: err?.message || 'The plan couldn\'t be built. Please try again.' });
     }
   };
+
+  /**
+   * Retry a failed generation from the error screen. Resets the progress
+   * bar, clears the failure state, and re-runs generate() against the same
+   * original inputs. The old job (if any) is abandoned — cancelPlanJob on
+   * it would be a nice-to-have but the old job is already terminal.
+   */
+  const handleRetry = useCallback(async () => {
+    setRetrying(true);
+    setFailure(null);
+    setMessage('Building your plan...');
+    jobIdRef.current = null;
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    progressAnim.setValue(0.02);
+    startCreep(0.02, 0.12);
+    generationStartedAtRef.current = Date.now();
+    try {
+      await generate();
+    } finally {
+      if (mountedRef.current) setRetrying(false);
+    }
+  }, [progressAnim, startCreep]);
 
   const handleCancel = () => {
     Alert.alert(
@@ -319,6 +352,53 @@ export default function PlanLoadingScreen({ navigation, route }) {
   // disabled this screen or set a redirectTo, we short-circuit before
   // running any plan-generation logic.
   if (guard.blocked) return guard.render();
+
+  // ── Failure state ──────────────────────────────────────────────────────
+  // Shown when the server reports status='failed' or the generate call
+  // throws. Replaces the old silent "go back after 2 seconds" flow so users
+  // actually understand what happened and can either retry or go back.
+  if (failure) {
+    return (
+      <View style={s.container}>
+        <SafeAreaView style={s.safe}>
+          <ScrollView contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
+            <View style={s.failureHeader}>
+              <View style={s.failureIconWrap}>
+                <Text style={s.failureIcon}>!</Text>
+              </View>
+              <Text style={s.title}>Couldn't build your plan</Text>
+              <Text style={s.failureMessage}>
+                Something went wrong while your coach was building your plan. Your details are saved — try again and it usually works on the second attempt.
+              </Text>
+              <View style={s.failureReasonBox}>
+                <Text style={s.failureReasonLabel}>Error details</Text>
+                <Text style={s.failureReasonText}>{failure.error}</Text>
+              </View>
+            </View>
+          </ScrollView>
+
+          <View style={s.bottom}>
+            <TouchableOpacity
+              style={s.retryBtn}
+              onPress={handleRetry}
+              disabled={retrying}
+              activeOpacity={0.85}
+            >
+              <Text style={s.retryBtnText}>{retrying ? 'Trying again...' : 'Try again'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={s.cancelBtn}
+              onPress={() => navigation.goBack()}
+              disabled={retrying}
+              activeOpacity={0.7}
+            >
+              <Text style={s.cancelText}>Go back</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   return (
     <View style={s.container}>
@@ -469,4 +549,46 @@ const s = StyleSheet.create({
   },
   cancelText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
   powered: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint },
+
+  // ── Failure state ──────────────────────────────────────────────────────────
+  failureHeader: { alignItems: 'center', marginTop: 40, marginBottom: 24 },
+  failureIconWrap: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: 'rgba(232,69,139,0.12)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.25)',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 24,
+  },
+  failureIcon: {
+    fontSize: 34, fontWeight: '700', fontFamily: FF.semibold,
+    color: colors.primary,
+  },
+  failureMessage: {
+    fontSize: 14, fontWeight: '400', fontFamily: FF.regular,
+    color: colors.textMid, textAlign: 'center', lineHeight: 21,
+    paddingHorizontal: 12, marginTop: 12, marginBottom: 20,
+  },
+  failureReasonBox: {
+    backgroundColor: colors.surface, borderRadius: 12,
+    borderWidth: 1, borderColor: colors.border,
+    padding: 14, width: '100%',
+  },
+  failureReasonLabel: {
+    fontSize: 10, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.textFaint, letterSpacing: 0.8, textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  failureReasonText: {
+    fontSize: 12, fontWeight: '400', fontFamily: FF.regular,
+    color: colors.textMuted, lineHeight: 18,
+  },
+  retryBtn: {
+    backgroundColor: colors.primary, borderRadius: 12,
+    paddingVertical: 14, paddingHorizontal: 40,
+    alignItems: 'center', marginBottom: 12,
+    minWidth: 180,
+  },
+  retryBtnText: {
+    fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: '#fff',
+  },
 });

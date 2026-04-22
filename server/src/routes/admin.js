@@ -2195,6 +2195,74 @@ router.get('/plan-generations/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/admin/plan-generations/:id/cancel — mark a running generation cancelled
+// Admin-side cancel: the user-facing DELETE /api/ai/plan-job/:jobId endpoint
+// rejects any caller whose user_id doesn't match the job. Admins debugging a
+// stuck job need a separate path that bypasses the ownership check. This:
+//   1. Marks the in-memory planJob as 'cancelled' so runAsyncGeneration bails
+//      at its next cancel checkpoint (API call, post-processor, retry, save).
+//   2. Deletes any plan rows that already got saved before the checkpoint.
+//   3. Flips the plan_generations row to status='cancelled' so the debug UI
+//      + admin dashboard stat cards reflect reality.
+router.post('/plan-generations/:id/cancel', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const { data: row, error } = await supabase
+      .from('plan_generations')
+      .select('id, job_id, status, plan_id, created_at')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!row) return res.status(404).json({ error: 'Not found' });
+
+    // If the row is already terminal, don't re-flip — return the current state
+    // so the UI can surface it cleanly.
+    if (['completed', 'failed', 'cancelled'].includes(row.status)) {
+      return res.json({ ok: true, alreadyTerminal: true, status: row.status });
+    }
+
+    // 1. In-memory job cancellation. The job may have aged out of planJobs
+    // (process restart, expiry); that's fine — we still flip the DB row.
+    let inMemoryCancelled = false;
+    if (row.job_id) {
+      const { getPlanJob } = require('./ai');
+      const job = getPlanJob(row.job_id);
+      if (job) {
+        job.status = 'cancelled';
+        job.progress = 'Cancelled by admin';
+        inMemoryCancelled = true;
+      }
+    }
+
+    // 2. Delete the plan + its activities if runAsyncGeneration already wrote
+    // them (completes-before-cancel race). Best-effort — failures just log.
+    if (row.plan_id) {
+      supabase.from('activities').delete().eq('plan_id', row.plan_id).then(() =>
+        supabase.from('plans').delete().eq('id', row.plan_id)
+      ).catch((e) => console.warn('[admin/plan-generations/cancel] plan cleanup failed:', e?.message));
+    }
+
+    // 3. Persist the cancelled status so the debug UI stops reporting running.
+    const createdAtMs = row.created_at ? new Date(row.created_at).getTime() : null;
+    await supabase
+      .from('plan_generations')
+      .update({
+        status: 'cancelled',
+        progress: 'Cancelled by admin',
+        error: req.body?.reason ? `Cancelled by admin: ${req.body.reason}` : 'Cancelled by admin',
+        duration_ms: createdAtMs ? Date.now() - createdAtMs : null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id);
+
+    res.json({ ok: true, inMemoryCancelled, jobId: row.job_id || null });
+  } catch (err) {
+    console.error('[admin/plan-generations/cancel] error:', err);
+    next(err);
+  }
+});
+
 // POST /api/admin/plan-generations/:id/rerun — kick off a new job with stored inputs
 router.post('/plan-generations/:id/rerun', async (req, res, next) => {
   try {

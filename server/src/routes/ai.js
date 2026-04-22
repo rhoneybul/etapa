@@ -1767,24 +1767,74 @@ router.post('/generate-plan-async', async (req, res) => {
 });
 
 // GET /api/ai/plan-job/:jobId — poll for status
-router.get('/plan-job/:jobId', (req, res) => {
+router.get('/plan-job/:jobId', async (req, res) => {
   const job = planJobs.get(req.params.jobId);
-  if (!job) return res.status(404).json({ error: 'Job not found' });
-
-  // Only let the owner check their job
-  if (job.userId && req.user?.id && job.userId !== req.user.id) {
-    return res.status(403).json({ error: 'Not your job' });
+  if (job) {
+    // Only let the owner check their job
+    if (job.userId && req.user?.id && job.userId !== req.user.id) {
+      return res.status(403).json({ error: 'Not your job' });
+    }
+    return res.json({
+      jobId: job.id,
+      status: job.status,
+      progress: job.progress,
+      activitiesCount: job.activities.length,
+      activities: job.activities,   // send partial activities so client can preview
+      plan: job.plan,
+      error: job.error,
+    });
   }
 
-  res.json({
-    jobId: job.id,
-    status: job.status,
-    progress: job.progress,
-    activitiesCount: job.activities.length,
-    activities: job.activities,   // send partial activities so client can preview
-    plan: job.plan,
-    error: job.error,
-  });
+  // In-memory miss. Most commonly this is after a deploy/restart — the job
+  // Map got wiped but the app is still polling. Fall back to the DB so we
+  // can tell the client whether the job actually finished (or timed out via
+  // the reaper) rather than stringing them along with 404s they'll swallow.
+  try {
+    const { data: row } = await supabase
+      .from('plan_generations')
+      .select('job_id, user_id, status, progress, plan_id, error, activities, plan_snapshot')
+      .eq('job_id', req.params.jobId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!row) return res.status(404).json({ error: 'Job not found' });
+
+    if (row.user_id && req.user?.id && row.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Not your job' });
+    }
+
+    // Running in the DB but gone from memory = almost certainly a server
+    // restart. Surface that as failed so the app stops spinning. The reaper
+    // will eventually catch it too, but the client shouldn't have to wait
+    // for the next sweep.
+    if (row.status === 'running') {
+      return res.json({
+        jobId: req.params.jobId,
+        status: 'failed',
+        progress: 'Something went wrong',
+        activitiesCount: 0,
+        activities: [],
+        plan: null,
+        error: 'The server restarted while your plan was being built. Please try again.',
+      });
+    }
+
+    return res.json({
+      jobId: req.params.jobId,
+      status: row.status,
+      progress: row.progress || null,
+      activitiesCount: Array.isArray(row.activities) ? row.activities.length : 0,
+      activities: row.activities || [],
+      plan: row.plan_snapshot && row.plan_id
+        ? { id: row.plan_id, ...row.plan_snapshot, activities: row.activities || [] }
+        : null,
+      error: row.error || null,
+    });
+  } catch (err) {
+    console.warn(`[plan-job] DB fallback threw for ${req.params.jobId}:`, err?.message);
+    return res.status(404).json({ error: 'Job not found' });
+  }
 });
 
 // DELETE /api/ai/plan-job/:jobId — cancel a running job
@@ -1856,20 +1906,61 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
     const _claudeModel = modelOverride || 'claude-sonnet-4-20250514';
     const _claudeStartedAt = Date.now();
 
-    const response = await _fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: _claudeModel,
-        max_tokens: planMaxTokens,
-        system: systemWithCoach,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
+    // Hard timeout on the Claude call. Without this, a hung connection
+    // leaves the job at status='running' forever — the reaper would
+    // eventually catch it after 5 minutes, but failing fast gives the app
+    // a chance to show an actual error state.
+    const CLAUDE_CALL_TIMEOUT_MS = 90 * 1000;
+    const abortCtrl = new AbortController();
+    const abortTimer = setTimeout(() => abortCtrl.abort(), CLAUDE_CALL_TIMEOUT_MS);
+
+    let response;
+    try {
+      response = await _fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: _claudeModel,
+          max_tokens: planMaxTokens,
+          system: systemWithCoach,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+        signal: abortCtrl.signal,
+      });
+    } catch (fetchErr) {
+      clearInterval(progressInterval);
+      clearTimeout(abortTimer);
+      const aborted = fetchErr?.name === 'AbortError';
+      const msg = aborted
+        ? `Claude API call timed out after ${Math.round(CLAUDE_CALL_TIMEOUT_MS / 1000)}s`
+        : `Claude API call failed: ${fetchErr?.message || 'unknown error'}`;
+      console.error(`[async-gen] Job ${jobId} ${msg}`);
+      logClaudeUsage({
+        userId, feature: 'plan_gen', model: _claudeModel,
+        data: {}, response: null, durationMs: Date.now() - _claudeStartedAt,
+        status: aborted ? 'timeout' : 'api_error',
+        metadata: { async: true, aborted, weeks: config.weeks, daysPerWeek: config.daysPerWeek, coachId: config.coachId, goalType: goal?.goalType },
+      });
+      if (job && job.status !== 'cancelled') {
+        job.status = 'failed';
+        job.error = msg;
+        job.progress = aborted ? 'Timed out' : 'Something went wrong';
+      }
+      if (job.logId) {
+        planGenLogger.finish(job.logId, {
+          status: 'failed',
+          error: msg,
+          progress: job.progress,
+          duration_ms: Date.now() - job.createdAt,
+        });
+      }
+      return;
+    }
+    clearTimeout(abortTimer);
 
     clearInterval(progressInterval);
 
@@ -1979,6 +2070,10 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
       retryAttempted = true;
       const retryPrompt = buildRetryPrompt(prompt, firstPassCritical, weekFiltered, goal, config);
       const retryStartedAt = Date.now();
+      // Same 90s hard cap on the retry — otherwise the retry path is another
+      // way to silently strand a job at status='running'.
+      const retryAbortCtrl = new AbortController();
+      const retryAbortTimer = setTimeout(() => retryAbortCtrl.abort(), 90 * 1000);
       try {
         const retryResponse = await _fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
@@ -1993,7 +2088,9 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
             system: systemWithCoach,
             messages: [{ role: 'user', content: retryPrompt }],
           }),
+          signal: retryAbortCtrl.signal,
         });
+        clearTimeout(retryAbortTimer);
         if (retryResponse.ok) {
           const retryData = await retryResponse.json();
           logClaudeUsage({
@@ -2027,7 +2124,10 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
           console.warn(`[async-gen] Job ${jobId} retry HTTP ${retryResponse.status} — keeping first pass`);
         }
       } catch (retryErr) {
-        console.warn(`[async-gen] Job ${jobId} retry threw:`, retryErr?.message);
+        clearTimeout(retryAbortTimer);
+        const aborted = retryErr?.name === 'AbortError';
+        console.warn(`[async-gen] Job ${jobId} retry ${aborted ? 'timed out' : 'threw'}:`, retryErr?.message);
+        // Retry failing is non-fatal — we keep the first-pass clamped plan.
       }
     }
 
@@ -2534,6 +2634,9 @@ module.exports = router;
 // Named exports for other routes (e.g. plans.js regenerate, admin.js poll)
 module.exports.startGenerationJob = startGenerationJob;
 module.exports.getPlanJob = (jobId) => planJobs.get(jobId) || null;
+// Exposed for the plan-gen reaper so it can sync in-memory jobs with any
+// rows it flips in the DB. Tests should not mutate this directly.
+module.exports._planJobs = planJobs;
 // Test-only exports — prompt builders are pure functions so we can unit
 // test them without touching Claude or the DB.
 module.exports._testing = { buildPlanPrompt, buildRetryPrompt, getFewShotExemplar };

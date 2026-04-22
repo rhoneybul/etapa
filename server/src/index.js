@@ -733,4 +733,12 @@ module.exports = { app };
 
 app.listen(PORT, () => {
   console.log(`Etapa API running on http://localhost:${PORT}`);
+
+  // Start the plan-generation reaper. On every boot (including deploys) it
+  // sweeps `plan_generations` for rows stuck at status='running' past the
+  // stale threshold and marks them failed so the app stops showing the
+  // creeping progress bar forever. See server/src/lib/planGenReaper.js.
+  const { startReaper } = require('./lib/planGenReaper');
+  const { _planJobs } = require('./routes/ai');
+  startReaper({ planJobs: _planJobs });
 });

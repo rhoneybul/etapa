@@ -151,6 +151,9 @@ export default function PlanGenerationsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [rerunBusy, setRerunBusy] = useState(false);
   const [rerunResult, setRerunResult] = useState<string | null>(null);
+  // Cancel state — tracks which row is currently being cancelled so the row
+  // button can show a spinner while the request is in flight.
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -208,6 +211,43 @@ export default function PlanGenerationsPage() {
       setRerunResult(`Error: ${e.message}`);
     } finally {
       setRerunBusy(false);
+    }
+  }
+
+  /**
+   * Cancel a running generation. Uses the admin cancel endpoint which
+   * bypasses the user-ownership check on the regular plan-job DELETE route.
+   * The server flips planJobs[jobId].status to 'cancelled' (so
+   * runAsyncGeneration bails at its next checkpoint), cleans up any saved
+   * plan rows, and updates plan_generations.status='cancelled'.
+   */
+  async function cancelGeneration(id: string) {
+    if (!confirm("Cancel this running generation? The in-flight Claude call will finish in the background but its output is discarded, and any partially-saved plan will be deleted.")) return;
+    setCancellingId(id);
+    setRerunResult(null);
+    try {
+      const r = await fetch(`/api/plan-generations/${id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Cancelled from admin dashboard" }),
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error || `Cancel failed (${r.status})`);
+      setRerunResult(body.alreadyTerminal
+        ? `Already ${body.status} — no change.`
+        : `Cancelled${body.inMemoryCancelled ? "" : " (DB only — job had already aged out of memory)"}.`);
+      refresh();
+      // If the detail modal is open on this row, refresh it too.
+      if (selectedId === id) {
+        setDetailLoading(true);
+        const d = await fetch(`/api/plan-generations/${id}`);
+        if (d.ok) setDetail(await d.json());
+        setDetailLoading(false);
+      }
+    } catch (e: any) {
+      setRerunResult(`Error: ${e.message}`);
+    } finally {
+      setCancellingId(null);
     }
   }
 
@@ -334,6 +374,15 @@ export default function PlanGenerationsPage() {
                       >
                         Inspect
                       </button>
+                      {g.status === "running" && (
+                        <button
+                          onClick={() => cancelGeneration(g.id)}
+                          disabled={cancellingId === g.id}
+                          className="text-xs text-red-400 hover:text-red-300 transition-colors disabled:opacity-30 mr-3"
+                        >
+                          {cancellingId === g.id ? "Cancelling..." : "Cancel"}
+                        </button>
+                      )}
                       <button
                         onClick={() => rerunGeneration(g.id)}
                         disabled={rerunBusy}
@@ -528,6 +577,15 @@ export default function PlanGenerationsPage() {
                   >
                     Download debug package
                   </button>
+                  {detail.generation.status === "running" && (
+                    <button
+                      onClick={() => cancelGeneration(detail.generation.id)}
+                      disabled={cancellingId === detail.generation.id}
+                      className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-900/30 text-red-300 border border-red-700/30 hover:bg-red-900/50 disabled:opacity-50"
+                    >
+                      {cancellingId === detail.generation.id ? "Cancelling..." : "Cancel job"}
+                    </button>
+                  )}
                   <button
                     onClick={() => rerunGeneration(detail.generation.id)}
                     disabled={rerunBusy}
