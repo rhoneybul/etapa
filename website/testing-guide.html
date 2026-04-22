@@ -852,15 +852,26 @@ a:hover { color: var(--accent-hover); }
          the guide naturally. -->
     <div class="install-hero" role="region" aria-label="Direct install links">
       <div class="install-hero-eyebrow">Install Etapa right now</div>
-      <h2 class="install-hero-title">Two links. That&rsquo;s it.</h2>
-      <p class="install-hero-lede">Tap the link for your phone on the device you want to install on. The store apps handle the rest.</p>
+      <h2 class="install-hero-title">Get Etapa on your phone.</h2>
+      <p class="install-hero-lede">
+        On iPhone there are two ways in &mdash; a TestFlight email invite, or the public link below.
+        I&rsquo;ll tell you ahead of time which one applies to you, so don&rsquo;t try both.
+        On Android, it&rsquo;s the Play Store.
+      </p>
+
+      <p class="install-hero-sub" style="margin: -4px 0 20px; padding: 14px 16px; background: var(--surface-hover); border-radius: 12px; color: var(--fg-2); font-size: var(--fs-body); line-height: var(--lh-body);">
+        <strong style="color: var(--fg);">Got an email from TestFlight?</strong>
+        That&rsquo;s Method 1. Open the email (sender: <em>TestFlight</em>), tap <strong>View in TestFlight</strong>, then <strong>Install</strong>.
+        TestFlight will install itself first if you don&rsquo;t already have it. You don&rsquo;t need the public link below.
+      </p>
+
       <div class="install-links-grid">
         <a class="install-link install-link-ios" href="https://testflight.apple.com/join/u995w5vr" target="_blank" rel="noopener">
           <span class="install-link-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.543 12.54c-.023-2.42 1.974-3.58 2.064-3.637-1.123-1.64-2.875-1.866-3.5-1.893-1.49-.15-2.907.876-3.66.876-.765 0-1.927-.854-3.168-.83-1.63.024-3.134.947-3.973 2.404-1.695 2.936-.433 7.28 1.216 9.666.807 1.166 1.767 2.477 3.028 2.43 1.216-.05 1.676-.787 3.147-.787 1.47 0 1.883.787 3.168.76 1.307-.022 2.134-1.186 2.932-2.36.924-1.353 1.305-2.665 1.328-2.732-.03-.013-2.553-.983-2.58-3.897zm-2.422-7.16c.67-.814 1.123-1.943.999-3.068-.966.04-2.136.644-2.83 1.458-.62.72-1.164 1.875-1.019 2.977 1.08.084 2.18-.55 2.85-1.367z"/></svg>
           </span>
           <span class="install-link-body">
-            <span class="install-link-label">iPhone &middot; TestFlight</span>
+            <span class="install-link-label">iPhone &middot; Method 2 &middot; TestFlight public link</span>
             <span class="install-link-url">testflight.apple.com/join/u995w5vr</span>
           </span>
         </a>
@@ -875,7 +886,7 @@ a:hover { color: var(--accent-hover); }
         </a>
       </div>
       <p class="install-hero-fallback">
-        If the TestFlight link says &ldquo;This beta is full&rdquo; or the Play Store listing isn&rsquo;t visible yet,
+        If TestFlight says &ldquo;This beta isn&rsquo;t accepting any new testers right now&rdquo; or the Play Store listing isn&rsquo;t visible yet,
         email <a class="inline" href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a> and we&rsquo;ll add you manually.
       </p>
     </div>
@@ -926,10 +937,17 @@ a:hover { color: var(--accent-hover); }
         </header>
 
         <div class="callout" role="note" style="margin: 0 0 16px; padding: 14px 16px; border-radius: 10px; background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.3);">
-          <strong style="display: block; margin-bottom: 4px;">Your TestFlight link &mdash; tap this on your iPhone:</strong>
-          <a class="inline" href="https://testflight.apple.com/join/u995w5vr" target="_blank" rel="noopener" style="font-size: 15px; font-weight: 600; word-break: break-all;">
-            https://testflight.apple.com/join/u995w5vr
-          </a>
+          <strong style="display: block; margin-bottom: 4px;">Two ways in &mdash; I&rsquo;ll tell you ahead of time which one applies to you.</strong>
+          <span style="display: block; margin-top: 6px;">
+            <strong>Method 1:</strong> TestFlight sends you an email invite. Open it on your iPhone and tap <em>View in TestFlight</em>.
+          </span>
+          <span style="display: block; margin-top: 4px;">
+            <strong>Method 2:</strong> I send you a public link &mdash;
+            <a class="inline" href="https://testflight.apple.com/join/u995w5vr" target="_blank" rel="noopener" style="font-weight: 600; word-break: break-all;">
+              testflight.apple.com/join/u995w5vr
+            </a>
+            &mdash; tap it on your iPhone.
+          </span>
         </div>
 
         <ol class="steps">
@@ -937,17 +955,21 @@ a:hover { color: var(--accent-hover); }
             <div class="step-title">Install TestFlight from the App Store</div>
             <div class="step-body">
               It&rsquo;s Apple&rsquo;s free beta-testing app. Search <span class="code">TestFlight</span> in the App Store and install it.
-              Sign in with the Apple ID you want to use.
+              Sign in with the Apple ID you want to use. (If you install via the email invite flow, TestFlight offers to install itself &mdash; you can skip this step.)
             </div>
           </li>
           <li>
-            <div class="step-title">Open our public link on your phone</div>
-            <div class="step-body">
-              Tap <a class="inline" href="https://testflight.apple.com/join/u995w5vr" target="_blank" rel="noopener">
-              https://testflight.apple.com/join/u995w5vr</a> &mdash; it launches straight into TestFlight.
-              If it says the beta is full or you can&rsquo;t open it, email
+            <div class="step-title">Use the method you were told to use</div>
+            <div class="step-body" style="padding-bottom: 4px;">
+              <strong>If you got a TestFlight email:</strong> open it on your iPhone (sender will be <em>TestFlight</em>), tap <strong>View in TestFlight</strong>. That&rsquo;s it &mdash; you don&rsquo;t need the public link.
+            </div>
+            <div class="step-body" style="padding-top: 6px;">
+              <strong>If you got the public link from me:</strong> tap
+              <a class="inline" href="https://testflight.apple.com/join/u995w5vr" target="_blank" rel="noopener">
+              https://testflight.apple.com/join/u995w5vr</a>
+              on your iPhone &mdash; it launches straight into TestFlight. If it says &ldquo;This beta isn&rsquo;t accepting any new testers right now,&rdquo; email
               <a class="inline" href="mailto:helloetapa@gmail.com?subject=TestFlight%20invite">helloetapa@gmail.com</a>
-              and we&rsquo;ll add you directly.
+              and I&rsquo;ll add you as a direct email invite instead.
             </div>
           </li>
           <li>
@@ -967,7 +989,7 @@ a:hover { color: var(--accent-hover); }
 
         <div class="cta-row">
           <a class="btn primary" href="https://testflight.apple.com/join/u995w5vr" target="_blank" rel="noopener">
-            Join the TestFlight beta
+            Use the public link
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
           </a>
           <a class="btn ghost" href="https://apps.apple.com/app/testflight/id899247664" target="_blank" rel="noopener">Get TestFlight app</a>
