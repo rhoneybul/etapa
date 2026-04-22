@@ -380,6 +380,86 @@ function enforceTargetDistance(acts, goal, config) {
   return { activities: normalised, violations };
 }
 
+// ── 7. Enforce dayAssignments ───────────────────────────────────────────────
+// When the athlete explicitly says "Monday is strength, Tuesday is outdoor,
+// Wednesday is strength", Claude used to get this wrong routinely — it would
+// put strength on ride days (its default pattern) and rides on strength days.
+// The prompt now surfaces dayAssignments explicitly, but we still clamp as a
+// safety net: for each week, if a strength session is on a ride-day and a
+// ride is on a strength-day, swap their dayOfWeek values.
+//
+// We do not move recurring / one-off rides — those are user-pinned to
+// specific days and injected after Claude's output. We also skip days that
+// aren't in dayAssignments (unassigned days keep whatever the model chose).
+
+const RIDE_ASSIGNMENTS = new Set(['outdoor', 'indoor']);
+
+function enforceDayAssignments(acts, goal, config) {
+  const violations = [];
+  const da = config?.dayAssignments;
+  if (!da || typeof da !== 'object' || Object.keys(da).length === 0) {
+    return { activities: acts, violations };
+  }
+
+  // Normalise: map dayOfWeek index → assignment ('strength' | 'outdoor' | 'indoor').
+  const assignmentByDow = new Map();
+  for (const [dayName, type] of Object.entries(da)) {
+    const dow = DAY_NAMES.indexOf(String(dayName).toLowerCase());
+    if (dow < 0 || !type) continue;
+    assignmentByDow.set(dow, type);
+  }
+  if (assignmentByDow.size === 0) return { activities: acts, violations };
+
+  const byWeek = groupByWeek(acts);
+  let next = acts.slice();
+  let swapped = 0;
+
+  // Helper: is this activity pinned (recurring / one-off)? We never move
+  // those — the user has a real-world commitment on that day.
+  const isPinned = (a) => a.isOneOff || a.subType === 'oneoff' || a.isRecurring || a.subType === 'recurring';
+
+  for (const [week, weekActs] of byWeek.entries()) {
+    // For each week, find swap candidates:
+    //   A = ride on a strength-assigned day (needs to move off)
+    //   B = strength on a ride-assigned day (needs to move off)
+    // Pair them up and swap dayOfWeek. This preserves session count per
+    // week and keeps every activity on an available day.
+    const misplacedRides = [];
+    const misplacedStrength = [];
+    for (const a of weekActs) {
+      if (isPinned(a)) continue;
+      const assigned = assignmentByDow.get(a.dayOfWeek);
+      if (!assigned) continue;
+      if (a.type === 'ride' && assigned === 'strength') misplacedRides.push(a);
+      if (a.type === 'strength' && RIDE_ASSIGNMENTS.has(assigned)) misplacedStrength.push(a);
+    }
+
+    const pairs = Math.min(misplacedRides.length, misplacedStrength.length);
+    for (let i = 0; i < pairs; i++) {
+      const ride = misplacedRides[i];
+      const strength = misplacedStrength[i];
+      const rideDay = ride.dayOfWeek;
+      const strengthDay = strength.dayOfWeek;
+      next = next.map((x) => {
+        if (x === ride) return { ...x, dayOfWeek: strengthDay };
+        if (x === strength) return { ...x, dayOfWeek: rideDay };
+        return x;
+      });
+      swapped++;
+    }
+  }
+
+  if (swapped > 0) {
+    violations.push({
+      severity: 'critical',
+      code: 'day_assignment',
+      message: `Swapped ${swapped} ride↔strength pair(s) across weeks to honour dayAssignments (e.g. strength on Mon/Wed, rides on Tue/Thu/Sat).`,
+    });
+  }
+
+  return { activities: next, violations };
+}
+
 // ── Orchestrator ────────────────────────────────────────────────────────────
 // Run all clamps in a safe order. Order matters because e.g. taper
 // intensity clamp is cheaper if session-count clamp runs first.
@@ -392,6 +472,7 @@ function runAll(acts, goal, config) {
 
   const stages = [
     ['sessionCount',        enforceSessionCount],
+    ['dayAssignments',      enforceDayAssignments],
     ['longRideDay',         enforceLongRideDay],
     ['crossTrainingDays',   enforceCrossTrainingDays],
     ['beginnerIntensity',   enforceBeginnerIntensityCap],
@@ -420,5 +501,6 @@ module.exports = {
   enforceBeginnerIntensityCap,
   enforceCrossTrainingDays,
   enforceTargetDistance,
+  enforceDayAssignments,
   isBeginnerPathway,
 };

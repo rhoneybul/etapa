@@ -139,8 +139,13 @@ export default function ResultsPage() {
     }
   }, [running, currentRunId, addLog]);
 
-  const startTests = useCallback(async () => {
+  const startTests = useCallback(async (overrides = {}) => {
     if (running) return;
+    // Callers can override to run a single named scenario without touching
+    // the sample-size selector. When scenarioName is set the server runs
+    // ONLY that scenario + skips the edit/speed suites by default so a
+    // focused debug run is one Claude call instead of forty.
+    const { scenarioName } = overrides;
     abortRef.current = new AbortController();
     setRunning(true);
     setLog([]);
@@ -153,13 +158,20 @@ export default function ResultsPage() {
     // Initial total reflects the requested sample — the server will
     // confirm it in the 'start' event and we'll overwrite if it picked
     // a different number (e.g. 'all' shortcut).
-    const initialGenTotal = sampleSize === 'all' ? SCENARIOS.length : Math.min(sampleSize, SCENARIOS.length);
+    const initialGenTotal = scenarioName
+      ? 1
+      : (sampleSize === 'all' ? SCENARIOS.length : Math.min(sampleSize, SCENARIOS.length));
     setProgress({
       done: 0, total: initialGenTotal,
-      editsDone: 0, editsTotal: EDIT_SCENARIOS.length,
-      speedDone: 0, speedTotal: SPEED_SCENARIOS.length,
+      editsDone: 0, editsTotal: scenarioName ? 0 : EDIT_SCENARIOS.length,
+      speedDone: 0, speedTotal: scenarioName ? 0 : SPEED_SCENARIOS.length,
     });
-    addLog({ type: 'info', text: `Starting test run (${initialGenTotal} random generation + ${EDIT_SCENARIOS.length} edit + ${SPEED_SCENARIOS.length} speed) against ${serverUrl}...` });
+    addLog({
+      type: 'info',
+      text: scenarioName
+        ? `Starting single-scenario run "${scenarioName}" against ${serverUrl}...`
+        : `Starting test run (${initialGenTotal} random generation + ${EDIT_SCENARIOS.length} edit + ${SPEED_SCENARIOS.length} speed) against ${serverUrl}...`,
+    });
 
     const handlers = {
       addLog,
@@ -175,7 +187,7 @@ export default function ResultsPage() {
       const res = await fetch('/api/run-tests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serverUrl, apiKey, sampleSize }),
+        body: JSON.stringify({ serverUrl, apiKey, sampleSize, scenarioName }),
         signal: abortRef.current.signal,
       });
 
@@ -341,6 +353,51 @@ export default function ResultsPage() {
           </div>
           <div style={{ fontSize: 11, color: '#8888a0', marginTop: 10 }}>
             Pool: {SCENARIOS.length} generation scenarios (sample {sampleSize === 'all' ? 'all' : sampleSize} per run) + {EDIT_SCENARIOS.length} edit + {SPEED_SCENARIOS.length} speed (always run)
+          </div>
+
+          {/* Single-scenario runner ─────────────────────────────────────────
+              Useful when iterating on a specific bug (e.g. "Felix first plan
+              22nd of April") — runs only that scenario, skips the edit +
+              speed suites, gives you a result back in one Claude call. */}
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #2d2d3d' }}>
+            <label style={{ fontSize: 11, color: '#8888a0', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>
+              Run a single scenario by name
+            </label>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <select
+                id="single-scenario-picker"
+                defaultValue=""
+                disabled={running}
+                style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: '1px solid #2d2d3d', background: '#22222f', color: '#e4e4ef', fontSize: 13, outline: 'none' }}
+              >
+                <option value="" disabled>— pick a scenario —</option>
+                {SCENARIOS.map(s => (
+                  <option key={s.name} value={s.name}>{s.name}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => {
+                  const pick = document.getElementById('single-scenario-picker');
+                  const name = pick && pick.value;
+                  if (!name) {
+                    addLog({ type: 'warn', text: 'Pick a scenario from the dropdown first.' });
+                    return;
+                  }
+                  startTests({ scenarioName: name });
+                }}
+                disabled={running}
+                style={{
+                  padding: '8px 18px', borderRadius: 6, border: '1px solid #2d2d3d', fontWeight: 600, fontSize: 13, cursor: running ? 'not-allowed' : 'pointer',
+                  background: running ? '#22222f' : '#0f172a', color: running ? '#8888a0' : '#93c5fd', transition: '.15s',
+                }}
+                title="Runs ONLY the selected scenario — skips edits + speed tests. Typical use: debugging a specific bug."
+              >
+                Run one test
+              </button>
+            </div>
+            <div style={{ fontSize: 11, color: '#8888a0', marginTop: 6 }}>
+              Edit + speed scenarios are skipped. Result appears under the single scenario name once it completes.
+            </div>
           </div>
         </div>
 

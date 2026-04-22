@@ -327,6 +327,39 @@ function validate(plan, scenario) {
     }
   }
 
+  // ── Day assignments check ──────────────────────────────────────────────
+  // Locks in the "Felix first plan 22nd of April" bug: when the user sets
+  // config.dayAssignments (e.g. Mon=strength, Tue=outdoor, Wed=strength),
+  // strength activities MUST land on strength days and rides on ride days.
+  // Recurring / one-off rides are pinned by the user so we don't check
+  // those — but non-pinned planned activities must match the assignment.
+  const da = config.dayAssignments;
+  if (da && typeof da === 'object' && Object.keys(da).length > 0) {
+    const DAY_INDEX = DAY_NAMES;  // already lowercase array
+    const assignByDow = new Map();
+    for (const [dayName, type] of Object.entries(da)) {
+      const dow = DAY_INDEX.indexOf(String(dayName).toLowerCase());
+      if (dow >= 0 && type) assignByDow.set(dow, type);
+    }
+    const RIDE_KINDS = new Set(['outdoor', 'indoor']);
+    const mismatches = [];
+    for (const a of acts) {
+      if (a.isRecurring || a.isOneOff || a.subType === 'recurring' || a.subType === 'oneoff') continue;
+      const assigned = assignByDow.get(a.dayOfWeek);
+      if (!assigned) continue;
+      if (a.type === 'ride' && assigned === 'strength') {
+        mismatches.push(`${DAY_INDEX[a.dayOfWeek]} wk${a.week}: ride "${a.title}" on a strength day`);
+      } else if (a.type === 'strength' && RIDE_KINDS.has(assigned)) {
+        mismatches.push(`${DAY_INDEX[a.dayOfWeek]} wk${a.week}: strength "${a.title}" on a ${assigned} ride day`);
+      }
+    }
+    if (mismatches.length > 0) {
+      errors.push(
+        `${mismatches.length} activit${mismatches.length === 1 ? 'y' : 'ies'} violated dayAssignments: ${mismatches.slice(0, 5).join('; ')}${mismatches.length > 5 ? '…' : ''}`
+      );
+    }
+  }
+
   // ── Speed realism check ────────────────────────────────────────────────
   // Catch activities that slipped past the server-side normaliser. For
   // each ride, compute implied average speed and flag anything above the
@@ -457,26 +490,48 @@ function pickRandomIndexes(total, n) {
 }
 
 export async function POST(req) {
-  const { serverUrl, apiKey, sampleSize } = await req.json();
+  const { serverUrl, apiKey, sampleSize, scenarioName, skipEdits, skipSpeed } = await req.json();
   if (!serverUrl) return new Response('Missing serverUrl', { status: 400 });
 
+  // scenarioName: run exactly one named scenario (e.g. "Felix first plan 22nd
+  // of April"). Takes precedence over sampleSize. Useful when iterating on a
+  // specific bug without burning budget on the full random sample.
+  //
   // sampleSize:
   //   - undefined / null → default to 25 random generation scenarios
   //   - a number 1..SCENARIOS.length → run that many random scenarios
   //   - 'all' or >= SCENARIOS.length → run everything
-  // Edit + speed scenarios are cheap and always run regardless.
-  let genSampleCount;
-  if (sampleSize === 'all' || sampleSize === -1) {
-    genSampleCount = SCENARIOS.length;
-  } else if (typeof sampleSize === 'number' && sampleSize > 0) {
-    genSampleCount = Math.min(Math.floor(sampleSize), SCENARIOS.length);
+  // Edit + speed scenarios are cheap and always run regardless — unless the
+  // caller sets skipEdits / skipSpeed (typically for single-scenario runs).
+  let genIndexes;
+  if (scenarioName) {
+    const idx = SCENARIOS.findIndex(s => s.name === scenarioName);
+    if (idx < 0) {
+      return new Response(JSON.stringify({ error: `Unknown scenarioName: "${scenarioName}"` }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    genIndexes = [idx];
   } else {
-    genSampleCount = Math.min(25, SCENARIOS.length);
+    let genSampleCount;
+    if (sampleSize === 'all' || sampleSize === -1) {
+      genSampleCount = SCENARIOS.length;
+    } else if (typeof sampleSize === 'number' && sampleSize > 0) {
+      genSampleCount = Math.min(Math.floor(sampleSize), SCENARIOS.length);
+    } else {
+      genSampleCount = Math.min(25, SCENARIOS.length);
+    }
+    genIndexes = genSampleCount >= SCENARIOS.length
+      ? Array.from({ length: SCENARIOS.length }, (_, i) => i)  // preserve order when running all
+      : pickRandomIndexes(SCENARIOS.length, genSampleCount);
   }
-  const genIndexes = genSampleCount >= SCENARIOS.length
-    ? Array.from({ length: SCENARIOS.length }, (_, i) => i)  // preserve order when running all
-    : pickRandomIndexes(SCENARIOS.length, genSampleCount);
+  const genSampleCount = genIndexes.length;
   const selectedScenarios = genIndexes.map(i => ({ ...SCENARIOS[i], _originalIndex: i }));
+  // Single-scenario runs default to skipping edit + speed tests so the user
+  // gets their answer back in one Claude call, not 40.
+  const effectiveSkipEdits = skipEdits ?? !!scenarioName;
+  const effectiveSkipSpeed = skipSpeed ?? !!scenarioName;
 
   const authHeaders = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
 
@@ -739,10 +794,12 @@ export async function POST(req) {
         return result;
       });
 
-      // ── Run generation and edit workflows fully in parallel ───────────────────
+      // ── Run generation and (optionally) edit workflows fully in parallel ──
+      // Single-scenario runs skip the edits by default so a focused rerun
+      // doesn't also regenerate 8 edit plans.
       const [completedResults, completedEdits] = await Promise.all([
         runWithConcurrency(generationTasks, CONCURRENCY),
-        runWithConcurrency(editTasks, CONCURRENCY),
+        effectiveSkipEdits ? Promise.resolve([]) : runWithConcurrency(editTasks, CONCURRENCY),
       ]);
 
       for (const r of completedResults) {
@@ -773,7 +830,10 @@ export async function POST(req) {
         console.error('[run-tests] Could not load rideSpeedRules:', err);
       }
 
-      for (let i = 0; i < SPEED_SCENARIOS.length; i++) {
+      // Skip speed unit tests on single-scenario runs too — they're fast but
+      // clutter a focused debug run.
+      const speedLoopCount = effectiveSkipSpeed ? 0 : SPEED_SCENARIOS.length;
+      for (let i = 0; i < speedLoopCount; i++) {
         if (run.isCancelled) break;
         const sc = SPEED_SCENARIOS[i];
         send({ type: 'speed-start', index: i, name: sc.name });

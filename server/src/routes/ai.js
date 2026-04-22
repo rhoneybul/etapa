@@ -22,6 +22,25 @@ const crypto = require('crypto');
 
 const getAnthropicKey = () => process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY || null;
 
+// ── Prompt caching helper ───────────────────────────────────────────────────
+// Anthropic supports prompt caching on stable prefixes — the cached input is
+// billed at ~10% of the regular rate on subsequent calls (~90% saving on the
+// cached portion). Our system prompts are ~6k tokens and 100% stable across
+// calls, so wrapping them in an ephemeral cache block is a pure billing win
+// with zero impact on what the model sees.
+//
+// Usage: pass the existing system string and it returns the Anthropic SDK
+// content-block array form with cache_control attached. Falls back to the
+// original string when caching is explicitly disabled via env var.
+//
+// Minimum cacheable size is ~1024 tokens; anything smaller still works but
+// the API skips the cache. The cache lives for ~5 minutes between hits.
+function cachedSystem(text) {
+  if (!text) return text;
+  if (process.env.DISABLE_PROMPT_CACHE === '1') return text;
+  return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
+}
+
 // ── In-memory job store for async plan generation ───────────────────────────
 // Jobs are short-lived (~30s) so in-memory is fine. Cleaned up after 10 min.
 const planJobs = new Map();
@@ -144,7 +163,7 @@ router.post('/generate-plan', async (req, res) => {
       body: JSON.stringify({
         model: _claudeModel,
         max_tokens: planMaxTokens,
-        system: systemWithCoach,
+        system: cachedSystem(systemWithCoach),
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -262,7 +281,7 @@ router.post('/edit-plan', async (req, res) => {
       body: JSON.stringify({
         model: _claudeModel,
         max_tokens: 8192,
-        system: systemWithCoach,
+        system: cachedSystem(systemWithCoach),
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -330,7 +349,7 @@ router.post('/edit-activity', async (req, res) => {
       body: JSON.stringify({
         model: _claudeModel,
         max_tokens: 2048,
-        system: systemWithCoach,
+        system: cachedSystem(systemWithCoach),
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -756,6 +775,28 @@ ${activityGuidance.join('\n\n')}
     ? Object.keys(config.crossTrainingDays)
     : [];
 
+  // Day assignments — the user explicitly said "Monday is strength, Tuesday
+  // is outdoor cycling…". Claude was previously blind to this field and
+  // defaulted to its usual pattern (ride + strength same day), which
+  // produced obviously-wrong plans. Surface it as a hard constraint with
+  // the full day-by-day breakdown so the model has no excuse to get it
+  // wrong. `dayAssignments` uses values: 'strength' | 'outdoor' | 'indoor'.
+  const dayAssignments = config.dayAssignments && typeof config.dayAssignments === 'object'
+    ? config.dayAssignments
+    : null;
+  const hasDayAssignments = dayAssignments && Object.keys(dayAssignments).length > 0;
+  const dayAssignmentLabel = (type) => {
+    if (type === 'strength') return 'STRENGTH ONLY (no cycling)';
+    if (type === 'outdoor') return 'OUTDOOR ride';
+    if (type === 'indoor') return 'INDOOR ride';
+    return type;
+  };
+  const dayAssignmentLines = hasDayAssignments
+    ? Object.entries(dayAssignments)
+        .map(([day, type]) => `   - ${day.charAt(0).toUpperCase() + day.slice(1)}: ${dayAssignmentLabel(type)}`)
+        .join('\n')
+    : '';
+
   const hardConstraints = `
 ## HARD CONSTRAINTS — plan will be auto-corrected if any of these are violated
 
@@ -765,6 +806,9 @@ ${hasTargetDate ? `3. **Final week taper**: total volume in week ${weeks} MUST b
 ${goal.targetDistance ? `4. **Target distance**: at least one ride in weeks ${Math.max(1, weeks - 3)}–${Math.max(1, weeks - 1)} MUST reach ≥ 85% of ${goal.targetDistance} km (i.e. ≥ ${Math.round(goal.targetDistance * 0.85)} km).` : ''}
 ${isBeginnerPlan ? `5. **Beginner intensity cap**: NO activities with subType='intervals' or effort='hard'/'max'. Beginners build fitness on volume. The only subTypes allowed are: endurance, recovery. Tempo only with effort='easy' or 'moderate'.` : ''}
 ${crossTrainingDayNames.length > 0 ? `6. **Cross-training days** (${crossTrainingDayNames.join(', ')}): NO ride activities on these days. The athlete already has non-cycling work planned there — do not double up.` : ''}
+${hasDayAssignments ? `7. **Day-by-day session type** — the athlete has explicitly chosen what goes on each day. EVERY WEEK must follow this mapping:
+${dayAssignmentLines}
+   **Strength days must NOT contain rides.** **Ride days must NOT contain strength.** These assignments are strict — a strength session placed on a day tagged as an outdoor ride day is a failure, even if the total session count is right. Plan the WHOLE week around this map first, then fill in session types (endurance / tempo / intervals / long_ride) within it.` : ''}
 
 If any constraint conflicts with what you'd naturally do, adjust your plan to satisfy the constraint rather than break it.
 `;
@@ -797,7 +841,15 @@ ${goal.targetDate ? `- Event/target date: ${goal.targetDate}` : ''}
     return idx >= 0 ? `${name} (dayOfWeek=${idx})` : name;
   }).join(', ')} (the athlete can ONLY train on these days)
 - Day number mapping: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6
-- IMPORTANT: dayOfWeek values MUST exactly match the available days listed above. Do NOT use any other dayOfWeek values.
+- IMPORTANT: dayOfWeek values MUST exactly match the available days listed above. Do NOT use any other dayOfWeek values.${hasDayAssignments ? `
+
+### Day-by-day session map (the athlete picked this exactly — honour it on every week)
+${Object.entries(dayAssignments).map(([day, type]) => {
+  const dayIdx = dayNames.findIndex(n => n.toLowerCase() === day.toLowerCase());
+  return `- ${day.charAt(0).toUpperCase() + day.slice(1)} (dayOfWeek=${dayIdx}): ${dayAssignmentLabel(type)}`;
+}).join('\n')}
+
+If the map says a day is "STRENGTH ONLY", that day has a strength session and NO ride. If the map says "OUTDOOR ride" or "INDOOR ride", that day has exactly one ride of the matching kind and NO strength. Recurring / one-off rides (injected separately after your output) may land on ride-days and that's fine — but you yourself must NOT place a strength session on a ride day or a ride on a strength day.` : ''}
 
 ### Session count — read this carefully, it is the most common source of errors
 
@@ -1233,7 +1285,7 @@ Return ONLY the JSON object, no other text.`;
       body: JSON.stringify({
         model: _claudeModel,
         max_tokens: 1024,
-        system: systemPrompt,
+        system: cachedSystem(systemPrompt),
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -1271,6 +1323,13 @@ Return ONLY the JSON object, no other text.`;
 });
 
 // ── Race lookup endpoint ─────────────────────────────────────────────────
+// Normalise a race name so "Tour de France", "tour de france", and
+// "  Tour  de France  " all hit the same cache row. Lowercase + trim +
+// collapse internal whitespace.
+function normaliseRaceName(name) {
+  return String(name || '').toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
 router.post('/race-lookup', async (req, res) => {
   const apiKey = getAnthropicKey();
   if (!apiKey) {
@@ -1280,6 +1339,31 @@ router.post('/race-lookup', async (req, res) => {
   const { raceName } = req.body;
   if (!raceName) {
     return res.status(400).json({ error: 'Missing raceName.' });
+  }
+
+  // ── Cache check ─────────────────────────────────────────────────────────
+  // Race facts don't change between requests, so the same "London Marathon"
+  // looked up by 100 users should hit Claude once. See
+  // supabase/migrations/20260422000011_race_lookups_cache.sql.
+  const nameKey = normaliseRaceName(raceName);
+  try {
+    const { data: cached } = await supabase
+      .from('race_lookups')
+      .select('id, response, hit_count')
+      .eq('name_key', nameKey)
+      .maybeSingle();
+    if (cached?.response) {
+      // Fire-and-forget hit-count bump for admin visibility; don't block
+      // the response on it.
+      supabase
+        .from('race_lookups')
+        .update({ hit_count: (cached.hit_count || 0) + 1, last_hit_at: new Date().toISOString() })
+        .eq('id', cached.id)
+        .then(() => {}, () => {});
+      return res.json(cached.response);
+    }
+  } catch (err) {
+    console.warn('[race-lookup] cache read failed, falling through to Claude:', err?.message);
   }
 
   try {
@@ -1348,6 +1432,24 @@ Return ONLY the JSON object, no other text.`;
     }
 
     const result = JSON.parse(jsonMatch[0]);
+
+    // Persist to cache so the next lookup for the same race hits Postgres
+    // instead of Claude. Fire-and-forget — if the write fails we still
+    // return the live result to the caller.
+    supabase
+      .from('race_lookups')
+      .upsert({
+        name_key: nameKey,
+        original_name: raceName,
+        response: result,
+        found: !!result.found,
+        model: _claudeModel,
+        created_at: new Date().toISOString(),
+      }, { onConflict: 'name_key' })
+      .then(({ error }) => {
+        if (error) console.warn('[race-lookup] cache write failed:', error.message);
+      }, (err) => console.warn('[race-lookup] cache write threw:', err?.message));
+
     res.json(result);
   } catch (err) {
     console.error('Race lookup error:', err);
@@ -1599,7 +1701,7 @@ Only include the plan_update block when you are actually making changes. For que
       body: JSON.stringify({
         model: _claudeModel,
         max_tokens: 8192,
-        system: systemPrompt,
+        system: cachedSystem(systemPrompt),
         messages: apiMessages,
       }),
     });
@@ -1926,7 +2028,7 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
         body: JSON.stringify({
           model: _claudeModel,
           max_tokens: planMaxTokens,
-          system: systemWithCoach,
+          system: cachedSystem(systemWithCoach),
           messages: [{ role: 'user', content: prompt }],
         }),
         signal: abortCtrl.signal,
@@ -2066,7 +2168,13 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
     const firstPassCritical = postProcessorViolations.filter((v) => v.severity === 'critical');
     let retryAttempted = false;
     let retryCriticalCount = null;
-    if (firstPassCritical.length > 0 && job.status !== 'cancelled') {
+    // Skip the retry when called from the test runner (modelOverride is the
+    // test-runner signal). Tests want to measure the prompt + post-processor
+    // combination on their own and don't need to pay for retry calls — and
+    // bulk runs would double cost on any scenario that trips a critical
+    // violation. Production users (no modelOverride) still get the retry.
+    const retryAllowed = !modelOverride;
+    if (retryAllowed && firstPassCritical.length > 0 && job.status !== 'cancelled') {
       retryAttempted = true;
       const retryPrompt = buildRetryPrompt(prompt, firstPassCritical, weekFiltered, goal, config);
       const retryStartedAt = Date.now();
@@ -2085,7 +2193,7 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
           body: JSON.stringify({
             model: _claudeModel,
             max_tokens: planMaxTokens,
-            system: systemWithCoach,
+            system: cachedSystem(systemWithCoach),
             messages: [{ role: 'user', content: retryPrompt }],
           }),
           signal: retryAbortCtrl.signal,

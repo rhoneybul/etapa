@@ -113,6 +113,48 @@ export const SCENARIOS = [
   { name: 'BEGINNER TARGET: 50 km on 2 days/week', goal: { id: 'bt5', goalType: 'beginner', cyclingType: 'road', targetDistance: 50, planName: 'Get Into Cycling' }, config: { id: 'cbt5', daysPerWeek: 2, weeks: 12, trainingTypes: ['outdoor'], availableDays: ['wednesday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06', longRideDay: 'saturday' } },
   { name: 'BEGINNER TARGET: 100 km e-bike century 12 weeks', goal: { id: 'bt6', goalType: 'beginner', cyclingType: 'ebike', targetDistance: 100, planName: 'Get Into Cycling' }, config: { id: 'cbt6', daysPerWeek: 3, weeks: 12, trainingTypes: ['outdoor'], availableDays: ['tuesday', 'thursday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06', longRideDay: 'saturday' } },
   { name: 'BEGINNER TARGET: 25 km, 8 weeks (short programme)', goal: { id: 'bt7', goalType: 'beginner', cyclingType: 'road', targetDistance: 25, planName: 'Get Into Cycling' }, config: { id: 'cbt7', daysPerWeek: 3, weeks: 8, trainingTypes: ['outdoor'], availableDays: ['tuesday', 'thursday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06', longRideDay: 'saturday' } },
+
+  // ── User-reported bug locked down: dayAssignments ignored ────────────────
+  // Original failure: Felix generated his first plan on 22 April 2026 with
+  // strength assigned to Mon/Wed and outdoor rides to Tue/Thu/Sat plus two
+  // recurring rides on Tue + Thu. Claude ignored `dayAssignments` entirely
+  // and scheduled strength on Tue/Thu alongside the recurring rides, with
+  // regular rides on Mon/Wed (the strength-only days). Fix: prompt now
+  // renders dayAssignments as a HARD CONSTRAINT + post-processor swaps
+  // mismatched ride↔strength pairs. This scenario reproduces the exact
+  // config so any regression surfaces here first.
+  {
+    name: 'Felix first plan 22nd of April',
+    goal: {
+      id: 'felix-01',
+      goalType: 'improve',
+      cyclingType: 'road',
+      planName: 'Summer Bod Ready',
+    },
+    config: {
+      id: 'cfelix-01',
+      daysPerWeek: 6,
+      weeks: 10,
+      startDate: '2026-05-04',
+      fitnessLevel: 'advanced',
+      coachId: 'matteo',
+      longRideDay: 'saturday',
+      availableDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'saturday'],
+      trainingTypes: ['outdoor', 'indoor', 'strength'],
+      sessionCounts: { outdoor: 3, indoor: 1, strength: 2 },
+      dayAssignments: {
+        monday:    'strength',
+        tuesday:   'outdoor',
+        wednesday: 'strength',
+        thursday:  'outdoor',
+        saturday:  'outdoor',
+      },
+      recurringRides: [
+        { id: 'rr-felix-1', day: 'tuesday',  notes: 'Tuesday speedy melt',  distanceKm: 45, elevationM: 100 },
+        { id: 'rr-felix-2', day: 'thursday', notes: 'Tuesday social Melt',  distanceKm: 45, elevationM: 100 },
+      ],
+    },
+  },
 ];
 
 export const EDIT_SCENARIOS = [
