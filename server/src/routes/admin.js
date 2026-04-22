@@ -1980,16 +1980,24 @@ router.post('/pre-signup-grants', async (req, res, next) => {
         .filter(Boolean)
     );
 
-    // Pull any existing pending grants for these emails so we can report them
-    // as "already-pending" rather than trying to re-insert (which would hit
-    // the partial-unique index anyway).
+    // Pull any existing grants (pending OR redeemed) for these emails. We use
+    // the pending set to short-circuit duplicate creations, and the redeemed
+    // set to stop starter grants being issued to someone who already has
+    // lifetime (which strictly encapsulates starter).
     const { data: existingGrants } = await supabase
       .from('pre_signup_grants')
-      .select('id, email, status')
+      .select('id, email, entitlement, status')
       .in('email', candidates)
-      .eq('status', 'pending');
+      .in('status', ['pending', 'redeemed']);
     const alreadyPending = new Set(
-      (existingGrants || []).map(g => g.email.toLowerCase())
+      (existingGrants || []).filter(g => g.status === 'pending').map(g => g.email.toLowerCase())
+    );
+    // An email has "effective lifetime" if any pending or redeemed grant at
+    // that address is the lifetime tier.
+    const hasLifetimeGrant = new Set(
+      (existingGrants || [])
+        .filter(g => g.entitlement === 'lifetime')
+        .map(g => g.email.toLowerCase())
     );
 
     const toInsert = [];
@@ -2001,6 +2009,17 @@ router.post('/pre-signup-grants', async (req, res, next) => {
       }
       if (alreadyPending.has(e)) {
         skipped.push({ email: e, reason: 'already-pending' });
+        continue;
+      }
+      // Lifetime encapsulates starter — issuing a starter grant on top of
+      // an existing lifetime grant (pending or already redeemed) would
+      // either churn writes or trap the user in starter-only UX. Skip it.
+      if (entitlement === 'starter' && hasLifetimeGrant.has(e)) {
+        skipped.push({
+          email: e,
+          reason: 'already-has-lifetime-grant',
+          hint: 'Lifetime already covers everything Starter does — no action needed.',
+        });
         continue;
       }
       toInsert.push({

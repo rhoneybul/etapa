@@ -59,42 +59,78 @@ router.get('/prices', async (req, res) => {
 });
 
 // ── GET /api/subscription/status ─────────────────────────────────────────────
+// Returns the BEST active subscription the user holds, not just the most
+// recent one. Lifetime strictly encapsulates every other tier — so if a user
+// somehow ends up with both a lifetime row and a starter row (common cause:
+// an admin issued both grants, or the user was granted starter after already
+// having lifetime), we MUST surface lifetime or the app will trap them in
+// starter-only UX (UpgradePrompt, locked screens) despite having paid for
+// everything.
+//
+// Precedence (best → worst): lifetime > annual > monthly > starter.
+// Within a tier we prefer the row with the furthest-out current_period_end,
+// otherwise the newest created_at as a tiebreak.
 router.get('/status', async (req, res) => {
   const userId = req.user.id;
 
-  // Check for active subscriptions (trialing/active) OR paid starter/lifetime purchases
-  const { data, error } = await supabase
+  // Pull every candidate subscription row — we need to rank them, not just
+  // take the latest. Filter down to statuses that could plausibly be active.
+  const { data: rows, error } = await supabase
     .from('subscriptions')
     .select('*')
     .eq('user_id', userId)
     .in('status', ['trialing', 'active', 'paid'])
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order('created_at', { ascending: false });
 
-  if (error || !data) {
+  if (error || !rows || rows.length === 0) {
     return res.json({ active: false });
   }
 
   const now = new Date();
-  const periodEnd = data.current_period_end ? new Date(data.current_period_end) : null;
-  // Active if:
-  //   - there's a period_end and it's in the future (normal recurring sub)
-  //   - OR status is 'trialing' (free trial, period_end not yet set)
-  //   - OR plan is 'lifetime' / 'starter' with status 'active'/'paid'
-  //     (one-off purchases + promotional grants — no period_end by design)
   const oneOffPlans = new Set(['lifetime', 'starter']);
-  const active = periodEnd
-    ? periodEnd > now
-    : data.status === 'trialing'
-      || (oneOffPlans.has(data.plan) && ['active', 'paid'].includes(data.status));
 
+  // Decide whether a given row is genuinely active right now.
+  const isRowActive = (row) => {
+    const periodEnd = row.current_period_end ? new Date(row.current_period_end) : null;
+    if (periodEnd) return periodEnd > now;
+    if (row.status === 'trialing') return true;
+    return oneOffPlans.has(row.plan) && ['active', 'paid'].includes(row.status);
+  };
+
+  // Higher score = better tier. Lifetime wins over everything else.
+  const tierScore = (plan) => {
+    switch (plan) {
+      case 'lifetime': return 100;
+      case 'annual':   return 80;
+      case 'monthly':  return 60;
+      case 'starter':  return 40;
+      default:         return 10;  // unknown future plan
+    }
+  };
+
+  // Rank every active row, pick the best one.
+  const activeRows = rows.filter(isRowActive);
+  if (activeRows.length === 0) {
+    return res.json({ active: false });
+  }
+
+  activeRows.sort((a, b) => {
+    const tierDiff = tierScore(b.plan) - tierScore(a.plan);
+    if (tierDiff !== 0) return tierDiff;
+    // Same tier — prefer furthest-out period_end, then newest created_at.
+    const ae = a.current_period_end ? new Date(a.current_period_end).getTime() : Infinity;
+    const be = b.current_period_end ? new Date(b.current_period_end).getTime() : Infinity;
+    if (ae !== be) return be - ae;
+    return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+  });
+
+  const best = activeRows[0];
   res.json({
-    active,
-    status: data.status,
-    plan: data.plan,
-    currentPeriodEnd: data.current_period_end,
-    trialEnd: data.trial_end,
+    active: true,
+    status: best.status,
+    plan: best.plan,
+    currentPeriodEnd: best.current_period_end,
+    trialEnd: best.trial_end,
   });
 });
 
