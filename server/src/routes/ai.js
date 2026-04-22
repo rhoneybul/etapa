@@ -16,6 +16,7 @@ const { sendPushToUser } = require('../lib/pushService');
 const { logClaudeUsage } = require('../lib/claudeLogger');
 const { checkAndBlockIfOverCap } = require('../lib/claudeCostCap');
 const { normaliseActivities } = require('../lib/rideSpeedRules');
+const planPostProcessors = require('../lib/planPostProcessors');
 const planGenLogger = require('../lib/planGenLogger');
 const crypto = require('crypto');
 
@@ -412,6 +413,16 @@ Example — Beginner, 45-min endurance ride:
 
 NEVER let implied average speed exceed the hard cap. If your distance divided by (duration in hours) produces a number higher than the cap for that level, your distance is wrong — recompute.
 
+SESSION STRUCTURE — duration + intensity norms by subType:
+- recovery:    25-45 min, effort: recovery. Very gentle, no intervals.
+- endurance:   45-150 min, effort: easy. Steady zone-2 conversational pace.
+- tempo:       45-75 min, effort: moderate. ~20-40 min of tempo within the ride, not the whole thing.
+- intervals:   45-90 min, effort: hard. Structured work: e.g. "4×3 min at high intensity, 3 min recovery between, plus warm-up and cool-down".
+- long_ride:   90-300 min, effort: easy. Endurance pace, the rider is accumulating fatigue so keep it comfortable.
+- indoor:      45-90 min, effort varies. Use for structured trainer sessions or when outdoor isn't available.
+
+If a session is marked subType: "intervals" but effort: "easy", something's wrong — intervals means deliberate intensity work, not an easy spin. Match the subType to the effort.
+
 BEGINNER PLANS — LANGUAGE RULES: When the goal type is "beginner", all coaching principles above still shape the plan structure. But every session title, description, and notes field must be written in plain, warm, everyday English. Completely avoid: FTP, TSS, CTL, VO2, zone 1/2/3/4/5, polarised, periodisation, progressive overload, threshold, lactate, wattage. The rider should never need to look up a word to understand their session. Use language like "easy spin", "comfortable pace", "gentle ride", "you should be able to hold a conversation" — not "zone 2 endurance ride at 65% FTP."
 
 MEDICAL GUARDRAILS — NON-NEGOTIABLE:
@@ -432,6 +443,85 @@ DO NOT: diagnose conditions, prescribe medications or supplements, recommend spe
 Training advice must always assume the athlete is a healthy adult who has been medically cleared for exercise. If you are uncertain whether an instruction is safe for this specific athlete, err on the side of lower volume / easier effort / a rest day.`;
 
 
+
+// ── Few-shot exemplar plan skeletons ──────────────────────────────────────
+// Compact week-by-week outlines showing the SHAPE of a good plan. They exist
+// to anchor the model on rhythm (progression, deloads, taper, graduation
+// ride) without dictating specific activities. Pick the most relevant one
+// based on goal type + fitness level. Keep these small — they're examples,
+// not templates to copy verbatim.
+function getFewShotExemplar(goal, config) {
+  const fitness = config.fitnessLevel || 'beginner';
+  const hasTargetDate = !!goal.targetDate;
+  const td = goal.targetDistance;
+
+  // Beginner "get into cycling" plans — the most common failure mode in
+  // testing. Show the gentle progression, confidence week, and graduation
+  // ride so the model stops producing flat-lined beginner plans.
+  if (goal.goalType === 'beginner' || (fitness === 'beginner' && goal.goalType === 'improve')) {
+    return `## EXEMPLAR — beginner, 12-week plan, ~50 km target (shape only, do not copy verbatim)
+
+Weekly rhythm: 3 rides + 2-3 rest days. Long ride on the weekend. No intervals, no tempo — everything "easy" or "recovery".
+
+- Week 1  (base, week 1):     Tue 25 min easy · Thu 30 min easy · Sat 12 km weekend ride · [other days rest]
+- Week 3  (base, building):   Tue 30 min easy · Thu 35 min easy · Sat 18 km weekend ride
+- Week 4  (confidence/deload): Tue 25 min easy · Thu 25 min recovery · Sat 14 km relaxed (volume ↓ ~25%)
+- Week 6  (build):            Tue 35 min easy · Thu 40 min easy · Sat 28 km weekend ride
+- Week 9  (peak):             Tue 45 min easy · Thu 45 min easy · Sat 40 km weekend ride
+- Week 11 (final build):      Tue 40 min easy · Thu 45 min easy · Sat 42 km weekend ride — longest before graduation
+- Week 12 (graduation):       Tue 25 min recovery spin · Thu 20 min very easy · Sat 50 km GRADUATION RIDE (title it so)
+
+Key moves to notice:
+- Long ride grows 12 → 50 km across the plan, never jumping >25% week-to-week.
+- A confidence/deload week drops volume ~25% around week 4 to let the body catch up.
+- The final week has very short easy spins mid-week and a celebratory target-distance ride at the weekend.
+- Language everywhere is warm + plain: "First Adventure", "Getting Comfortable", "Your Longest Ride Yet", "Graduation Ride".
+`;
+  }
+
+  // Event / race plans — periodised build with taper.
+  if (hasTargetDate && (goal.goalType === 'race' || td)) {
+    const peak = td ? Math.round(td * 0.85) : 80;
+    const peakLong = td || 100;
+    return `## EXEMPLAR — ${fitness} event plan with taper (shape only, do not copy verbatim)
+
+Weekly rhythm: 4 sessions. 1 long ride (weekend), 1 intervals (mid-week), 1-2 endurance/recovery, optional strength. Phase breakdown: Base → Build → Peak → Taper.
+
+- Week 1 (base):       Tue 60 min endurance · Thu 75 min endurance · Sat 40 km long ride · Sun 45 min recovery
+- Week 3 (base end):   Tue 60 min endurance · Thu 75 min tempo (with 2×15 min at tempo) · Sat 55 km long ride · Sun 50 min recovery
+- Week 4 (deload):     Tue 45 min recovery · Thu 60 min endurance · Sat 35 km easy · Sun 40 min recovery (volume ↓ ~30%)
+- Week 5 (build):      Tue 75 min endurance · Thu 75 min intervals (4×5 min hard, 3 min recovery) · Sat 65 km long ride · Sun 60 min endurance
+- Week 7 (peak):       Tue 90 min endurance · Thu 90 min intervals (5×5 min hard) · Sat ${peak} km long ride · Sun 60 min recovery
+- Week ${hasTargetDate ? 'N-1' : '11'} (taper): Tue 60 min endurance · Thu 60 min with 3×5 min openers · Sat 40 km moderate · Sun 45 min recovery (volume ↓ 40%)
+- Week N (race week):  Tue 45 min easy · Thu 30 min openers · Sat EVENT (${peakLong} km) · no rides after
+
+Key moves to notice:
+- Mid-week interval day is the only genuinely hard session each week.
+- Long ride peaks 2 weeks before the event at ~85% of target distance.
+- Deload week 4 (and sometimes 8) — volume drops ~30%.
+- Taper: 40-50% volume drop, keep some intensity via short "openers".
+- Final week has zero hard efforts post-Thursday.
+`;
+  }
+
+  // Distance-focused or general improvement plans — steady progression,
+  // no event deadline.
+  return `## EXEMPLAR — ${fitness} general improvement plan (shape only, do not copy verbatim)
+
+Weekly rhythm: 3-4 sessions. 1 long ride, 1 tempo OR intervals, 1-2 endurance. No taper since there's no event, but still deload every 3-4 weeks.
+
+- Week 1 (base):      Tue 60 min endurance · Thu 60 min endurance · Sat 35 km long ride
+- Week 3 (base end):  Tue 60 min endurance · Thu 75 min tempo (20 min at tempo) · Sat 45 km long ride
+- Week 4 (deload):    Tue 45 min recovery · Thu 60 min endurance · Sat 30 km easy (volume ↓ ~30%)
+- Week 6 (build):     Tue 75 min endurance · Thu 75 min intervals (4×4 min hard) · Sat 55 km long ride
+- Week 8 (peak):      Tue 90 min endurance · Thu 90 min intervals (5×5 min hard) · Sat 70 km long ride — or 'biggest ride yet'
+
+Key moves to notice:
+- Progressive increases in long ride distance, ~15-20% per block, never >30% week-to-week.
+- Deload week every 3-4 weeks so adaptation actually happens.
+- Final week is a small celebration — the plan's biggest ride, no intervals after it.
+`;
+}
 
 // ── Build plan prompt ──────────────────────────────────────────────────────
 function buildPlanPrompt(goal, config) {
@@ -654,7 +744,36 @@ ${activityGuidance.join('\n\n')}
     return idx >= 0 ? dayNames[idx] : d;
   });
 
+  // ── HARD CONSTRAINTS ──────────────────────────────────────────────────
+  // These are non-negotiable rules the post-processor will enforce even if
+  // you miss them. But fixing them yourself produces a better plan because
+  // the post-processor clamps are mechanical (filler rides, volume scaling)
+  // while you can design around them coherently.
+  const isBeginnerPlan = goal.goalType === 'beginner'
+    || (config.fitnessLevel === 'beginner' && goal.goalType === 'improve')
+    || /explorer|starter|into cycling|just get/i.test(goal.planName || '');
+  const crossTrainingDayNames = config.crossTrainingDays
+    ? Object.keys(config.crossTrainingDays)
+    : [];
+
+  const hardConstraints = `
+## HARD CONSTRAINTS — plan will be auto-corrected if any of these are violated
+
+1. **Session count**: every non-deload week MUST contain EXACTLY ${daysPerWeek || Object.values(sessionCounts).reduce((s, v) => s + v, 0)} sessions. Deload/taper weeks may drop by 1.
+${longRideDay ? `2. **Long ride day**: the week's LONGEST ride by duration MUST be on ${typeof longRideDay === 'string' ? longRideDay : dayNames[longRideDay] || 'the specified day'}. Every week. No exceptions.` : `2. Long ride day is not specified — pick Saturday or Sunday for every week's long ride.`}
+${hasTargetDate ? `3. **Final week taper**: total volume in week ${weeks} MUST be ≤ 50% of the peak week's volume. NO activities with effort='hard' or effort='max' in the final 2 weeks.` : `3. **Final week**: no hard intervals in the last week — leave the rider fresh.`}
+${goal.targetDistance ? `4. **Target distance**: at least one ride in weeks ${Math.max(1, weeks - 3)}–${Math.max(1, weeks - 1)} MUST reach ≥ 85% of ${goal.targetDistance} km (i.e. ≥ ${Math.round(goal.targetDistance * 0.85)} km).` : ''}
+${isBeginnerPlan ? `5. **Beginner intensity cap**: NO activities with subType='intervals' or effort='hard'/'max'. Beginners build fitness on volume. The only subTypes allowed are: endurance, recovery. Tempo only with effort='easy' or 'moderate'.` : ''}
+${crossTrainingDayNames.length > 0 ? `6. **Cross-training days** (${crossTrainingDayNames.join(', ')}): NO ride activities on these days. The athlete already has non-cycling work planned there — do not double up.` : ''}
+
+If any constraint conflicts with what you'd naturally do, adjust your plan to satisfy the constraint rather than break it.
+`;
+
+  const fewShotExemplar = getFewShotExemplar(goal, config);
+
   return `Create a ${weeks}-week personalised cycling training plan.
+${hardConstraints}
+${fewShotExemplar}
 
 ## Athlete profile
 - Fitness level: ${fitnessLevel} (${benchmark.description})
@@ -663,7 +782,7 @@ ${activityGuidance.join('\n\n')}
 - Cycling type: ${goal.cyclingType || 'road'}${goal.cyclingType === 'ebike' ? ' (electric-assisted — focus on endurance and enjoyment rather than raw power. Adjust distances up since e-bikes allow longer rides at lower effort. Still include some sessions without motor assist for fitness building.)' : ''}
 - Goal: ${goal.goalType === 'race' ? 'Race preparation' : goal.goalType === 'distance' ? 'Hit a distance target' : 'General fitness improvement'}
 ${goal.eventName ? `- Event: ${goal.eventName}` : ''}
-${goal.targetDistance ? `- Target distance: ${goal.targetDistance} km` : ''}
+${goal.targetDistance ? `- Target distance: ${goal.targetDistance} km` : `- Target distance: NOT STATED. Since the athlete didn't specify, treat the implicit target as ${config.fitnessLevel === 'expert' ? 150 : config.fitnessLevel === 'advanced' ? 100 : config.fitnessLevel === 'intermediate' ? 60 : 30} km and build a plan that culminates with a ride around that distance. Title the final ride to reflect the achievement.`}
 ${goal.targetElevation ? `- Target elevation: ${goal.targetElevation} m` : ''}
 ${goal.targetTime ? `- Target finish time: ${goal.targetTime} hours` : ''}
 ${goal.targetDate ? `- Event/target date: ${goal.targetDate}` : ''}
@@ -843,6 +962,56 @@ ${goal.targetDistance ? `Next: does the peak-phase longest ride reach at least $
 ${goal.goalType === 'beginner' && goal.targetDistance ? `Next: open the final week of the plan. Is there a ride titled to celebrate the ${goal.targetDistance} km target (e.g. "${goal.targetDistance} km Graduation", "Century Day")? Is its distanceKm close to ${goal.targetDistance}? If not, fix it — this ride is the single most important ride in the whole plan.` : ''}
 
 Return ONLY the JSON array, no other text.`;
+}
+
+// ── Build retry prompt (second pass on critical violations) ───────────────
+// When the first pass produces a plan with CRITICAL post-processor violations
+// (missing taper, missing sessions, undershoot target distance), we ask
+// Claude to try again with very specific feedback about what was wrong.
+// The post-processor clamps will run on the retry output too — this just
+// gives Claude a chance to do a better job coherently than the mechanical
+// clamp would manage.
+function buildRetryPrompt(originalPrompt, criticalViolations, priorPlanActivities, goal, config) {
+  const feedbackLines = criticalViolations
+    .filter((v) => v.severity === 'critical')
+    .map((v) => `- [${v.stage}] ${v.message}`);
+
+  // Tiny summary of what Claude produced last time, so it can diff against
+  // its own output and fix the specific weeks.
+  const byWeek = new Map();
+  for (const a of priorPlanActivities) {
+    if (!a || typeof a.week !== 'number') continue;
+    if (!byWeek.has(a.week)) byWeek.set(a.week, []);
+    byWeek.get(a.week).push(a);
+  }
+  const weekSummary = Array.from(byWeek.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([week, acts]) => {
+      const rides = acts.filter((a) => a.type === 'ride');
+      const longest = rides.reduce((m, a) =>
+        (Number(a.distanceKm) || 0) > (Number(m?.distanceKm) || 0) ? a : m, null);
+      const totalKm = rides.reduce((s, a) => s + (Number(a.distanceKm) || 0), 0);
+      return `  Week ${week}: ${acts.length} sessions, ${Math.round(totalKm)} km total, longest ride ${longest ? Math.round(longest.distanceKm) + ' km' : 'none'}`;
+    })
+    .join('\n');
+
+  return `${originalPrompt}
+
+────────────────────────────────────────────────────────────────────────
+## SECOND ATTEMPT — your first plan had critical issues, please fix them
+
+Your previous output produced this week-by-week structure:
+${weekSummary}
+
+The following CRITICAL constraints were violated and had to be auto-corrected:
+${feedbackLines.join('\n')}
+
+Please produce a NEW plan that:
+1. Fixes every one of the violations above at the source rather than relying on post-processing.
+2. Still satisfies all HARD CONSTRAINTS in the original request (session count, long ride day, taper, target distance, beginner intensity cap, cross-training days).
+3. Keeps the same weekly rhythm and tone as a good plan for this athlete — do not over-correct in the opposite direction.
+
+Return ONLY the JSON array, no commentary. This is your last chance before the plan is auto-corrected.`;
 }
 
 // ── Build edit prompt ──────────────────────────────────────────────────────
@@ -1783,9 +1952,96 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
     // Clamp distanceKm so nothing implies an unrealistic average speed for
     // the rider's level. Strength sessions get null distance. See
     // server/src/lib/rideSpeedRules.js for the rules.
-    const rawActivities = normaliseActivities(weekFiltered, {
+    const speedClamped = normaliseActivities(weekFiltered, {
       fitnessLevel: config.fitnessLevel,
     });
+
+    // ── Structural post-processors (first pass) ──────────────────────────
+    // Deterministic fixes for the top generator failure modes observed in
+    // the LLM-as-judge test runs: missing taper, session-count shortfalls,
+    // ignored longRideDay, beginner plans with hard intervals, rides on
+    // cross-training days, peak rides that undershoot target distance.
+    // See server/src/lib/planPostProcessors.js for details.
+    let { activities: rawActivities, violations: postProcessorViolations } =
+      planPostProcessors.runAll(speedClamped, goal, config);
+
+    // ── Second-pass retry on critical violations ─────────────────────────
+    // When the first pass still has critical clamps applied (missing
+    // sessions / missing taper volume / undershoot target distance), give
+    // Claude one more chance to produce a coherent plan rather than
+    // shipping the mechanically-patched version. If the retry is better
+    // (fewer critical violations) we use it; otherwise we fall back to
+    // the first-pass clamped plan.
+    const firstPassCritical = postProcessorViolations.filter((v) => v.severity === 'critical');
+    let retryAttempted = false;
+    let retryCriticalCount = null;
+    if (firstPassCritical.length > 0 && job.status !== 'cancelled') {
+      retryAttempted = true;
+      const retryPrompt = buildRetryPrompt(prompt, firstPassCritical, weekFiltered, goal, config);
+      const retryStartedAt = Date.now();
+      try {
+        const retryResponse = await _fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: _claudeModel,
+            max_tokens: planMaxTokens,
+            system: systemWithCoach,
+            messages: [{ role: 'user', content: retryPrompt }],
+          }),
+        });
+        if (retryResponse.ok) {
+          const retryData = await retryResponse.json();
+          logClaudeUsage({
+            userId, feature: 'plan_gen_retry', model: _claudeModel,
+            data: retryData, response: retryResponse, durationMs: Date.now() - retryStartedAt,
+            metadata: { async: true, retry: true, weeks: config.weeks, daysPerWeek: config.daysPerWeek, coachId: config.coachId, goalType: goal?.goalType, firstPassCritical: firstPassCritical.length },
+          });
+          const retryText = retryData?.content?.[0]?.text || '[]';
+          const retryMatch = retryText.match(/\[[\s\S]*\]/);
+          if (retryMatch) {
+            try {
+              const retryAll = JSON.parse(retryMatch[0]);
+              const retryFiltered = retryAll.filter((a) => a.week >= 1 && a.week <= maxWeeks);
+              const retrySpeedClamped = normaliseActivities(retryFiltered, { fitnessLevel: config.fitnessLevel });
+              const retryPost = planPostProcessors.runAll(retrySpeedClamped, goal, config);
+              const retryCritical = retryPost.violations.filter((v) => v.severity === 'critical');
+              retryCriticalCount = retryCritical.length;
+              if (retryCritical.length < firstPassCritical.length) {
+                console.log(`[async-gen] Job ${jobId} retry improved: ${firstPassCritical.length} → ${retryCritical.length} critical violations`);
+                rawActivities = retryPost.activities;
+                postProcessorViolations = retryPost.violations;
+                job.rawResponse = String(retryText).slice(0, 50000);
+              } else {
+                console.log(`[async-gen] Job ${jobId} retry no better (${retryCritical.length} critical) — keeping first pass`);
+              }
+            } catch (parseErr) {
+              console.warn(`[async-gen] Job ${jobId} retry parse error:`, parseErr?.message);
+            }
+          }
+        } else {
+          console.warn(`[async-gen] Job ${jobId} retry HTTP ${retryResponse.status} — keeping first pass`);
+        }
+      } catch (retryErr) {
+        console.warn(`[async-gen] Job ${jobId} retry threw:`, retryErr?.message);
+      }
+    }
+
+    // Log the violations the clamps corrected — useful for "why is this plan
+    // different from what Claude returned?" debugging in the admin UI.
+    if (postProcessorViolations.length > 0 && job) {
+      job.postProcessorViolations = postProcessorViolations;
+      job.retryAttempted = retryAttempted;
+      if (retryCriticalCount != null) job.retryCriticalCount = retryCriticalCount;
+      console.log(
+        `[async-gen] Job ${jobId} auto-corrected ${postProcessorViolations.length} structural issue(s)${retryAttempted ? ' (after retry)' : ''}:`,
+        postProcessorViolations.map(v => `${v.stage}:${v.code}`).join(', ')
+      );
+    }
 
     // Build the full plan object (mirrors client-side buildPlanFromActivities)
     // Use YYYY-MM-DD date string to avoid timezone shifts between client/server
@@ -2069,6 +2325,12 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
           goalId: plan.goalId,
           configId: plan.configId,
         } : null,
+        // Structural clamp + retry bookkeeping so admins can see WHY the final
+        // plan differs from Claude's raw response, without rehydrating the
+        // in-memory job (which ages out).
+        post_processor_violations: job.postProcessorViolations || null,
+        retry_attempted: job.retryAttempted || false,
+        retry_critical_count: job.retryCriticalCount ?? null,
       });
     }
 
@@ -2272,3 +2534,6 @@ module.exports = router;
 // Named exports for other routes (e.g. plans.js regenerate, admin.js poll)
 module.exports.startGenerationJob = startGenerationJob;
 module.exports.getPlanJob = (jobId) => planJobs.get(jobId) || null;
+// Test-only exports — prompt builders are pure functions so we can unit
+// test them without touching Claude or the DB.
+module.exports._testing = { buildPlanPrompt, buildRetryPrompt, getFewShotExemplar };

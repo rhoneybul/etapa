@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { supabase } = require('../lib/supabase');
-const { applyLifetimeGrant } = require('../lib/lifetimeGrant');
+const { applyPromotionalGrant, TIER_SPECS } = require('../lib/lifetimeGrant');
 const router = Router();
 
 /**
@@ -8,8 +8,9 @@ const router = Router();
  *
  * Called on /me for every authenticated request. The vast majority of the
  * time there is no matching grant, the DB returns null, and we skip. When
- * a pending grant IS found, we apply lifetime via the shared helper and
- * mark the grant redeemed. Idempotent — a double-call won't double-grant.
+ * a pending grant IS found, we apply the requested tier (lifetime OR starter)
+ * via the shared promotional helper and mark the grant redeemed. Idempotent
+ * — a double-call won't double-grant.
  */
 async function redeemPreSignupGrantsForUser(user) {
   if (!user?.email) return { attempted: false };
@@ -26,15 +27,23 @@ async function redeemPreSignupGrantsForUser(user) {
 
     if (!grant) return { attempted: false };
 
-    // Lazy require avoids a circular dep between users.js and admin.js.
-    const { grantRevenueCatLifetime } = require('./admin')._rcHelpers || {};
+    // Resolve tier from the grant row. Fall back to lifetime for legacy
+    // rows created before starter support — the column defaults to 'lifetime'
+    // but explicit defensiveness is cheap.
+    const tier = TIER_SPECS[grant.entitlement] ? grant.entitlement : 'lifetime';
 
-    const { ok, results } = await applyLifetimeGrant(user.id, {
-      grantRevenueCatLifetime,
+    // Lazy require avoids a circular dep between users.js and admin.js.
+    const rcHelpers = require('./admin')._rcHelpers || {};
+    const { grantRevenueCatPromotional, grantRevenueCatLifetime } = rcHelpers;
+
+    const { ok, results } = await applyPromotionalGrant(user.id, {
+      tier,
+      grantRevenueCatPromo: grantRevenueCatPromotional,
+      grantRevenueCatLifetime,  // legacy fallback
       entitlementId: 'pro',
       note: grant.note
         ? `Pre-signup grant redeemed: ${grant.note}`
-        : `Pre-signup lifetime redeemed on ${new Date().toISOString().split('T')[0]}`,
+        : `Pre-signup ${tier} redeemed on ${new Date().toISOString().split('T')[0]}`,
       actorId: null,
     });
 
@@ -50,12 +59,12 @@ async function redeemPreSignupGrantsForUser(user) {
           redeemed_user_id: user.id,
         })
         .eq('id', grant.id);
-      console.log(`[pre-signup] Redeemed grant ${grant.id} for user ${user.id} (${email})`);
+      console.log(`[pre-signup] Redeemed ${tier} grant ${grant.id} for user ${user.id} (${email})`);
     } else {
-      console.warn(`[pre-signup] Grant ${grant.id} matched but apply failed:`, results);
+      console.warn(`[pre-signup] Grant ${grant.id} (${tier}) matched but apply failed:`, results);
     }
 
-    return { attempted: true, ok, grantId: grant.id, results };
+    return { attempted: true, ok, grantId: grant.id, tier, results };
   } catch (err) {
     console.error('[pre-signup] redeem error:', err);
     return { attempted: true, ok: false, error: err.message };

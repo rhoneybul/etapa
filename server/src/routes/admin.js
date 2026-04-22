@@ -6,7 +6,7 @@ const { Router } = require('express');
 const { supabase } = require('../lib/supabase');
 const { authMiddleware } = require('../middleware/auth');
 const { sendPushToUser } = require('../lib/pushService');
-const { applyLifetimeGrant } = require('../lib/lifetimeGrant');
+const { applyLifetimeGrant, applyPromotionalGrant } = require('../lib/lifetimeGrant');
 
 const router = Router();
 
@@ -131,11 +131,12 @@ async function fetchRevenueCatSubscriber(appUserId) {
 // ── RevenueCat — grant non-consumable entitlement ────────────────────────────
 // Uses the Subscriber Attributes + grant entitlement API:
 //   POST /v1/subscribers/{app_user_id}/entitlements/{entitlement_identifier}/promotional
-// Grants a promotional (non-paying) entitlement for a given duration. We pass
-// "lifetime" so the user gets permanent access in RC. If the user doesn't yet
-// exist in RC, this will also create them as an anonymous subscriber, which
-// is fine.
-async function grantRevenueCatLifetime(appUserId, { entitlementId = 'pro' } = {}) {
+// Grants a promotional (non-paying) entitlement for a given duration. The
+// duration strings RevenueCat accepts include 'daily', 'three_day', 'weekly',
+// 'monthly', 'two_month', 'three_month', 'six_month', 'yearly', 'lifetime'.
+// If the user doesn't yet exist in RC, this will also create them as an
+// anonymous subscriber, which is fine.
+async function grantRevenueCatPromotional(appUserId, { entitlementId = 'pro', duration = 'lifetime' } = {}) {
   const apiKey = process.env.REVENUECAT_SECRET_API_KEY;
   if (!apiKey) return { error: 'missing_api_key' };
   if (!appUserId) return { error: 'missing_user_id' };
@@ -154,7 +155,7 @@ async function grantRevenueCatLifetime(appUserId, { entitlementId = 'pro' } = {}
       {
         method: 'POST',
         headers: revenueCatServerHeaders(apiKey),
-        body: JSON.stringify({ duration: 'lifetime' }),
+        body: JSON.stringify({ duration }),
       }
     );
 
@@ -168,6 +169,12 @@ async function grantRevenueCatLifetime(appUserId, { entitlementId = 'pro' } = {}
   } catch (err) {
     return { error: 'fetch_failed', message: err.message };
   }
+}
+
+// Backwards-compatible alias for existing callers that only know about the
+// lifetime duration (Grant Lifetime button, pre-signup redeemer pre-refactor).
+async function grantRevenueCatLifetime(appUserId, { entitlementId = 'pro' } = {}) {
+  return grantRevenueCatPromotional(appUserId, { entitlementId, duration: 'lifetime' });
 }
 
 // ── RevenueCat — revoke a promotional entitlement ────────────────────────────
@@ -1924,6 +1931,16 @@ router.post('/pre-signup-grants', async (req, res, next) => {
   try {
     const { email, emails, bulkText, entitlement = 'lifetime', note = null } = req.body || {};
 
+    // Validate tier. 'lifetime' = permanent; 'starter' = 3 months.
+    // Anything else is rejected so typos don't silently produce non-redeemable
+    // grants.
+    const ALLOWED_TIERS = new Set(['lifetime', 'starter']);
+    if (!ALLOWED_TIERS.has(entitlement)) {
+      return res.status(400).json({
+        error: `Unsupported entitlement "${entitlement}". Must be one of: ${Array.from(ALLOWED_TIERS).join(', ')}.`,
+      });
+    }
+
     // Collect candidate emails from whichever field was used.
     const raw = [];
     if (typeof email === 'string' && email.trim()) raw.push(email);
@@ -2566,6 +2583,7 @@ module.exports = router;
 // creating a require-cycle via the default export.
 module.exports._rcHelpers = {
   grantRevenueCatLifetime,
+  grantRevenueCatPromotional,
   revokeRevenueCatPromotional,
   fetchRevenueCatSubscriber,
   classifyRevenueCatKey,

@@ -1006,10 +1006,21 @@ a:hover { color: var(--accent-hover); }
             </div>
           </li>
           <li>
-            <div class="step-title">Wait ~5 minutes after we confirm you're added</div>
+            <div class="step-title">Accept the Google Group invite</div>
             <div class="step-body">
-              Google Play caches tester lists aggressively. If you open the install link before Google has propagated the change you'll get
-              a &ldquo;not available&rdquo; error even though everything is set up correctly. Five minutes is almost always enough; up to 30 in rare cases.
+              Once we add you, <strong>Google will email you an invite to join our testers Google Group</strong> &mdash; the subject is something like
+              &ldquo;You've been invited to the group etapa-testers@googlegroups.com&rdquo;. <strong>You have to click the &ldquo;Accept invitation&rdquo;
+              button in that email before Play Store will let you see the app.</strong> If you skip this step the Play Store link will just show
+              &ldquo;Item not found&rdquo; no matter how long you wait. Check your inbox (and spam folder) &mdash; the invite usually lands within a minute
+              or two of us adding you. If you can't find it, let us know and we'll resend.
+            </div>
+          </li>
+          <li>
+            <div class="step-title">Wait ~5 minutes after accepting the invite</div>
+            <div class="step-body">
+              Google Play caches tester lists aggressively. Even after you accept the group invite, there's a short propagation delay before the Play Store
+              recognises you as a tester. Five minutes is almost always enough; up to 30 in rare cases. Open the install link before then and you'll get a
+              &ldquo;not available&rdquo; error even though everything is set up correctly.
             </div>
           </li>
           <li>
@@ -1076,9 +1087,10 @@ a:hover { color: var(--accent-hover); }
           <li>
             <strong>&ldquo;App not available for your device&rdquo; or &ldquo;Item not found&rdquo;</strong>
             <p>
-              Your Google account isn't on the tester list yet, or the propagation hasn't finished. Confirm with us that the email address is right
-              and wait 5&ndash;30 minutes. If you recently changed the Google account your Play Store uses, you may also need to log out and back in of
-              the Play Store app.
+              Nine times out of ten this is the Google Group invite &mdash; <strong>check your email for an invite to
+              etapa-testers@googlegroups.com and click &ldquo;Accept invitation&rdquo;</strong>. The Play Store can't see you as a tester
+              until you've accepted. Failing that: confirm with us that the email address is right and wait 5&ndash;30 minutes for propagation.
+              If you recently changed the Google account your Play Store uses, log out and back in of the Play Store app too.
             </p>
           </li>
           <li>

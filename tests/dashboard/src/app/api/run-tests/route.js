@@ -443,9 +443,40 @@ async function runWithConcurrency(tasks, limit) {
   return results;
 }
 
+// Fisher-Yates shuffle for picking a random scenario sample. Deterministic
+// output-structure-wise — each run picks a different subset. If you want
+// reproducibility, pass `sampleSeed` in the POST body and we'll shuffle with
+// that (not implemented yet — future work).
+function pickRandomIndexes(total, n) {
+  const arr = Array.from({ length: total }, (_, i) => i);
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr.slice(0, n).sort((a, b) => a - b);
+}
+
 export async function POST(req) {
-  const { serverUrl, apiKey } = await req.json();
+  const { serverUrl, apiKey, sampleSize } = await req.json();
   if (!serverUrl) return new Response('Missing serverUrl', { status: 400 });
+
+  // sampleSize:
+  //   - undefined / null → default to 25 random generation scenarios
+  //   - a number 1..SCENARIOS.length → run that many random scenarios
+  //   - 'all' or >= SCENARIOS.length → run everything
+  // Edit + speed scenarios are cheap and always run regardless.
+  let genSampleCount;
+  if (sampleSize === 'all' || sampleSize === -1) {
+    genSampleCount = SCENARIOS.length;
+  } else if (typeof sampleSize === 'number' && sampleSize > 0) {
+    genSampleCount = Math.min(Math.floor(sampleSize), SCENARIOS.length);
+  } else {
+    genSampleCount = Math.min(25, SCENARIOS.length);
+  }
+  const genIndexes = genSampleCount >= SCENARIOS.length
+    ? Array.from({ length: SCENARIOS.length }, (_, i) => i)  // preserve order when running all
+    : pickRandomIndexes(SCENARIOS.length, genSampleCount);
+  const selectedScenarios = genIndexes.map(i => ({ ...SCENARIOS[i], _originalIndex: i }));
 
   const authHeaders = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
 
@@ -504,23 +535,57 @@ export async function POST(req) {
         }
       }
 
+      // ── Heartbeat ─────────────────────────────────────────────────────────
+      // Proxies (Vercel edge, Cloudflare, nginx) close idle connections after
+      // 60-120s of no bytes. During a long plan generation (60-300s each),
+      // an individual scenario emits nothing between scenario-start and
+      // scenario-done, so the stream goes silent long enough for the proxy
+      // to drop it — the client sees "stuck". A 15s SSE comment ping keeps
+      // the connection warm without triggering event handlers on the client
+      // (comments start with ":" per the SSE spec).
+      const heartbeat = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(`: ping ${Date.now()}\n\n`));
+        } catch {
+          clearInterval(heartbeat);
+        }
+      }, 15000);
+      // Make sure we stop the heartbeat when the run finishes.
+      run.stopHeartbeat = () => clearInterval(heartbeat);
+
       const runStartedAt = new Date().toISOString();
       let totalPass = 0, totalFail = 0;
-      // Pre-allocate results array to preserve scenario order in final output
-      const results = new Array(SCENARIOS.length).fill(null);
+      // Pre-allocate results array sized to the SAMPLE — index matches the
+      // send order below. The client renders by index so there's no mismatch.
+      const results = new Array(selectedScenarios.length).fill(null);
 
       send({
         type: 'start',
         runId,                              // client stores this to call /cancel
-        total: SCENARIOS.length,
+        total: selectedScenarios.length,    // how many gens are being run
+        totalAvailable: SCENARIOS.length,   // how many exist in total (for UI)
+        sampleSize: genSampleCount,
+        // Which original scenario indexes were picked — lets the dashboard
+        // highlight the selected rows in its sidebar.
+        selectedIndexes: genIndexes,
+        selectedNames: selectedScenarios.map(s => s.name),
         totalEdits: EDIT_SCENARIOS.length,
         totalSpeed: SPEED_SCENARIOS.length,
         concurrency: CONCURRENCY,
       });
 
       // ── Run generation scenarios in parallel (CONCURRENCY at a time) ──────────
-      const generationTasks = SCENARIOS.map((scenario, i) => async () => {
-        send({ type: 'scenario-start', index: i, name: scenario.name });
+      // Iterate over the random sample — edit + speed scenarios still run
+      // against the full set because they're cheap. Each scenario reports
+      // its INDEX INTO THE SAMPLE as `index`, and its original-list index
+      // as `originalIndex` for dashboard row highlighting.
+      const generationTasks = selectedScenarios.map((scenario, i) => async () => {
+        send({
+          type: 'scenario-start',
+          index: i,
+          originalIndex: scenario._originalIndex,
+          name: scenario.name,
+        });
 
         const scenarioStartTime = Date.now();
         const result = {
@@ -581,6 +646,7 @@ export async function POST(req) {
         send({
           type: 'scenario-done',
           index: i,
+          originalIndex: scenario._originalIndex,
           name: scenario.name,
           pass: result.pass,
           errors: result.errors,
@@ -803,7 +869,14 @@ export async function POST(req) {
         output: {
           runAt: runStartedAt,
           server: serverUrl,
-          totalScenarios: SCENARIOS.length,
+          // totalScenarios now reflects the SAMPLE count, not the full library.
+          // The downloaded JSON shape stays compatible — viewers that used to
+          // expect 80 now see e.g. 25 and the results[] array matches.
+          totalScenarios: selectedScenarios.length,
+          totalScenariosAvailable: SCENARIOS.length,
+          sampleSize: genSampleCount,
+          selectedIndexes: genIndexes,
+          selectedNames: selectedScenarios.map(s => s.name),
           passed: totalPass,
           failed: totalFail,
           results,
@@ -819,6 +892,7 @@ export async function POST(req) {
       // Run finished (completed or cancelled) — drop from registry.
       // Keep the entry around for a few seconds in case the cancel endpoint
       // races with completion, then delete to avoid memory leaking.
+      run.stopHeartbeat?.();
       setTimeout(() => { runs.delete(runId); }, 5000);
 
       controller.close();

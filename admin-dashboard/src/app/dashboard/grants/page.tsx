@@ -6,6 +6,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { StatCard } from "@/components/stat-card";
 
+type Tier = "lifetime" | "starter";
+
+const TIER_LABELS: Record<Tier, string> = {
+  lifetime: "Lifetime",
+  starter: "Starter (3 months)",
+};
+
 interface Grant {
   id: string;
   email: string;
@@ -73,6 +80,9 @@ export default function GrantsPage() {
   const [bulkText, setBulkText] = useState("");
   const [bulkNote, setBulkNote] = useState("");
 
+  // Tier picker — shared across single + bulk entry modes.
+  const [tier, setTier] = useState<Tier>("lifetime");
+
   const [mode, setMode] = useState<"single" | "bulk">("single");
   const [submitting, setSubmitting] = useState(false);
   const [lastResult, setLastResult] = useState<CreateSummary | null>(null);
@@ -102,7 +112,7 @@ export default function GrantsPage() {
     setSubmitting(true);
     setLastResult(null);
     try {
-      const body: Record<string, unknown> = { entitlement: "lifetime" };
+      const body: Record<string, unknown> = { entitlement: tier };
       if (mode === "single") {
         if (!singleEmail.trim()) { setSubmitting(false); return; }
         body.email = singleEmail.trim();
@@ -133,7 +143,7 @@ export default function GrantsPage() {
   }
 
   async function revokeGrant(id: string) {
-    if (!confirm("Revoke this grant? The recipient will no longer get lifetime when they sign up.")) return;
+    if (!confirm("Revoke this grant? The recipient will no longer get their tier applied when they sign up.")) return;
     setRevokingId(id);
     try {
       const r = await fetch(`/api/pre-signup-grants/${id}`, { method: "DELETE" });
@@ -153,7 +163,7 @@ export default function GrantsPage() {
     <div>
       <h1 className="text-lg font-semibold text-white mb-1">Pre-signup grants</h1>
       <p className="text-sm text-etapa-textMuted mb-6">
-        Give lifetime access to an email <em>before</em> they sign up. When someone registers with that email, the app unlocks automatically — no further action needed. For users who already have accounts, use the Grant Lifetime button on their profile instead.
+        Give Lifetime or Starter (3-month) access to an email <em>before</em> they sign up. When someone registers with that email, the app unlocks automatically — no further action needed. For users who already have accounts, use the Grant Lifetime button on their profile instead.
       </p>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
@@ -190,6 +200,32 @@ export default function GrantsPage() {
             >
               Bulk paste
             </button>
+          </div>
+
+          {/* Tier picker — determines what the grant gives the recipient. */}
+          <div className="mb-4">
+            <label className="text-xs text-etapa-textMuted uppercase tracking-wide mb-2 block">Tier</label>
+            <div className="flex gap-2">
+              {(Object.keys(TIER_LABELS) as Tier[]).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTier(t)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                    tier === t
+                      ? "bg-etapa-primary text-white"
+                      : "bg-etapa-surfaceLight text-etapa-textMid hover:bg-etapa-border"
+                  }`}
+                >
+                  {TIER_LABELS[t]}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-etapa-textMuted mt-1">
+              {tier === "lifetime"
+                ? "Permanent access. Best for founders, thank-yous, contest prizes."
+                : "3 months of paid access (Starter tier). Best for beta cohorts or time-limited trials."}
+            </p>
           </div>
 
           {mode === "single" ? (
@@ -249,7 +285,7 @@ export default function GrantsPage() {
               onClick={submitGrants}
               className="px-3 py-1.5 text-xs font-medium rounded-md text-white bg-etapa-primary hover:bg-etapa-primary/90 disabled:opacity-50"
             >
-              {submitting ? "Creating..." : mode === "single" ? "Grant lifetime" : "Create batch"}
+              {submitting ? "Creating..." : mode === "single" ? `Grant ${TIER_LABELS[tier].toLowerCase()}` : `Create ${TIER_LABELS[tier].toLowerCase()} batch`}
             </button>
           </div>
 
@@ -313,6 +349,7 @@ export default function GrantsPage() {
                 <thead>
                   <tr className="border-b border-etapa-border bg-etapa-surfaceLight text-left">
                     <th className="px-4 py-3 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Email</th>
+                    <th className="px-4 py-3 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Tier</th>
                     <th className="px-4 py-3 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Status</th>
                     <th className="px-4 py-3 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Note</th>
                     <th className="px-4 py-3 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Granted</th>
@@ -324,6 +361,9 @@ export default function GrantsPage() {
                   {grants.map((g) => (
                     <tr key={g.id} className="hover:bg-etapa-surfaceLight transition-colors">
                       <td className="px-4 py-3 text-white font-mono text-xs">{g.email}</td>
+                      <td className="px-4 py-3 text-xs text-etapa-textMid">
+                        {TIER_LABELS[g.entitlement as Tier] || g.entitlement}
+                      </td>
                       <td className="px-4 py-3"><StatusBadge status={g.status} /></td>
                       <td className="px-4 py-3 text-xs text-etapa-textMid max-w-md truncate" title={g.note || ""}>
                         {g.note || "\u2014"}

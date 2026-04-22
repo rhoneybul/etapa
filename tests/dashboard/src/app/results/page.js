@@ -43,6 +43,10 @@ function buildPartialOutput({ runId, serverUrl, results, editResults, speedResul
 export default function ResultsPage() {
   const [serverUrl, setServerUrl] = useState('https://etapa.up.railway.app');
   const [apiKey, setApiKey] = useState('');
+  // Sample size — how many of the 80 generation scenarios to run. Small
+  // default (25) keeps most runs inside Vercel's 15-min function timeout
+  // and finishes in ~3-5 min with Sonnet + concurrency 10.
+  const [sampleSize, setSampleSize] = useState(25);
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState([]);
   const [progress, setProgress] = useState({
@@ -146,12 +150,16 @@ export default function ResultsPage() {
     setLiveResults([]);
     setLiveEditResults([]);
     setLiveSpeedResults([]);
+    // Initial total reflects the requested sample — the server will
+    // confirm it in the 'start' event and we'll overwrite if it picked
+    // a different number (e.g. 'all' shortcut).
+    const initialGenTotal = sampleSize === 'all' ? SCENARIOS.length : Math.min(sampleSize, SCENARIOS.length);
     setProgress({
-      done: 0, total: SCENARIOS.length,
+      done: 0, total: initialGenTotal,
       editsDone: 0, editsTotal: EDIT_SCENARIOS.length,
       speedDone: 0, speedTotal: SPEED_SCENARIOS.length,
     });
-    addLog({ type: 'info', text: `Starting test run against ${serverUrl}...` });
+    addLog({ type: 'info', text: `Starting test run (${initialGenTotal} random generation + ${EDIT_SCENARIOS.length} edit + ${SPEED_SCENARIOS.length} speed) against ${serverUrl}...` });
 
     const handlers = {
       addLog,
@@ -167,7 +175,7 @@ export default function ResultsPage() {
       const res = await fetch('/api/run-tests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serverUrl, apiKey }),
+        body: JSON.stringify({ serverUrl, apiKey, sampleSize }),
         signal: abortRef.current.signal,
       });
 
@@ -202,14 +210,15 @@ export default function ResultsPage() {
 
     } catch (err) {
       if (err?.name === 'AbortError') {
-        addLog({ type: 'warn', text: '✖ Stream closed (server may still be running — hit cancel if you want to stop it too).' });
+        addLog({ type: 'warn', text: '✖ Stream closed (server may still be running — hit Cancel if you want to stop it too).' });
       } else {
         addLog({ type: 'error', text: `Connection error: ${err.message}` });
+        addLog({ type: 'muted', text: 'The server run may still be in progress. Partial results so far are downloadable; the run will finish in the background up to the serverless function timeout (~15 min).' });
       }
+    } finally {
+      setRunning(false);
+      abortRef.current = null;
     }
-
-    setRunning(false);
-    abortRef.current = null;
   }, [serverUrl, apiKey, running, addLog]);
 
   // Download either the completed finalOutput or — if we're mid-run or the
@@ -296,6 +305,23 @@ export default function ResultsPage() {
                 style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #2d2d3d', background: '#22222f', color: '#e4e4ef', fontSize: 13, outline: 'none' }}
                 disabled={running} />
             </div>
+            <div style={{ minWidth: 140 }}>
+              <label style={{ fontSize: 11, color: '#8888a0', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 4 }}>Sample size</label>
+              <select
+                value={sampleSize === 'all' ? 'all' : String(sampleSize)}
+                onChange={e => {
+                  const v = e.target.value;
+                  setSampleSize(v === 'all' ? 'all' : Number(v));
+                }}
+                disabled={running}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #2d2d3d', background: '#22222f', color: '#e4e4ef', fontSize: 13, outline: 'none' }}
+              >
+                <option value="10">10 random</option>
+                <option value="25">25 random</option>
+                <option value="40">40 random</option>
+                <option value="all">All {SCENARIOS.length}</option>
+              </select>
+            </div>
             <button onClick={startTests} disabled={running}
               style={{
                 padding: '8px 24px', borderRadius: 6, border: 'none', fontWeight: 600, fontSize: 13, cursor: running ? 'not-allowed' : 'pointer',
@@ -314,7 +340,7 @@ export default function ResultsPage() {
             )}
           </div>
           <div style={{ fontSize: 11, color: '#8888a0', marginTop: 10 }}>
-            {SCENARIOS.length} generation + {EDIT_SCENARIOS.length} edit + {SPEED_SCENARIOS.length} speed scenarios
+            Pool: {SCENARIOS.length} generation scenarios (sample {sampleSize === 'all' ? 'all' : sampleSize} per run) + {EDIT_SCENARIOS.length} edit + {SPEED_SCENARIOS.length} speed (always run)
           </div>
         </div>
 
@@ -385,7 +411,14 @@ function handleEvent(data, handlers) {
   switch (data.type) {
     case 'start':
       if (data.runId && setCurrentRunId) setCurrentRunId(data.runId);
-      addLog({ type: 'info', text: `Starting ${data.total} generation + ${data.totalEdits} edit + ${data.totalSpeed || 0} speed scenarios (runId ${data.runId || 'unknown'})…` });
+      // Sync the total once the server has confirmed the sample size.
+      if (data.total != null) {
+        setProgress(p => ({ ...p, total: data.total }));
+      }
+      addLog({
+        type: 'info',
+        text: `Starting ${data.total} generation${data.totalAvailable ? ` of ${data.totalAvailable} available` : ''} + ${data.totalEdits} edit + ${data.totalSpeed || 0} speed scenarios (runId ${data.runId || 'unknown'})…`,
+      });
       break;
     case 'scenario-start':
       addLog({ type: 'muted', text: `▶ [${data.index + 1}/${SCENARIOS.length}] ${data.name}...` });
