@@ -313,6 +313,34 @@ jobs:
             exit 1
           fi
 
+          # ── Monotonic precheck — version must be strictly greater than
+          # EVERY existing release tag, not just the target tag.
+          # This catches the case where someone manually edited app.json
+          # downward (e.g. 0.99.0 → 0.98.0), or an earlier build's tag
+          # push failed silently so baseline derivation fell back to a
+          # lower value. Without this guard, we could still end up
+          # shipping a semver-lower version than what's already live.
+          is_greater() {
+            # Returns 0 if $1 > $2 strictly by semver.
+            [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$1" ]
+          }
+          VIOLATIONS=""
+          while read -r T; do
+            [ -z "$T" ] && continue
+            EXISTING="${T#app-v}"
+            if ! is_greater "$NEW" "$EXISTING"; then
+              VIOLATIONS="$VIOLATIONS $EXISTING"
+            fi
+          done < <(git tag -l 'app-v*' | sort -V)
+
+          if [ -n "$VIOLATIONS" ]; then
+            echo ""
+            echo "::error::Target version $NEW is not strictly greater than existing release tag(s):$VIOLATIONS"
+            echo "::error::Versions must only go up. This probably means app.json on main is behind what's been shipped, or a tag push failed earlier."
+            echo "::error::Fix: re-run with a larger bump (patch → minor → major). The baseline will automatically pick up the highest tag and bump from there."
+            exit 1
+          fi
+
       - name: Setup EAS
         uses: expo/expo-github-action@v8
         with:

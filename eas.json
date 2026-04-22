@@ -11,11 +11,7 @@
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
       "ios": {
-        "image": "sdk-55",
-        "autoIncrement": true
-      },
-      "android": {
-        "autoIncrement": true
+        "image": "sdk-55"
       }
     },
     "preview": {
@@ -24,11 +20,7 @@
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
       "ios": {
-        "image": "sdk-55",
-        "autoIncrement": true
-      },
-      "android": {
-        "autoIncrement": true
+        "image": "sdk-55"
       }
     },
     "production": {
@@ -36,11 +28,7 @@
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
       "ios": {
-        "image": "sdk-55",
-        "autoIncrement": true
-      },
-      "android": {
-        "autoIncrement": true
+        "image": "sdk-55"
       }
     }
   },
