@@ -21,7 +21,12 @@ async function authMiddleware(req, res, next) {
   if (testKey) {
     const authHeader = req.headers.authorization;
     if (authHeader === `Bearer ${testKey}`) {
-      const isTestRoute = req.path.startsWith('/generate-plan-async') || req.path.startsWith('/plan-job/') || req.path.startsWith('/edit-plan') || req.path.startsWith('/edit-activity');
+      const isTestRoute =
+        req.path.startsWith('/generate-plan-async')
+        || req.path.startsWith('/plan-job/')
+        || req.path.startsWith('/edit-plan')
+        || req.path.startsWith('/edit-activity')
+        || req.path.startsWith('/verify-plan');   // LLM-as-judge endpoint for the test runner
       if (isTestRoute) {
         req.user = { id: 'test-runner', email: 'test@etapa.app' };
         return next();
