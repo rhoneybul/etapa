@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
+import useScreenGuard from '../hooks/useScreenGuard';
 import { getPlans, getGoals, getWeekActivities, getPlanConfig, updatePlanConfig } from '../services/storageService';
 import { getCrossTrainingLabel } from '../utils/sessionLabels';
 import { syncStravaActivities, getStravaActivitiesForWeek } from '../services/stravaSyncService';
@@ -128,6 +129,7 @@ function getWeekVolume(plan, weekNum) {
 }
 
 export default function PlanOverviewScreen({ navigation, route }) {
+  const _screenGuard = useScreenGuard('PlanOverviewScreen', navigation);
   const planId = route.params?.planId;
   const [plan, setPlan] = useState(null);
   const [goal, setGoal] = useState(null);
@@ -207,6 +209,8 @@ export default function PlanOverviewScreen({ navigation, route }) {
   const totalKm = weekVolumes.reduce((s, v) => s + v.totalKm, 0);
   const totalSessions = plan.activities?.length || 0;
   const totalHours = weekVolumes.reduce((s, v) => s + v.totalMins, 0) / 60;
+
+  if (_screenGuard.blocked) return _screenGuard.render();
 
   return (
     <View style={s.container}>

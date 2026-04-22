@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
+import useScreenGuard from '../hooks/useScreenGuard';
 import { getCurrentUser } from '../services/authService';
 import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig, getUserPrefs, isOnboardingDone, setOnboardingDone, saveGoal } from '../services/storageService';
 import OnboardingTour from '../components/OnboardingTour';
@@ -77,6 +78,9 @@ function getPlanStats(plan) {
 }
 
 export default function HomeScreen({ navigation, route }) {
+  // Remote kill-switch / redirect — see WORKFLOWS.md.
+  const _screenGuard = useScreenGuard('HomeScreen', navigation);
+
   // When arriving from plan creation, freshPlanId is set — skip the Home
   // pulsing-logo loading state AND the no-plan empty state until the new
   // plan has loaded into local state. Without this guard, the user sees
@@ -754,6 +758,8 @@ export default function HomeScreen({ navigation, route }) {
       ],
     );
   };
+
+  if (_screenGuard.blocked) return _screenGuard.render();
 
   return (
     <View style={s.container}>

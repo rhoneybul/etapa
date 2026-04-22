@@ -33,6 +33,12 @@
 #   of the state of app.json on main. The `Tag + GitHub Release` step at
 #   the end pushes the new tag on success.
 #
+#   Patch bumps are ALSO handled automatically by EAS itself — see
+#   eas.json → production.autoIncrement = "version". That means a bare
+#   `eas build --profile production` (without going through this workflow)
+#   will still bump the patch version + build number. The workflow's
+#   explicit `bump` input is only strictly required for minor / major.
+#
 # Build order (important):
 #   When platform=all, iOS builds/submits FIRST, Android second. This is
 #   deliberate: iOS review takes longer, testers pick up TestFlight within
@@ -226,6 +232,14 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      # Setup EAS early so the baseline step below can query the remote
+      # version. This moved up from its old position after version resolution.
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
       # ── Resolve target version from git tags (the real source of truth) ──
       # We used to derive the next version by bumping app.json on main, then
       # commit the bumped file back. That commit was being silently dropped
@@ -257,21 +271,39 @@ jobs:
             exit 1
           fi
 
-          # Highest release tag (semver sort). Falls back to app.json if no
-          # tags exist yet (first-ever run).
+          # ── Version baseline = max(git tag, app.json, EAS remote) ──────────
+          # Three sources can drift, so we take the highest to avoid ever
+          # producing a version lower than something already shipped:
+          #   1. git tag (app-v*)  — the workflow writes this on every success
+          #   2. app.json version  — useful for first-ever run / hand-edits
+          #   3. EAS remote        — can advance AHEAD of git tags when
+          #      someone runs `eas build --profile production` locally,
+          #      because eas.json has autoIncrement="version" so each
+          #      production build bumps the remote patch automatically
           HIGHEST_TAG=$(git tag -l 'app-v*' | sed 's/^app-v//' | sort -V | tail -1)
           APPJSON_VER=$(node -e "console.log(JSON.parse(require('fs').readFileSync('app.json','utf8')).expo.version)")
 
-          # Baseline = max(highest tag, app.json) so neither source being
-          # stale can cause a regression.
-          if [ -z "$HIGHEST_TAG" ]; then
-            BASELINE="$APPJSON_VER"
-          else
-            BASELINE=$(printf '%s\n%s\n' "$HIGHEST_TAG" "$APPJSON_VER" | sort -V | tail -1)
+          # EAS remote version. We try iOS first (it's the one Apple cares
+          # most about for duplicate-submission rejection), fall back to
+          # Android, and swallow errors if remote isn't reachable (network
+          # blip, first-ever run, etc.) — in that case we'll just baseline
+          # off tag + app.json as before.
+          EAS_REMOTE_VER=""
+          if command -v eas >/dev/null 2>&1; then
+            EAS_REMOTE_VER=$(eas build:version:get --platform ios --profile production --non-interactive 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+            if [ -z "$EAS_REMOTE_VER" ]; then
+              EAS_REMOTE_VER=$(eas build:version:get --platform android --profile production --non-interactive 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+            fi
           fi
+
+          # Take the max across all three (semver sort).
+          BASELINE=$(printf '%s\n%s\n%s\n' "${HIGHEST_TAG:-0.0.0}" "${APPJSON_VER:-0.0.0}" "${EAS_REMOTE_VER:-0.0.0}" | sort -V | tail -1)
+          # Don't let a 0.0.0 default slip through if app.json was actually present.
+          if [ "$BASELINE" = "0.0.0" ]; then BASELINE="$APPJSON_VER"; fi
 
           echo "→ Highest release tag: ${HIGHEST_TAG:-(none)}"
           echo "→ app.json version:    $APPJSON_VER"
+          echo "→ EAS remote version:  ${EAS_REMOTE_VER:-(unknown)}"
           echo "→ Baseline for bump:   $BASELINE"
 
           # Temporarily rewrite app.json in the runner to the real baseline
@@ -340,12 +372,6 @@ jobs:
             echo "::error::Fix: re-run with a larger bump (patch → minor → major). The baseline will automatically pick up the highest tag and bump from there."
             exit 1
           fi
-
-      - name: Setup EAS
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Skip publish (dry run)
         if: needs.decide.outputs.dry_run == 'true'

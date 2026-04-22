@@ -8,6 +8,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { View, ScrollView, Text, TouchableOpacity, StyleSheet, TextInput, Alert, Keyboard } from 'react-native';
 import { colors, fontFamily } from '../theme';
+import useScreenGuard from '../hooks/useScreenGuard';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import WizardShell, { CheckCard } from '../components/WizardShell';
 import { savePlanConfig } from '../services/storageService';
@@ -131,6 +132,7 @@ const CYCLING_KEYS = TRAINING_TYPES.map(t => t.key);
 const isCyclingType = (key) => CYCLING_KEYS.includes(key);
 
 export default function PlanConfigScreen({ navigation, route }) {
+  const _screenGuard = useScreenGuard('PlanConfigScreen', navigation);
   const goal = route.params?.goal;
   const beginnerDefaults = route.params?.beginnerDefaults || null;
   const adjustment = route.params?.adjustment || null;
@@ -1221,6 +1223,8 @@ export default function PlanConfigScreen({ navigation, route }) {
     6: goal.targetDate ? 'Pick a start date for your training plan' : 'How long and when to begin',
     7: 'Pick a coaching personality that fits your style',
   };
+
+  if (_screenGuard.blocked) return _screenGuard.render();
 
   return (
     <WizardShell

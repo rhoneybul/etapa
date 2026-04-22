@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
+import useScreenGuard from '../hooks/useScreenGuard';
 import { openCheckout, getSubscriptionOfferings, restorePurchases, getPrices, validateCoupon, redeemCoupon, startFreeTrial } from '../services/subscriptionService';
 import { isRevenueCatAvailable } from '../services/revenueCatService';
 import analytics from '../services/analyticsService';
@@ -163,6 +164,7 @@ const FEATURES = [
 ];
 
 export default function PaywallScreen({ navigation, route }) {
+  const _screenGuard = useScreenGuard('PaywallScreen', navigation);
   const [selected, setSelected] = useState(route?.params?.defaultPlan || 'lifetime');
   const [loading, setLoading] = useState(false);
   const [rcOfferings, setRcOfferings] = useState(null); // RevenueCat packages (native only)
@@ -421,6 +423,8 @@ export default function PaywallScreen({ navigation, route }) {
   };
 
   const plan = plans[selected];
+
+  if (_screenGuard.blocked) return _screenGuard.render();
 
   return (
     <SafeAreaView style={s.container}>

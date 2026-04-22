@@ -75,6 +75,12 @@ const DEFAULTS = {
   pricing:        { currency: 'gbp', monthly: 799, annual: 4999, lifetime: 9999, starter: 1499 },
   trial:          { days: 7, bannerMessage: 'Subscribe to unlock full training access' },
   banner:         { active: false, message: '', cta: null },
+  // workflows: server-driven screen-level overrides. Empty by default
+  // (every screen renders normally). Admin populates
+  //   workflows.screens.<ScreenName>.{disabled, redirectTo, disabledCopy}
+  // to neutralise or redirect a broken screen without shipping a build.
+  // See WORKFLOWS.md + src/hooks/useScreenGuard.js.
+  workflows:      { screens: {} },
   userOverrides:  {},
 };
 

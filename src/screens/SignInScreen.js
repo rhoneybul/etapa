@@ -5,6 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, fontFamily } from '../theme';
+import { useRemoteTextBulk } from '../hooks/useRemoteText';
 import {
   signInWithGoogle, signInWithApple, onAuthStateChange, getSession, isSupabaseConfigured,
 } from '../services/authService';
@@ -34,6 +35,25 @@ const AppleLogo = () => (
 );
 
 export default function SignInScreen({ navigation }) {
+  // Remote-driven copy with bundled fallbacks. See REMOTE_FIRST_CHECKLIST.md —
+  // keys are seeded in supabase/migrations/20260422000007_seed_copy_sign_in.sql
+  // so the admin dashboard can edit them immediately. Old server payloads that
+  // don't have these keys fall back to the bundled strings below.
+  const copy = useRemoteTextBulk({
+    appTitle:       ['copy.signIn.appTitle',       'Etapa'],
+    chipGoal:       ['copy.signIn.chipGoal',       'Any goal, any level'],
+    chipCoach:      ['copy.signIn.chipCoach',      'A coach in your pocket'],
+    chipPlans:      ['copy.signIn.chipPlans',      'Plans that fit real life'],
+    appleContinue:  ['copy.signIn.appleContinue',  'Continue with Apple'],
+    appleLoading:   ['copy.signIn.appleLoading',   'Signing in...'],
+    googleContinue: ['copy.signIn.googleContinue', 'Continue with Google'],
+    googleLoading:  ['copy.signIn.googleLoading',  'Signing in...'],
+    termsPrefix:    ['copy.signIn.termsPrefix',    'By continuing you agree to our'],
+    termsOfService: ['copy.signIn.termsOfService', 'Terms of Service'],
+    termsAnd:       ['copy.signIn.termsAnd',       'and'],
+    privacyPolicy:  ['copy.signIn.privacyPolicy',  'Privacy Policy'],
+  });
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const logoScale = useRef(new Animated.Value(0.7)).current;
@@ -148,22 +168,20 @@ export default function SignInScreen({ navigation }) {
               style={s.logoImage}
             />
           </View>
-          <Text style={s.title}>Etapa</Text>
+          <Text style={s.title}>{copy.appTitle}</Text>
 
           {/* Tagline removed per product decision — the brand is communicated
-              through the chips below. The chips lean coaching-and-guidance
-              first: serves beginners, returning riders, women put off by
-              cycling's gatekept culture, and anyone wanting to improve
-              without jargon. AI stays in the background. */}
+              through the chips below. Chips are remote-driven so marketing
+              can iterate without a build. See REMOTE_FIRST_CHECKLIST.md. */}
           <View style={s.benefitChips}>
             <View style={s.benefitChip}>
-              <Text style={s.benefitChipText}>Any goal, any level</Text>
+              <Text style={s.benefitChipText}>{copy.chipGoal}</Text>
             </View>
             <View style={s.benefitChip}>
-              <Text style={s.benefitChipText}>A coach in your pocket</Text>
+              <Text style={s.benefitChipText}>{copy.chipCoach}</Text>
             </View>
             <View style={s.benefitChip}>
-              <Text style={s.benefitChipText}>Plans that fit real life</Text>
+              <Text style={s.benefitChipText}>{copy.chipPlans}</Text>
             </View>
           </View>
         </Animated.View>
@@ -180,7 +198,7 @@ export default function SignInScreen({ navigation }) {
               disabled={!!loadingProvider}
             >
               <View style={s.btnLogo}><AppleLogo /></View>
-              <Text style={s.btnAppleText}>{loadingProvider === 'apple' ? 'Signing in...' : 'Continue with Apple'}</Text>
+              <Text style={s.btnAppleText}>{loadingProvider === 'apple' ? copy.appleLoading : copy.appleContinue}</Text>
             </TouchableOpacity>
           )}
 
@@ -191,12 +209,12 @@ export default function SignInScreen({ navigation }) {
             disabled={!!loadingProvider}
           >
             <View style={s.btnLogo}><GoogleLogo /></View>
-            <Text style={s.btnGoogleText}>{loadingProvider === 'google' ? 'Signing in...' : 'Continue with Google'}</Text>
+            <Text style={s.btnGoogleText}>{loadingProvider === 'google' ? copy.googleLoading : copy.googleContinue}</Text>
           </TouchableOpacity>
 
           <Text style={s.terms}>
-            By continuing you agree to our{'\n'}
-            <Text style={s.termsLink}>Terms of Service</Text> and <Text style={s.termsLink}>Privacy Policy</Text>
+            {copy.termsPrefix}{'\n'}
+            <Text style={s.termsLink}>{copy.termsOfService}</Text> {copy.termsAnd} <Text style={s.termsLink}>{copy.privacyPolicy}</Text>
           </Text>
         </Animated.View>
       </SafeAreaView>

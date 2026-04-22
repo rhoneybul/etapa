@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
+import useScreenGuard from '../hooks/useScreenGuard';
 import {
   generatePlanWithLLM,
   startAsyncPlanGeneration,
@@ -60,6 +61,12 @@ const ASYNC_PROGRESS_MAP = {
 };
 
 export default function PlanLoadingScreen({ navigation, route }) {
+  // Remote kill-switch / redirect — see REMOTE_FIRST_CHECKLIST.md §"screen
+  // kill-switch". Admins can pause plan generation or reroute stuck users
+  // without shipping a build via workflows.screens.PlanLoadingScreen in
+  // remote config.
+  const guard = useScreenGuard('PlanLoadingScreen', navigation);
+
   // `existingJobId` is set when a caller (e.g. RegeneratePlanScreen) has
   // already kicked off generation via a different endpoint. We skip the
   // startAsync* call and poll directly.
@@ -307,6 +314,11 @@ export default function PlanLoadingScreen({ navigation, route }) {
   });
 
   const tip = MARKETING_TIPS[tipIndex];
+
+  // Remote kill-switch / redirect wins over everything. If admin has
+  // disabled this screen or set a redirectTo, we short-circuit before
+  // running any plan-generation logic.
+  if (guard.blocked) return guard.render();
 
   return (
     <View style={s.container}>

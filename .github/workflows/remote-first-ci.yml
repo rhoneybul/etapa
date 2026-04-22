@@ -1,0 +1,77 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Remote-first CI — enforces the remote-first doctrine on every PR.
+#
+# Runs two checks:
+#   1. Server contract tests (server/__tests__/app-config-contract.test.js)
+#      — the /api/app-config endpoint must always return the legacy flat
+#      shape + the structured sections. See REMOTE_FIRST_CHECKLIST.md.
+#   2. Adoption audit (scripts/remote-first-audit.js)
+#      — coverage of useScreenGuard + useRemoteText must not regress
+#      by more than 5% vs the last green run.
+#
+# Running locally:
+#   node scripts/remote-first-audit.js         # report only
+#   node scripts/remote-first-audit.js --ci    # non-zero exit on regression
+# ──────────────────────────────────────────────────────────────────────────────
+name: Remote-first CI
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'server/src/**'
+      - 'server/__tests__/**'
+      - 'supabase/migrations/**'
+      - 'scripts/remote-first-audit.js'
+      - '.remote-first-audit.json'
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'server/src/**'
+      - 'scripts/remote-first-audit.js'
+
+jobs:
+  audit:
+    name: Audit + contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps (root)
+        run: npm ci
+
+      - name: Install deps (server)
+        run: npm --prefix server ci
+
+      # Adoption audit — fails if coverage regresses by > 5% vs last
+      # committed .remote-first-audit.json. PR authors who dropped a
+      # screen's useScreenGuard see a red check with the exact numbers.
+      - name: Remote-first adoption audit
+        run: node scripts/remote-first-audit.js --ci
+
+      # Contract tests — pins the shape promises for the app-config
+      # endpoint. Requires a .env.test in the server (CI secrets).
+      # When the test Supabase project is not available we SKIP cleanly
+      # rather than failing — the audit alone is useful signal.
+      - name: Server contract tests
+        env:
+          SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_KEY }}
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+          ADMIN_API_KEY: ${{ secrets.TEST_ADMIN_API_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "→ Test Supabase secrets not set — skipping contract tests."
+            echo "→ (The adoption audit above still ran.)"
+            exit 0
+          fi
+          npm --prefix server test -- --testPathPattern app-config-contract

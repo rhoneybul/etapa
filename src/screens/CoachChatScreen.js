@@ -12,6 +12,7 @@ import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, fontFamily } from '../theme';
+import useScreenGuard from '../hooks/useScreenGuard';
 import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan, getUserPrefs, getActivityDate } from '../services/storageService';
 import { coachChat } from '../services/llmPlanService';
 import { api } from '../services/api';
@@ -83,6 +84,7 @@ function chatKey(planId, weekNum) {
 }
 
 export default function CoachChatScreen({ navigation, route }) {
+  const _screenGuard = useScreenGuard('CoachChatScreen', navigation);
   const planId = route.params?.planId;
   const weekNum = route.params?.weekNum || null; // null = full plan scope
   const [plan, setPlan] = useState(null);
@@ -512,6 +514,8 @@ export default function CoachChatScreen({ navigation, route }) {
   };
 
   const scopeLabel = weekNum ? `Week ${weekNum}` : 'Your plan';
+
+  if (_screenGuard.blocked) return _screenGuard.render();
 
   return (
     <View style={s.container}>

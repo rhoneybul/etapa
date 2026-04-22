@@ -16,6 +16,7 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { supabase } = require('../lib/supabase');
+const { atLeast, parseVersion } = require('../lib/versionAdapt');
 
 const router = express.Router();
 
@@ -71,6 +72,8 @@ function buildPayload(rows) {
   payload.pricing      = flat.pricing_config   || {};
   payload.trial        = flat.trial_config     || {};
   payload.banner       = flat.banner           || { active: false };
+  // workflows: server-driven screen overrides. See WORKFLOWS.md.
+  payload.workflows    = flat.workflows        || { screens: {} };
 
   return payload;
 }
@@ -111,11 +114,28 @@ router.get('/', optionalAuth, async (req, res) => {
       if (overrides) payload.userOverrides = overrides;
     }
 
-    // Log the incoming app version for observability (future version-adapting).
+    // ── Version adaptation hook ────────────────────────────────────────────
+    // Future shape changes that can't be done additively should gate here,
+    // keeping old clients on the legacy shape. See REMOTE_FIRST_CHECKLIST.md
+    // §"Version adaptation". Current payload is fully backwards-compatible
+    // so this block is a scaffold — add `if (!atLeast(appVersion, 'x.y.z'))`
+    // branches when genuine shape changes land.
     const appVersion = req.headers['x-app-version'] || 'unknown';
     const platform   = req.headers['x-app-platform'] || 'unknown';
+    const parsedVersion = parseVersion(appVersion);
+    payload._clientVersion = appVersion; // echo back so clients can assert
+    payload._payloadShape = 'v1';        // bump when intentional shape changes land
+
+    // Example (commented out — kept as a reference for when it's needed):
+    //   if (atLeast(appVersion, '1.5.0')) payload.coaches = groupedShape;
+    //   else                              payload.coaches = flatLegacyShape;
+
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`[app-config] ${platform} ${appVersion} → ${userId ? 'auth' : 'anon'}`);
+      console.log(
+        `[app-config] ${platform} ${appVersion}` +
+        `${parsedVersion ? ` (parsed ${parsedVersion.major}.${parsedVersion.minor}.${parsedVersion.patch})` : ' (unparsed)'}` +
+        ` → ${userId ? 'auth' : 'anon'}`
+      );
     }
 
     // Cache headers — short, stale-while-revalidate. Private if user-specific.

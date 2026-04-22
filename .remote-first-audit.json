@@ -1,0 +1,15 @@
+{
+  "updatedAt": "2026-04-22T13:25:29.202Z",
+  "coverage": {
+    "guard": {
+      "count": 6,
+      "total": 24,
+      "percent": 25
+    },
+    "copy": {
+      "count": 1,
+      "total": 24,
+      "percent": 4
+    }
+  }
+}
