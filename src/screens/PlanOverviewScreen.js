@@ -8,7 +8,7 @@ import {
   KeyboardAvoidingView, Platform, TextInput, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontFamily } from '../theme';
+import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import { getPlans, getGoals, getWeekActivities, getPlanConfig, updatePlanConfig } from '../services/storageService';
 import { getCrossTrainingLabel } from '../utils/sessionLabels';
 import { syncStravaActivities, getStravaActivitiesForWeek } from '../services/stravaSyncService';
@@ -220,7 +220,11 @@ export default function PlanOverviewScreen({ navigation, route }) {
         </View>
 
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView style={s.scroll} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={s.scroll}
+            contentContainerStyle={{ paddingBottom: 32 + BOTTOM_INSET }}
+            showsVerticalScrollIndicator={false}
+          >
             {/* Stats */}
             <View style={s.statsRow}>
               <View style={s.statBox}>

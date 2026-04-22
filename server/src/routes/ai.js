@@ -15,6 +15,7 @@ const { supabase } = require('../lib/supabase');
 const { sendPushToUser } = require('../lib/pushService');
 const { logClaudeUsage } = require('../lib/claudeLogger');
 const { checkAndBlockIfOverCap } = require('../lib/claudeCostCap');
+const { normaliseActivities } = require('../lib/rideSpeedRules');
 const crypto = require('crypto');
 
 const getAnthropicKey = () => process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY || null;
@@ -171,7 +172,18 @@ router.post('/generate-plan', async (req, res) => {
       return res.status(502).json({ error: 'Could not parse AI response' });
     }
 
-    const activities = JSON.parse(jsonMatch[0]);
+    const rawActivities = JSON.parse(jsonMatch[0]);
+
+    // ── Speed realism: clamp distanceKm using the deterministic speed rules ──
+    // Claude occasionally returns distances that imply 40+ km/h average speeds
+    // even for endurance rides. The normaliser in rideSpeedRules.js replaces
+    // anything outside the realistic band (level × subType × effort) with a
+    // target distance the rider can actually hit. Non-ride sessions get
+    // distanceKm = null. This is the single source of truth for realistic
+    // distances — tested separately in tests/rideSpeedRules.test.js.
+    const activities = normaliseActivities(rawActivities, {
+      fitnessLevel: config.fitnessLevel,
+    });
 
     // ── Sanity-check session count against what was requested ───────────────
     // Doesn't fail the request (Claude occasionally drops 1 in a deload week)
@@ -367,15 +379,37 @@ Key coaching principles you follow:
 5. INJURY PREVENTION: Factor in the athlete's total training load including non-cycling activities.
 6. TAPER BEFORE EVENTS: Reduce volume 40–50% in final 1–2 weeks. Arrive fresh, not exhausted.
 7. REST WEEKS: Every 3–4 weeks, include an easier week to allow adaptation. This is when the fitness actually develops.
-8. REALISTIC DISTANCES: All distances and durations must be achievable at the rider's actual speed. A 60-minute ride for a beginner is ~18 km, not 30 km.
+8. REALISTIC DISTANCES: All distances and durations must be achievable at the rider's actual speed. A 60-minute ride for a beginner is ~17 km, not 30 km. Post-processing will clamp any distance that implies an unrealistic average speed — so get it right the first time.
 
-Rider level benchmarks:
-- Beginner: avg 16–20 km/h, max comfortable ride ~40 km, 3–5 hrs/week
-- Intermediate: avg 22–26 km/h, max comfortable ride ~80 km, 5–8 hrs/week
-- Advanced: avg 26–30 km/h, max comfortable ride ~130 km, 8–12 hrs/week
-- Expert: avg 30+ km/h, max comfortable ride 150+ km, 12–18 hrs/week
+Rider level base speeds (km/h — use these exactly):
+- Beginner: 17 km/h base, hard cap 22 km/h
+- Intermediate: 24 km/h base, hard cap 28 km/h
+- Advanced: 28 km/h base, hard cap 32 km/h
+- Expert: 32 km/h base, hard cap 36 km/h
 
-When setting distances and durations, calculate them from the rider's average speed. A 60-minute ride for a beginner is ~18 km, not 30 km.
+Session type speed multipliers (applied to base):
+- Recovery ride: 0.70× base (very easy spin)
+- Endurance ride: 0.90× base (zone 2, comfortable)
+- Tempo ride: 1.02× base (slightly above endurance, sustained)
+- Interval session: 0.88× base (slower average because of rest periods)
+- Long ride: 0.88× base (endurance pace with accumulating fatigue)
+- Indoor ride: 0.85× base (indoor/trainer averages lower)
+
+DISTANCE FORMULA — APPLY EVERY TIME:
+  distanceKm = round( (durationMins / 60) × baseSpeedKmh × subTypeMultiplier )
+
+Example — Expert rider, 90-min endurance ride:
+  (90 / 60) × 32 × 0.90 = 43 km  ✅
+  NOT 65 km (that would imply 43 km/h average, which is elite-pro race pace)
+
+Example — Expert rider, 150-min long ride:
+  (150 / 60) × 32 × 0.88 = 70 km  ✅
+  NOT 110 km (that would imply 44 km/h average over 2.5 hours — impossible)
+
+Example — Beginner, 45-min endurance ride:
+  (45 / 60) × 17 × 0.90 = 11 km  ✅
+
+NEVER let implied average speed exceed the hard cap. If your distance divided by (duration in hours) produces a number higher than the cap for that level, your distance is wrong — recompute.
 
 BEGINNER PLANS — LANGUAGE RULES: When the goal type is "beginner", all coaching principles above still shape the plan structure. But every session title, description, and notes field must be written in plain, warm, everyday English. Completely avoid: FTP, TSS, CTL, VO2, zone 1/2/3/4/5, polarised, periodisation, progressive overload, threshold, lactate, wattage. The rider should never need to look up a word to understand their session. Use language like "easy spin", "comfortable pace", "gentle ride", "you should be able to hold a conversation" — not "zone 2 endurance ride at 65% FTP."
 
@@ -785,7 +819,7 @@ Field rules:
 - type: MUST be exactly "ride" or "strength". If the session involves weights, bodyweight exercises, core work, or gym work, type MUST be "strength".
 - subType: "endurance", "tempo", "intervals", "recovery", "indoor", or null for strength
 - effort: "easy", "moderate", "hard", "recovery", or "max"
-- distanceKm: calculated from duration × rider's average speed. Must be realistic. Set to null for strength sessions.
+- distanceKm: calculated from duration × base speed × subType multiplier (see system prompt). Must be realistic — post-processing will clamp anything above the per-level hard cap. Set to null for strength sessions.
 - durationMins: appropriate for the rider's level. Beginners: 30–75 min. Intermediate: 45–120 min.
 - notes: include phase label, coaching context, and any cross-training considerations
 - For taper weeks, add "(Taper)" to the title
@@ -1458,7 +1492,7 @@ Only include the plan_update block when you are actually making changes. For que
  * replaced). If not, a fresh plan is created. Either path yields the same
  * polling contract via GET /api/ai/plan-job/:jobId.
  */
-async function startGenerationJob({ userId, goal, config, replacePlanId = null, reason = 'generate' }) {
+async function startGenerationJob({ userId, goal, config, replacePlanId = null, reason = 'generate', modelOverride = null }) {
   const apiKey = getAnthropicKey();
   if (!apiKey) {
     const err = new Error('AI plan generation not configured.');
@@ -1485,22 +1519,43 @@ async function startGenerationJob({ userId, goal, config, replacePlanId = null, 
     config,
     replacePlanId,
     reason,
+    modelOverride,
   };
   planJobs.set(jobId, job);
 
-  runAsyncGeneration(jobId, apiKey, goal, config, userId, { replacePlanId }).catch(err => {
+  runAsyncGeneration(jobId, apiKey, goal, config, userId, { replacePlanId, modelOverride }).catch(err => {
     console.error(`[async-gen] Job ${jobId} failed:`, err);
   });
 
   return jobId;
 }
 
-// POST /api/ai/generate-plan-async — kick off generation, return jobId immediately
+// POST /api/ai/generate-plan-async — kick off generation, return jobId immediately.
+//
+// Accepts an optional `testModel` field. This is only honoured when the caller
+// authenticated via TEST_API_KEY (not a user JWT) — it lets the test dashboard
+// drive generation against a different Claude model (e.g. Opus 4.6) than the
+// production Sonnet 4 default. For everyday users, `testModel` is silently
+// ignored so it can't be abused to drive up Opus bills.
 router.post('/generate-plan-async', async (req, res) => {
   try {
-    const { goal, config } = req.body;
-    const jobId = await startGenerationJob({ userId: req.user?.id, goal, config });
-    res.json({ jobId });
+    const { goal, config, testModel } = req.body;
+
+    // Only accept a model override from the test key path.
+    const authHeader = req.headers.authorization || '';
+    const isTestCaller = process.env.TEST_API_KEY
+      && authHeader === `Bearer ${process.env.TEST_API_KEY}`;
+    const modelOverride = (isTestCaller && typeof testModel === 'string' && testModel.trim())
+      ? testModel.trim()
+      : null;
+
+    const jobId = await startGenerationJob({
+      userId: req.user?.id,
+      goal,
+      config,
+      modelOverride,
+    });
+    res.json({ jobId, usingModel: modelOverride });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message || 'Generation failed' });
   }
@@ -1556,7 +1611,7 @@ router.delete('/plan-job/:jobId', (req, res) => {
 async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}) {
   const job = planJobs.get(jobId);
   if (!job) return;
-  const { replacePlanId = null } = opts;
+  const { replacePlanId = null, modelOverride = null } = opts;
 
   const progressSteps = [
     'Consulting your AI coach...',
@@ -1584,7 +1639,8 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
     const estimatedActivities = (config.weeks || 8) * (config.daysPerWeek || 3);
     const planMaxTokens = Math.min(16384, Math.max(8192, estimatedActivities * 120));
 
-    const _claudeModel = 'claude-sonnet-4-20250514';
+    // Default prod model, can be swapped by test runner via modelOverride.
+    const _claudeModel = modelOverride || 'claude-sonnet-4-20250514';
     const _claudeStartedAt = Date.now();
 
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
@@ -1656,7 +1712,15 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
 
     // Filter out activities that exceed the configured week count
     const maxWeeks = config.weeks || 8;
-    const rawActivities = allRawActivities.filter(a => a.week >= 1 && a.week <= maxWeeks);
+    const weekFiltered = allRawActivities.filter(a => a.week >= 1 && a.week <= maxWeeks);
+
+    // ── Speed realism pass ──────────────────────────────────────────────────
+    // Clamp distanceKm so nothing implies an unrealistic average speed for
+    // the rider's level. Strength sessions get null distance. See
+    // server/src/lib/rideSpeedRules.js for the rules.
+    const rawActivities = normaliseActivities(weekFiltered, {
+      fitnessLevel: config.fitnessLevel,
+    });
 
     // Build the full plan object (mirrors client-side buildPlanFromActivities)
     // Use YYYY-MM-DD date string to avoid timezone shifts between client/server
@@ -1939,5 +2003,6 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
 }
 
 module.exports = router;
-// Named exports for other routes (e.g. plans.js regenerate)
+// Named exports for other routes (e.g. plans.js regenerate, admin.js poll)
 module.exports.startGenerationJob = startGenerationJob;
+module.exports.getPlanJob = (jobId) => planJobs.get(jobId) || null;

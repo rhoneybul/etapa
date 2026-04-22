@@ -44,36 +44,160 @@ async function requireAdmin(req, res, next) {
   });
 }
 
-// ── RevenueCat Subscribers API helper ────────────────────────────────────────
+// ── RevenueCat helpers ───────────────────────────────────────────────────────
+//
+// RC's v1 `/subscribers/{id}` endpoint requires a SECRET key for server reads.
+// RC returns 403 code 7243 ("Secret API keys should not be used in your app")
+// when any of the following is true:
+//   - the request looks like it's coming from a mobile SDK (X-Platform header
+//     was sent alongside a secret key — RC treats that combo as app-context)
+//   - the API key itself is a PUBLIC SDK key (appl_XXX / goog_XXX) being sent
+//     to an endpoint that wants a secret key
+//   - the key is a mis-scoped secret (e.g. deleted / from the wrong project)
+//
+// Public SDK keys start with `appl_`, `goog_`, `stripe_`, or `amazon_`.
+// Secret API keys start with `sk_`.
+function classifyRevenueCatKey(apiKey) {
+  if (!apiKey) return { kind: 'missing' };
+  const trimmed = apiKey.trim();
+  if (/^(appl|goog|amazon|stripe)_/i.test(trimmed)) {
+    return { kind: 'public_sdk', prefix: trimmed.split('_')[0] };
+  }
+  if (/^sk_/i.test(trimmed)) return { kind: 'secret', prefix: 'sk' };
+  return { kind: 'unknown', prefix: trimmed.slice(0, 4) };
+}
+
+// Shared headers for server-side RC calls. We explicitly identify as a server
+// (User-Agent) and omit X-Platform — RC's "Secret API keys should not be used
+// in your app" error triggers when X-Platform + secret-key are sent together.
+function revenueCatServerHeaders(apiKey) {
+  return {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+    'User-Agent': 'Etapa-Admin-Dashboard/1.0 (+https://etapa-production.up.railway.app)',
+  };
+}
+
 // Uses the RC v1 Subscribers endpoint to fetch authoritative transaction data
-// for a given app_user_id (= Supabase user ID). Requires a secret API key from
-// RevenueCat dashboard → Project Settings → API keys → secret key.
+// for a given app_user_id (= Supabase user ID).
 async function fetchRevenueCatSubscriber(appUserId) {
   const apiKey = process.env.REVENUECAT_SECRET_API_KEY;
   if (!apiKey) return { error: 'missing_api_key' };
   if (!appUserId) return { error: 'missing_user_id' };
 
+  // Reject obviously-wrong keys up front with a clear error. This catches the
+  // most common misconfiguration: a public SDK key pasted into the secret-key
+  // env var (e.g. Railway), which always produces the confusing 7243 error.
+  const keyInfo = classifyRevenueCatKey(apiKey);
+  if (keyInfo.kind === 'public_sdk') {
+    return {
+      error: 'wrong_key_type',
+      hint: `REVENUECAT_SECRET_API_KEY looks like a PUBLIC SDK key (starts with "${keyInfo.prefix}_"). Server calls need a secret key (starts with "sk_"). Get it from RevenueCat dashboard → Project Settings → API keys → v1 secret key.`,
+    };
+  }
+  if (keyInfo.kind === 'unknown') {
+    return {
+      error: 'wrong_key_type',
+      hint: `REVENUECAT_SECRET_API_KEY prefix "${keyInfo.prefix}" is not a recognised RC key format. Expected "sk_...". Double-check Railway env.`,
+    };
+  }
+
   try {
     const res = await fetch(
       `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          // Platform header is ignored for secret-key reads but avoids 400s.
-          'X-Platform': 'ios',
-        },
-      }
+      { headers: revenueCatServerHeaders(apiKey) }
     );
 
     if (res.status === 404) return { notFound: true };
+    if (!res.ok) {
+      const text = await res.text();
+      let hint = null;
+      if (res.status === 401) {
+        hint = 'RevenueCat rejected the key as unauthorised. The key may have been rotated/revoked. Regenerate a v1 secret key and update REVENUECAT_SECRET_API_KEY on Railway.';
+      } else if (res.status === 403 && /7243|Secret API keys/i.test(text)) {
+        hint = 'RC returned the 7243 warning even after we dropped X-Platform. Most likely cause: REVENUECAT_SECRET_API_KEY on Railway is set to a PUBLIC SDK key (appl_/goog_) rather than an "sk_" secret key. Check Railway → Variables.';
+      }
+      return { error: 'http_error', status: res.status, body: text, hint };
+    }
+
+    const json = await res.json();
+    return { subscriber: json.subscriber || null };
+  } catch (err) {
+    return { error: 'fetch_failed', message: err.message };
+  }
+}
+
+// ── RevenueCat — grant non-consumable entitlement ────────────────────────────
+// Uses the Subscriber Attributes + grant entitlement API:
+//   POST /v1/subscribers/{app_user_id}/entitlements/{entitlement_identifier}/promotional
+// Grants a promotional (non-paying) entitlement for a given duration. We pass
+// "lifetime" so the user gets permanent access in RC. If the user doesn't yet
+// exist in RC, this will also create them as an anonymous subscriber, which
+// is fine.
+async function grantRevenueCatLifetime(appUserId, { entitlementId = 'pro' } = {}) {
+  const apiKey = process.env.REVENUECAT_SECRET_API_KEY;
+  if (!apiKey) return { error: 'missing_api_key' };
+  if (!appUserId) return { error: 'missing_user_id' };
+
+  const keyInfo = classifyRevenueCatKey(apiKey);
+  if (keyInfo.kind !== 'secret') {
+    return {
+      error: 'wrong_key_type',
+      hint: `REVENUECAT_SECRET_API_KEY must be an "sk_..." secret key for server grants; saw "${keyInfo.prefix || 'empty'}".`,
+    };
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}/entitlements/${encodeURIComponent(entitlementId)}/promotional`,
+      {
+        method: 'POST',
+        headers: revenueCatServerHeaders(apiKey),
+        body: JSON.stringify({ duration: 'lifetime' }),
+      }
+    );
+
     if (!res.ok) {
       const text = await res.text();
       return { error: 'http_error', status: res.status, body: text };
     }
 
     const json = await res.json();
-    return { subscriber: json.subscriber || null };
+    return { ok: true, subscriber: json.subscriber || null };
+  } catch (err) {
+    return { error: 'fetch_failed', message: err.message };
+  }
+}
+
+// ── RevenueCat — revoke a promotional entitlement ────────────────────────────
+async function revokeRevenueCatPromotional(appUserId, { entitlementId = 'pro' } = {}) {
+  const apiKey = process.env.REVENUECAT_SECRET_API_KEY;
+  if (!apiKey) return { error: 'missing_api_key' };
+  if (!appUserId) return { error: 'missing_user_id' };
+
+  const keyInfo = classifyRevenueCatKey(apiKey);
+  if (keyInfo.kind !== 'secret') {
+    return {
+      error: 'wrong_key_type',
+      hint: `REVENUECAT_SECRET_API_KEY must be an "sk_..." secret key for server revokes; saw "${keyInfo.prefix || 'empty'}".`,
+    };
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}/entitlements/${encodeURIComponent(entitlementId)}/revoke_promotionals`,
+      {
+        method: 'POST',
+        headers: revenueCatServerHeaders(apiKey),
+      }
+    );
+
+    if (!res.ok) {
+      const text = await res.text();
+      return { error: 'http_error', status: res.status, body: text };
+    }
+
+    return { ok: true };
   } catch (err) {
     return { error: 'fetch_failed', message: err.message };
   }
@@ -547,6 +671,27 @@ router.patch('/plans/:planId/activities/:activityId', async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
+// ── GET /api/admin/plan-jobs/:jobId — poll a plan-gen job as admin ───────────
+// Mirrors /api/ai/plan-job/:jobId but bypasses the owner-only check so admins
+// can watch regeneration jobs they kicked off on behalf of another user.
+router.get('/plan-jobs/:jobId', (req, res) => {
+  // Lazy-import the in-memory job map from ai.js to avoid a circular require
+  // at module load. This helper is exported alongside startGenerationJob.
+  const { getPlanJob } = require('./ai');
+  const job = getPlanJob(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  res.json({
+    jobId: job.id,
+    status: job.status,
+    progress: job.progress,
+    activitiesCount: job.activities.length,
+    plan: job.plan,
+    error: job.error,
+    forUserId: job.userId || null,
+  });
+});
+
 // ── DELETE /api/admin/plans/:id — delete a plan and its activities (admin) ──
 router.delete('/plans/:id', async (req, res, next) => {
   try {
@@ -568,6 +713,149 @@ router.delete('/plans/:id', async (req, res, next) => {
 
     res.json({ success: true });
   } catch (err) { next(err); }
+});
+
+// ── POST /api/admin/plans/:id/regenerate — kick off a regeneration on behalf
+// of the user. CS-scope use case: "my plan is too hard" / "the AI clearly got
+// this wrong, please redo it". Fetches the plan's goal + config, applies any
+// body overrides (typically fitnessLevel, weeks, or daysPerWeek tweaks),
+// takes a pre-regenerate snapshot, then calls the existing startGenerationJob
+// with replacePlanId so the same plan row is reused. Returns jobId the client
+// can poll via /api/ai/plan-job/:jobId.
+//
+// Body:
+//   {
+//     goalOverrides?:   { fitnessLevel?, targetDistance?, targetDate?, ... },
+//     configOverrides?: { fitnessLevel?, daysPerWeek?, weeks?, ... },
+//     reason?:          string (for audit)
+//   }
+router.post('/plans/:id/regenerate', async (req, res, next) => {
+  try {
+    const planId = req.params.id;
+    const { goalOverrides = {}, configOverrides = {}, reason = null } = req.body || {};
+
+    // 1. Fetch plan + goal + config
+    const { data: plan, error: planErr } = await supabase
+      .from('plans')
+      .select('*')
+      .eq('id', planId)
+      .maybeSingle();
+    if (planErr) throw planErr;
+    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+
+    const userId = plan.user_id;
+
+    let goal = null;
+    if (plan.goal_id) {
+      const { data: g } = await supabase.from('goals').select('*').eq('id', plan.goal_id).maybeSingle();
+      goal = g || null;
+    }
+    let config = null;
+    if (plan.config_id) {
+      const { data: c } = await supabase.from('plan_configs').select('*').eq('id', plan.config_id).maybeSingle();
+      config = c || null;
+    }
+
+    if (!goal || !config) {
+      return res.status(400).json({
+        error: 'Plan is missing goal or config — cannot regenerate without original inputs.',
+      });
+    }
+
+    // 2. Rebuild the client-shape goal + config objects the generator expects,
+    //    then apply any admin-supplied overrides on top.
+    const clientGoal = {
+      id: goal.id,
+      cyclingType: goal.cycling_type,
+      goalType: goal.goal_type,
+      targetDistance: goal.target_distance,
+      targetElevation: goal.target_elevation,
+      targetTime: goal.target_time,
+      targetDate: goal.target_date,
+      eventName: goal.event_name,
+      planName: goal.plan_name,
+      ...goalOverrides,
+    };
+    const clientConfig = {
+      id: config.id,
+      daysPerWeek: config.days_per_week,
+      weeks: config.weeks || plan.weeks,
+      fitnessLevel: config.fitness_level,
+      indoorTrainer: config.indoor_trainer,
+      coachId: config.coach_id,
+      trainingTypes: config.training_types || ['outdoor'],
+      sessionCounts: config.session_counts || {},
+      availableDays: config.available_days || [],
+      longRideDay: config.long_ride_day || null,
+      startDate: plan.start_date,
+      extraNotes: config.extra_notes,
+      ...configOverrides,
+    };
+
+    // 3. Snapshot current activities so the admin can roll back if the new
+    //    plan is worse. Uses the same snapshot table as self-serve regen.
+    let snapshotId = null;
+    try {
+      const { data: existingActs } = await supabase
+        .from('activities')
+        .select('*')
+        .eq('plan_id', planId);
+      const snap = {
+        id: `snp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+        user_id: userId,
+        plan_id: planId,
+        reason: reason ? `admin-regenerate: ${reason}` : 'admin-regenerate',
+        label: 'Before admin regenerate',
+        payload: {
+          plan: {
+            id: plan.id,
+            name: plan.name,
+            weeks: plan.weeks,
+            startDate: plan.start_date,
+            currentWeek: plan.current_week,
+          },
+          goal: clientGoal,
+          config: clientConfig,
+          activities: existingActs || [],
+        },
+        created_at: new Date().toISOString(),
+        created_by: req.user?.id || null,
+      };
+      const { data: insSnap, error: snapErr } = await supabase
+        .from('plan_snapshots')
+        .insert(snap)
+        .select('id')
+        .maybeSingle();
+      if (!snapErr && insSnap) snapshotId = insSnap.id;
+    } catch (snapErrRoot) {
+      // Snapshot failure is non-fatal — warn and continue so the admin isn't
+      // blocked if the snapshots table hasn't been migrated yet.
+      console.warn('[admin/regenerate-plan] snapshot failed, continuing:', snapErrRoot?.message);
+    }
+
+    // 4. Kick off the async job. startGenerationJob handles the Claude call,
+    //    speed normalisation, one-off ride injection, and activity persistence.
+    const { startGenerationJob } = require('./ai');
+    const jobId = await startGenerationJob({
+      userId,
+      goal: clientGoal,
+      config: clientConfig,
+      replacePlanId: planId,
+      reason: 'regenerate',
+    });
+
+    res.json({
+      ok: true,
+      jobId,
+      snapshotId,
+      planId,
+      userId,
+      pollUrl: `/api/ai/plan-job/${jobId}`,
+    });
+  } catch (err) {
+    console.error('[admin/regenerate-plan] error:', err);
+    next(err);
+  }
 });
 
 // ── GET /api/admin/payments — all subscriptions / payments ───────────────────
@@ -1445,6 +1733,201 @@ router.get('/users/:id/revenuecat', async (req, res, next) => {
       transactions,
       raw: sub,
     });
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/admin/users/:id/grant-lifetime — belt-and-braces lifetime access
+// Called from the admin dashboard's user detail page. Runs THREE writes so the
+// entitlement is reflected everywhere a CS rep, a client device, or the
+// RevenueCat dashboard might look:
+//
+//   1. RevenueCat — promotional entitlement with duration "lifetime" so the
+//      user's client SDK sees the entitlement on next purchaserInfo fetch
+//   2. user_config_overrides.entitlement = 'lifetime' — app-side fallback
+//      that works even if RC is slow or the user is offline
+//   3. subscriptions table — inserts/updates a row with plan=lifetime,
+//      status=active, source=Promotional, so it appears in the Subscriptions
+//      section of the admin dashboard immediately
+//
+// Idempotent: safe to call repeatedly; each write is an upsert or already
+// handled by RC (calling grant promotional twice is a no-op in RC).
+//
+// Body:
+//   { note?: string, entitlement?: string }   (entitlement defaults to 'pro')
+router.post('/users/:id/grant-lifetime', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: 'User ID is required' });
+
+    const entitlementId = req.body?.entitlement || 'pro';
+    const note = req.body?.note || `Lifetime granted via admin on ${new Date().toISOString().split('T')[0]}`;
+
+    // Sanity: make sure the user exists in Supabase before touching RC.
+    const { data: { user }, error: userError } = await supabase.auth.admin.getUserById(id);
+    if (userError) throw userError;
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const results = {
+      revenueCat: { attempted: false, ok: false, detail: null },
+      override: { attempted: false, ok: false, detail: null },
+      subscription: { attempted: false, ok: false, detail: null },
+    };
+
+    // 1. RevenueCat grant --------------------------------------------------
+    results.revenueCat.attempted = true;
+    const rcResult = await grantRevenueCatLifetime(id, { entitlementId });
+    if (rcResult.error) {
+      // RC failure is NOT fatal — the override + subscription rows still get
+      // written so the app unlocks immediately. CS rep should be told.
+      results.revenueCat.ok = false;
+      results.revenueCat.detail = rcResult;
+      console.warn(`[admin/grant-lifetime] RevenueCat grant failed for ${id}:`, rcResult);
+    } else {
+      results.revenueCat.ok = true;
+      results.revenueCat.detail = { message: 'Promotional entitlement granted (lifetime)' };
+    }
+
+    // 2. user_config_overrides ---------------------------------------------
+    results.override.attempted = true;
+    const { data: existing } = await supabase
+      .from('user_config_overrides')
+      .select('overrides')
+      .eq('user_id', id)
+      .maybeSingle();
+    const currentOverrides = existing?.overrides ? { ...existing.overrides } : {};
+    currentOverrides.entitlement = 'lifetime';
+    const { error: ovrError } = await supabase
+      .from('user_config_overrides')
+      .upsert({
+        user_id: id,
+        overrides: currentOverrides,
+        note,
+        updated_by: req.user?.id || null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+    if (ovrError) {
+      results.override.ok = false;
+      results.override.detail = ovrError.message;
+    } else {
+      results.override.ok = true;
+    }
+
+    // 3. subscriptions row --------------------------------------------------
+    results.subscription.attempted = true;
+    const { data: existingSubs } = await supabase
+      .from('subscriptions')
+      .select('id')
+      .eq('user_id', id)
+      .eq('plan', 'lifetime')
+      .limit(1);
+
+    const subRow = {
+      user_id: id,
+      plan: 'lifetime',
+      status: 'active',
+      source: 'Promotional',
+      store: null,
+      product_id: 'etapa_lifetime_promotional',
+      trial_end: null,
+      current_period_end: null,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingSubs && existingSubs.length > 0) {
+      const { error: updErr } = await supabase
+        .from('subscriptions')
+        .update(subRow)
+        .eq('id', existingSubs[0].id);
+      if (updErr) {
+        results.subscription.ok = false;
+        results.subscription.detail = updErr.message;
+      } else {
+        results.subscription.ok = true;
+        results.subscription.detail = { id: existingSubs[0].id, action: 'updated' };
+      }
+    } else {
+      const { data: inserted, error: insErr } = await supabase
+        .from('subscriptions')
+        .insert({ ...subRow, created_at: new Date().toISOString() })
+        .select('id')
+        .maybeSingle();
+      if (insErr) {
+        results.subscription.ok = false;
+        results.subscription.detail = insErr.message;
+      } else {
+        results.subscription.ok = true;
+        results.subscription.detail = { id: inserted?.id, action: 'inserted' };
+      }
+    }
+
+    // Overall status: succeeds if AT LEAST override + subscription wrote
+    // (these are what the app + admin dashboard read). RC failing degrades
+    // the single-source-of-truth property but doesn't block the grant.
+    const allOk = results.override.ok && results.subscription.ok;
+    const anyFail = !results.revenueCat.ok || !allOk;
+
+    res.status(allOk ? 200 : 502).json({
+      ok: allOk,
+      warnings: anyFail ? ['One or more writes failed — see results.'] : [],
+      userId: id,
+      email: user.email,
+      results,
+    });
+  } catch (err) {
+    console.error('[admin/grant-lifetime] unexpected error:', err);
+    next(err);
+  }
+});
+
+// ── POST /api/admin/users/:id/revoke-lifetime — undo the grant ───────────────
+router.post('/users/:id/revoke-lifetime', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: 'User ID is required' });
+    const entitlementId = req.body?.entitlement || 'pro';
+
+    const results = {
+      revenueCat: { attempted: true, ok: false },
+      override: { attempted: true, ok: false },
+      subscription: { attempted: true, ok: false },
+    };
+
+    const rcResult = await revokeRevenueCatPromotional(id, { entitlementId });
+    results.revenueCat.ok = !rcResult.error;
+    results.revenueCat.detail = rcResult;
+
+    const { data: existing } = await supabase
+      .from('user_config_overrides')
+      .select('overrides')
+      .eq('user_id', id)
+      .maybeSingle();
+    if (existing?.overrides) {
+      const next = { ...existing.overrides };
+      delete next.entitlement;
+      const { error } = await supabase
+        .from('user_config_overrides')
+        .upsert({
+          user_id: id,
+          overrides: next,
+          updated_by: req.user?.id || null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      results.override.ok = !error;
+      results.override.detail = error?.message || null;
+    } else {
+      results.override.ok = true;
+      results.override.detail = 'no-override-row';
+    }
+
+    const { error: subError } = await supabase
+      .from('subscriptions')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('user_id', id)
+      .eq('plan', 'lifetime');
+    results.subscription.ok = !subError;
+    results.subscription.detail = subError?.message || null;
+
+    res.json({ ok: results.override.ok && results.subscription.ok, userId: id, results });
   } catch (err) { next(err); }
 });
 

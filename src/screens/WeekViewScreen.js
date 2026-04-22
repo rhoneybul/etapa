@@ -8,7 +8,7 @@ import {
   TextInput, ActivityIndicator, Alert, Modal, KeyboardAvoidingView, Platform, Animated, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontFamily } from '../theme';
+import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import { getPlan, getPlans, getWeekActivities, getWeekProgress, markActivityComplete, getWeekMonthLabel, getGoals, getPlanConfig, updateActivity, savePlan } from '../services/storageService';
 import { editActivityWithAI, adjustWeekForOrganisedRide } from '../services/llmPlanService';
 import { uid } from '../services/storageService';
@@ -343,7 +343,11 @@ export default function WeekViewScreen({ navigation, route }) {
           </View>
         )}
 
-        <ScrollView style={s.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#666" />}>
+        <ScrollView
+          style={s.list}
+          contentContainerStyle={{ paddingBottom: 32 + BOTTOM_INSET }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#666" />}
+        >
           {DAY_LABELS_FULL.map((dayLabel, dayIdx) => {
             const dayActivities = byDay[dayIdx] || [];
             const ctItems = getCrossTrainingForDay(crossTraining, dayIdx);

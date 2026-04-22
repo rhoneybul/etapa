@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Badge } from "@/components/badge";
@@ -161,6 +161,16 @@ function EmptyRow({ text }: { text: string }) {
   );
 }
 
+interface GrantResult {
+  ok: boolean;
+  warnings?: string[];
+  results: {
+    revenueCat: { attempted: boolean; ok: boolean; detail: any };
+    override: { attempted: boolean; ok: boolean; detail: any };
+    subscription: { attempted: boolean; ok: boolean; detail: any };
+  };
+}
+
 export default function UserDetailPage() {
   const params = useParams<{ id: string }>();
   const [data, setData] = useState<UserDetail | null>(null);
@@ -171,7 +181,25 @@ export default function UserDetailPage() {
   const [rcLoading, setRcLoading] = useState(true);
   const [rcError, setRcError] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Lifetime grant state
+  const [grantModalOpen, setGrantModalOpen] = useState<null | "grant" | "revoke">(null);
+  const [grantBusy, setGrantBusy] = useState(false);
+  const [grantResult, setGrantResult] = useState<GrantResult | null>(null);
+  const [grantError, setGrantError] = useState<string | null>(null);
+
+  // Regenerate-plan state
+  const [regenPlanId, setRegenPlanId] = useState<string | null>(null);
+  const [regenJobId, setRegenJobId] = useState<string | null>(null);
+  const [regenProgress, setRegenProgress] = useState<string | null>(null);
+  const [regenStatus, setRegenStatus] = useState<"idle" | "running" | "done" | "failed">("idle");
+  const [regenError, setRegenError] = useState<string | null>(null);
+  const [regenOverrides, setRegenOverrides] = useState<{ fitnessLevel: string; daysPerWeek: string; weeks: string }>({
+    fitnessLevel: "",
+    daysPerWeek: "",
+    weeks: "",
+  });
+
+  const refresh = useCallback(() => {
     if (!params?.id) return;
     setLoading(true);
     fetch(`/api/users/${params.id}`)
@@ -198,6 +226,114 @@ export default function UserDetailPage() {
       .finally(() => setRcLoading(false));
   }, [params?.id]);
 
+  useEffect(() => { refresh(); }, [refresh]);
+
+  async function runGrant() {
+    if (!params?.id) return;
+    setGrantBusy(true);
+    setGrantError(null);
+    setGrantResult(null);
+    try {
+      const res = await fetch(`/api/users/${params.id}/grant-lifetime`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok && !body?.results) {
+        throw new Error(body.error || `Grant failed (${res.status})`);
+      }
+      setGrantResult(body as GrantResult);
+      refresh();
+    } catch (e: any) {
+      setGrantError(e.message);
+    } finally {
+      setGrantBusy(false);
+    }
+  }
+
+  // Poll job progress every second until done/failed.
+  useEffect(() => {
+    if (!regenJobId || regenStatus !== "running") return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/plan-jobs/${regenJobId}`);
+        const body = await r.json();
+        if (cancelled) return;
+        if (body?.progress) setRegenProgress(body.progress);
+        if (body?.status === "completed") {
+          setRegenStatus("done");
+          setRegenProgress(null);
+          refresh();
+        } else if (body?.status === "failed") {
+          setRegenStatus("failed");
+          setRegenError(body?.error || "Regeneration failed");
+        }
+      } catch (e: any) {
+        if (!cancelled) setRegenError(e.message);
+      }
+    };
+    const iv = setInterval(tick, 1500);
+    tick();
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [regenJobId, regenStatus, refresh]);
+
+  async function runRegenerate(planId: string) {
+    setRegenJobId(null);
+    setRegenProgress("Kicking off regeneration...");
+    setRegenStatus("running");
+    setRegenError(null);
+    try {
+      // Only send non-empty overrides so the server falls back to the plan's
+      // stored goal + config for unchanged fields.
+      const configOverrides: Record<string, unknown> = {};
+      if (regenOverrides.fitnessLevel) configOverrides.fitnessLevel = regenOverrides.fitnessLevel;
+      if (regenOverrides.daysPerWeek) configOverrides.daysPerWeek = Number(regenOverrides.daysPerWeek);
+      if (regenOverrides.weeks) configOverrides.weeks = Number(regenOverrides.weeks);
+
+      const res = await fetch(`/api/plans/${planId}/regenerate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          configOverrides,
+          reason: "triggered-from-admin-dashboard",
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body?.jobId) throw new Error(body?.error || `Regenerate failed (${res.status})`);
+      setRegenJobId(body.jobId);
+      setRegenProgress("Consulting your AI coach...");
+    } catch (e: any) {
+      setRegenStatus("failed");
+      setRegenError(e.message);
+    }
+  }
+
+  async function runRevoke() {
+    if (!params?.id) return;
+    setGrantBusy(true);
+    setGrantError(null);
+    setGrantResult(null);
+    try {
+      const res = await fetch(`/api/users/${params.id}/revoke-lifetime`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok && !body?.results) {
+        throw new Error(body.error || `Revoke failed (${res.status})`);
+      }
+      setGrantResult(body as GrantResult);
+      refresh();
+    } catch (e: any) {
+      setGrantError(e.message);
+    } finally {
+      setGrantBusy(false);
+    }
+  }
+
   if (loading) {
     return <div className="animate-pulse text-etapa-textMuted">Loading user...</div>;
   }
@@ -218,6 +354,9 @@ export default function UserDetailPage() {
   const { profile, subscriptions, plans, feedback, tickets } = data;
   const displayName = profile.name || profile.email || profile.id;
   const activeSub = subscriptions.find((s) => ["active", "trialing", "paid"].includes(s.status));
+  const hasLifetime = subscriptions.some(
+    (s) => s.plan === "lifetime" && ["active", "paid"].includes(s.status)
+  );
 
   return (
     <div>
@@ -254,6 +393,245 @@ export default function UserDetailPage() {
         <StatCard label="Feedback" value={feedback.length} />
         <StatCard label="Support Tickets" value={tickets.length} />
       </div>
+
+      {/* Support actions — lifetime grant / revoke */}
+      <Section title="Support Actions">
+        <div className="bg-etapa-surface rounded-xl border border-etapa-border p-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="min-w-0">
+              <div className="text-sm text-white font-medium">
+                Lifetime access
+                {hasLifetime ? (
+                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-900/30 text-green-300 border border-green-700/30">
+                    ACTIVE
+                  </span>
+                ) : (
+                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-etapa-surfaceLight text-etapa-textMuted border border-etapa-border">
+                    NOT GRANTED
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-etapa-textMuted mt-1">
+                Writes to RevenueCat, the user-config override, and the subscriptions table — belt-and-braces so the client unlocks immediately even if RC is slow.
+              </p>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {!hasLifetime ? (
+                <button
+                  onClick={() => setGrantModalOpen("grant")}
+                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-etapa-primary text-white hover:bg-etapa-primary/90 transition-colors"
+                >
+                  Grant Lifetime
+                </button>
+              ) : (
+                <button
+                  onClick={() => setGrantModalOpen("revoke")}
+                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-900/30 text-red-300 border border-red-900/40 hover:bg-red-900/50 transition-colors"
+                >
+                  Revoke Lifetime
+                </button>
+              )}
+            </div>
+          </div>
+
+          {grantResult && (
+            <div className="mt-4 border-t border-etapa-border pt-4">
+              <div className="text-xs font-medium text-white mb-2">
+                Last action result
+                {grantResult.ok ? (
+                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-900/30 text-green-300 border border-green-700/30">
+                    OK
+                  </span>
+                ) : (
+                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-900/30 text-amber-300 border border-amber-700/30">
+                    PARTIAL
+                  </span>
+                )}
+              </div>
+              <ul className="space-y-1 text-xs text-etapa-textMid">
+                <li className="flex items-center gap-2">
+                  <span className={grantResult.results.revenueCat.ok ? "text-green-400" : "text-red-400"}>
+                    {grantResult.results.revenueCat.ok ? "✓" : "✗"}
+                  </span>
+                  <span>RevenueCat entitlement</span>
+                  {!grantResult.results.revenueCat.ok && (
+                    <span className="text-etapa-textFaint">— check REVENUECAT_SECRET_API_KEY</span>
+                  )}
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className={grantResult.results.override.ok ? "text-green-400" : "text-red-400"}>
+                    {grantResult.results.override.ok ? "✓" : "✗"}
+                  </span>
+                  <span>user_config_overrides</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className={grantResult.results.subscription.ok ? "text-green-400" : "text-red-400"}>
+                    {grantResult.results.subscription.ok ? "✓" : "✗"}
+                  </span>
+                  <span>subscriptions row</span>
+                </li>
+              </ul>
+              {(grantResult.warnings || []).length > 0 && (
+                <div className="mt-2 text-xs text-amber-300">
+                  {(grantResult.warnings || []).map((w, i) => (<div key={i}>{w}</div>))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {grantError && (
+            <div className="mt-4 border-t border-etapa-border pt-4 text-xs text-red-400">
+              Error: {grantError}
+            </div>
+          )}
+        </div>
+      </Section>
+
+      {/* Regenerate plan modal */}
+      {regenPlanId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => regenStatus !== "running" && setRegenPlanId(null)}
+        >
+          <div
+            className="bg-etapa-surface rounded-xl border border-etapa-border p-6 max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-white mb-1">Regenerate plan</h3>
+            <p className="text-sm text-etapa-textMid mb-4">
+              The existing plan will be snapshotted so it can be restored if the new one is worse. Leave overrides blank to keep the user's original inputs.
+            </p>
+
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="text-xs text-etapa-textMuted uppercase tracking-wide mb-1 block">Fitness level override</label>
+                <select
+                  disabled={regenStatus === "running"}
+                  value={regenOverrides.fitnessLevel}
+                  onChange={(e) => setRegenOverrides((p) => ({ ...p, fitnessLevel: e.target.value }))}
+                  className="w-full bg-etapa-surfaceLight border border-etapa-border rounded px-3 py-2 text-sm text-white disabled:opacity-50"
+                >
+                  <option value="">— keep original —</option>
+                  <option value="beginner">Beginner</option>
+                  <option value="intermediate">Intermediate</option>
+                  <option value="advanced">Advanced</option>
+                  <option value="expert">Expert</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-etapa-textMuted uppercase tracking-wide mb-1 block">Days / week</label>
+                  <input
+                    disabled={regenStatus === "running"}
+                    type="number"
+                    min="1"
+                    max="7"
+                    placeholder="keep"
+                    value={regenOverrides.daysPerWeek}
+                    onChange={(e) => setRegenOverrides((p) => ({ ...p, daysPerWeek: e.target.value }))}
+                    className="w-full bg-etapa-surfaceLight border border-etapa-border rounded px-3 py-2 text-sm text-white disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-etapa-textMuted uppercase tracking-wide mb-1 block">Total weeks</label>
+                  <input
+                    disabled={regenStatus === "running"}
+                    type="number"
+                    min="2"
+                    max="52"
+                    placeholder="keep"
+                    value={regenOverrides.weeks}
+                    onChange={(e) => setRegenOverrides((p) => ({ ...p, weeks: e.target.value }))}
+                    className="w-full bg-etapa-surfaceLight border border-etapa-border rounded px-3 py-2 text-sm text-white disabled:opacity-50"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {regenStatus === "running" && (
+              <div className="mb-4 text-xs text-etapa-textMid bg-etapa-surfaceLight border border-etapa-border rounded p-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-etapa-primary animate-pulse" />
+                  <span>{regenProgress || "Running..."}</span>
+                </div>
+              </div>
+            )}
+            {regenStatus === "done" && (
+              <div className="mb-4 text-xs text-green-300 bg-green-900/20 border border-green-900/40 rounded p-3">
+                Plan regenerated successfully. Activities now in place.
+              </div>
+            )}
+            {regenStatus === "failed" && regenError && (
+              <div className="mb-4 text-xs text-red-300 bg-red-900/20 border border-red-900/40 rounded p-3">
+                Error: {regenError}
+              </div>
+            )}
+
+            <div className="flex gap-2 justify-end">
+              <button
+                disabled={regenStatus === "running"}
+                onClick={() => setRegenPlanId(null)}
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-etapa-surfaceLight text-etapa-textMid hover:bg-etapa-border transition-colors disabled:opacity-50"
+              >
+                {regenStatus === "done" || regenStatus === "failed" ? "Close" : "Cancel"}
+              </button>
+              {regenStatus !== "done" && (
+                <button
+                  disabled={regenStatus === "running"}
+                  onClick={() => runRegenerate(regenPlanId)}
+                  className="px-3 py-1.5 text-xs font-medium rounded-md text-white bg-etapa-primary hover:bg-etapa-primary/90 transition-colors disabled:opacity-50"
+                >
+                  {regenStatus === "running" ? "Regenerating..." : regenStatus === "failed" ? "Retry" : "Regenerate plan"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Grant / revoke confirmation modal */}
+      {grantModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => !grantBusy && setGrantModalOpen(null)}
+        >
+          <div
+            className="bg-etapa-surface rounded-xl border border-etapa-border p-6 max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-white mb-2">
+              {grantModalOpen === "grant" ? "Grant lifetime access?" : "Revoke lifetime access?"}
+            </h3>
+            <p className="text-sm text-etapa-textMid mb-4">
+              {grantModalOpen === "grant"
+                ? `${displayName} will get permanent access via RevenueCat + the app override. This is idempotent — safe to re-run if it fails.`
+                : `${displayName}'s lifetime will be revoked in RevenueCat and the app. Any non-lifetime subscription they have is NOT affected.`}
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                disabled={grantBusy}
+                onClick={() => setGrantModalOpen(null)}
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-etapa-surfaceLight text-etapa-textMid hover:bg-etapa-border transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={grantBusy}
+                onClick={async () => {
+                  if (grantModalOpen === "grant") await runGrant();
+                  else await runRevoke();
+                  setGrantModalOpen(null);
+                }}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md text-white transition-colors disabled:opacity-50 ${
+                  grantModalOpen === "grant" ? "bg-etapa-primary hover:bg-etapa-primary/90" : "bg-red-700 hover:bg-red-600"
+                }`}
+              >
+                {grantBusy ? "Working..." : grantModalOpen === "grant" ? "Yes, grant lifetime" : "Yes, revoke"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Profile & account */}
       <Section title="Profile & Account">
@@ -493,6 +871,7 @@ export default function UserDetailPage() {
                     <th className="px-4 py-3 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Activities</th>
                     <th className="px-4 py-3 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Start Date</th>
                     <th className="px-4 py-3 text-xs font-medium text-etapa-textMuted uppercase tracking-wide">Created</th>
+                    <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-etapa-border">
@@ -504,6 +883,22 @@ export default function UserDetailPage() {
                       <td className="px-4 py-3 text-xs text-etapa-textMid">{p.activityCount}</td>
                       <td className="px-4 py-3 text-xs text-etapa-textMid">{formatDate(p.startDate)}</td>
                       <td className="px-4 py-3 text-xs text-etapa-textMid">{formatDate(p.createdAt)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => {
+                            setRegenPlanId(p.id);
+                            setRegenOverrides({ fitnessLevel: "", daysPerWeek: "", weeks: "" });
+                            setRegenStatus("idle");
+                            setRegenError(null);
+                            setRegenProgress(null);
+                            setRegenJobId(null);
+                          }}
+                          className="text-xs text-etapa-primary hover:text-amber-400 transition-colors"
+                          title="Regenerate this plan"
+                        >
+                          Regenerate
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

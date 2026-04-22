@@ -192,9 +192,20 @@ export default function UsersPage() {
               <p className="text-xs text-etapa-textMuted group-hover:text-etapa-textMid transition-colors">{u.email}</p>
             </Link>
           )},
-          { key: "subscription", label: "Plan", render: (u: User) => (
-            u.subscription ? <Badge value={u.subscription.plan} /> : <span className="text-xs text-etapa-textFaint">free</span>
-          )},
+          { key: "subscription", label: "Plan", render: (u: User) => {
+            if (!u.subscription) return <span className="text-xs text-etapa-textFaint">free</span>;
+            // Lifetime gets a magenta chip so it's visually distinct at a glance —
+            // CS reps often need to spot "user X has lifetime" quickly when a
+            // paywall-related ticket lands. See ADMIN_AUDIT.md finding H1.
+            if (u.subscription.plan === "lifetime") {
+              return (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-etapa-primary/15 text-etapa-primary border border-etapa-primary/20">
+                  LIFETIME
+                </span>
+              );
+            }
+            return <Badge value={u.subscription.plan} />;
+          }},
           { key: "subStatus", label: "Status", render: (u: User) => (
             u.subscription ? <Badge value={u.subscription.status} /> : <span className="text-xs text-etapa-textFaint">\u2014</span>
           )},

@@ -760,6 +760,7 @@ export default function HomeScreen({ navigation, route }) {
       <SafeAreaView style={s.safe}>
         <ScrollView
           showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 40 + BOTTOM_INSET }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} colors={[colors.primary]} />}
         >
           {/* Header */}

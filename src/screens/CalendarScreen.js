@@ -8,7 +8,7 @@ import {
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontFamily } from '../theme';
+import { colors, fontFamily, useBottomInset } from '../theme';
 import { getPlans, getGoals, getActivityDate, getPlanConfig, savePlan, getWeekActivities, getUserPrefs } from '../services/storageService';
 import { coachChat } from '../services/llmPlanService';
 import { getSessionColor, getSessionLabel, getMetricLabel, getActivityIcon, CROSS_TRAINING_COLOR, getCrossTrainingLabel } from '../utils/sessionLabels';
@@ -24,6 +24,9 @@ const CYCLING_LABELS = { road: 'Road', gravel: 'Gravel', mtb: 'MTB', ebike: 'E-B
 
 export default function CalendarScreen({ navigation, route }) {
   const pendingChanges = route.params?.pendingChanges || null;
+  // Use the real device bottom inset so sticky bars on this screen never
+  // sit underneath the Android gesture bar / 3-button nav.
+  const bottomInset = useBottomInset(12);
   const [plans, setPlans] = useState([]);
   const [goals, setGoals] = useState([]);
   const [planConfigs, setPlanConfigs] = useState({}); // configId → config
@@ -711,12 +714,16 @@ export default function CalendarScreen({ navigation, route }) {
               </View>
             </TouchableOpacity>
           ))}
-          <View style={{ height: 80 }} />
+          {/* Spacer so the last activity clears the sticky coach bar + any
+              Android gesture inset. Uses the hook to adjust per-device. */}
+          <View style={{ height: 80 + bottomInset }} />
         </ScrollView>
 
-        {/* Activity action bar — shown when an activity is tapped */}
+        {/* Activity action bar — shown when an activity is tapped. Uses the
+            device-reported bottom inset so the buttons always sit above the
+            Android system nav. */}
         {actionActivity && !movingActivity && (
-          <View style={s.actionBar}>
+          <View style={[s.actionBar, { paddingBottom: bottomInset }]}>
             <TouchableOpacity
               style={s.actionBarTitleRow}
               onPress={() => {
@@ -808,9 +815,10 @@ export default function CalendarScreen({ navigation, route }) {
           </KeyboardAvoidingView>
         )}
 
-        {/* Coach chat bottom bar */}
+        {/* Coach chat bottom bar — device-reported inset so it always clears
+            the Android gesture bar on every screen size. */}
         {!reviewMode && visiblePlans.length > 0 && (
-          <View style={s.coachBar}>
+          <View style={[s.coachBar, { paddingBottom: bottomInset }]}>
             <TouchableOpacity
               style={s.coachBtn}
               onPress={() => navigation.navigate('CoachChat', { planId: visiblePlans[0].id })}

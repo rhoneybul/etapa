@@ -7,6 +7,12 @@ export const dynamic = 'force-dynamic';
 // Keep at 5 to avoid hammering the AI API with rate limits.
 const CONCURRENCY = 5;
 
+// Model the test runner uses to generate plans. Deliberately DIFFERENT from
+// the production plan-gen model (Sonnet 4, via claude-sonnet-4-20250514).
+// Using Opus 4.6 here means tests exercise a stronger model — if Opus fails
+// a scenario, Sonnet 4 almost certainly does too. Override via TEST_MODEL env.
+const TEST_GENERATOR_MODEL = process.env.TEST_MODEL || 'claude-opus-4-6';
+
 const DAY_NAMES = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
 function addDays(dateString, n) {
@@ -298,6 +304,25 @@ function validate(plan, scenario) {
     }
   }
 
+  // ── Speed realism check ────────────────────────────────────────────────
+  // Catch activities that slipped past the server-side normaliser. For
+  // each ride, compute implied average speed and flag anything above the
+  // level's hard cap. Numbers match server/src/lib/rideSpeedRules.js.
+  const SPEED_CAPS = { beginner: 22, intermediate: 28, advanced: 32, expert: 36 };
+  const levelCap = SPEED_CAPS[config.fitnessLevel] || SPEED_CAPS.beginner;
+  for (const a of acts) {
+    if (a.type !== 'ride') continue;
+    const mins = Number(a.durationMins) || 0;
+    const km = Number(a.distanceKm) || 0;
+    if (mins <= 0 || km <= 0) continue;
+    const impliedSpeed = km / (mins / 60);
+    if (impliedSpeed > levelCap) {
+      errors.push(
+        `"${a.title}" wk${a.week}: ${km}km / ${mins}min = ${impliedSpeed.toFixed(1)} km/h — above ${config.fitnessLevel} cap of ${levelCap} km/h`
+      );
+    }
+  }
+
   const stats = {
     totalActivities: acts.length,
     rides: acts.filter(a => a.type === 'ride').length,
@@ -313,11 +338,13 @@ function validate(plan, scenario) {
   return { errors, warnings, stats };
 }
 
-async function generatePlan(serverUrl, authHeaders, scenario) {
+async function generatePlan(serverUrl, authHeaders, scenario, testModel = TEST_GENERATOR_MODEL) {
   const startRes = await fetch(`${serverUrl}/api/ai/generate-plan-async`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders },
-    body: JSON.stringify({ goal: scenario.goal, config: scenario.config }),
+    // Pass the test model — server only honours this field when the caller
+    // is authenticated via TEST_API_KEY (see ai.js).
+    body: JSON.stringify({ goal: scenario.goal, config: scenario.config, testModel }),
   });
   if (!startRes.ok) {
     const body = await startRes.text().catch(() => '');

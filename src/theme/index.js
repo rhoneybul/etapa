@@ -86,15 +86,51 @@ export const text = {
 // Extra bottom padding for Android gesture navigation. On iOS, SafeAreaView
 // handles this automatically. On Android, bottom bars / CTAs need this extra
 // space so they aren't hidden behind the gesture pill / 3-button nav.
-// 24px was too small on many modern Android devices (gesture bars are
-// typically 28–48px). 34px is a safer baseline that keeps CTAs well clear of
-// the system bar. Screens that need pixel-perfect insets should use
-// useSafeAreaInsets() from react-native-safe-area-context instead.
+//
+// History: started at 24, bumped to 34, then to 48 after reports that sticky
+// buttons on Pixel 7 / Samsung S23 devices sat flush against the gesture bar
+// (effectively obscuring the top row of content below them). 48px clears
+// gesture bars on every modern device we've seen and keeps a comfortable
+// tap-target margin above the system chrome.
+//
+// For pixel-perfect insets that respect what the actual device is reporting
+// (gesture bar on vs off, foldable, tablet, etc.) prefer the useBottomInset
+// hook in this file — it uses react-native-safe-area-context and falls back
+// to this constant when no inset is reported.
 import { Platform, StatusBar } from 'react-native';
-export const BOTTOM_INSET = Platform.OS === 'android' ? 34 : 0;
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+export const BOTTOM_INSET = Platform.OS === 'android' ? 48 : 0;
 // Top inset for Android status bar — used on screens that render content
 // flush to the top without their own SafeAreaView top edge.
 export const TOP_INSET = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0;
+
+/**
+ * Hook: returns the effective bottom padding a sticky bar should use so it
+ * always clears the system navigation (gesture pill OR 3-button nav).
+ *
+ * Reads the real device-reported inset via react-native-safe-area-context
+ * and falls back to BOTTOM_INSET when no inset is reported (rare, but safer
+ * than returning 0). The optional `extra` arg is added on top so callers can
+ * avoid arithmetic at the use site.
+ *
+ * Example:
+ *   const pb = useBottomInset(12); // real inset + 12px breathing room
+ *   <View style={{ paddingBottom: pb }} />
+ */
+export function useBottomInset(extra = 0) {
+  try {
+    const insets = useSafeAreaInsets();
+    const reported = insets?.bottom || 0;
+    const effective = Platform.OS === 'android'
+      ? Math.max(reported, BOTTOM_INSET)
+      : reported;
+    return effective + extra;
+  } catch {
+    // Fallback if the component tree somehow rendered outside the provider —
+    // return the static constant so we never clip buttons to zero.
+    return (Platform.OS === 'android' ? BOTTOM_INSET : 0) + extra;
+  }
+}
 
 export const layout = {
   pagePad:    20,
