@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  KeyboardAvoidingView, Platform, TextInput, Alert,
+  KeyboardAvoidingView, Platform, StatusBar, TextInput, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
@@ -223,7 +223,11 @@ export default function PlanOverviewScreen({ navigation, route }) {
           <View style={{ width: 32 }} />
         </View>
 
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : (StatusBar.currentHeight ?? 0)}
+        >
           <ScrollView
             style={s.scroll}
             contentContainerStyle={{ paddingBottom: 32 + BOTTOM_INSET }}

@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, Image, RefreshControl, ScrollView,
   TextInput, TouchableOpacity, Linking, Alert, KeyboardAvoidingView,
-  Platform, ActivityIndicator,
+  Platform, StatusBar, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
@@ -62,7 +62,8 @@ export default function MaintenanceScreen({ title, message, onRetry }) {
       <SafeAreaView style={s.safe}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : (StatusBar.currentHeight ?? 0)}
         >
           <ScrollView
             contentContainerStyle={s.scroll}

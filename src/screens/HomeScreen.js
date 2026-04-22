@@ -443,7 +443,7 @@ export default function HomeScreen({ navigation, route }) {
                 {t('home.pathway.beginner.description')}
               </Text>
               <View style={s.cardFeatureRow}>
-                {['12-week programme', 'Guided sessions', 'Goal milestones'].map(f => (
+                {['12-week programme', 'Couch to 100k', 'No experience needed'].map(f => (
                   <View key={f} style={s.cardFeaturePill}>
                     <Text style={s.cardFeaturePillText}>{f}</Text>
                   </View>
@@ -466,7 +466,7 @@ export default function HomeScreen({ navigation, route }) {
                 {t('home.pathway.plan.description')}
               </Text>
               <View style={s.cardFeatureRow}>
-                {['Fully personalised', 'Any goal or distance', 'Adapts as you train'].map(f => (
+                {['Pick your target date', 'Built around your week', 'Adjusts as you go'].map(f => (
                   <View key={f} style={s.cardFeaturePill}>
                     <Text style={s.cardFeaturePillText}>{f}</Text>
                   </View>
@@ -489,7 +489,7 @@ export default function HomeScreen({ navigation, route }) {
                 {t('home.pathway.quick.description')}
               </Text>
               <View style={s.cardFeatureRow}>
-                {['Quick setup', 'Flexible weeks', 'Built around you'].map(f => (
+                {['Ongoing plan', 'Flexible', '2 minutes to set up'].map(f => (
                   <View key={f} style={s.cardFeaturePill}>
                     <Text style={s.cardFeaturePillText}>{f}</Text>
                   </View>
@@ -1121,6 +1121,60 @@ export default function HomeScreen({ navigation, route }) {
                 );
               })}
             </View>
+
+            {/* Inline week list — full session titles for every day so the
+                user sees the whole week at a glance without tapping through
+                to the calendar. Today highlighted in pink. */}
+            <View style={s.weekList}>
+              {DAY_LABELS.map((dLabel, i) => {
+                const dayActs = activitiesByDay[i] || [];
+                const isTodayRow = viewingToday && i === todayIdx;
+                const rides = dayActs.filter(a => a.type === 'ride');
+                const strengths = dayActs.filter(a => a.type === 'strength');
+                const other = dayActs.filter(a => a.type !== 'ride' && a.type !== 'strength');
+                const isRest = dayActs.length === 0 || dayActs.every(a => a.type === 'rest');
+                const primary = rides[0] || strengths[0] || other[0] || null;
+                const extras = dayActs.length - (primary ? 1 : 0);
+                const formatMeta = (a) => {
+                  if (!a) return '';
+                  const bits = [];
+                  if (a.distanceKm) bits.push(`${a.distanceKm} km`);
+                  if (a.durationMins) {
+                    const h = Math.floor(a.durationMins / 60);
+                    const m = a.durationMins % 60;
+                    bits.push(h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m} min`);
+                  }
+                  return bits.join(' \u00B7 ');
+                };
+                return (
+                  <TouchableOpacity
+                    key={`wl-${i}`}
+                    style={[s.weekListRow, isTodayRow && s.weekListRowToday]}
+                    onPress={() => handleDayPress(i)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[s.weekListDay, isTodayRow && s.weekListDayToday]}>{dLabel.slice(0, 3)}</Text>
+                    <View style={s.weekListContent}>
+                      {isRest ? (
+                        <Text style={s.weekListRest}>Rest</Text>
+                      ) : (
+                        <>
+                          <Text style={[s.weekListTitle, isTodayRow && s.weekListTitleToday]} numberOfLines={1}>
+                            {primary?.title || 'Session'}
+                            {extras > 0 ? <Text style={s.weekListExtra}>  +{extras} more</Text> : null}
+                          </Text>
+                          {!!formatMeta(primary) && (
+                            <Text style={s.weekListMeta} numberOfLines={1}>{formatMeta(primary)}</Text>
+                          )}
+                        </>
+                      )}
+                    </View>
+                    {isTodayRow && <View style={s.weekListTodayPill}><Text style={s.weekListTodayPillText}>TODAY</Text></View>}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             {/* Calendar button */}
             <TouchableOpacity
               style={s.calendarBtn}
@@ -1767,6 +1821,54 @@ const s = StyleSheet.create({
   },
   calendarBtnText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
   calendarBtnArrow: { fontSize: 18, color: colors.primary, fontWeight: '300' },
+
+  // ── Inline week list (the fix for "what's happening this week at a glance") ──
+  weekList: {
+    marginTop: 16, paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: colors.border,
+    gap: 2,
+  },
+  weekListRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 10, paddingHorizontal: 10,
+    borderRadius: 10, gap: 12,
+  },
+  weekListRowToday: {
+    backgroundColor: 'rgba(232,69,139,0.08)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.18)',
+  },
+  weekListDay: {
+    fontSize: 12, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.textMuted, letterSpacing: 0.8,
+    width: 36, textTransform: 'uppercase',
+  },
+  weekListDayToday: { color: colors.primary },
+  weekListContent: { flex: 1, gap: 2 },
+  weekListTitle: {
+    fontSize: 14, fontWeight: '500', fontFamily: FF.medium,
+    color: colors.text,
+  },
+  weekListTitleToday: { color: colors.text },
+  weekListMeta: {
+    fontSize: 12, fontWeight: '400', fontFamily: FF.regular,
+    color: colors.textFaint,
+  },
+  weekListRest: {
+    fontSize: 14, fontWeight: '400', fontFamily: FF.regular,
+    color: colors.textFaint, fontStyle: 'italic',
+  },
+  weekListExtra: {
+    fontSize: 12, fontWeight: '400', fontFamily: FF.regular,
+    color: colors.textFaint,
+  },
+  weekListTodayPill: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
+  },
+  weekListTodayPillText: {
+    fontSize: 9, fontWeight: '700', fontFamily: FF.semibold,
+    color: '#fff', letterSpacing: 0.8,
+  },
   dayRow: { flexDirection: 'row', justifyContent: 'space-around' },
   dayCell: { alignItems: 'center', minWidth: 40, gap: 3, borderRadius: 10, paddingVertical: 4, paddingHorizontal: 2 },
   dayCellSelected: { backgroundColor: colors.primary },

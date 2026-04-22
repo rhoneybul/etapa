@@ -352,52 +352,32 @@ export default function PlanConfigScreen({ navigation, route }) {
   const countOutdoorOnDay = (acts) => (acts || []).filter(a => a === 'outdoor').length;
 
   const handleDayTap = (dayKey) => {
+    const act = selectedActivity;
+    if (!act) return;
+    // Soft cap — keep cells readable. 3 activities per day is more than
+    // any realistic week will need.
+    const MAX_PER_DAY = 3;
     setDayActivities(prev => {
       const next = { ...prev };
       const current = next[dayKey] || [];
-      const act = selectedActivity;
+      if (current.length >= MAX_PER_DAY) return prev;
 
-      // If it's a cycling type, place freely and auto-adjust session count
+      // Always ADD on day-tap. Never toggle. Removal is explicit via the
+      // \xD7 on each placed pill — this way the same type can be stacked
+      // twice on the same day (e.g. two rides) without the tap being
+      // ambiguous.
+      next[dayKey] = [...current, act];
+
+      // For cycling types, auto-grow the session count if the user has
+      // placed more than the target.
       if (isCyclingType(act)) {
-        if (current.includes(act)) {
-          // If removing the last outdoor ride from a locked day, block it
-          if (act === 'outdoor' && isOutdoorLockedOnDay(dayKey) && countOutdoorOnDay(current) <= 1) {
-            return prev;
-          }
-          // Remove it
-          const updated = [...current];
-          updated.splice(updated.indexOf(act), 1);
-          if (updated.length === 0) delete next[dayKey];
-          else next[dayKey] = updated;
-          // Auto-decrement session count if needed
-          let newPlaced = 0;
-          Object.values(next).forEach(acts => { newPlaced += acts.filter(a => a === act).length; });
-          setSessionCounts(sc => {
-            const current = sc[act] || 0;
-            if (newPlaced < current) return { ...sc, [act]: Math.max(1, newPlaced) };
-            return sc;
-          });
-        } else {
-          // Add it — no quota limit
-          next[dayKey] = [...current, act];
-          // Auto-increment session count if placement exceeds current target
-          let newPlaced = 0;
-          Object.values(next).forEach(acts => { newPlaced += acts.filter(a => a === act).length; });
-          setSessionCounts(sc => {
-            const target = sc[act] || 0;
-            if (newPlaced > target) return { ...sc, [act]: newPlaced };
-            return sc;
-          });
-        }
-      } else {
-        // Cross-training: toggle on/off
-        if (current.includes(act)) {
-          const updated = current.filter(a => a !== act);
-          if (updated.length === 0) delete next[dayKey];
-          else next[dayKey] = updated;
-        } else {
-          next[dayKey] = [...current, act];
-        }
+        let newPlaced = 0;
+        Object.values(next).forEach(acts => { newPlaced += acts.filter(a => a === act).length; });
+        setSessionCounts(sc => {
+          const target = sc[act] || 0;
+          if (newPlaced > target) return { ...sc, [act]: newPlaced };
+          return sc;
+        });
       }
       return next;
     });
@@ -867,7 +847,7 @@ export default function PlanConfigScreen({ navigation, route }) {
               cross-training later: restore the <ScrollView>…</ScrollView>
               block and the crossTrainingNote below from git history. */}
           <Text style={s.placeSub}>
-            Select a session type, then tap a day to place it. Tap a placed item to remove it.
+            Pick a session type, tap any day to add it. Tap a day again to stack another. Tap {'\u00D7'} on a placed item to remove it.
           </Text>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.paletteScroll} contentContainerStyle={s.paletteContent}>
@@ -969,6 +949,18 @@ export default function PlanConfigScreen({ navigation, route }) {
                           </TouchableOpacity>
                         );
                       })}
+                      {/* Inline "add another" affordance. Visible whenever the
+                          day has any activities and isn't at the per-day cap,
+                          so users can see at-a-glance that they can stack more. */}
+                      {acts.length < 3 && selectedActivity && (
+                        <TouchableOpacity
+                          style={[s.addMoreRow, { borderColor: selectedColor + '55' }]}
+                          onPress={(e) => { e.stopPropagation?.(); handleDayTap(day.key); }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[s.addMoreText, { color: selectedColor }]}>+ Add {getActivityLabel(selectedActivity).toLowerCase()}</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   ) : (
                     <Text style={s.dayEmptyPlus}>+</Text>
@@ -1357,6 +1349,22 @@ const s = StyleSheet.create({
   stackLabel: { fontSize: 9, fontWeight: '600', fontFamily: FF.semibold, flex: 1 },
   stackRemove: { fontSize: 13, fontWeight: '600', marginLeft: 2 },
   dayEmptyPlus: { fontSize: 22, color: colors.primary, fontWeight: '500', marginTop: 4 },
+  addMoreRow: {
+    width: '100%',
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  addMoreText: {
+    fontSize: 9,
+    fontWeight: '600',
+    fontFamily: FF.semibold,
+  },
   dayHint: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, textAlign: 'center', marginTop: 4, marginBottom: 8 },
 
   counterHintDone: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: colors.secondary, marginTop: 1 },

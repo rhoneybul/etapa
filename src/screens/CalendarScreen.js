@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert,
-  TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
+  TextInput, KeyboardAvoidingView, Platform, StatusBar, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, useBottomInset } from '../theme';
@@ -755,7 +755,11 @@ export default function CalendarScreen({ navigation, route }) {
 
         {/* Review mode bottom panel */}
         {reviewMode && changeDiff && (
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.reviewPanel}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : (StatusBar.currentHeight ?? 0)}
+            style={s.reviewPanel}
+          >
             {/* Inline chat messages */}
             {showReviewChat && reviewMessages.length > 0 && (
               <ScrollView

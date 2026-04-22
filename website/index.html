@@ -589,6 +589,35 @@
       .mcp-section { padding: 80px 24px !important; }
       .mcp-section > div > div:nth-child(2) { grid-template-columns: 1fr !important; }
       #mcp-demo-cards { grid-template-columns: 1fr !important; }
+
+      /* Beginner programme block — collapse 2-col to 1-col on mobile */
+      .beginner { padding: 60px 20px; }
+      .beginner-wrap { grid-template-columns: 1fr; gap: 32px; }
+      .beginner h2 { font-size: 32px; }
+      .beginner-goals { justify-content: center; }
+      .beginner-right { padding: 32px 24px; }
+      .beginner-right h3 { font-size: 26px; }
+
+      /* Screenshot showcase / horizontal scroll */
+      .showcase { padding: 60px 0; }
+      .showcase-scroll { padding: 0 20px; }
+
+      /* Pricing grid — stack and feature on top */
+      .pricing { padding: 60px 20px; }
+      .pricing-grid { grid-template-columns: 1fr; max-width: 360px; margin: 0 auto; }
+      .pricing-card.featured { order: -1; }
+      .pricing-card.starter-highlight { order: -2; }
+
+      /* Testimonials */
+      .testimonials-section { padding: 60px 20px !important; }
+      .testimonials-grid { grid-template-columns: 1fr !important; max-width: 400px; }
+
+      /* CTA + footer */
+      .cta { padding: 60px 20px; }
+      footer {
+        flex-direction: column; gap: 16px;
+        padding: 32px 20px; text-align: center;
+      }
     }
     @media (max-width: 1000px) and (min-width: 641px) {
       #mcp-demo-cards { grid-template-columns: repeat(2, 1fr) !important; }

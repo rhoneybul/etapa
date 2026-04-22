@@ -38,18 +38,21 @@ import remoteConfig from './remoteConfig';
 // Organised by screen / surface so they're easy to scan.
 export const DEFAULT_STRINGS = {
   // Home — empty state + three pathways
+  // All three badges now answer the same question: "which one sounds most
+  // like me right now?" Removed the mixed axes (audience / feature / effort)
+  // that the original copy had.
   'home.emptyTitle':            'Ready when you are',
-  'home.emptySubtitle':         "Pick a pathway — we'll handle the rest.",
-  'home.pathway.beginner.title':       'Getting into cycling',
-  'home.pathway.beginner.description': 'Brand new, or coming back after a long break. A structured, gentle programme — no jargon, no experience needed.',
-  'home.pathway.beginner.badge':       'BEGINNER FRIENDLY',
-  'home.pathway.plan.title':           'Building a plan',
-  'home.pathway.plan.description':     "A sportive, a first 100 km, a race. Tell us the goal, we'll build the plan around your schedule and life.",
-  'home.pathway.plan.badge':           'AI-POWERED',
-  'home.pathway.quick.title':          'Just want to improve',
-  'home.pathway.quick.description':    'No event, no target distance — just a flexible plan to get fitter on the bike. Tell us your level and how long; we do the rest.',
-  'home.pathway.quick.badge':          '2-MINUTE SETUP',
-  'home.chooseSub':                    "Choose how you'd like to get started",
+  'home.emptySubtitle':         "Pick the one that sounds most like you right now.",
+  'home.pathway.beginner.title':       'Get into cycling',
+  'home.pathway.beginner.description': "Brand new, or coming back after a break. A gentle 12-week programme with clear milestones \u2014 no jargon, no experience needed.",
+  'home.pathway.beginner.badge':       'NEW TO CYCLING',
+  'home.pathway.plan.title':           'Build a plan for your event',
+  'home.pathway.plan.description':     "A sportive, your first 100 km, a race \u2014 we'll work backwards from the date and build the plan around your schedule.",
+  'home.pathway.plan.badge':           'TRAINING FOR AN EVENT',
+  'home.pathway.quick.title':          'Just get fitter',
+  'home.pathway.quick.description':    "No deadline, no specific distance. A flexible plan that keeps you progressing \u2014 week by week, around your life.",
+  'home.pathway.quick.badge':          'NO EVENT IN MIND',
+  'home.chooseSub':                    "Pick the one that sounds most like you right now.",
 
   // Quick Plan screen
   'quickPlan.headerTitle':      'Just want to improve',

@@ -411,6 +411,7 @@ export default function PlanLoadingScreen({ navigation, route }) {
             </Animated.View>
 
             <Text style={s.title}>Building your plan</Text>
+            <Text style={s.subtitle}>Takes about 60{'\u2013'}90 seconds.</Text>
             <Text style={s.message}>{message}</Text>
 
             <View style={s.progressTrack}>
@@ -429,7 +430,7 @@ export default function PlanLoadingScreen({ navigation, route }) {
           {/* Background note */}
           <View style={s.bgNote}>
             <Text style={s.bgNoteText}>
-              You can leave the app — we'll send you a notification when your plan is ready.
+              Feel free to step away — we'll send a notification when your plan is ready.
             </Text>
           </View>
 
@@ -484,7 +485,8 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
   },
   logoImage: { width: 72, height: 72 },
-  title: { fontSize: 22, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 8 },
+  title: { fontSize: 22, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
+  subtitle: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary, textAlign: 'center', marginBottom: 10 },
   message: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center', lineHeight: 20, minHeight: 20 },
   progressTrack: { width: '100%', height: 3, backgroundColor: colors.border, borderRadius: 1.5, overflow: 'hidden', marginTop: 20 },
   progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 1.5 },
