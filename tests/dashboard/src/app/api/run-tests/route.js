@@ -340,7 +340,17 @@ function validate(plan, scenario) {
   return { errors, warnings, stats };
 }
 
-async function generatePlan(serverUrl, authHeaders, scenario, testModel = TEST_GENERATOR_MODEL) {
+// Max wait for a single generation. Needs to be long enough for Opus 4.6
+// (the TEST_GENERATOR_MODEL) on the biggest scenarios — a 20-week / 6 day
+// plan routinely runs 180-240s. Sonnet 4 comes in well under 120s so prod
+// runs don't need this headroom, but the dashboard calls Opus deliberately.
+// Override via TEST_POLL_TIMEOUT_S env if you're hitting genuine hangs.
+const POLL_TIMEOUT_S = Number(process.env.TEST_POLL_TIMEOUT_S) || 300;
+const POLL_INTERVAL_MS = 1500;
+
+async function generatePlan(serverUrl, authHeaders, scenario, ctx = {}) {
+  const { testModel = TEST_GENERATOR_MODEL, trackJob, cancelled } = ctx;
+
   const startRes = await fetch(`${serverUrl}/api/ai/generate-plan-async`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders },
@@ -353,16 +363,21 @@ async function generatePlan(serverUrl, authHeaders, scenario, testModel = TEST_G
     throw new Error(`HTTP ${startRes.status}: ${body}`);
   }
   const { jobId } = await startRes.json();
+  trackJob?.(jobId);
 
-  for (let i = 0; i < 120; i++) {
-    await new Promise(r => setTimeout(r, 1000));
+  const maxIterations = Math.ceil((POLL_TIMEOUT_S * 1000) / POLL_INTERVAL_MS);
+  for (let i = 0; i < maxIterations; i++) {
+    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+    if (cancelled?.()) {
+      throw new Error('cancelled-by-client');
+    }
     const pollRes = await fetch(`${serverUrl}/api/ai/plan-job/${jobId}`, { headers: authHeaders });
     if (!pollRes.ok) continue;
     const pollData = await pollRes.json();
     if (pollData.status === 'completed') return pollData.plan;
     if (pollData.status === 'failed') throw new Error(pollData.error);
   }
-  throw new Error('TIMEOUT after 120s');
+  throw new Error(`TIMEOUT after ${POLL_TIMEOUT_S}s (model=${testModel}, scenario=${scenario.name})`);
 }
 
 /**
@@ -392,11 +407,45 @@ export async function POST(req) {
 
   const authHeaders = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
 
+  // ── Cancellation plumbing ──────────────────────────────────────────────────
+  // When the browser cancels the fetch (Cancel button on /results), req.signal
+  // aborts. We track every server-side jobId the test run creates so we can
+  // POST DELETE on each to stop Claude spend from continuing after the user
+  // bailed. Without this, cancelling the page still burns tokens for another
+  // 2-5 minutes per in-flight plan.
+  const activeJobIds = new Set();
+  let isCancelled = false;
+  const trackJob = (id) => { if (id) activeJobIds.add(id); };
+  const cancelled = () => isCancelled;
+
+  async function cancelAllJobs() {
+    if (activeJobIds.size === 0) return;
+    console.log(`[run-tests] cancelling ${activeJobIds.size} in-flight jobs`);
+    await Promise.allSettled(
+      Array.from(activeJobIds).map(id =>
+        fetch(`${serverUrl}/api/ai/plan-job/${id}`, {
+          method: 'DELETE',
+          headers: authHeaders,
+        }).catch(() => {})
+      )
+    );
+    activeJobIds.clear();
+  }
+
+  req.signal?.addEventListener('abort', () => {
+    isCancelled = true;
+    cancelAllJobs().catch(() => {});
+  });
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
       function send(data) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          // controller closed (client disconnected) — swallow
+        }
       }
 
       const runStartedAt = new Date().toISOString();
@@ -430,7 +479,7 @@ export async function POST(req) {
         };
 
         try {
-          const plan = await generatePlan(serverUrl, authHeaders, scenario);
+          const plan = await generatePlan(serverUrl, authHeaders, scenario, { trackJob, cancelled });
           result.durationMs = Date.now() - scenarioStartTime;
           result.plan = plan;
 
@@ -476,7 +525,7 @@ export async function POST(req) {
           // Each edit scenario generates its own independent base plan
           let basePlan;
           try {
-            basePlan = await generatePlan(serverUrl, authHeaders, baseScenario);
+            basePlan = await generatePlan(serverUrl, authHeaders, baseScenario, { trackJob, cancelled });
             if (!basePlan || !basePlan.activities?.length) throw new Error('Base plan is empty');
           } catch (err) {
             throw new Error(`Base plan generation failed: ${err.message}`);
@@ -576,6 +625,7 @@ export async function POST(req) {
       }
 
       for (let i = 0; i < SPEED_SCENARIOS.length; i++) {
+        if (isCancelled) break;
         const sc = SPEED_SCENARIOS[i];
         send({ type: 'speed-start', index: i, name: sc.name });
 

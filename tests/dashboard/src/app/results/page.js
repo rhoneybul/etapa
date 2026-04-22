@@ -2,16 +2,24 @@
 import { useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { SCENARIOS, EDIT_SCENARIOS } from '@/lib/scenarios';
+import { SPEED_SCENARIOS } from '@/lib/speedScenarios';
 
 export default function ResultsPage() {
   const [serverUrl, setServerUrl] = useState('https://etapa.up.railway.app');
   const [apiKey, setApiKey] = useState('');
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState([]);
-  const [progress, setProgress] = useState({ done: 0, total: 0, editsDone: 0, editsTotal: 0 });
+  const [progress, setProgress] = useState({
+    done: 0, total: 0,
+    editsDone: 0, editsTotal: 0,
+    speedDone: 0, speedTotal: 0,
+  });
   const [finalOutput, setFinalOutput] = useState(null);
   const logRef = useRef(null);
-  const eventSourceRef = useRef(null);
+  // AbortController for cancelling the fetch — stored in a ref so the
+  // cancel handler can reach it without re-creating startTests.
+  const abortRef = useRef(null);
+  const cancelledRef = useRef(false);
 
   const addLog = useCallback((entry) => {
     setLog(prev => [...prev, entry]);
@@ -20,12 +28,27 @@ export default function ResultsPage() {
     }, 50);
   }, []);
 
+  const cancelRun = useCallback(() => {
+    if (!running) return;
+    cancelledRef.current = true;
+    if (abortRef.current) {
+      try { abortRef.current.abort(); } catch { /* ignore */ }
+    }
+    addLog({ type: 'warn', text: '⚠ Cancellation requested — the server will complete any scenarios already in flight.' });
+  }, [running, addLog]);
+
   const startTests = useCallback(async () => {
     if (running) return;
+    cancelledRef.current = false;
+    abortRef.current = new AbortController();
     setRunning(true);
     setLog([]);
     setFinalOutput(null);
-    setProgress({ done: 0, total: SCENARIOS.length, editsDone: 0, editsTotal: EDIT_SCENARIOS.length });
+    setProgress({
+      done: 0, total: SCENARIOS.length,
+      editsDone: 0, editsTotal: EDIT_SCENARIOS.length,
+      speedDone: 0, speedTotal: SPEED_SCENARIOS.length,
+    });
     addLog({ type: 'info', text: `Starting test run against ${serverUrl}...` });
 
     try {
@@ -33,6 +56,7 @@ export default function ResultsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ serverUrl, apiKey }),
+        signal: abortRef.current.signal,
       });
 
       const reader = res.body.getReader();
@@ -42,6 +66,10 @@ export default function ResultsPage() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        if (cancelledRef.current) {
+          try { await reader.cancel(); } catch { /* ignore */ }
+          break;
+        }
         buffer += decoder.decode(value, { stream: true });
 
         const lines = buffer.split('\n');
@@ -57,7 +85,7 @@ export default function ResultsPage() {
       }
 
       // Process any remaining buffer
-      if (buffer.startsWith('data: ')) {
+      if (buffer.startsWith('data: ') && !cancelledRef.current) {
         try {
           const data = JSON.parse(buffer.slice(6));
           handleEvent(data, addLog, setProgress, setFinalOutput);
@@ -65,10 +93,15 @@ export default function ResultsPage() {
       }
 
     } catch (err) {
-      addLog({ type: 'error', text: `Connection error: ${err.message}` });
+      if (err?.name === 'AbortError' || cancelledRef.current) {
+        addLog({ type: 'warn', text: '✖ Run cancelled.' });
+      } else {
+        addLog({ type: 'error', text: `Connection error: ${err.message}` });
+      }
     }
 
     setRunning(false);
+    abortRef.current = null;
   }, [serverUrl, apiKey, running, addLog]);
 
   const downloadResults = useCallback(() => {
@@ -82,8 +115,8 @@ export default function ResultsPage() {
     URL.revokeObjectURL(url);
   }, [finalOutput]);
 
-  const totalScenarios = SCENARIOS.length + EDIT_SCENARIOS.length;
-  const totalDone = progress.done + progress.editsDone;
+  const totalScenarios = SCENARIOS.length + EDIT_SCENARIOS.length + SPEED_SCENARIOS.length;
+  const totalDone = progress.done + progress.editsDone + progress.speedDone;
   const pct = totalScenarios > 0 ? Math.round((totalDone / totalScenarios) * 100) : 0;
 
   return (
@@ -127,9 +160,18 @@ export default function ResultsPage() {
               }}>
               {running ? 'Running...' : 'Run All Tests'}
             </button>
+            {running && (
+              <button onClick={cancelRun}
+                style={{
+                  padding: '8px 18px', borderRadius: 6, border: '1px solid #7f1d1d', fontWeight: 600, fontSize: 13, cursor: 'pointer',
+                  background: 'rgba(127,29,29,0.2)', color: '#f87171', transition: '.15s',
+                }}>
+                Cancel
+              </button>
+            )}
           </div>
           <div style={{ fontSize: 11, color: '#8888a0', marginTop: 10 }}>
-            {SCENARIOS.length} generation scenarios + {EDIT_SCENARIOS.length} edit scenarios
+            {SCENARIOS.length} generation + {EDIT_SCENARIOS.length} edit + {SPEED_SCENARIOS.length} speed scenarios
           </div>
         </div>
 
@@ -231,6 +273,7 @@ function handleEvent(data, addLog, setProgress, setFinalOutput) {
         addLog({ type: 'fail', text: `  ❌ FAIL${durStr}` });
         data.errors?.forEach(e => addLog({ type: 'fail', text: `     ✗ ${e}` }));
       }
+      setProgress(p => ({ ...p, speedDone: data.index + 1 }));
       break;
     }
     case 'complete': {
