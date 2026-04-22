@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to find a cycling club (without pretending you're better than you are) — Etapa</title>
+  <meta name="description" content="Walk into your local bike shop on a Saturday morning and ask. That's genuinely most of it. Here's how to find a club, what to expect, and how not to be intimidated.">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', -apple-system, sans-serif; background: #000; color: #fff; }
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .nav-logo { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; text-decoration: none; color: #fff; }
+    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; overflow: hidden; }
+    .nav-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: #999; text-decoration: none; font-size: 15px; font-weight: 400; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #E8458B; }
+    .nav-cta { background: #E8458B !important; color: #000 !important; padding: 10px 24px; border-radius: 100px; font-weight: 600 !important; }
+    .article-wrap { max-width: 720px; margin: 0 auto; padding: 120px 24px 80px; }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
+    .breadcrumb a { color: #666; text-decoration: none; font-size: 13px; }
+    .breadcrumb span { color: #444; font-size: 13px; }
+    .article-category { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 16px; }
+    .article-wrap h1 { font-size: clamp(28px, 4vw, 42px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 16px; }
+    .article-subtitle { font-size: 18px; color: #888; line-height: 1.6; font-weight: 300; margin-bottom: 32px; }
+    .article-meta { display: flex; align-items: center; gap: 16px; margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid #1a1a1a; }
+    .article-meta span { font-size: 13px; color: #555; }
+    .article-meta .dot { color: #333; }
+    .article-body h2 { font-size: 24px; font-weight: 600; margin: 40px 0 16px; color: #fff; }
+    .article-body p { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 20px; }
+    .article-body ul { padding-left: 24px; margin-bottom: 20px; }
+    .article-body li { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 8px; }
+    .callout { background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.2); border-radius: 16px; padding: 24px 28px; margin: 32px 0; }
+    .callout-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 8px; }
+    .callout p { color: #ddd; margin: 0; font-size: 15px; }
+    .pull-quote { border-left: 3px solid #E8458B; padding-left: 24px; margin: 32px 0; font-size: 20px; font-weight: 500; color: #fff; line-height: 1.5; font-style: italic; }
+    .article-cta { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 20px; padding: 40px; margin-top: 56px; text-align: center; }
+    .article-cta h3 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    .article-cta p { font-size: 15px; color: #888; margin-bottom: 24px; font-weight: 300; }
+    .btn-primary { display: inline-block; background: #E8458B; color: #000; padding: 14px 32px; border-radius: 100px; font-size: 15px; font-weight: 600; text-decoration: none; transition: background 0.2s; }
+    .btn-primary:hover { background: #F472B6; }
+    .back-link { display: inline-block; margin-top: 40px; color: #666; text-decoration: none; font-size: 14px; }
+    .back-link:hover { color: #999; }
+    footer { padding: 40px 48px; border-top: 1px solid #111; display: flex; align-items: center; justify-content: space-between; }
+    .footer-left { display: flex; align-items: center; gap: 12px; }
+    .footer-left span { font-size: 14px; color: #444; }
+    footer a { color: #444; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    footer a:hover { color: #888; }
+    .footer-links { display: flex; gap: 24px; }
+    @media (max-width: 640px) { nav { padding: 16px 24px; } .nav-links a:not(.active):not(.nav-cta) { display: none; } footer { flex-direction: column; gap: 16px; text-align: center; } .footer-links { flex-wrap: wrap; justify-content: center; } }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-logo"><div class="nav-logo-icon"><img src="../icon-72.png" alt="Etapa"></div>Etapa</a>
+  <div class="nav-links">
+    <a href="/">Home</a><a href="/#how-it-works">How It Works</a><a href="/#pricing">Pricing</a>
+    <a href="/blog" class="active">Blog</a><a href="/support">Support</a>
+    <a href="#register-interest" class="nav-cta" data-register-interest>Register Interest</a>
+  </div>
+</nav>
+
+<div class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a><span>&rsaquo;</span><a href="/blog">Blog</a><span>&rsaquo;</span><span>Finding a cycling club</span>
+  </div>
+
+  <span class="article-category">Getting into it</span>
+  <h1>How to find a cycling club (without pretending you're better than you are).</h1>
+  <p class="article-subtitle">Walk into your local bike shop on a Saturday morning. Ask one question. That's nine tenths of it. Here's the rest.</p>
+  <div class="article-meta">
+    <span>Rob</span><span class="dot">&middot;</span><span>5 min read</span>
+  </div>
+
+  <div class="article-body">
+    <p>The honest truth about finding a cycling club is that it's much less complicated than it looks from the outside. From outside, it looks like there's a secret list of clubs, passwords, and pace rules. From inside, it's usually: a WhatsApp group, a weekly meeting point, and a couple of people who've been doing it for years and like having new people along.</p>
+
+    <p>Here's the shortest possible version: walk into your local independent bike shop on a Saturday morning, and ask if they know of any social or beginner-friendly group rides starting from there. In almost every case, they will. Often they run one themselves. Show up to that, and the rest happens on its own.</p>
+
+    <h2>The bike shop ride</h2>
+
+    <p>This is how I ended up in the group I ride with. A Saturday morning ride from a shop in south London. No sign-up, no fee, no qualifying test. I turned up with my bike, looking a bit nervous, and someone said "first time? Stay at the back, we'll not drop you." We did about 60 kilometres, stopped for coffee, and I was home by lunchtime.</p>
+
+    <p>Bike shop rides tend to be the best entry point because:</p>
+
+    <ul>
+      <li>There's always a staff member leading or at least attending.</li>
+      <li>They know a huge range of abilities will show up, and plan for it.</li>
+      <li>"No drop" (meaning they wait for everyone at the top of hills) is the default.</li>
+      <li>If you have a mechanical problem, you're literally with the people who fix bikes.</li>
+    </ul>
+
+    <h2>British Cycling, Cycling UK, and Breeze</h2>
+
+    <p>If your local shop doesn't run a ride, or you want something more structured, there are national networks with thousands of local groups:</p>
+
+    <ul>
+      <li><strong>British Cycling club finder</strong> — britishcycling.org.uk has a postcode-based club finder. Many clubs have specific "beginner" or "social" sub-groups that run separately from the competitive bit.</li>
+      <li><strong>Cycling UK</strong> — cyclinguk.org runs led rides across the country, specifically designed to be accessible. Good for people who want a ride leader and a planned route.</li>
+      <li><strong>Breeze</strong> — women-only rides run through British Cycling, famously non-intimidating, very beginner-friendly. If you're a woman and the idea of a mixed club feels off-putting, start here.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">Two words that will save you</div>
+      <p>"Social" and "beginner." If a ride's description contains either of those words, it's the one you want. If it says "chaingang," "intermediate-to-advanced," or "group 1 pace," it is not, and that's fine.</p>
+    </div>
+
+    <h2>What to expect on your first ride</h2>
+
+    <p>A social group ride is almost always 30–60 kilometres, at a pace where you can talk. There's usually a cafe stop halfway — which is, let me be clear, often the main event. People will be friendly. Someone will ask how long you've been riding. Nobody will care about your answer.</p>
+
+    <p>The one thing worth knowing: "no-drop" doesn't mean "the group rides at your pace." It means they'll wait for you at the top of hills and at junctions. On flats, the group moves at whatever pace the group is moving. If you're new, expect to be a bit breathless at times. That's completely normal. Nobody is judging.</p>
+
+    <p>Things to bring: a working bike with tyres pumped up, a spare inner tube, a phone, some money, water, a jacket if it might rain. You don't need fancy kit. Padded shorts under normal shorts is completely fine for your first few group rides.</p>
+
+    <h2>What if it's not the right club?</h2>
+
+    <p>Some clubs are lovely. Some are a bit cliquey. You will know within two rides which category you've landed in. If the first ride felt off — people weren't chatty, the pace was punishing, you felt judged — go try a different one. There is no shortage, especially in any UK town of any size.</p>
+
+    <p>The good ones have a specific feel. Somebody you've never met hangs back with you on a hill. Somebody asks you where you ride normally. Someone else tells you a long, slightly pointless story about a puncture. The pace feels honest — not suspiciously easy, not aggressively fast. You leave the cafe stop thinking, "actually, I'd do that again."</p>
+
+    <div class="pull-quote">"Walk into the shop on Saturday. Ask the question. Go to the ride. That's literally the whole thing."</div>
+
+    <h2>The thing I wish someone had told me</h2>
+
+    <p>Group rides make you faster. Not because you're trying to, but because riding with other people naturally nudges you a little bit harder than you'd go alone. This is a nice side effect — but the main thing you get is company.</p>
+
+    <p>Two years of going to a Saturday morning ride, and the cycling was almost beside the point. The people were what I kept coming back for. Most of the fitness came along for the ride.</p>
+  </div>
+
+  <div class="article-cta">
+    <h3>Ready to start riding?</h3>
+    <p>Etapa builds a plan around your actual life — including the club rides you end up loving.</p>
+    <a href="/" class="btn-primary">Get started with Etapa</a>
+  </div>
+  <a href="/blog" class="back-link">&larr; Back to all articles</a>
+</div>
+
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="../icon-56.png" alt="Etapa"></div>
+    <span>&copy; 2026 Etapa. All rights reserved.</span>
+  </div>
+  <div class="footer-links">
+    <a href="/#pricing">Pricing</a><a href="/#ai">AI Transparency</a><a href="/support">Support</a><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Use</a>
+  </div>
+</footer>
+<div style="text-align:center;padding:16px 48px 32px;border-top:1px solid #111;">
+  <p style="font-size:11px;color:#444;line-height:1.7;max-width:640px;margin:0 auto;font-weight:300;">All training plans, coaching conversations, session adjustments, and check-in messages are generated by artificial intelligence (Anthropic Claude). Etapa is not a medical service and does not provide medical advice. Always consult a healthcare professional before beginning any exercise programme. You train at your own risk.</p>
+</div>
+<script src="../register-interest.js" defer></script>
+</body>
+</html>

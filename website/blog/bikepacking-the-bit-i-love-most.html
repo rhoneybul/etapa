@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bikepacking: the bit I love most. — Etapa</title>
+  <meta name="description" content="My dad rode across the Atlas Mountains. My mum is doing Land's End to John o' Groats. I ate pizza in a French field. Bikepacking is the best part of cycling, and it's easier to start than you think.">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', -apple-system, sans-serif; background: #000; color: #fff; }
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .nav-logo { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; text-decoration: none; color: #fff; }
+    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; overflow: hidden; }
+    .nav-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: #999; text-decoration: none; font-size: 15px; font-weight: 400; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #E8458B; }
+    .nav-cta { background: #E8458B !important; color: #000 !important; padding: 10px 24px; border-radius: 100px; font-weight: 600 !important; }
+    .article-wrap { max-width: 720px; margin: 0 auto; padding: 120px 24px 80px; }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
+    .breadcrumb a { color: #666; text-decoration: none; font-size: 13px; }
+    .breadcrumb span { color: #444; font-size: 13px; }
+    .article-category { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 16px; }
+    .article-wrap h1 { font-size: clamp(28px, 4vw, 42px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 16px; }
+    .article-subtitle { font-size: 18px; color: #888; line-height: 1.6; font-weight: 300; margin-bottom: 32px; }
+    .article-meta { display: flex; align-items: center; gap: 16px; margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid #1a1a1a; }
+    .article-meta span { font-size: 13px; color: #555; }
+    .article-meta .dot { color: #333; }
+    .article-body h2 { font-size: 24px; font-weight: 600; margin: 40px 0 16px; color: #fff; }
+    .article-body p { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 20px; }
+    .article-body ul { padding-left: 24px; margin-bottom: 20px; }
+    .article-body li { font-size: 16px; color: #bbb; line-height: 1.8; font-weight: 300; margin-bottom: 8px; }
+    .callout { background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.2); border-radius: 16px; padding: 24px 28px; margin: 32px 0; }
+    .callout-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 8px; }
+    .callout p { color: #ddd; margin: 0; font-size: 15px; }
+    .pull-quote { border-left: 3px solid #E8458B; padding-left: 24px; margin: 32px 0; font-size: 20px; font-weight: 500; color: #fff; line-height: 1.5; font-style: italic; }
+    .article-cta { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 20px; padding: 40px; margin-top: 56px; text-align: center; }
+    .article-cta h3 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    .article-cta p { font-size: 15px; color: #888; margin-bottom: 24px; font-weight: 300; }
+    .btn-primary { display: inline-block; background: #E8458B; color: #000; padding: 14px 32px; border-radius: 100px; font-size: 15px; font-weight: 600; text-decoration: none; transition: background 0.2s; }
+    .btn-primary:hover { background: #F472B6; }
+    .back-link { display: inline-block; margin-top: 40px; color: #666; text-decoration: none; font-size: 14px; }
+    .back-link:hover { color: #999; }
+    footer { padding: 40px 48px; border-top: 1px solid #111; display: flex; align-items: center; justify-content: space-between; }
+    .footer-left { display: flex; align-items: center; gap: 12px; }
+    .footer-left span { font-size: 14px; color: #444; }
+    footer a { color: #444; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    footer a:hover { color: #888; }
+    .footer-links { display: flex; gap: 24px; }
+    @media (max-width: 640px) { nav { padding: 16px 24px; } .nav-links a:not(.active):not(.nav-cta) { display: none; } footer { flex-direction: column; gap: 16px; text-align: center; } .footer-links { flex-wrap: wrap; justify-content: center; } }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-logo"><div class="nav-logo-icon"><img src="../icon-72.png" alt="Etapa"></div>Etapa</a>
+  <div class="nav-links">
+    <a href="/">Home</a><a href="/#how-it-works">How It Works</a><a href="/#pricing">Pricing</a>
+    <a href="/blog" class="active">Blog</a><a href="/support">Support</a>
+    <a href="#register-interest" class="nav-cta" data-register-interest>Register Interest</a>
+  </div>
+</nav>
+
+<div class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a><span>&rsaquo;</span><a href="/blog">Blog</a><span>&rsaquo;</span><span>Bikepacking</span>
+  </div>
+
+  <span class="article-category">What cycling brings</span>
+  <h1>Bikepacking: the bit I love most.</h1>
+  <p class="article-subtitle">My dad rode across the Atlas Mountains. My mum is currently somewhere between Cornwall and Scotland. My uncle cycled across Europe. Here's why the best bit of cycling is the bit where you leave for a few days.</p>
+  <div class="article-meta">
+    <span>Rob</span><span class="dot">&middot;</span><span>6 min read</span>
+  </div>
+
+  <div class="article-body">
+    <p>If someone asked me what I actually love about cycling — cut through all the training and apps and stats — it's this. Getting on a bike with a couple of bags strapped to it, and going somewhere. For a day. For a weekend. For longer, if I'm lucky.</p>
+
+    <p>This runs in my family. My dad cycled from Marrakesh into the Atlas Mountains years before I was born. My uncle rode across Europe. My mum is, as I write this, somewhere between Land's End and John o' Groats, sending me voice notes about her saddle and the quality of Cornish pubs. I didn't grow up doing it — but I grew up watching people I love do it, and I always thought it looked like the best possible holiday.</p>
+
+    <p>Then I did one. A weekend in France with a friend — we flew to Nantes, rented bikes, and rode out through villages I couldn't pronounce. We ended up in a field, eating a pizza we'd carried for an hour in a pannier, drinking cheap wine, about two miles from where we'd planned to stay. It was one of the best nights of my life.</p>
+
+    <h2>Why bikepacking is the best bit</h2>
+
+    <p>Regular cycling is an exercise. Bikepacking is a holiday. The distinction matters. When you're training, every ride has a purpose — a Zone 2 effort, a hill session, a recovery spin. Bikepacking doesn't. You get up, eat a lot of bread, pack your bags, and leave. You stop when you want to. You eat when you want to. You check your phone less. You look up more.</p>
+
+    <p>The other thing that happens — and I didn't expect this — is that the landscape changes shape. On a normal ride, you go out and come back. On a bikepacking trip, you're actually travelling. You can feel the country slowly rearranging itself under your wheels. You pass through places instead of past them. You earn every mile and then get to a pub at the end of it.</p>
+
+    <div class="callout">
+      <div class="callout-label">The myth bikepacking has</div>
+      <p>You don't need a £4,000 titanium gravel bike with custom framebags. My mum is doing Land's End to John o' Groats on a ten-year-old tourer with two panniers and a handlebar bag she's had since the '90s. The bike matters less than the willingness to go.</p>
+    </div>
+
+    <h2>Where to start</h2>
+
+    <p>The easiest first trip is an overnighter. One day out, one day back. Anywhere that's 40 to 60 kilometres from home and has somewhere to sleep — a pub with rooms, a cheap B&amp;B, a campsite if you've got a tent — is a perfect target.</p>
+
+    <p>You don't need a proper bikepacking setup to do this. A backpack with a change of clothes and a toothbrush is absolutely fine for one night. Panniers are nicer if you have them. Frame bags look great on Instagram but aren't required for anyone not racing across Mongolia.</p>
+
+    <p>In the UK, some ideas that have worked for me and people I ride with:</p>
+
+    <ul>
+      <li>London → Whitstable, stay in a pub, ride back the next day.</li>
+      <li>Anywhere in the Peak District → anywhere else in the Peak District, via a stupidly long cafe stop.</li>
+      <li>Edinburgh → North Berwick along the coast, seafood, back via inland lanes.</li>
+      <li>Bristol → Bath along the canal path, which is practically impossible to get wrong.</li>
+    </ul>
+
+    <h2>What to pack (honestly)</h2>
+
+    <p>A change of clothes. A toothbrush. A phone charger. A basic puncture kit. A waterproof of some kind. Money. A snack you secretly look forward to eating at a specific point on the route. That's it, for one night. Everything else is a preference.</p>
+
+    <p>For longer trips, you'll work out what you actually need. The rule I've found: if you haven't used it in the first two days, you won't use it. Send it home or bin it at the next post office.</p>
+
+    <div class="pull-quote">"My mum is somewhere between Cornwall and Scotland right now. If you're wondering whether you're too old for bikepacking, ask her when she gets back."</div>
+
+    <h2>The real pitch</h2>
+
+    <p>If you start cycling because you want to get fit, you'll probably get fit. If you start cycling because you want a routine, you'll probably find one. But if you stay cycling, it's usually because of trips like these. A pizza in a field. A pub at the end of a hard day. Friends you didn't used to know, in a village you can't pronounce, on a bike that's slightly too small for you.</p>
+
+    <p>Get the bike. Build the habit. But at some point, book a night away, strap some bags to it, and go. It's the best part.</p>
+  </div>
+
+  <div class="article-cta">
+    <h3>Ready to start riding?</h3>
+    <p>Etapa builds a plan that gets you from first ride to real adventures — without the jargon.</p>
+    <a href="/" class="btn-primary">Get started with Etapa</a>
+  </div>
+  <a href="/blog" class="back-link">&larr; Back to all articles</a>
+</div>
+
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="../icon-56.png" alt="Etapa"></div>
+    <span>&copy; 2026 Etapa. All rights reserved.</span>
+  </div>
+  <div class="footer-links">
+    <a href="/#pricing">Pricing</a><a href="/#ai">AI Transparency</a><a href="/support">Support</a><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Use</a>
+  </div>
+</footer>
+<div style="text-align:center;padding:16px 48px 32px;border-top:1px solid #111;">
+  <p style="font-size:11px;color:#444;line-height:1.7;max-width:640px;margin:0 auto;font-weight:300;">All training plans, coaching conversations, session adjustments, and check-in messages are generated by artificial intelligence (Anthropic Claude). Etapa is not a medical service and does not provide medical advice. Always consult a healthcare professional before beginning any exercise programme. You train at your own risk.</p>
+</div>
+<script src="../register-interest.js" defer></script>
+</body>
+</html>
