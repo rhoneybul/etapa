@@ -2052,6 +2052,149 @@ router.delete('/pre-signup-grants/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Plan generation debug — list, inspect, rerun
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Source-of-truth: public.plan_generations (see migration
+// 20260422000005_create_plan_generations.sql). The runAsyncGeneration path
+// writes a row when a job starts and updates it on success / failure /
+// cancel. This UI surface is the "why didn't Rob's plan finish?" answer.
+
+// GET /api/admin/plan-generations?status=failed&userId=...&since=24h&limit=100
+router.get('/plan-generations', async (req, res, next) => {
+  try {
+    const { status, userId, email, limit = '100', sinceHours } = req.query;
+    const max = Math.min(Number(limit) || 100, 500);
+
+    let resolvedUserId = userId || null;
+    if (!resolvedUserId && email) {
+      const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+      const u = (users || []).find(x => (x.email || '').toLowerCase() === String(email).toLowerCase());
+      if (u) resolvedUserId = u.id;
+      else return res.json({ generations: [], userSummary: null });
+    }
+
+    let query = supabase
+      .from('plan_generations')
+      .select('id, user_id, job_id, plan_id, status, progress, reason, model, activities_count, error, duration_ms, created_at, updated_at')
+      .order('created_at', { ascending: false })
+      .limit(max);
+
+    if (status) query = query.eq('status', status);
+    if (resolvedUserId) query = query.eq('user_id', resolvedUserId);
+    if (sinceHours) {
+      const since = new Date(Date.now() - Number(sinceHours) * 3600 * 1000).toISOString();
+      query = query.gte('created_at', since);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    // Attach user email + name so the list is readable without a per-row lookup.
+    const uniqUserIds = Array.from(new Set((data || []).map(r => r.user_id).filter(Boolean)));
+    const userLookup = {};
+    if (uniqUserIds.length > 0) {
+      const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+      for (const u of (users || [])) {
+        if (uniqUserIds.includes(u.id)) {
+          userLookup[u.id] = {
+            id: u.id,
+            email: u.email,
+            name: u.user_metadata?.full_name || u.user_metadata?.name || null,
+          };
+        }
+      }
+    }
+
+    res.json({
+      generations: (data || []).map(r => ({
+        ...r,
+        user: r.user_id ? (userLookup[r.user_id] || { id: r.user_id }) : null,
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /api/admin/plan-generations/:id — full detail including goal + config
+router.get('/plan-generations/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { data, error } = await supabase
+      .from('plan_generations')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Not found' });
+
+    // User lookup for display
+    let user = null;
+    if (data.user_id) {
+      const { data: { user: u } } = await supabase.auth.admin.getUserById(data.user_id);
+      if (u) {
+        user = {
+          id: u.id,
+          email: u.email,
+          name: u.user_metadata?.full_name || u.user_metadata?.name || null,
+        };
+      }
+    }
+
+    // Usage log rows for this job (tokens + cost + request_id)
+    let usage = [];
+    if (data.job_id || data.user_id) {
+      const { data: logs } = await supabase
+        .from('claude_usage_log')
+        .select('id, feature, model, input_tokens, output_tokens, cost_usd, duration_ms, status, request_id, created_at')
+        .eq('feature', 'plan_gen')
+        .eq('user_id', data.user_id || '00000000-0000-0000-0000-000000000000')
+        .gte('created_at', new Date(new Date(data.created_at).getTime() - 60_000).toISOString())
+        .lte('created_at', new Date(new Date(data.updated_at).getTime() + 60_000).toISOString())
+        .order('created_at', { ascending: true });
+      usage = logs || [];
+    }
+
+    res.json({ generation: data, user, usage });
+  } catch (err) { next(err); }
+});
+
+// POST /api/admin/plan-generations/:id/rerun — kick off a new job with stored inputs
+router.post('/plan-generations/:id/rerun', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const { data: row, error } = await supabase
+      .from('plan_generations')
+      .select('user_id, goal, config, plan_id')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    if (!row.goal || !row.config) {
+      return res.status(400).json({ error: 'Stored row is missing goal or config — cannot rerun.' });
+    }
+
+    // Rerun against the SAME user the generation originally belonged to.
+    // Attach replacePlanId if the original produced a plan, so the rerun
+    // overwrites that plan in place (admin can use this to "fix" a dodgy
+    // plan without creating a second row on the user).
+    const { startGenerationJob } = require('./ai');
+    const jobId = await startGenerationJob({
+      userId: row.user_id,
+      goal: row.goal,
+      config: row.config,
+      replacePlanId: row.plan_id || null,
+      reason: 'admin-rerun',
+    });
+
+    res.json({ ok: true, jobId, userId: row.user_id, replacedPlanId: row.plan_id || null });
+  } catch (err) {
+    console.error('[admin/plan-generations/rerun] error:', err);
+    next(err);
+  }
+});
+
 // ── GET /api/admin/users/:id — full detail for a single user ─────────────────
 // Returns profile + all subscriptions + plans + feedback + support tickets
 // (filtered by user email) for the user detail page in the admin dashboard.

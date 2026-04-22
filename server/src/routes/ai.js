@@ -16,6 +16,7 @@ const { sendPushToUser } = require('../lib/pushService');
 const { logClaudeUsage } = require('../lib/claudeLogger');
 const { checkAndBlockIfOverCap } = require('../lib/claudeCostCap');
 const { normaliseActivities } = require('../lib/rideSpeedRules');
+const planGenLogger = require('../lib/planGenLogger');
 const crypto = require('crypto');
 
 const getAnthropicKey = () => process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY || null;
@@ -1520,11 +1521,36 @@ async function startGenerationJob({ userId, goal, config, replacePlanId = null, 
     replacePlanId,
     reason,
     modelOverride,
+    // logId is populated async — runAsyncGeneration reads it later for the
+    // finish update. If the insert failed we end up with a null id and the
+    // finish call is a no-op, which is fine (it's debug-only data).
+    logId: null,
   };
   planJobs.set(jobId, job);
 
+  // Fire-and-forget audit-log insert. Don't await — the user should not
+  // wait for our debug table to acknowledge before their plan generates.
+  planGenLogger.start({
+    userId,
+    jobId,
+    goal,
+    config,
+    reason,
+    model: modelOverride || 'claude-sonnet-4-20250514',
+  }).then((logId) => { job.logId = logId; });
+
   runAsyncGeneration(jobId, apiKey, goal, config, userId, { replacePlanId, modelOverride }).catch(err => {
     console.error(`[async-gen] Job ${jobId} failed:`, err);
+    // Best-effort finish in case the wrapping try/catch in runAsyncGeneration
+    // didn't fire (shouldn't happen, but let's not leave rows stuck at
+    // 'running' if someone above leaks an exception).
+    if (job.logId) {
+      planGenLogger.finish(job.logId, {
+        status: 'failed',
+        error: err?.message || 'unknown error',
+        duration_ms: Date.now() - job.createdAt,
+      });
+    }
   });
 
   return jobId;
@@ -1598,6 +1624,14 @@ router.delete('/plan-job/:jobId', (req, res) => {
     supabase.from('activities').delete().eq('plan_id', job.plan.id).then(() =>
       supabase.from('plans').delete().eq('id', job.plan.id)
     ).catch(() => {});
+  }
+
+  if (job.logId) {
+    planGenLogger.finish(job.logId, {
+      status: 'cancelled',
+      progress: 'Cancelled',
+      duration_ms: Date.now() - job.createdAt,
+    });
   }
 
   res.json({ success: true });
@@ -1684,8 +1718,16 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
         metadata: { async: true, weeks: config.weeks, daysPerWeek: config.daysPerWeek, coachId: config.coachId, goalType: goal?.goalType, http: response.status },
       });
       job.status = 'failed';
-      job.error = 'AI service error';
+      job.error = `AI service error (HTTP ${response.status})`;
       job.progress = 'Something went wrong';
+      if (job.logId) {
+        planGenLogger.finish(job.logId, {
+          status: 'failed',
+          error: `AI service error (HTTP ${response.status}): ${(errBody || '').slice(0, 500)}`,
+          progress: 'Something went wrong',
+          duration_ms: Date.now() - job.createdAt,
+        });
+      }
       return;
     }
 
@@ -1702,6 +1744,14 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
       job.status = 'failed';
       job.error = 'Could not parse AI response';
       job.progress = 'Something went wrong';
+      if (job.logId) {
+        planGenLogger.finish(job.logId, {
+          status: 'failed',
+          error: `Could not parse AI response — first 500 chars: ${text.slice(0, 500)}`,
+          progress: 'Something went wrong',
+          duration_ms: Date.now() - job.createdAt,
+        });
+      }
       return;
     }
 
@@ -1981,6 +2031,17 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
     job.status = 'completed';
     job.progress = 'Plan ready!';
 
+    // ── Debug log: job completed successfully ────────────────────────────
+    if (job.logId) {
+      planGenLogger.finish(job.logId, {
+        status: 'completed',
+        plan_id: plan?.id || null,
+        activities_count: activities?.length || 0,
+        progress: 'Plan ready!',
+        duration_ms: Date.now() - job.createdAt,
+      });
+    }
+
     // Send push notification
     if (userId) {
       sendPushToUser(userId, {
@@ -1998,6 +2059,15 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
       job.status = 'failed';
       job.error = err.message;
       job.progress = 'Something went wrong';
+
+      if (job.logId) {
+        planGenLogger.finish(job.logId, {
+          status: 'failed',
+          error: err.message,
+          progress: 'Something went wrong',
+          duration_ms: Date.now() - job.createdAt,
+        });
+      }
     }
   }
 }
