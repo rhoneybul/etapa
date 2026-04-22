@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Why I'm Building Etapa — The Story — Etapa</title>
+  <meta name="description" content="Cycling has always been gatekept. I'm building Etapa because I want someone to do for new cyclists what my mates did for me — give them a coach in their pocket who speaks plainly and meets them where they are.">
+  <meta property="og:title" content="Why I'm Building Etapa — The Story">
+  <meta property="og:description" content="A plain-English story about why I'm building a cycling coach for people who don't yet see themselves as cyclists.">
+  <meta property="og:type" content="article">
+  <meta property="og:video" content="https://www.youtube.com/watch?v=E3yiKhODYf4">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', -apple-system, sans-serif; background: #000; color: #fff; }
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 48px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .nav-logo { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; text-decoration: none; color: #fff; }
+    .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; overflow: hidden; }
+    .nav-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { color: #999; text-decoration: none; font-size: 15px; font-weight: 400; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-links a.active { color: #E8458B; }
+    .nav-cta { background: #E8458B !important; color: #000 !important; padding: 10px 24px; border-radius: 100px; font-weight: 600 !important; }
+    .nav-cta:hover { background: #F472B6 !important; color: #000 !important; }
+
+    .article-wrap { max-width: 760px; margin: 0 auto; padding: 120px 24px 80px; }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
+    .breadcrumb a { color: #666; text-decoration: none; font-size: 13px; transition: color 0.2s; }
+    .breadcrumb a:hover { color: #999; }
+    .breadcrumb span { color: #444; font-size: 13px; }
+
+    .article-category { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 16px; }
+    .article-wrap h1 { font-size: clamp(28px, 4vw, 44px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 16px; }
+    .article-subtitle { font-size: 19px; color: #aaa; line-height: 1.55; font-weight: 300; margin-bottom: 32px; }
+    .article-meta { display: flex; align-items: center; gap: 16px; margin-bottom: 36px; padding-bottom: 28px; border-bottom: 1px solid #1a1a1a; }
+    .article-meta span { font-size: 13px; color: #666; }
+    .article-meta .dot { color: #333; }
+    .article-meta .byline { color: #bbb; }
+
+    /* ── Video embed — responsive 16:9 ───────────────────────────────────── */
+    .video-wrap {
+      position: relative; width: 100%; padding-bottom: 56.25%;
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 16px; overflow: hidden;
+      margin-bottom: 40px;
+      box-shadow: 0 24px 48px rgba(0,0,0,0.5);
+    }
+    .video-wrap iframe {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%; border: 0;
+    }
+    .video-caption {
+      font-size: 13px; color: #666; text-align: center;
+      margin-top: -24px; margin-bottom: 40px; font-weight: 300;
+    }
+
+    .article-body h2 { font-size: 24px; font-weight: 600; margin: 44px 0 16px; color: #fff; letter-spacing: -0.3px; }
+    .article-body p { font-size: 17px; color: #c5c5c5; line-height: 1.8; font-weight: 300; margin-bottom: 20px; }
+    .article-body p strong { color: #fff; font-weight: 500; }
+    .article-body ul { padding-left: 24px; margin-bottom: 20px; }
+    .article-body li { font-size: 16px; color: #c5c5c5; line-height: 1.75; font-weight: 300; margin-bottom: 8px; }
+
+    .pull-quote {
+      border-left: 3px solid #E8458B; padding: 8px 0 8px 24px;
+      margin: 40px 0; font-size: 22px; font-weight: 500; color: #fff;
+      line-height: 1.4; letter-spacing: -0.2px;
+    }
+
+    .callout {
+      background: rgba(232,69,139,0.07);
+      border: 1px solid rgba(232,69,139,0.2);
+      border-radius: 16px; padding: 24px 28px; margin: 36px 0;
+    }
+    .callout-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #E8458B; margin-bottom: 8px; }
+    .callout p { color: #ddd; margin: 0; font-size: 15px; line-height: 1.65; }
+
+    .article-cta {
+      background: #0a0a0a; border: 1px solid #1a1a1a;
+      border-radius: 20px; padding: 40px;
+      margin-top: 56px; text-align: center;
+    }
+    .article-cta h3 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    .article-cta p { font-size: 15px; color: #888; margin-bottom: 24px; font-weight: 300; line-height: 1.6; }
+    .btn-primary {
+      display: inline-block; background: #E8458B; color: #000;
+      padding: 14px 32px; border-radius: 100px;
+      font-size: 15px; font-weight: 600; text-decoration: none;
+      transition: background 0.2s;
+    }
+    .btn-primary:hover { background: #F472B6; }
+
+    .back-link { display: inline-block; margin-top: 40px; color: #666; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    .back-link:hover { color: #999; }
+
+    footer { padding: 40px 48px; border-top: 1px solid #111; display: flex; align-items: center; justify-content: space-between; }
+    .footer-left { display: flex; align-items: center; gap: 12px; }
+    .footer-left span { font-size: 14px; color: #444; }
+    footer a { color: #444; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    footer a:hover { color: #888; }
+    .footer-links { display: flex; gap: 24px; }
+
+    @media (max-width: 640px) {
+      nav { padding: 16px 20px; }
+      .nav-links a:not(.active):not(.nav-cta) { display: none; }
+      .article-wrap { padding: 96px 18px 64px; }
+      .article-wrap h1 { font-size: 28px; }
+      .article-subtitle { font-size: 16px; }
+      .article-body p { font-size: 16px; line-height: 1.75; }
+      .pull-quote { font-size: 18px; padding-left: 18px; }
+      .article-cta { padding: 28px 22px; }
+      footer { flex-direction: column; gap: 16px; text-align: center; padding: 32px 20px; }
+      .footer-links { flex-wrap: wrap; justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-logo">
+    <div class="nav-logo-icon"><img src="../icon-72.png" alt="Etapa"></div>
+    Etapa
+  </a>
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <a href="/#how-it-works">How It Works</a>
+    <a href="/#pricing">Pricing</a>
+    <a href="/blog" class="active">Blog</a>
+    <a href="/support">Support</a>
+    <a href="https://www.instagram.com/getetapa/" target="_blank" rel="noopener" aria-label="Etapa on Instagram" style="color:#888;display:inline-flex;align-items:center;"><svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg></a>
+    <a href="https://www.youtube.com/@getetapa" target="_blank" rel="noopener" aria-label="Etapa on YouTube" style="color:#888;display:inline-flex;align-items:center;"><svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg></a>
+    <a href="#register-interest" class="nav-cta" data-register-interest>Register Interest</a>
+  </div>
+</nav>
+
+<div class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a><span>&rsaquo;</span>
+    <a href="/blog">Blog</a><span>&rsaquo;</span>
+    <span>Why I'm Building Etapa</span>
+  </div>
+
+  <span class="article-category">Founder Story</span>
+  <h1>Why I'm Building Etapa</h1>
+  <p class="article-subtitle">Cycling has always been gatekept. I'm building Etapa because I want someone to do for new cyclists what my mates did for me.</p>
+  <div class="article-meta">
+    <span class="byline">Rob Honeybul, Founder</span><span class="dot">&middot;</span><span>5 min read &middot; 3 min watch</span>
+  </div>
+
+  <div class="video-wrap">
+    <iframe
+      src="https://www.youtube.com/embed/E3yiKhODYf4?rel=0&amp;modestbranding=1"
+      title="Why I'm Building Etapa — Rob Honeybul"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+      referrerpolicy="strict-origin-when-cross-origin"
+      allowfullscreen>
+    </iframe>
+  </div>
+  <p class="video-caption">If you'd rather read than watch &mdash; the written version is below.</p>
+
+  <div class="article-body">
+    <p>My dad rode his bike to Morocco when he was 17. Two wheels, a tent, whatever he could carry. He still talks about it decades later. Not in a nostalgic way &mdash; in the way people talk about the thing that shaped them.</p>
+
+    <p>That story rattled around in my head for years. But I didn't actually get into cycling myself until much later, and when I did, I learned very quickly that the sport is one of the most gatekept pastimes in fitness.</p>
+
+    <h2>The apps all assume you already know</h2>
+
+    <p>Every cycling app I tried on day one assumed I already knew what FTP meant. Zone 2. TSS. Polarised training. The words blurred into something that felt like the sport was telling me to come back when I was more serious.</p>
+
+    <p>The forums were worse. Posting a beginner question felt like walking into a members' club. The YouTube tutorials referenced equipment I didn't own. Everything was calibrated for someone who'd already arrived.</p>
+
+    <p class="pull-quote">Every cycling app out there is built for people who already know what FTP means. Nothing is built for the person at the start.</p>
+
+    <p>I got through it because I had mates. Mates who told me what bike to buy. What kit was actually necessary and what was just expensive. Where to ride. What to eat before a long one. How to find a local club. What to do when my knee started aching in a weird way.</p>
+
+    <p>Without those mates, I'd have given up in week three like so many people do. And I started to notice: <strong>most people don't have the mates</strong>.</p>
+
+    <h2>The spark was my girlfriend</h2>
+
+    <p>The thing that actually turned the idea into action was writing my girlfriend a plan.</p>
+
+    <p>She wanted to get into cycling. Not to race &mdash; just to get out more, get fit, feel confident on a bike. So I sat down and wrote her a structured plan. Gentle, progressive, matched to her schedule. Nothing clever &mdash; just the kind of plan I wished I'd had at the start.</p>
+
+    <p>Watching her use it, I had the obvious thought: <strong>this should exist as a product, and no one is building it</strong>. TrainerRoad won't build it. TrainingPeaks definitely won't build it. Strava is built for the already-committed. Every other cycling app out there is built for someone who's already on the other side of the intimidation.</p>
+
+    <div class="callout">
+      <div class="callout-label">The gap</div>
+      <p>The beginner market is roughly five times larger than the serious-cyclist market, and almost nobody is serving it. The apps that do exist for beginners either treat them like children or bolt on a "women's version" with a pink logo and call it inclusive. That's not what this needs.</p>
+    </div>
+
+    <h2>What Etapa is, and who it's for</h2>
+
+    <p>Etapa is an AI cycling coach that speaks to you in plain English and builds a plan around the life you actually have. The plan knows you've got work on Tuesday and a kid's birthday on Saturday. The coach will answer "is it normal that my knees click like that?" without making you feel stupid. Every session title is human &mdash; "First Adventure", "Weekend Explorer", "Getting Comfortable" &mdash; not "Z2 Base + 4x8 SST (92&ndash;94% FTP)".</p>
+
+    <p>It's built for three people:</p>
+
+    <ul>
+      <li><strong>Complete beginners</strong> &mdash; the people who bought a bike and aren't sure how to start. "First 10 km ride" is as worthy a goal as "first 200 km sportive".</li>
+      <li><strong>Women getting into cycling</strong> &mdash; the fastest-growing group of new cyclists, and the most underserved by an industry that treats them as an afterthought.</li>
+      <li><strong>People coming back to the sport</strong> &mdash; anyone who had a bike habit once, lost it, and doesn't want to feel like a beginner again when they restart.</li>
+    </ul>
+
+    <p>If you're a power-meter person with a race season mapped out in WKO5, Etapa's not for you, and that's fine. There are ten products for you already.</p>
+
+    <h2>The bigger goal</h2>
+
+    <p>The version of cycling I fell in love with isn't the one with power files. It's the version my dad rode to Morocco on. Long rides, quiet roads, discovering you can go somewhere under your own power that you thought was out of reach. I want people to know <em>that</em> version is available to them too &mdash; not just the Cat-4 race scene, not just the Sunday group ride in matching kit.</p>
+
+    <p>To get there, people need to stick with it past week three. Past the first puncture. Past the first wet ride. Past the first hill that makes them want to get off and walk. The thing that gets people through all of that is having someone in their corner.</p>
+
+    <p>That's what I'm building. A mate in your pocket. A plan that respects your life. A coach that explains the thing you were too embarrassed to ask in the forum. A product that assumes you belong here from the moment you download it.</p>
+
+    <p class="pull-quote">Cycling has always been gatekept. Etapa opens the gate.</p>
+
+    <p>If any of that resonates &mdash; if you've ever bounced off a cycling app that made you feel small, or wanted to get into the sport but couldn't figure out where to start &mdash; then you're the person I built this for. Drop your email below and I'll let you know the moment it's live.</p>
+  </div>
+
+  <div class="article-cta">
+    <h3>Be on the list</h3>
+    <p>Etapa is opening up in waves. Drop your email and I'll tell you the moment you can try it, with a short note &mdash; not a marketing blast.</p>
+    <a href="#register-interest" class="btn-primary" data-register-interest>Register interest</a>
+  </div>
+  <a href="/blog" class="back-link">&larr; Back to all articles</a>
+</div>
+
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-icon" style="width:28px;height:28px;border-radius:8px;"><img src="../icon-56.png" alt="Etapa"></div>
+    <span>&copy; 2026 Etapa. All rights reserved.</span>
+  </div>
+  <div class="footer-links">
+    <a href="/#pricing">Pricing</a>
+    <a href="/#ai">AI Transparency</a>
+    <a href="/support">Support</a>
+    <a href="/privacy">Privacy Policy</a>
+    <a href="/terms">Terms of Use</a>
+  </div>
+</footer>
+<div style="text-align:center;padding:16px 48px 32px;border-top:1px solid #111;">
+  <p style="font-size:11px;color:#444;line-height:1.7;max-width:640px;margin:0 auto;font-weight:300;">
+    All training plans, coaching conversations, session adjustments, and check-in messages are generated by artificial intelligence (Anthropic Claude). Etapa is not a medical service and does not provide medical advice. Always consult a healthcare professional before beginning any exercise programme. You train at your own risk.
+  </p>
+</div>
+<script src="../register-interest.js" defer></script>
+</body>
+</html>
