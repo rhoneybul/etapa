@@ -149,13 +149,12 @@ export default function SignInScreen({ navigation }) {
             />
           </View>
           <Text style={s.title}>Etapa</Text>
-          <Text style={s.tagline}>Cycling coaching that meets you where you are.</Text>
 
-          {/* Benefit chips — surface the brand promise. "AI training plans" and
-              "Built for beginners" were too narrow: we serve complete beginners,
-              returning riders, women put off by cycling's gatekept culture, and
-              experienced riders who just want guidance without jargon. These
-              chips lean coaching-and-guidance first, AI in the background. */}
+          {/* Tagline removed per product decision — the brand is communicated
+              through the chips below. The chips lean coaching-and-guidance
+              first: serves beginners, returning riders, women put off by
+              cycling's gatekept culture, and anyone wanting to improve
+              without jargon. AI stays in the background. */}
           <View style={s.benefitChips}>
             <View style={s.benefitChip}>
               <Text style={s.benefitChipText}>Any goal, any level</Text>
@@ -262,15 +261,18 @@ const s = StyleSheet.create({
     fontSize: 38, fontWeight: '600', fontFamily: FF.semibold,
     color: '#F0F0F2', letterSpacing: 2,
   },
+  // `tagline` style retained but unused — the tagline was removed per
+  // product decision. Keeping the definition out of laziness in case we
+  // bring it back; it costs nothing at runtime.
   tagline: {
     fontSize: 15, fontWeight: '300', fontFamily: FF.light,
     color: 'rgba(240,240,242,0.35)', marginTop: 8, letterSpacing: 1,
   },
 
-  // Benefit chips — three small pills under the tagline.
+  // Benefit chips — three small pills under the Etapa wordmark.
   benefitChips: {
     flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center',
-    marginTop: 24, gap: 8, paddingHorizontal: 24,
+    marginTop: 32, gap: 8, paddingHorizontal: 24,
   },
   benefitChip: {
     paddingHorizontal: 12, paddingVertical: 6,

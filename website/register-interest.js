@@ -46,9 +46,12 @@
     '.ri-modal h2 span{color:#E8458B}' +
     '.ri-modal p.ri-lead{font-size:15px;color:#aaa;line-height:1.6;font-weight:300;margin:0 0 24px}' +
     '.ri-form{display:flex;flex-direction:column;gap:12px}' +
-    '.ri-form input[type=email],.ri-form input[type=text]{background:#111;border:1px solid #232323;border-radius:14px;padding:14px 18px;font-family:\'Poppins\',sans-serif;font-size:15px;color:#fff;width:100%;transition:border-color .2s,background .2s;box-sizing:border-box}' +
-    '.ri-form input[type=email]:focus,.ri-form input[type=text]:focus{outline:none;border-color:#E8458B;background:#141414}' +
-    '.ri-form input[type=email]::placeholder,.ri-form input[type=text]::placeholder{color:#555}' +
+    '.ri-form input[type=email],.ri-form input[type=text],.ri-form textarea{background:#111;border:1px solid #232323;border-radius:14px;padding:14px 18px;font-family:\'Poppins\',sans-serif;font-size:15px;color:#fff;width:100%;transition:border-color .2s,background .2s;box-sizing:border-box}' +
+    '.ri-form input[type=email]:focus,.ri-form input[type=text]:focus,.ri-form textarea:focus{outline:none;border-color:#E8458B;background:#141414}' +
+    '.ri-form input[type=email]::placeholder,.ri-form input[type=text]::placeholder,.ri-form textarea::placeholder{color:#555}' +
+    '.ri-form textarea{min-height:84px;resize:vertical;line-height:1.5;font-family:\'Poppins\',sans-serif}' +
+    '.ri-wish-label{font-size:12px;color:#999;font-weight:500;margin-top:4px;margin-bottom:-4px;letter-spacing:.3px}' +
+    '.ri-wish-label .optional{color:#666;font-weight:400}' +
     /* Cycling-level segmented control */
     '.ri-level-label{font-size:12px;color:#999;font-weight:500;margin-top:4px;margin-bottom:-4px;letter-spacing:.3px}' +
     '.ri-level{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}' +
@@ -109,6 +112,8 @@
             '<label><input type="radio" name="cyclingLevel" value="sometimes"><span>Ride sometimes</span></label>' +
             '<label><input type="radio" name="cyclingLevel" value="regular"><span>Ride regularly</span></label>' +
           '</div>' +
+          '<div class="ri-wish-label">Is there anything you want to see from Etapa? <span class="optional">(optional)</span></div>' +
+          '<textarea name="wishlist" placeholder="e.g. a plan that fits around work, route ideas near me, help getting back into it after a break…" maxlength="1000" rows="3"></textarea>' +
           '<button type="submit">Register Interest</button>' +
           '<div class="ri-msg" aria-live="polite"></div>' +
         '</form>' +
@@ -201,6 +206,8 @@
       var firstName = firstNameInput ? (firstNameInput.value || '').trim().slice(0, 80) : '';
       var levelRadio = form.querySelector('input[name=cyclingLevel]:checked');
       var cyclingLevel = levelRadio ? levelRadio.value : null;
+      var wishlistInput = form.querySelector('textarea[name=wishlist]');
+      var wishlist = wishlistInput ? (wishlistInput.value || '').trim().slice(0, 1000) : '';
 
       button.disabled = true;
       button.innerHTML = '<span class="ri-spin"></span> Submitting…';
@@ -216,6 +223,7 @@
           email: email,
           firstName: firstName || null,
           cyclingLevel: cyclingLevel,
+          wishlist: wishlist || null,
           source: PAGE_SOURCE,
           demoSessionId: demoMeta.sessionId || null,
           demoCtaVariant: demoMeta.ctaVariant || null,

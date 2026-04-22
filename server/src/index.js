@@ -131,7 +131,7 @@ app.post('/api/account-deletion', async (req, res) => {
 // Stores an email in `interest_signups` and posts to the configured Slack
 // webhook. Dedupes on lower(email) so repeat submissions don't spam Slack.
 app.post('/api/public/register-interest', async (req, res) => {
-  const { email, source, demoSessionId, demoCtaVariant, firstName, cyclingLevel } = req.body || {};
+  const { email, source, demoSessionId, demoCtaVariant, firstName, cyclingLevel, wishlist } = req.body || {};
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const VALID_LEVELS = ['new', 'sometimes', 'regular'];
 
@@ -150,6 +150,9 @@ app.post('/api/public/register-interest', async (req, res) => {
     ? firstName.trim().slice(0, 80) || null
     : null;
   const cleanCyclingLevel = VALID_LEVELS.includes(cyclingLevel) ? cyclingLevel : null;
+  const cleanWishlist = wishlist && typeof wishlist === 'string'
+    ? wishlist.trim().slice(0, 1000) || null
+    : null;
 
   try {
     const { supabase } = require('./lib/supabase');
@@ -164,6 +167,7 @@ app.post('/api/public/register-interest', async (req, res) => {
         demo_session_id: sessionIdForDemo,
         first_name: cleanFirstName,
         cycling_level: cleanCyclingLevel,
+        wishlist: cleanWishlist,
       });
       // Unique constraint violation = already signed up
       if (error) {
@@ -205,7 +209,13 @@ app.post('/api/public/register-interest', async (req, res) => {
           source ? `(from \`${source}\`)` : null,
           levelLabel ? `— ${levelLabel}` : null,
         ].filter(Boolean);
-        const text = bits.join(' ');
+        // Wishlist (if they told us what they want to see) goes on its own
+        // blockquoted line so it reads cleanly in Slack and doesn't bloat
+        // the headline when it's empty.
+        const headline = bits.join(' ');
+        const text = cleanWishlist
+          ? `${headline}\n> ${cleanWishlist.replace(/\n+/g, ' ')}`
+          : headline;
         fetch(SLACK_WEBHOOK_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
