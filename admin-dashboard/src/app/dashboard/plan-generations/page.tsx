@@ -36,10 +36,79 @@ interface UsageRow {
   created_at: string;
 }
 
+interface Activity {
+  id?: string;
+  week: number;
+  dayOfWeek: number;
+  date?: string;
+  type: string;
+  subType?: string | null;
+  title?: string;
+  description?: string;
+  notes?: string | null;
+  durationMins?: number;
+  distanceKm?: number | null;
+  effort?: string;
+}
+
+interface PlanSnapshot {
+  id?: string;
+  name?: string;
+  weeks?: number;
+  startDate?: string;
+  currentWeek?: number;
+}
+
 interface Detail {
-  generation: Generation & { goal: any; config: any };
+  generation: Generation & {
+    goal: any;
+    config: any;
+    system_prompt?: string | null;
+    prompt?: string | null;
+    raw_response?: string | null;
+    activities?: Activity[] | null;
+    plan_snapshot?: PlanSnapshot | null;
+  };
   user: Generation["user"];
   usage: UsageRow[];
+}
+
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/**
+ * Download the full generation snapshot as JSON so a reviewer can open
+ * it in their own editor / share it with a coach for a second opinion.
+ */
+function downloadDebugPackage(detail: Detail) {
+  const pkg = {
+    exportedAt: new Date().toISOString(),
+    id: detail.generation.id,
+    user: detail.user,
+    status: detail.generation.status,
+    reason: detail.generation.reason,
+    model: detail.generation.model,
+    durationMs: detail.generation.duration_ms,
+    error: detail.generation.error,
+    inputs: {
+      goal: detail.generation.goal,
+      config: detail.generation.config,
+    },
+    prompts: {
+      system: detail.generation.system_prompt,
+      user: detail.generation.prompt,
+    },
+    claudeRawResponse: detail.generation.raw_response,
+    plan: detail.generation.plan_snapshot,
+    activities: detail.generation.activities,
+    claudeApiCalls: detail.usage,
+  };
+  const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `plan-gen-${detail.generation.id}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 const STATUS_COLORS: Record<Generation["status"], string> = {
@@ -357,6 +426,58 @@ export default function PlanGenerationsPage() {
                   </div>
                 </div>
 
+                {/* Schedule — week-by-week table of the final activities */}
+                {detail.generation.activities && detail.generation.activities.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="text-xs text-etapa-textMuted uppercase tracking-wide font-medium">
+                        Final schedule ({detail.generation.activities.length} activities)
+                      </div>
+                      {detail.generation.plan_snapshot?.name && (
+                        <span className="text-xs text-etapa-textMid">
+                          {detail.generation.plan_snapshot.name} · {detail.generation.plan_snapshot.weeks} weeks
+                        </span>
+                      )}
+                    </div>
+                    <ScheduleTable activities={detail.generation.activities} />
+                  </div>
+                )}
+
+                {/* Prompts — collapsible */}
+                {(detail.generation.prompt || detail.generation.system_prompt) && (
+                  <details className="bg-etapa-surfaceLight border border-etapa-border rounded">
+                    <summary className="cursor-pointer px-3 py-2 text-xs text-etapa-textMuted uppercase tracking-wide font-medium">
+                      Prompts sent to Claude
+                    </summary>
+                    <div className="px-3 pb-3 space-y-3">
+                      {detail.generation.system_prompt && (
+                        <div>
+                          <div className="text-xs text-etapa-textFaint mb-1">System prompt ({detail.generation.system_prompt.length.toLocaleString()} chars)</div>
+                          <pre className="text-xs text-etapa-textMid bg-etapa-surface p-2 rounded overflow-x-auto max-h-64 font-mono whitespace-pre-wrap">{detail.generation.system_prompt}</pre>
+                        </div>
+                      )}
+                      {detail.generation.prompt && (
+                        <div>
+                          <div className="text-xs text-etapa-textFaint mb-1">User prompt ({detail.generation.prompt.length.toLocaleString()} chars)</div>
+                          <pre className="text-xs text-etapa-textMid bg-etapa-surface p-2 rounded overflow-x-auto max-h-64 font-mono whitespace-pre-wrap">{detail.generation.prompt}</pre>
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                )}
+
+                {/* Raw Claude response — collapsible */}
+                {detail.generation.raw_response && (
+                  <details className="bg-etapa-surfaceLight border border-etapa-border rounded">
+                    <summary className="cursor-pointer px-3 py-2 text-xs text-etapa-textMuted uppercase tracking-wide font-medium">
+                      Claude raw response ({detail.generation.raw_response.length.toLocaleString()} chars)
+                    </summary>
+                    <div className="px-3 pb-3">
+                      <pre className="text-xs text-etapa-textMid bg-etapa-surface p-2 rounded overflow-x-auto max-h-96 font-mono whitespace-pre-wrap">{detail.generation.raw_response}</pre>
+                    </div>
+                  </details>
+                )}
+
                 {/* Claude usage rows */}
                 {detail.usage.length > 0 && (
                   <div>
@@ -392,13 +513,20 @@ export default function PlanGenerationsPage() {
                   </div>
                 )}
 
-                {/* Rerun button */}
-                <div className="flex gap-2 justify-end border-t border-etapa-border pt-4">
+                {/* Actions */}
+                <div className="flex gap-2 justify-end border-t border-etapa-border pt-4 flex-wrap">
                   <button
                     onClick={() => setSelectedId(null)}
                     className="px-3 py-1.5 text-xs font-medium rounded-md bg-etapa-surfaceLight text-etapa-textMid hover:bg-etapa-border"
                   >
                     Close
+                  </button>
+                  <button
+                    onClick={() => downloadDebugPackage(detail)}
+                    className="px-3 py-1.5 text-xs font-medium rounded-md bg-etapa-surfaceLight text-etapa-textMid border border-etapa-border hover:bg-etapa-border"
+                    title="Download a single JSON with goal + config + prompts + raw response + schedule, for sharing with another reviewer"
+                  >
+                    Download debug package
                   </button>
                   <button
                     onClick={() => rerunGeneration(detail.generation.id)}
@@ -422,6 +550,69 @@ function DetailField({ label, value }: { label: string; value: React.ReactNode }
     <div>
       <div className="text-xs text-etapa-textMuted uppercase tracking-wide mb-1">{label}</div>
       <div className="text-xs text-white">{value}</div>
+    </div>
+  );
+}
+
+/**
+ * Week-by-week schedule — what the rider actually sees in the app.
+ * Shows per-week total km, session count, and each activity with its
+ * type/title/duration/distance/effort. Collapsible per-week so a 20-week
+ * plan doesn't dominate the modal.
+ */
+function ScheduleTable({ activities }: { activities: Activity[] }) {
+  const byWeek = new Map<number, Activity[]>();
+  for (const a of activities) {
+    const arr = byWeek.get(a.week) || [];
+    arr.push(a);
+    byWeek.set(a.week, arr);
+  }
+  const weeks = Array.from(byWeek.keys()).sort((a, b) => a - b);
+
+  return (
+    <div className="bg-etapa-surfaceLight border border-etapa-border rounded overflow-hidden">
+      {weeks.map((w, i) => {
+        const items = (byWeek.get(w) || []).slice().sort((a, b) => (a.dayOfWeek ?? 0) - (b.dayOfWeek ?? 0));
+        const totalKm = items.reduce((s, x) => s + (x.distanceKm || 0), 0);
+        const rides = items.filter((x) => x.type === "ride").length;
+        const strength = items.filter((x) => x.type === "strength").length;
+        return (
+          <details key={w} open={i === 0} className={i > 0 ? "border-t border-etapa-border" : ""}>
+            <summary className="cursor-pointer px-3 py-2 text-xs flex items-center gap-3 hover:bg-etapa-surface">
+              <span className="text-white font-medium min-w-[60px]">Week {w}</span>
+              <span className="text-etapa-textMid">{items.length} sessions</span>
+              <span className="text-etapa-textMuted">{rides} rides{strength ? ` · ${strength} strength` : ""}</span>
+              <span className="text-etapa-textMuted ml-auto">{Math.round(totalKm)} km total</span>
+            </summary>
+            <div className="px-3 pb-2">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-etapa-textFaint">
+                    <th className="py-1 pr-3">Day</th>
+                    <th className="py-1 pr-3">Type</th>
+                    <th className="py-1 pr-3">Title</th>
+                    <th className="py-1 pr-3">Duration</th>
+                    <th className="py-1 pr-3">Distance</th>
+                    <th className="py-1 pr-3">Effort</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((a, j) => (
+                    <tr key={a.id || j} className="border-t border-etapa-border">
+                      <td className="py-1 pr-3 text-etapa-textMuted">{DAY_LABELS[a.dayOfWeek] || a.dayOfWeek}</td>
+                      <td className="py-1 pr-3 text-etapa-textMid">{a.subType || a.type}</td>
+                      <td className="py-1 pr-3 text-white">{a.title || ""}</td>
+                      <td className="py-1 pr-3 text-etapa-textMid">{a.durationMins ? `${a.durationMins} min` : "—"}</td>
+                      <td className="py-1 pr-3 text-etapa-textMid">{a.distanceKm != null ? `${a.distanceKm} km` : "—"}</td>
+                      <td className="py-1 pr-3 text-etapa-textMuted">{a.effort || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        );
+      })}
     </div>
   );
 }

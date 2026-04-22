@@ -1528,6 +1528,14 @@ async function startGenerationJob({ userId, goal, config, replacePlanId = null, 
   };
   planJobs.set(jobId, job);
 
+  // Build the prompts up-front so we can capture them in the debug log.
+  // This is fine to do synchronously — buildPlanPrompt is deterministic
+  // text concatenation, no I/O. Same prompts will be re-built inside
+  // runAsyncGeneration; keeping them here means a failing job ALWAYS has
+  // its inputs + prompt recorded even if the Claude call never goes out.
+  const _systemPrompt = COACH_SYSTEM_PROMPT + getCoachPromptBlock(config.coachId);
+  const _userPrompt = buildPlanPrompt(goal, config);
+
   // Fire-and-forget audit-log insert. Don't await — the user should not
   // wait for our debug table to acknowledge before their plan generates.
   planGenLogger.start({
@@ -1537,6 +1545,8 @@ async function startGenerationJob({ userId, goal, config, replacePlanId = null, 
     config,
     reason,
     model: modelOverride || 'claude-sonnet-4-20250514',
+    systemPrompt: _systemPrompt,
+    prompt: _userPrompt,
   }).then((logId) => { job.logId = logId; });
 
   runAsyncGeneration(jobId, apiKey, goal, config, userId, { replacePlanId, modelOverride }).catch(err => {
@@ -1738,6 +1748,8 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
       metadata: { async: true, weeks: config.weeks, daysPerWeek: config.daysPerWeek, coachId: config.coachId, goalType: goal?.goalType },
     });
     const text = data?.content?.[0]?.text || '[]';
+    // Stash on the job so the success path can also log it on finish.
+    job.rawResponse = String(text).slice(0, 50000);
     const jsonMatch = text.match(/\[[\s\S]*\]/);
 
     if (!jsonMatch) {
@@ -1750,6 +1762,9 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
           error: `Could not parse AI response — first 500 chars: ${text.slice(0, 500)}`,
           progress: 'Something went wrong',
           duration_ms: Date.now() - job.createdAt,
+          // Capture what Claude actually returned so you can see why the
+          // regex didn't match ([ ] looking for a JSON array).
+          raw_response: job.rawResponse,
         });
       }
       return;
@@ -2032,6 +2047,10 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
     job.progress = 'Plan ready!';
 
     // ── Debug log: job completed successfully ────────────────────────────
+    // Capture the FULL package: plan metadata + final activities + raw
+    // Claude response. "Another pair of eyes" gets the complete loop —
+    // inputs (goal + config) → exact prompt → Claude raw text → final
+    // normalised schedule — from one admin row.
     if (job.logId) {
       planGenLogger.finish(job.logId, {
         status: 'completed',
@@ -2039,6 +2058,17 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
         activities_count: activities?.length || 0,
         progress: 'Plan ready!',
         duration_ms: Date.now() - job.createdAt,
+        raw_response: job.rawResponse || null,
+        activities: activities || [],
+        plan_snapshot: plan ? {
+          id: plan.id,
+          name: plan.name,
+          weeks: plan.weeks,
+          startDate: plan.startDate,
+          currentWeek: plan.currentWeek,
+          goalId: plan.goalId,
+          configId: plan.configId,
+        } : null,
       });
     }
 
@@ -2071,6 +2101,172 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
     }
   }
 }
+
+// ── POST /api/ai/verify-plan ────────────────────────────────────────────────
+// LLM-as-judge — send a generated plan to a DIFFERENT Claude model and ask
+// it to critique the plan against the original goal + config. Returns a
+// structured verdict { score, issues[], summary } the test dashboard uses
+// to catch quality regressions the deterministic validator can't see.
+//
+// TEST_API_KEY gated (same pattern as the testModel override on
+// generate-plan-async): not exposed to end users, only the test dashboard.
+router.post('/verify-plan', async (req, res) => {
+  // Auth — must be the test key. A user JWT does not unlock this endpoint.
+  const authHeader = req.headers.authorization || '';
+  if (!process.env.TEST_API_KEY || authHeader !== `Bearer ${process.env.TEST_API_KEY}`) {
+    return res.status(401).json({ error: 'verify-plan requires the TEST_API_KEY' });
+  }
+
+  const apiKey = getAnthropicKey();
+  if (!apiKey) return res.status(503).json({ error: 'AI not configured.' });
+
+  const { goal, config, plan, judgeModel } = req.body || {};
+  if (!goal || !config || !plan) {
+    return res.status(400).json({ error: 'goal, config and plan are required' });
+  }
+
+  const model = typeof judgeModel === 'string' && judgeModel.trim()
+    ? judgeModel.trim()
+    : 'claude-opus-4-6';
+
+  // Compact the plan so we don't blow the judge's context on a 20-week
+  // generator output. Week-summary with first 2 activities per week is
+  // enough detail for the judge to spot structural issues.
+  const activities = Array.isArray(plan.activities) ? plan.activities : [];
+  const byWeek = {};
+  for (const a of activities) {
+    const w = a.week || 0;
+    if (!byWeek[w]) byWeek[w] = [];
+    byWeek[w].push({
+      day: a.dayOfWeek,
+      type: a.type,
+      subType: a.subType,
+      title: a.title,
+      durationMins: a.durationMins,
+      distanceKm: a.distanceKm,
+      effort: a.effort,
+    });
+  }
+  const weekSummaries = Object.keys(byWeek)
+    .map(Number)
+    .sort((x, y) => x - y)
+    .map((w) => {
+      const items = byWeek[w];
+      const totalKm = items.reduce((s, x) => s + (x.distanceKm || 0), 0);
+      const rides = items.filter((x) => x.type === 'ride');
+      const longest = rides.reduce((m, x) => Math.max(m, x.distanceKm || 0), 0);
+      return {
+        week: w,
+        sessionCount: items.length,
+        totalKm: Math.round(totalKm),
+        longestRideKm: Math.round(longest),
+        activities: items.slice(0, 5), // cap for prompt size
+      };
+    });
+
+  const system = `You are a meticulous cycling coach reviewing a training plan generated by an AI assistant. Your job is to critique the plan against the athlete's stated goal and configuration. Focus on REAL problems a practising coach would flag — unsafe volume jumps, missing rest, non-specific training, distances that don't match the rider's level, taper done wrong, peak long ride that's too far from the target distance, fatigue traps.
+
+Return a JSON object ONLY — no prose, no markdown, no code fences:
+{
+  "score": <integer 1–10 — overall plan quality. 10 = perfect, 7 = shippable with notes, 4 = has real problems, 1 = unshippable>,
+  "summary": "<one sentence overall verdict>",
+  "issues": [
+    { "severity": "critical" | "warning" | "info", "message": "<specific, actionable observation>" }
+  ]
+}
+
+Severity rules:
+- "critical" — would injure the rider, or the plan does not serve the stated goal at all (e.g. target 100km but peak ride is 40km). ANY critical issue means the plan should be treated as FAILED.
+- "warning" — noticeable coaching flaw but plan is still usable (missing deload, slight volume jump, weak specificity).
+- "info" — minor stylistic notes.`;
+
+  const prompt = `# Athlete brief
+
+Goal: ${JSON.stringify(goal)}
+Config: ${JSON.stringify(config)}
+
+# Generated plan (summary)
+
+Weeks: ${plan.weeks}
+Start date: ${plan.startDate}
+Total activities: ${activities.length}
+
+Per-week summary (week number, session count, total km, longest ride km, sample activities):
+${JSON.stringify(weekSummaries, null, 2)}
+
+# Task
+
+Critique this plan against the athlete brief. Return ONLY the JSON verdict.`;
+
+  const startedAt = Date.now();
+  try {
+    const response = await _fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 2048,
+        system,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      logClaudeUsage({
+        userId: null, feature: 'plan_verify', model,
+        data: {}, response, durationMs: Date.now() - startedAt,
+        status: 'api_error',
+        metadata: { http: response.status, scenarioWeeks: plan.weeks },
+      });
+      return res.status(502).json({ error: 'Judge API error', detail: errBody.slice(0, 500) });
+    }
+
+    const data = await response.json();
+    logClaudeUsage({
+      userId: null, feature: 'plan_verify', model,
+      data, response, durationMs: Date.now() - startedAt,
+      metadata: { scenarioWeeks: plan.weeks, activitiesCount: activities.length },
+    });
+
+    const text = data?.content?.[0]?.text || '';
+    // Extract the JSON body — the judge occasionally wraps it in markdown
+    // despite instructions. Try a raw parse, then a braces-match fallback.
+    let verdict = null;
+    try { verdict = JSON.parse(text); }
+    catch {
+      const m = text.match(/\{[\s\S]*\}/);
+      if (m) { try { verdict = JSON.parse(m[0]); } catch { /* give up */ } }
+    }
+
+    if (!verdict || typeof verdict !== 'object') {
+      return res.status(502).json({ error: 'Judge returned unparseable JSON', raw: text.slice(0, 800) });
+    }
+
+    const score = Number(verdict.score);
+    const issues = Array.isArray(verdict.issues) ? verdict.issues : [];
+
+    res.json({
+      model,
+      durationMs: Date.now() - startedAt,
+      verdict: {
+        score: Number.isFinite(score) ? Math.max(1, Math.min(10, Math.round(score))) : null,
+        summary: verdict.summary || '',
+        issues: issues.map(i => ({
+          severity: ['critical', 'warning', 'info'].includes(i.severity) ? i.severity : 'info',
+          message: String(i.message || '').slice(0, 500),
+        })),
+      },
+    });
+  } catch (err) {
+    console.error('[verify-plan] error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 module.exports = router;
 // Named exports for other routes (e.g. plans.js regenerate, admin.js poll)

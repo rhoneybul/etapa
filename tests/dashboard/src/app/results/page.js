@@ -238,13 +238,18 @@ function handleEvent(data, addLog, setProgress, setFinalOutput) {
     case 'scenario-done': {
       const durStr = data.durationMs ? ` (${(data.durationMs / 1000).toFixed(1)}s)` : '';
       const warnStr = data.warnings?.length ? ` ⚠ ${data.warnings.length} warning${data.warnings.length > 1 ? 's' : ''}` : '';
+      const judgeScore = data.judge?.verdict?.score;
+      const judgeStr = judgeScore != null ? ` · judge ${judgeScore}/10` : '';
       if (data.pass) {
-        addLog({ type: 'pass', text: `  ✅ PASS${durStr} — ${data.stats?.totalActivities || 0} activities${warnStr}` });
+        addLog({ type: 'pass', text: `  ✅ PASS${durStr} — ${data.stats?.totalActivities || 0} activities${warnStr}${judgeStr}` });
       } else {
-        addLog({ type: 'fail', text: `  ❌ FAIL${durStr}` });
+        addLog({ type: 'fail', text: `  ❌ FAIL${durStr}${judgeStr}` });
         data.errors?.forEach(e => addLog({ type: 'fail', text: `     ✗ ${e}` }));
       }
       data.warnings?.forEach(w => addLog({ type: 'warn', text: `     ⚠ ${w}` }));
+      if (data.judge?.verdict?.summary) {
+        addLog({ type: 'muted', text: `     ⚖︎ ${data.judge.verdict.summary}` });
+      }
       setProgress(p => ({ ...p, done: data.index + 1 }));
       break;
     }

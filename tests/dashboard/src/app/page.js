@@ -23,6 +23,22 @@ function Badge({ pass, warnings }) {
   return <span style={styles.badge('rgba(52,211,153,.15)', '#34d399')}>PASS</span>;
 }
 
+// Judge score chip — 1-10 quality rating from the LLM verifier.
+// Colour-coded: green ≥8, amber 5-7, red <5.
+function JudgeScoreChip({ score }) {
+  if (score == null) return null;
+  const colour = score >= 8 ? '#34d399' : score >= 5 ? '#fbbf24' : '#f87171';
+  const bg = score >= 8 ? 'rgba(52,211,153,.15)' : score >= 5 ? 'rgba(251,191,36,.15)' : 'rgba(248,113,113,.15)';
+  return (
+    <span
+      title={`LLM judge score: ${score}/10`}
+      style={{ ...styles.badge(bg, colour), letterSpacing: 0 }}
+    >
+      ⚖︎ {score}/10
+    </span>
+  );
+}
+
 const styles = {
   badge: (bg, color) => ({
     fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 3,
@@ -152,6 +168,10 @@ function Sidebar({ scenarios, planCount, selectedIdx, onSelect, getResult }) {
                 <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
                 <div style={{ fontSize: 11, color: '#8888a0', marginTop: 2, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                   <Badge pass={r?.pass} warnings={warnCount} />
+                  {/* LLM judge score — shown for plan scenarios when verification ran */}
+                  {r?.judge?.verdict?.score != null && (
+                    <JudgeScoreChip score={r.judge.verdict.score} />
+                  )}
                   {metaParts && <span>{metaParts}</span>}
                 </div>
               </div>
@@ -214,6 +234,45 @@ function DetailPane({ scenario, result, index }) {
             ].filter(Boolean)} />
           )}
         </div>
+
+        {/* LLM judge verdict */}
+        {result?.judge?.verdict && (
+          <div style={{ marginBottom: 16, padding: 12, background: '#1a1a24', border: '1px solid #2d2d3d', borderRadius: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <h4 style={{ fontSize: 12, fontWeight: 600, margin: 0, color: '#e4e4ef' }}>LLM judge verdict</h4>
+              <JudgeScoreChip score={result.judge.verdict.score} />
+              <span style={{ fontSize: 10, color: '#8888a0', marginLeft: 'auto' }}>
+                {result.judge.model}
+                {result.judge.durationMs ? ` · ${(result.judge.durationMs / 1000).toFixed(1)}s` : ''}
+              </span>
+            </div>
+            {result.judge.verdict.summary && (
+              <p style={{ fontSize: 12, color: '#a0a0b0', margin: '0 0 8px', lineHeight: 1.5 }}>
+                {result.judge.verdict.summary}
+              </p>
+            )}
+            {(result.judge.verdict.issues || []).length > 0 && (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {result.judge.verdict.issues.map((issue, i) => {
+                  const colour = issue.severity === 'critical' ? '#f87171'
+                              : issue.severity === 'warning' ? '#fbbf24'
+                              : '#8888a0';
+                  const bg = issue.severity === 'critical' ? 'rgba(248,113,113,.08)'
+                           : issue.severity === 'warning' ? 'rgba(251,191,36,.08)'
+                           : '#22222f';
+                  return (
+                    <li key={i} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 4, marginBottom: 3, background: bg, color: colour, display: 'flex', gap: 8 }}>
+                      <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600, minWidth: 60 }}>
+                        {issue.severity}
+                      </span>
+                      <span style={{ flex: 1 }}>{issue.message}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
 
         {/* Errors & warnings */}
         {errCount > 0 && (

@@ -16,8 +16,12 @@ const { supabase } = require('./supabase');
  * Insert a 'running' row at job start.
  * Returns the inserted row id (or null if the insert failed) so the caller
  * can keep it on the in-memory job and pass it back to `finish`.
+ *
+ * `systemPrompt` and `prompt` are OPTIONAL — if passed, they're captured
+ * so the admin debug page can show the exact Claude request for "another
+ * pair of eyes" reproducibility.
  */
-async function start({ userId, jobId, goal, config, reason = 'generate', model = null }) {
+async function start({ userId, jobId, goal, config, reason = 'generate', model = null, systemPrompt = null, prompt = null }) {
   try {
     const { data, error } = await supabase
       .from('plan_generations')
@@ -29,6 +33,8 @@ async function start({ userId, jobId, goal, config, reason = 'generate', model =
         goal,
         config,
         model,
+        system_prompt: systemPrompt,
+        prompt,
       })
       .select('id')
       .maybeSingle();

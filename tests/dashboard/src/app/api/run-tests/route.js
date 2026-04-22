@@ -9,11 +9,17 @@ export const dynamic = 'force-dynamic';
 // Keep at 5 to avoid hammering the AI API with rate limits.
 const CONCURRENCY = 5;
 
-// Model the test runner uses to generate plans. Deliberately DIFFERENT from
-// the production plan-gen model (Sonnet 4, via claude-sonnet-4-20250514).
-// Using Opus 4.6 here means tests exercise a stronger model — if Opus fails
-// a scenario, Sonnet 4 almost certainly does too. Override via TEST_MODEL env.
-const TEST_GENERATOR_MODEL = process.env.TEST_MODEL || 'claude-opus-4-6';
+// Model the test runner uses to GENERATE plans. Matches production by default
+// so the dashboard exercises exactly what customers get. Override via
+// TEST_MODEL env if you want to compare against a stronger / weaker model.
+const TEST_GENERATOR_MODEL = process.env.TEST_MODEL || 'claude-sonnet-4-20250514';
+
+// Model the test runner uses to VERIFY each generated plan (LLM-as-judge).
+// Deliberately DIFFERENT family from the generator so it can catch errors the
+// generator wouldn't self-correct. Haiku 4.5 is cheap + fast — about 10× less
+// than Opus per run, still catches the obvious coaching flaws. Override via
+// TEST_JUDGE_MODEL env if you want Opus-level scrutiny for a specific run.
+const TEST_JUDGE_MODEL = process.env.TEST_JUDGE_MODEL || 'claude-haiku-4-5-20251001';
 
 const DAY_NAMES = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -380,6 +386,27 @@ async function generatePlan(serverUrl, authHeaders, scenario, ctx = {}) {
   throw new Error(`TIMEOUT after ${POLL_TIMEOUT_S}s (model=${testModel}, scenario=${scenario.name})`);
 }
 
+// Call the server-side judge endpoint to critique a generated plan.
+// Returns { model, durationMs, verdict: { score, summary, issues[] } }.
+// Throws with the server's error text on non-200.
+async function verifyPlan(serverUrl, authHeaders, scenario, plan) {
+  const res = await fetch(`${serverUrl}/api/ai/verify-plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    body: JSON.stringify({
+      goal: scenario.goal,
+      config: scenario.config,
+      plan,
+      judgeModel: TEST_JUDGE_MODEL,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Judge HTTP ${res.status}: ${body.slice(0, 300)}`);
+  }
+  return res.json();
+}
+
 /**
  * Run tasks with a max concurrency limit.
  * tasks: array of () => Promise<T>
@@ -487,7 +514,32 @@ export async function POST(req) {
           result.errors = errors;
           result.warnings = warnings;
           result.stats = stats;
-          result.pass = errors.length === 0;
+
+          // ── LLM-as-judge verification ────────────────────────────────
+          // Ask Opus 4.6 (different family to the generator) to critique
+          // the plan. Critical-severity issues fail the scenario alongside
+          // the deterministic validator errors. Best-effort — if the
+          // judge errors we log a warning but don't flip the scenario.
+          if (!cancelled?.()) {
+            try {
+              const judge = await verifyPlan(serverUrl, authHeaders, scenario, plan);
+              result.judge = judge;
+              if (judge?.verdict?.issues) {
+                const criticals = judge.verdict.issues.filter(x => x.severity === 'critical');
+                for (const c of criticals) {
+                  result.errors.push(`JUDGE: ${c.message}`);
+                }
+                const warns = judge.verdict.issues.filter(x => x.severity === 'warning');
+                for (const w of warns) {
+                  result.warnings.push(`JUDGE: ${w.message}`);
+                }
+              }
+            } catch (judgeErr) {
+              result.warnings.push(`Judge failed: ${judgeErr.message}`);
+            }
+          }
+
+          result.pass = result.errors.length === 0;
         } catch (err) {
           result.durationMs = Date.now() - scenarioStartTime;
           result.error = err.message;
@@ -505,6 +557,7 @@ export async function POST(req) {
           warnings: result.warnings,
           stats: result.stats,
           durationMs: result.durationMs,
+          judge: result.judge || null,
         });
 
         return result;
