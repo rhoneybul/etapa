@@ -1,4 +1,6 @@
 import { SCENARIOS, EDIT_SCENARIOS } from '@/lib/scenarios';
+import { SPEED_SCENARIOS } from '@/lib/speedScenarios';
+import path from 'path';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -402,7 +404,13 @@ export async function POST(req) {
       // Pre-allocate results array to preserve scenario order in final output
       const results = new Array(SCENARIOS.length).fill(null);
 
-      send({ type: 'start', total: SCENARIOS.length, totalEdits: EDIT_SCENARIOS.length, concurrency: CONCURRENCY });
+      send({
+        type: 'start',
+        total: SCENARIOS.length,
+        totalEdits: EDIT_SCENARIOS.length,
+        totalSpeed: SPEED_SCENARIOS.length,
+        concurrency: CONCURRENCY,
+      });
 
       // ── Run generation scenarios in parallel (CONCURRENCY at a time) ──────────
       const generationTasks = SCENARIOS.map((scenario, i) => async () => {
@@ -548,6 +556,114 @@ export async function POST(req) {
         else editFail++;
       }
 
+      // ── Run speed-rule unit scenarios (no LLM, pure deterministic checks) ─────
+      // These validate the rideSpeedRules module directly — they appear in the
+      // sidebar alongside plan scenarios so a full "Run Tests" covers BOTH the
+      // generator (via LLM) AND the speed clamp logic in a single pass.
+      let speedPass = 0, speedFail = 0;
+      const speedResults = new Array(SPEED_SCENARIOS.length).fill(null);
+      let rulesMod = null;
+      try {
+        // tests/dashboard/.next → repoRoot/server/src/lib. process.cwd() in Next
+        // production is tests/dashboard/, so two parents up.
+        const rulesPath = path.resolve(
+          process.cwd(), '..', '..', 'server', 'src', 'lib', 'rideSpeedRules.js'
+        );
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        rulesMod = require(rulesPath);
+      } catch (err) {
+        console.error('[run-tests] Could not load rideSpeedRules:', err);
+      }
+
+      for (let i = 0; i < SPEED_SCENARIOS.length; i++) {
+        const sc = SPEED_SCENARIOS[i];
+        send({ type: 'speed-start', index: i, name: sc.name });
+
+        const startedAt = Date.now();
+        const result = { name: sc.name, kind: 'speed-unit', group: sc.group, pass: false, errors: [], durationMs: null };
+
+        if (!rulesMod) {
+          result.errors = ['Could not load rideSpeedRules module'];
+        } else {
+          try {
+            const { targetSpeedKmh, realisticDistanceKm, normaliseActivity } = rulesMod;
+
+            if (sc.compareIndoorVsEndurance) {
+              // Indoor should produce a smaller distance than endurance.
+              const indoor = realisticDistanceKm({ durationMins: sc.durationMins, fitnessLevel: sc.fitnessLevel, subType: 'indoor', effort: 'easy' });
+              const endur  = realisticDistanceKm({ durationMins: sc.durationMins, fitnessLevel: sc.fitnessLevel, subType: 'endurance', effort: 'easy' });
+              if (!(indoor < endur)) result.errors.push(`indoor ${indoor} must be less than endurance ${endur}`);
+              result.actual = { indoor, endurance: endur };
+            } else if (sc.checkSpeedOnly) {
+              const speed = targetSpeedKmh({
+                fitnessLevel: sc.fitnessLevel,
+                subType: sc.subType,
+                effort: sc.effort,
+                isLongRide: sc.isLongRide,
+              });
+              result.actual = { targetSpeedKmh: Number(speed.toFixed(2)) };
+              if (speed < sc.expectSpeed.minKm || speed > sc.expectSpeed.maxKm) {
+                result.errors.push(`expected ${sc.expectSpeed.minKm}–${sc.expectSpeed.maxKm} km/h, got ${speed.toFixed(2)}`);
+              }
+            } else if (sc.clampFrom != null) {
+              // Normalise an activity that CAME from Claude with a specific
+              // distanceKm, then check the output is in the expected range.
+              const out = normaliseActivity({
+                type: sc.type || 'ride',
+                subType: sc.subType,
+                effort: sc.effort,
+                durationMins: sc.durationMins,
+                distanceKm: sc.clampFrom,
+              }, { fitnessLevel: sc.fitnessLevel, isLongRide: sc.isLongRide });
+              result.actual = { distanceKm: out.distanceKm };
+              if (sc.expectNull) {
+                if (out.distanceKm !== null) result.errors.push(`expected null, got ${out.distanceKm}`);
+              } else {
+                const { minKm, maxKm } = sc.expect;
+                if (out.distanceKm < minKm || out.distanceKm > maxKm) {
+                  result.errors.push(`expected ${minKm}–${maxKm} km, got ${out.distanceKm}`);
+                }
+              }
+            } else {
+              // Default path — compute realistic distance and check range.
+              const km = realisticDistanceKm({
+                durationMins: sc.durationMins,
+                fitnessLevel: sc.fitnessLevel,
+                subType: sc.subType,
+                effort: sc.effort,
+                isLongRide: sc.isLongRide,
+                type: sc.type,
+              });
+              result.actual = { distanceKm: km };
+              const { minKm, maxKm } = sc.expect;
+              if (km == null) {
+                result.errors.push('realisticDistanceKm returned null');
+              } else if (km < minKm || km > maxKm) {
+                result.errors.push(`expected ${minKm}–${maxKm} km, got ${km}`);
+              }
+            }
+
+            result.pass = result.errors.length === 0;
+          } catch (err) {
+            result.errors = [`exception: ${err.message}`];
+          }
+        }
+
+        result.durationMs = Date.now() - startedAt;
+        speedResults[i] = result;
+        if (result.pass) speedPass++; else speedFail++;
+
+        send({
+          type: 'speed-done',
+          index: i,
+          name: sc.name,
+          pass: result.pass,
+          errors: result.errors,
+          durationMs: result.durationMs,
+          actual: result.actual,
+        });
+      }
+
       // ── Final summary ──────────────────────────────────────────────────────────
       send({
         type: 'complete',
@@ -561,6 +677,9 @@ export async function POST(req) {
           editResults,
           editPassed: editPass,
           editFailed: editFail,
+          speedResults,
+          speedPassed: speedPass,
+          speedFailed: speedFail,
         },
       });
 

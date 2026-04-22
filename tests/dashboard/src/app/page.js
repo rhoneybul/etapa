@@ -1,7 +1,15 @@
 'use client';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { SCENARIOS } from '@/lib/scenarios';
+import { SPEED_SCENARIOS } from '@/lib/speedScenarios';
+
+// Merged list — speed tests appear below plan scenarios in the sidebar.
+// Each item keeps its original kind so detail rendering can branch.
+const ALL_SCENARIOS = [
+  ...SCENARIOS.map((s) => ({ ...s, kind: 'plan' })),
+  ...SPEED_SCENARIOS,
+];
 
 const DAY_NAMES = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -43,10 +51,22 @@ export default function Dashboard() {
     reader.readAsText(file);
   }, []);
 
-  const getResult = (idx) => apiResults?.results?.[idx] || null;
-  const scenario = SCENARIOS[selectedIdx];
+  // Results lookup — plan scenarios come from results[], speed scenarios
+  // from speedResults[]. idx is into the merged ALL_SCENARIOS list.
+  const getResult = useCallback((idx) => {
+    if (!apiResults) return null;
+    if (idx < SCENARIOS.length) return apiResults.results?.[idx] || null;
+    const speedIdx = idx - SCENARIOS.length;
+    return apiResults.speedResults?.[speedIdx] || null;
+  }, [apiResults]);
+
+  const scenario = ALL_SCENARIOS[selectedIdx];
   const result = getResult(selectedIdx);
   const totalWarnings = apiResults ? (apiResults.results || []).reduce((s, r) => s + (r.warnings?.length || 0), 0) : 0;
+
+  // Summary in header includes speed results too.
+  const totalPassed = (apiResults?.passed || 0) + (apiResults?.speedPassed || 0);
+  const totalFailed = (apiResults?.failed || 0) + (apiResults?.speedFailed || 0);
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -58,8 +78,8 @@ export default function Dashboard() {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, fontSize: 12, alignItems: 'center' }}>
           {apiResults ? (
             <>
-              <span style={{ padding: '3px 10px', borderRadius: 5, background: '#22222f', color: '#34d399' }}>{apiResults.passed || 0} passed</span>
-              <span style={{ padding: '3px 10px', borderRadius: 5, background: '#22222f', color: '#f87171' }}>{apiResults.failed || 0} failed</span>
+              <span style={{ padding: '3px 10px', borderRadius: 5, background: '#22222f', color: '#34d399' }}>{totalPassed} passed</span>
+              <span style={{ padding: '3px 10px', borderRadius: 5, background: '#22222f', color: '#f87171' }}>{totalFailed} failed</span>
               <span style={{ padding: '3px 10px', borderRadius: 5, background: '#22222f', color: '#fbbf24' }}>{totalWarnings} warnings</span>
               {apiResults.runAt && (
                 <span style={{ padding: '3px 10px', borderRadius: 5, background: '#22222f', color: '#8888a0' }}>{new Date(apiResults.runAt).toLocaleString()}</span>
@@ -88,8 +108,8 @@ export default function Dashboard() {
 
       {/* Main layout */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Sidebar */}
-        <Sidebar scenarios={SCENARIOS} selectedIdx={selectedIdx} onSelect={setSelectedIdx} getResult={getResult} />
+        {/* Sidebar — plan scenarios first, then speed rules divided out */}
+        <Sidebar scenarios={ALL_SCENARIOS} planCount={SCENARIOS.length} selectedIdx={selectedIdx} onSelect={setSelectedIdx} getResult={getResult} />
 
         {/* Detail */}
         <DetailPane scenario={scenario} result={result} index={selectedIdx} />
@@ -98,32 +118,42 @@ export default function Dashboard() {
   );
 }
 
-function Sidebar({ scenarios, selectedIdx, onSelect, getResult }) {
+function Sidebar({ scenarios, planCount, selectedIdx, onSelect, getResult }) {
   return (
     <div style={{ width: 320, minWidth: 320, borderRight: '1px solid #2d2d3d', overflowY: 'auto', background: '#0f0f13' }}>
       <div style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: '#8888a0', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #2d2d3d', position: 'sticky', top: 0, background: '#0f0f13', zIndex: 10 }}>
-        Scenarios ({scenarios.length})
+        Plan scenarios ({planCount})
       </div>
       {scenarios.map((s, i) => {
+        // Divider row inserted right before the first speed-unit scenario.
+        const isFirstSpeed = s.kind === 'speed-unit' && i === planCount;
         const r = getResult(i);
         const warnCount = r?.warnings?.length || 0;
         const acts = r?.stats?.totalActivities ? `${r.stats.totalActivities} acts` : '';
-        const dur = r?.durationMs ? `${(r.durationMs / 1000).toFixed(1)}s` : '';
+        const dur = r?.durationMs != null ? `${(r.durationMs / 1000).toFixed(r.durationMs < 1000 ? 2 : 1)}s` : '';
         const metaParts = [acts, dur].filter(Boolean).join(' · ');
+
         return (
-          <div key={i} onClick={() => onSelect(i)}
-            style={{
-              padding: '10px 16px', cursor: 'pointer', borderBottom: '1px solid #2d2d3d',
-              display: 'flex', alignItems: 'flex-start', gap: 10, transition: '.1s',
-              background: i === selectedIdx ? '#1a1a24' : 'transparent',
-              borderLeft: i === selectedIdx ? '3px solid #E8458B' : '3px solid transparent',
-            }}>
-            <span style={{ fontSize: 11, color: '#8888a0', minWidth: 22, paddingTop: 2 }}>{i + 1}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
-              <div style={{ fontSize: 11, color: '#8888a0', marginTop: 2, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                <Badge pass={r?.pass} warnings={warnCount} />
-                {metaParts && <span>{metaParts}</span>}
+          <div key={i}>
+            {isFirstSpeed && (
+              <div style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: '#8888a0', textTransform: 'uppercase', letterSpacing: 0.5, borderTop: '1px solid #2d2d3d', borderBottom: '1px solid #2d2d3d', background: '#0f0f13' }}>
+                Speed rules ({scenarios.length - planCount})
+              </div>
+            )}
+            <div onClick={() => onSelect(i)}
+              style={{
+                padding: '10px 16px', cursor: 'pointer', borderBottom: '1px solid #2d2d3d',
+                display: 'flex', alignItems: 'flex-start', gap: 10, transition: '.1s',
+                background: i === selectedIdx ? '#1a1a24' : 'transparent',
+                borderLeft: i === selectedIdx ? '3px solid #E8458B' : '3px solid transparent',
+              }}>
+              <span style={{ fontSize: 11, color: '#8888a0', minWidth: 22, paddingTop: 2 }}>{i + 1}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
+                <div style={{ fontSize: 11, color: '#8888a0', marginTop: 2, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <Badge pass={r?.pass} warnings={warnCount} />
+                  {metaParts && <span>{metaParts}</span>}
+                </div>
               </div>
             </div>
           </div>
@@ -134,6 +164,11 @@ function Sidebar({ scenarios, selectedIdx, onSelect, getResult }) {
 }
 
 function DetailPane({ scenario, result, index }) {
+  // Speed-unit scenarios have a different shape — render a simple
+  // expected-vs-actual view instead of the plan/goal cards.
+  if (scenario?.kind === 'speed-unit') {
+    return <SpeedUnitDetail scenario={scenario} result={result} index={index} />;
+  }
   const { goal: g, config: c } = scenario;
   const hasPlan = result?.plan?.activities?.length > 0;
   const warnCount = result?.warnings?.length || 0;
@@ -385,6 +420,97 @@ function VolumeChart({ plan }) {
           <div style={{ fontSize: 9, color: '#8888a0' }}>W{i + 1}</div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ── Speed-unit detail view ─────────────────────────────────────────────────
+// Speed-rule scenarios are pure assertions — no plan, no goal. This pane
+// renders the inputs (level, subtype, duration) + the expected band vs the
+// actual value the rules module produced. Same Badge treatment as plan
+// scenarios so pass/fail is consistent across the dashboard.
+function SpeedUnitDetail({ scenario, result, index }) {
+  const errCount = result?.errors?.length || 0;
+  const passing  = result?.pass === true;
+
+  const rows = [
+    ['Group',         scenario.group],
+    ['Level',         scenario.fitnessLevel],
+    scenario.subType   && ['Subtype',        scenario.subType],
+    scenario.effort    && ['Effort',         scenario.effort],
+    scenario.isLongRide && ['Long ride',      'yes'],
+    scenario.durationMins != null && ['Duration',       `${scenario.durationMins} min`],
+    scenario.clampFrom  != null && ['Claude input',   `${scenario.clampFrom} km`],
+    scenario.type      && ['Type',           scenario.type],
+  ].filter(Boolean);
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: 0 }}>
+      <div style={{ maxWidth: 1000, margin: '0 auto', padding: '20px 24px' }}>
+        {/* Title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>#{index + 1} {esc(scenario.name)}</h2>
+          {result && <Badge pass={result.pass} warnings={0} />}
+        </div>
+
+        <p style={{ fontSize: 13, color: '#8888a0', margin: '0 0 20px' }}>
+          Speed-rule unit test — evaluated directly against <code style={{ background: '#22222f', padding: '1px 5px', borderRadius: 3 }}>server/src/lib/rideSpeedRules.js</code>. No Claude call, no server round-trip.
+        </p>
+
+        {/* Inputs + assertion side by side */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 20 }}>
+          <div style={{ background: '#1a1a24', border: '1px solid #2d2d3d', borderRadius: 8, padding: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#8888a0', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Inputs</div>
+            <table style={{ width: '100%', fontSize: 12 }}>
+              <tbody>
+                {rows.map(([k, v]) => (
+                  <tr key={k}>
+                    <td style={{ color: '#8888a0', padding: '3px 0', width: '40%' }}>{k}</td>
+                    <td style={{ color: '#e4e4ef', padding: '3px 0', fontFamily: 'monospace' }}>{String(v)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ background: '#1a1a24', border: '1px solid #2d2d3d', borderRadius: 8, padding: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#8888a0', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Assertion</div>
+            <div style={{ fontSize: 12, color: '#e4e4ef', lineHeight: 1.6 }}>
+              {scenario.checkSpeedOnly && scenario.expectSpeed && (
+                <div>Target speed must be between <strong>{scenario.expectSpeed.minKm}</strong> and <strong>{scenario.expectSpeed.maxKm}</strong> km/h.</div>
+              )}
+              {scenario.expect && (
+                <div>Distance must be between <strong>{scenario.expect.minKm}</strong> and <strong>{scenario.expect.maxKm}</strong> km.</div>
+              )}
+              {scenario.expectNull && <div>Output <code>distanceKm</code> must be <strong>null</strong>.</div>}
+              {scenario.compareIndoorVsEndurance && <div>Indoor distance must be <strong>less than</strong> endurance distance.</div>}
+            </div>
+
+            {result?.actual && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #2d2d3d', fontSize: 12 }}>
+                <div style={{ color: '#8888a0', marginBottom: 4 }}>Actual</div>
+                <pre style={{ margin: 0, fontFamily: 'monospace', color: passing ? '#34d399' : '#f87171', fontSize: 12 }}>{JSON.stringify(result.actual, null, 2)}</pre>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Errors if any */}
+        {errCount > 0 && (
+          <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid #7f1d1d', borderRadius: 8, padding: 12, marginBottom: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#f87171', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Errors ({errCount})</div>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#f87171' }}>
+              {(result.errors || []).map((e, i) => (<li key={i}>{e}</li>))}
+            </ul>
+          </div>
+        )}
+
+        {!result && (
+          <div style={{ background: '#1a1a24', border: '1px solid #2d2d3d', borderRadius: 8, padding: 20, textAlign: 'center', color: '#8888a0', fontSize: 13 }}>
+            No result yet — click <strong>Run Tests</strong> in the header.
+          </div>
+        )}
+      </div>
     </div>
   );
 }

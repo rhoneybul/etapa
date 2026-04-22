@@ -188,7 +188,7 @@ export default function ResultsPage() {
 function handleEvent(data, addLog, setProgress, setFinalOutput) {
   switch (data.type) {
     case 'start':
-      addLog({ type: 'info', text: `Starting ${data.total} generation + ${data.totalEdits} edit scenarios...` });
+      addLog({ type: 'info', text: `Starting ${data.total} generation + ${data.totalEdits} edit + ${data.totalSpeed || 0} speed scenarios...` });
       break;
     case 'scenario-start':
       addLog({ type: 'muted', text: `▶ [${data.index + 1}/${SCENARIOS.length}] ${data.name}...` });
@@ -220,12 +220,28 @@ function handleEvent(data, addLog, setProgress, setFinalOutput) {
       setProgress(p => ({ ...p, editsDone: data.index + 1 }));
       break;
     }
+    case 'speed-start':
+      addLog({ type: 'muted', text: `▶ [SPEED ${data.index + 1}] ${data.name}...` });
+      break;
+    case 'speed-done': {
+      const durStr = data.durationMs != null ? ` (${data.durationMs}ms)` : '';
+      if (data.pass) {
+        addLog({ type: 'pass', text: `  ✅ PASS${durStr}` });
+      } else {
+        addLog({ type: 'fail', text: `  ❌ FAIL${durStr}` });
+        data.errors?.forEach(e => addLog({ type: 'fail', text: `     ✗ ${e}` }));
+      }
+      break;
+    }
     case 'complete': {
       const o = data.output;
       addLog({ type: 'info', text: '' });
       addLog({ type: 'info', text: `═══ COMPLETE ═══` });
       addLog({ type: 'pass', text: `Generation: ${o.passed}/${o.totalScenarios} passed, ${o.failed} failed` });
       addLog({ type: 'pass', text: `Edits: ${o.editPassed}/${o.editResults?.length || 0} passed, ${o.editFailed} failed` });
+      if (o.speedResults) {
+        addLog({ type: 'pass', text: `Speed rules: ${o.speedPassed}/${o.speedResults.length} passed, ${o.speedFailed} failed` });
+      }
       setFinalOutput(o);
       break;
     }
