@@ -99,6 +99,7 @@ export default function HomeScreen({ navigation, route }) {
   // don't want a jarring second loader on top of it.
   const [loading, setLoading] = useState(!freshPlanId);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [planLimits, setPlanLimits] = useState(null); // { used, limit, remaining, unlimited }
   const [upgrading, setUpgrading] = useState(false);
   const [subPlan, setSubPlan] = useState(null); // 'starter' | 'monthly' | 'annual' | null
   const [unlocking, setUnlocking] = useState(false);
@@ -270,6 +271,20 @@ export default function HomeScreen({ navigation, route }) {
     return unsub;
   }, [navigation, load]);
 
+  // Fetch rate-limit usage so we can show the user how many plans they have
+  // remaining today. Refresh on focus so it stays accurate.
+  const refreshPlanLimits = useCallback(async () => {
+    try {
+      const res = await api.users.limits();
+      if (res?.plans) setPlanLimits(res.plans);
+    } catch {}
+  }, []);
+  useEffect(() => { refreshPlanLimits(); }, [refreshPlanLimits]);
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', refreshPlanLimits);
+    return unsub;
+  }, [navigation, refreshPlanLimits]);
+
   // Deselect day when navigating to a different week
   useEffect(() => { setSelectedDayIdx(null); }, [currentWeek]);
 
@@ -301,6 +316,18 @@ export default function HomeScreen({ navigation, route }) {
 
   // Enter the plan creation flow — paywall is shown after the plan is generated
   const handleMakePlan = async () => {
+    // Client-side guard: show a friendly alert if the user is at the weekly
+    // plan cap. Server also enforces this (429), but this saves the user
+    // from walking through the full goal-setup wizard only to hit a wall
+    // at the end.
+    if (planLimits && !planLimits.unlimited && planLimits.remaining === 0) {
+      Alert.alert(
+        'Weekly plan limit reached',
+        `You've generated ${planLimits.used} of ${planLimits.limit} plans in the last 7 days. The count resets as individual plans age out. If you need more, contact support.`,
+        [{ text: 'OK' }],
+      );
+      return;
+    }
     const subscribed = __DEV__ ? false : await isSubscribed();
     navigation.navigate('GoalSetup', { requirePaywall: !subscribed });
   };
@@ -829,13 +856,26 @@ export default function HomeScreen({ navigation, route }) {
 
           {/* New plan button */}
           <TouchableOpacity
-            style={s.newPlanBtn}
+            style={[s.newPlanBtn, planLimits && !planLimits.unlimited && planLimits.remaining === 0 && { opacity: 0.5 }]}
             onPress={handleMakePlan}
             activeOpacity={0.8}
           >
             <Text style={s.newPlanBtnPlus}>+</Text>
             <Text style={s.newPlanBtnText}>New plan</Text>
           </TouchableOpacity>
+          {/* Rolling 24h plan usage — always visible when non-unlimited, so the
+              user can see their remaining quota before starting a generation. */}
+          {planLimits && !planLimits.unlimited && (
+            <Text style={[
+              s.planLimitHint,
+              planLimits.remaining === 0 && s.planLimitHintBlocked,
+              planLimits.remaining > 0 && planLimits.remaining <= 2 && s.planLimitHintWarning,
+            ]}>
+              {planLimits.remaining === 0
+                ? `Weekly limit reached \u2014 ${planLimits.used}/${planLimits.limit} plans in last 7 days`
+                : `${planLimits.remaining} of ${planLimits.limit} plans left this week`}
+            </Text>
+          )}
 
           {/* Plan tabs — always visible, scrollable */}
           {plans.length > 0 && (
@@ -1608,6 +1648,13 @@ const s = StyleSheet.create({
   },
   newPlanBtnPlus: { fontSize: 16, fontWeight: '400', color: colors.primary },
   newPlanBtnText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
+  planLimitHint: {
+    marginLeft: 20, marginBottom: 16, marginTop: -4,
+    fontSize: 11, fontWeight: '400', fontFamily: FF.regular,
+    color: colors.textFaint,
+  },
+  planLimitHintWarning: { color: colors.primary },
+  planLimitHintBlocked: { color: '#ef4444', fontWeight: '500' },
 
   // Plan tabs
   planTabsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 8 },

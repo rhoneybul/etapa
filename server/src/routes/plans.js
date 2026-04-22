@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const { supabase } = require('../lib/supabase');
+const rateLimits = require('../lib/rateLimits');
 const router = Router();
 
 // GET /api/plans — list user's plans with activities
@@ -303,6 +304,9 @@ router.delete('/:id/versions/:snapshotId', async (req, res, next) => {
 // Body: { goal, config }  where config may contain tweaked fitness/weeks/days
 router.post('/:id/regenerate', async (req, res, next) => {
   try {
+    // Weekly plan limit (counts initial + regenerations from plan_generations)
+    if (await rateLimits.checkAndBlockPlan(req, res)) return;
+
     const userId = req.user.id;
     const planId = req.params.id;
     const { goal, config } = req.body || {};

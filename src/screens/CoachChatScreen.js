@@ -98,6 +98,8 @@ export default function CoachChatScreen({ navigation, route }) {
   const [lastFailedMsg, setLastFailedMsg] = useState(null); // last user message content that failed
   const [userName, setUserName] = useState(null);
   const [stravaActivities, setStravaActivities] = useState([]);
+  // Weekly coach-message limit: { used, limit, remaining, unlimited }
+  const [limits, setLimits] = useState(null);
   const scrollRef = useRef(null);
 
   // ── Telemetry refs ─────────────────────────────────────────────────────────
@@ -180,6 +182,16 @@ export default function CoachChatScreen({ navigation, route }) {
       api.chatSessions.save(plan.id, weekNum, messages).catch(() => {});
     }
   }, [messages, plan, weekNum]);
+
+  // Fetch the user's current rate-limit usage on mount and after each send,
+  // so the "X of 25 this week" indicator stays accurate.
+  const refreshLimits = useCallback(async () => {
+    try {
+      const res = await api.users.limits();
+      if (res?.coach_messages) setLimits(res.coach_messages);
+    } catch {}
+  }, []);
+  useEffect(() => { refreshLimits(); }, [refreshLimits]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -338,23 +350,33 @@ export default function CoachChatScreen({ navigation, route }) {
     try {
       const result = await coachChat(apiMessages, context);
 
-      // Daily AI spend limit reached — server returned 429. Show a friendly
-      // "limit reached" message rather than a generic error and fire a
-      // dedicated analytics event so we can see how often this happens.
+      // Rate limit reached — server returned 429. Two possible causes:
+      //   - Weekly coach-message limit (25/week default)
+      //   - Daily Claude cost cap (spend-based)
+      // Both surface as a friendly "limit reached" message with a dedicated
+      // analytics event so we can see how often it happens.
       if (result.rateLimited) {
         setLastFailedMsg(null);
         analytics.track('chat_rate_limited', {
           coachId: planConfig?.coachId || null,
+          kind: result.rateLimitKind || 'cost_cap',
+          used: result.rateLimitUsed ?? null,
+          limit: result.rateLimitMax ?? null,
           spentUsd: result.spentUsd ?? null,
           capUsd: result.capUsd ?? null,
           scope: weekNum ? 'week' : 'plan',
         });
+        const msg = result.rateLimitKind === 'coach_msgs_per_week'
+          ? `You've sent ${result.rateLimitUsed ?? '?'} of ${result.rateLimitMax ?? '25'} coach messages this week. The count resets as individual messages age out — come back in a day or two and you'll have some back.`
+          : "You've reached today's coach limit. It resets in 24 hours — thanks for chatting so much. Come back tomorrow.";
         setMessages(prev => [...prev, {
           role: 'assistant',
-          content: 'You\'ve reached today\'s coach limit. It resets in 24 hours — thanks for chatting so much. Come back tomorrow.',
+          content: msg,
           ts: Date.now(),
           rateLimited: true,
         }]);
+        // Update limits display to reflect the block
+        refreshLimits();
         setSending(false);
         return;
       }
@@ -385,6 +407,8 @@ export default function CoachChatScreen({ navigation, route }) {
       // Record the moment the coach reply landed — used by the unmount
       // handler to decide whether the user bailed "shortly after a response".
       lastCoachResponseAtRef.current = Date.now();
+      // Refresh the weekly-usage indicator so the counter updates immediately.
+      refreshLimits();
     } catch {
       setLastFailedMsg(userMsg.content);
       setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong.', ts: Date.now(), failed: true }]);
@@ -688,23 +712,42 @@ export default function CoachChatScreen({ navigation, route }) {
             <View style={{ height: 16 }} />
           </ScrollView>
 
+          {/* Weekly coach-message usage indicator — always visible so the user
+              knows their remaining quota before they hit the limit. */}
+          {limits && !limits.unlimited && (
+            <View style={[
+              s.limitIndicator,
+              limits.remaining === 0 && s.limitIndicatorBlocked,
+              limits.remaining > 0 && limits.remaining <= 5 && s.limitIndicatorWarning,
+            ]}>
+              <Text style={[
+                s.limitIndicatorText,
+                limits.remaining === 0 && s.limitIndicatorTextBlocked,
+              ]}>
+                {limits.remaining === 0
+                  ? `Weekly coach limit reached (${limits.used}/${limits.limit})`
+                  : `${limits.used}/${limits.limit} coach messages this week`}
+              </Text>
+            </View>
+          )}
+
           {/* Input bar */}
           <View style={s.inputBar}>
             <TextInput
               style={s.input}
               value={input}
               onChangeText={setInput}
-              placeholder="Ask your coach anything..."
+              placeholder={limits?.remaining === 0 ? 'Weekly limit reached — check back soon' : 'Ask your coach anything...'}
               placeholderTextColor={colors.textFaint}
               multiline
               maxLength={1000}
-              editable={!sending}
+              editable={!sending && (!limits || limits.unlimited || limits.remaining > 0)}
               returnKeyType="default"
             />
             <TouchableOpacity
-              style={[s.sendBtn, (!input.trim() || sending) && s.sendBtnDisabled]}
+              style={[s.sendBtn, (!input.trim() || sending || (limits && !limits.unlimited && limits.remaining === 0)) && s.sendBtnDisabled]}
               onPress={handleSend}
-              disabled={!input.trim() || sending}
+              disabled={!input.trim() || sending || (limits && !limits.unlimited && limits.remaining === 0)}
             >
               <Text style={s.sendBtnText}>{'\u2191'}</Text>
             </TouchableOpacity>
@@ -785,6 +828,24 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center',
   },
   updateDismissText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
+
+  // Weekly-message usage indicator (sits above the input bar)
+  limitIndicator: {
+    paddingHorizontal: 16, paddingVertical: 6,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1, borderTopColor: colors.border,
+    alignItems: 'center',
+  },
+  limitIndicatorText: {
+    fontSize: 11, fontWeight: '500', fontFamily: FF.medium,
+    color: colors.textFaint, letterSpacing: 0.3,
+  },
+  limitIndicatorWarning: { backgroundColor: 'rgba(232,69,139,0.06)' },
+  limitIndicatorBlocked: {
+    backgroundColor: 'rgba(239,68,68,0.10)',
+    borderTopColor: 'rgba(239,68,68,0.25)',
+  },
+  limitIndicatorTextBlocked: { color: '#ef4444' },
 
   // Input bar
   inputBar: {

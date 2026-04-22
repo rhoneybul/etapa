@@ -15,6 +15,7 @@ const { supabase } = require('../lib/supabase');
 const { sendPushToUser } = require('../lib/pushService');
 const { logClaudeUsage } = require('../lib/claudeLogger');
 const { checkAndBlockIfOverCap } = require('../lib/claudeCostCap');
+const rateLimits = require('../lib/rateLimits');
 const { normaliseActivities } = require('../lib/rideSpeedRules');
 const planPostProcessors = require('../lib/planPostProcessors');
 const planGenLogger = require('../lib/planGenLogger');
@@ -1528,6 +1529,11 @@ Answer "no" if the message is:
 
 // ── Coach chat endpoint (multi-turn conversation) ────────────────────────
 router.post('/coach-chat', async (req, res) => {
+  // Weekly per-user message limit (25/7d default). Check BEFORE the cost cap
+  // so users hit the "you've sent N messages this week" error instead of the
+  // dollar-spend error, which is more intuitive.
+  if (await rateLimits.checkAndBlockCoachMessage(req, res)) return;
+
   // Highest-volume endpoint — most likely to run up a bill, most important to cap.
   // A chatty user on a slow afternoon can easily hit the limit.
   if (await checkAndBlockIfOverCap(req, res, { feature: 'coach_chat' })) return;
@@ -1747,6 +1753,17 @@ Only include the plan_update block when you are actually making changes. For que
     if (updatedActivities && updatedActivities.length > 0) {
       result.updatedActivities = updatedActivities;
     }
+
+    // Log the user-sent message for the weekly rate-limit counter. Logged
+    // only after a successful response so failed sends don't count against
+    // the user's quota.
+    if (req.user?.id && latestUserMsg) {
+      await rateLimits.logCoachMessage(
+        req.user.id,
+        context?.sessionId || null,
+        context?.weekNum || null
+      );
+    }
     res.json(result);
   } catch (err) {
     console.error('Coach chat error:', err);
@@ -1846,6 +1863,9 @@ async function startGenerationJob({ userId, goal, config, replacePlanId = null, 
 // ignored so it can't be abused to drive up Opus bills.
 router.post('/generate-plan-async', async (req, res) => {
   try {
+    // Weekly plan limit (includes regenerations — counted from plan_generations)
+    if (await rateLimits.checkAndBlockPlan(req, res)) return;
+
     const { goal, config, testModel } = req.body;
 
     // Only accept a model override from the test key path.
@@ -1862,6 +1882,8 @@ router.post('/generate-plan-async', async (req, res) => {
       config,
       modelOverride,
     });
+    // Invalidate plan cache so subsequent /api/user/limits calls see the new count
+    rateLimits.invalidatePlanCache(req.user?.id);
     res.json({ jobId, usingModel: modelOverride });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message || 'Generation failed' });

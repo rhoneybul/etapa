@@ -278,6 +278,19 @@ export default function PlanLoadingScreen({ navigation, route }) {
       startPolling(jobId);
       return; // polling takes over from here
     } catch (err) {
+      // Rate limit hit — show a specific error immediately, don't fall back
+      // to the sync path (which would just hit the same 429 again).
+      if (err?.status === 429 && err?.code === 'plans_per_week') {
+        analytics.events.planGenerationFailed('rate_limit_plans_per_week');
+        if (!mountedRef.current) return;
+        setFailure({
+          error: err.payload?.detail || err.message,
+          rateLimit: true,
+          used: err.payload?.used ?? null,
+          limit: err.payload?.limit ?? null,
+        });
+        return;
+      }
       console.warn('[PlanLoading] Async generation failed, falling back to sync:', err);
     }
 
@@ -358,6 +371,7 @@ export default function PlanLoadingScreen({ navigation, route }) {
   // throws. Replaces the old silent "go back after 2 seconds" flow so users
   // actually understand what happened and can either retry or go back.
   if (failure) {
+    const isRateLimit = !!failure.rateLimit;
     return (
       <View style={s.container}>
         <SafeAreaView style={s.safe}>
@@ -366,33 +380,43 @@ export default function PlanLoadingScreen({ navigation, route }) {
               <View style={s.failureIconWrap}>
                 <Text style={s.failureIcon}>!</Text>
               </View>
-              <Text style={s.title}>Couldn't build your plan</Text>
-              <Text style={s.failureMessage}>
-                Something went wrong while your coach was building your plan. Your details are saved — try again and it usually works on the second attempt.
+              <Text style={s.title}>
+                {isRateLimit ? 'Weekly plan limit reached' : "Couldn't build your plan"}
               </Text>
-              <View style={s.failureReasonBox}>
-                <Text style={s.failureReasonLabel}>Error details</Text>
-                <Text style={s.failureReasonText}>{failure.error}</Text>
-              </View>
+              <Text style={s.failureMessage}>
+                {isRateLimit
+                  ? `You've generated ${failure.used ?? '?'} of ${failure.limit ?? '5'} plans in the last 7 days. The count resets on a rolling window \u2014 individual plans age out one at a time. If you need more, contact support.`
+                  : 'Something went wrong while your coach was building your plan. Your details are saved \u2014 try again and it usually works on the second attempt.'}
+              </Text>
+              {!isRateLimit && (
+                <View style={s.failureReasonBox}>
+                  <Text style={s.failureReasonLabel}>Error details</Text>
+                  <Text style={s.failureReasonText}>{failure.error}</Text>
+                </View>
+              )}
             </View>
           </ScrollView>
 
           <View style={s.bottom}>
+            {!isRateLimit && (
+              <TouchableOpacity
+                style={s.retryBtn}
+                onPress={handleRetry}
+                disabled={retrying}
+                activeOpacity={0.85}
+              >
+                <Text style={s.retryBtnText}>{retrying ? 'Trying again...' : 'Try again'}</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
-              style={s.retryBtn}
-              onPress={handleRetry}
-              disabled={retrying}
-              activeOpacity={0.85}
-            >
-              <Text style={s.retryBtnText}>{retrying ? 'Trying again...' : 'Try again'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={s.cancelBtn}
+              style={isRateLimit ? s.retryBtn : s.cancelBtn}
               onPress={() => navigation.goBack()}
               disabled={retrying}
-              activeOpacity={0.7}
+              activeOpacity={isRateLimit ? 0.85 : 0.7}
             >
-              <Text style={s.cancelText}>Go back</Text>
+              <Text style={isRateLimit ? s.retryBtnText : s.cancelText}>
+                {isRateLimit ? 'Got it' : 'Go back'}
+              </Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -411,7 +435,7 @@ export default function PlanLoadingScreen({ navigation, route }) {
             </Animated.View>
 
             <Text style={s.title}>Building your plan</Text>
-            <Text style={s.subtitle}>Takes about 60{'\u2013'}90 seconds.</Text>
+            <Text style={s.subtitle}>Takes between 1 and 2 minutes.</Text>
             <Text style={s.message}>{message}</Text>
 
             <View style={s.progressTrack}>

@@ -51,6 +51,11 @@ export const api = {
   users: {
     me: () => request('GET', '/api/users/me'),
     deleteAccount: () => request('DELETE', '/api/users/me'),
+    // Current rolling usage + effective limits for the authed user.
+    // Shape:
+    //   { plans: { used, limit, remaining, resets_at, unlimited },
+    //     coach_messages: { used, limit, remaining, resets_at, unlimited } }
+    limits: () => request('GET', '/api/users/limits'),
   },
 
   goals: {

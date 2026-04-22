@@ -112,6 +112,18 @@ export default function ConfigPage() {
   const [savingCoupons, setSavingCoupons] = useState(false);
   const [savedCouponsFlash, setSavedCouponsFlash] = useState(false);
 
+  // Rate limits — global defaults, admin-editable. Written into app_config.
+  const [rateLimitDefaults, setRateLimitDefaults] = useState<{
+    plansPerWeek: number;
+    coachMsgsPerWeek: number;
+    envFallback: { plansPerWeek: number; coachMsgsPerWeek: number };
+  } | null>(null);
+  const [rlPlansText, setRlPlansText] = useState("");
+  const [rlCoachText, setRlCoachText] = useState("");
+  const [rlSaving, setRlSaving] = useState(false);
+  const [rlSavedFlash, setRlSavedFlash] = useState(false);
+  const [rlError, setRlError] = useState<string | null>(null);
+
   // Saved (server) state — used to detect dirty
   const savedMaintenance = useRef<MaintenanceConfig>(maintenance);
   const savedTrial = useRef<TrialConfig>(trial);
@@ -197,7 +209,47 @@ export default function ConfigPage() {
         }
       })
       .finally(() => setLoading(false));
+
+    // Fetch rate limit defaults (separate endpoint — lives in app_config but
+    // is surfaced via a typed API for clarity).
+    fetch("/api/rate-limit-defaults")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.plansPerWeek !== undefined) {
+          setRateLimitDefaults(data);
+          setRlPlansText(String(data.plansPerWeek));
+          setRlCoachText(String(data.coachMsgsPerWeek));
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  async function saveRateLimitDefaults() {
+    setRlSaving(true);
+    setRlError(null);
+    try {
+      const plansPerWeek = parseInt(rlPlansText, 10);
+      const coachMsgsPerWeek = parseInt(rlCoachText, 10);
+      if (!Number.isFinite(plansPerWeek) || plansPerWeek < 0
+          || !Number.isFinite(coachMsgsPerWeek) || coachMsgsPerWeek < 0) {
+        throw new Error("Both limits must be non-negative integers.");
+      }
+      const res = await fetch("/api/rate-limit-defaults", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plansPerWeek, coachMsgsPerWeek }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `Save failed (${res.status})`);
+      setRateLimitDefaults((prev) => prev ? { ...prev, plansPerWeek: body.plansPerWeek, coachMsgsPerWeek: body.coachMsgsPerWeek } : prev);
+      setRlSavedFlash(true);
+      setTimeout(() => setRlSavedFlash(false), 1500);
+    } catch (e: any) {
+      setRlError(e.message);
+    } finally {
+      setRlSaving(false);
+    }
+  }
 
   // ── Save handlers ──────────────────────────────────────────────────────────
 
@@ -335,6 +387,58 @@ export default function ConfigPage() {
       <div>
         <h1 className="text-lg font-semibold text-white mb-1">Remote Config</h1>
         <p className="text-sm text-etapa-textMuted">Control app behaviour remotely. Changes take effect immediately.</p>
+      </div>
+
+      {/* Global Rate Limits */}
+      <div className="bg-etapa-surface border border-etapa-border rounded-xl p-6">
+        <h2 className="text-sm font-semibold text-white mb-1">Global Rate Limits</h2>
+        <p className="text-xs text-etapa-textMuted mb-4">
+          Default caps applied to every user. Individual users can be given higher or lower limits
+          on their detail page. Env vars set an ultimate fallback{rateLimitDefaults ? ` (currently ${rateLimitDefaults.envFallback.plansPerWeek} / ${rateLimitDefaults.envFallback.coachMsgsPerWeek})` : ""}.
+        </p>
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <label className="text-xs font-medium text-etapa-textMuted block mb-1">Plans per week</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={rlPlansText}
+                onChange={(e) => setRlPlansText(e.target.value.replace(/[^\d]/g, ""))}
+                className="w-full px-3 py-2 bg-etapa-surfaceLight border border-etapa-border rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-etapa-primary"
+              />
+            </div>
+            <div className="pt-5 text-xs text-etapa-textFaint">rolling 7 days, includes regenerations</div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <label className="text-xs font-medium text-etapa-textMuted block mb-1">Coach messages per week</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={rlCoachText}
+                onChange={(e) => setRlCoachText(e.target.value.replace(/[^\d]/g, ""))}
+                className="w-full px-3 py-2 bg-etapa-surfaceLight border border-etapa-border rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-etapa-primary"
+              />
+            </div>
+            <div className="pt-5 text-xs text-etapa-textFaint">rolling 7 days, user-sent only</div>
+          </div>
+        </div>
+
+        {rlError && <p className="text-xs text-red-400 mt-3">{rlError}</p>}
+
+        <div className="flex items-center gap-3 mt-4">
+          <button
+            type="button"
+            disabled={rlSaving}
+            onClick={saveRateLimitDefaults}
+            className="px-4 py-2 rounded-lg bg-etapa-primary text-white text-sm font-medium disabled:opacity-50"
+          >
+            {rlSaving ? "Saving..." : "Save defaults"}
+          </button>
+          {rlSavedFlash && <span className="text-xs text-green-400">Saved</span>}
+        </div>
       </div>
 
       {/* Trial Period */}

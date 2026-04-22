@@ -52,6 +52,16 @@ export async function startAsyncPlanGeneration(goal, config) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
+    // Rate-limit: surface the structured payload so callers can show a
+    // specific "you've generated N plans today" message rather than a
+    // generic "Failed to start" error.
+    if (res.status === 429) {
+      const e = new Error(err.error || 'Weekly plan limit reached');
+      e.status = 429;
+      e.code = err.kind || 'rate_limit';
+      e.payload = err;
+      throw e;
+    }
     throw new Error(err.error || 'Failed to start plan generation');
   }
 
@@ -667,6 +677,8 @@ export async function coachChat(messages, context) {
     // Try to extract a useful error message from the server
     let errMsg = 'Could not reach your AI coach right now. Please try again.';
     let rateLimited = false;
+    let rateLimitKind = null; // 'coach_msgs_per_week' | 'cost_cap' | null
+    let rateLimitUsed = null, rateLimitMax = null;
     let capUsd = null, spentUsd = null;
     try {
       const errData = await response.json();
@@ -674,19 +686,28 @@ export async function coachChat(messages, context) {
       if (response.status === 401 || response.status === 403) {
         errMsg = 'Your session has expired. Please sign in again to chat with your coach.';
       } else if (response.status === 429) {
-        // Daily per-user Claude cost cap tripped. Surface as a rate-limit state
-        // so the screen can render a friendly "limit reached, try tomorrow" UI
-        // rather than a generic error.
+        // Two possible 429 causes:
+        //   1. Weekly coach-message limit (kind='coach_msgs_per_week')
+        //   2. Daily Claude cost cap (no kind field, has cap_usd/spent_usd)
         rateLimited = true;
-        errMsg = errData?.detail || 'You\'ve reached today\'s AI limit. It resets in 24 hours.';
-        capUsd = errData?.cap_usd ?? null;
-        spentUsd = errData?.spent_usd ?? null;
+        if (errData?.kind === 'coach_msgs_per_week') {
+          rateLimitKind = 'coach_msgs_per_week';
+          rateLimitUsed = errData?.used ?? null;
+          rateLimitMax = errData?.limit ?? null;
+          errMsg = errData?.detail
+            || `You've sent ${rateLimitUsed} of ${rateLimitMax} coach messages this week. The count resets as individual messages age out.`;
+        } else {
+          rateLimitKind = 'cost_cap';
+          errMsg = errData?.detail || "You've reached today's AI limit. It resets in 24 hours.";
+          capUsd = errData?.cap_usd ?? null;
+          spentUsd = errData?.spent_usd ?? null;
+        }
       } else if (errData?.error) {
         errMsg = errData.error;
       }
     } catch {}
     console.warn('Coach chat server error:', response.status, errMsg);
-    return { reply: errMsg, rateLimited, capUsd, spentUsd };
+    return { reply: errMsg, rateLimited, rateLimitKind, rateLimitUsed, rateLimitMax, capUsd, spentUsd };
   } catch (err) {
     console.warn('Coach chat failed:', err);
     return { reply: 'Could not connect to the server. Check your internet connection and try again.' };

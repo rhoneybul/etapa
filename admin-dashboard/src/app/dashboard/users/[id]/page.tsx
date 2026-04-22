@@ -199,6 +199,26 @@ export default function UserDetailPage() {
     weeks: "",
   });
 
+  // Rate limits (per-user overrides + current usage)
+  interface RateLimitsData {
+    weeklyPlanLimit: number | null;
+    weeklyCoachMsgLimit: number | null;
+    note: string | null;
+    updatedAt: string | null;
+    defaults: { plansPerWeek: number; coachMsgsPerWeek: number };
+    usage: { plans7d: number; coachMsgs7d: number };
+  }
+  const [rlData, setRlData] = useState<RateLimitsData | null>(null);
+  const [rlLoading, setRlLoading] = useState(false);
+  const [rlSaving, setRlSaving] = useState(false);
+  const [rlError, setRlError] = useState<string | null>(null);
+  // `plans` = weekly plan override, `coach` = weekly coach msg override
+  const [rlForm, setRlForm] = useState<{ plans: string; coach: string; note: string }>({
+    plans: "",
+    coach: "",
+    note: "",
+  });
+
   const refresh = useCallback(() => {
     if (!params?.id) return;
     setLoading(true);
@@ -224,7 +244,81 @@ export default function UserDetailPage() {
       .then((d) => setRcData(d))
       .catch((e) => setRcError(e.message))
       .finally(() => setRcLoading(false));
+
+    setRlLoading(true);
+    setRlError(null);
+    fetch(`/api/users/${params.id}/rate-limits`)
+      .then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error || `Rate limits request failed (${r.status})`);
+        return body as RateLimitsData;
+      })
+      .then((d) => {
+        setRlData(d);
+        // Pre-populate form with current overrides (empty string = unset / use default)
+        setRlForm({
+          plans: d.weeklyPlanLimit != null ? String(d.weeklyPlanLimit) : "",
+          coach: d.weeklyCoachMsgLimit != null ? String(d.weeklyCoachMsgLimit) : "",
+          note: d.note || "",
+        });
+      })
+      .catch((e) => setRlError(e.message))
+      .finally(() => setRlLoading(false));
   }, [params?.id]);
+
+  async function saveRateLimits() {
+    if (!params?.id) return;
+    setRlSaving(true);
+    setRlError(null);
+    try {
+      const parseVal = (v: string): number | null => {
+        const s = v.trim();
+        if (s === "") return null;
+        const n = parseInt(s, 10);
+        if (!Number.isFinite(n) || n < 0) throw new Error("Limits must be a non-negative integer or empty.");
+        return n;
+      };
+      const body = {
+        weeklyPlanLimit: parseVal(rlForm.plans),
+        weeklyCoachMsgLimit: parseVal(rlForm.coach),
+        note: rlForm.note.trim() || null,
+      };
+      const res = await fetch(`/api/users/${params.id}/rate-limits`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `Save failed (${res.status})`);
+      }
+      // Refresh to show updated values + server-side updated_at
+      refresh();
+    } catch (e: any) {
+      setRlError(e.message);
+    } finally {
+      setRlSaving(false);
+    }
+  }
+
+  async function resetRateLimits() {
+    if (!params?.id) return;
+    if (!confirm("Reset this user to the global defaults? Any override will be cleared.")) return;
+    setRlSaving(true);
+    setRlError(null);
+    try {
+      const res = await fetch(`/api/users/${params.id}/rate-limits`, { method: "DELETE" });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `Reset failed (${res.status})`);
+      }
+      refresh();
+    } catch (e: any) {
+      setRlError(e.message);
+    } finally {
+      setRlSaving(false);
+    }
+  }
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -905,6 +999,112 @@ export default function UserDetailPage() {
               </table>
             </div>
           </div>
+        )}
+      </Section>
+
+      {/* Rate limits — per-user overrides and current rolling usage */}
+      <Section title="Rate Limits">
+        {rlLoading ? (
+          <EmptyRow text="Loading rate limits..." />
+        ) : rlError ? (
+          <div className="bg-etapa-surface rounded-xl border border-red-500/40 p-4 text-sm text-red-400">
+            {rlError}
+          </div>
+        ) : rlData ? (
+          <div className="bg-etapa-surface rounded-xl border border-etapa-border p-5 space-y-5">
+            {/* Current usage */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-xs text-etapa-textMuted uppercase tracking-wide mb-1">Plans (last 7d)</div>
+                <div className="text-white text-lg font-medium">
+                  {rlData.usage.plans7d}
+                  <span className="text-etapa-textFaint text-sm"> / {rlData.weeklyPlanLimit ?? rlData.defaults.plansPerWeek}</span>
+                </div>
+                {rlData.weeklyPlanLimit != null && (
+                  <div className="text-[11px] text-etapa-textFaint mt-1">Override · default is {rlData.defaults.plansPerWeek}</div>
+                )}
+              </div>
+              <div>
+                <div className="text-xs text-etapa-textMuted uppercase tracking-wide mb-1">Coach messages (last 7d)</div>
+                <div className="text-white text-lg font-medium">
+                  {rlData.usage.coachMsgs7d}
+                  <span className="text-etapa-textFaint text-sm"> / {rlData.weeklyCoachMsgLimit ?? rlData.defaults.coachMsgsPerWeek}</span>
+                </div>
+                {rlData.weeklyCoachMsgLimit != null && (
+                  <div className="text-[11px] text-etapa-textFaint mt-1">Override · default is {rlData.defaults.coachMsgsPerWeek}</div>
+                )}
+              </div>
+            </div>
+
+            {/* Editable overrides */}
+            <div className="border-t border-etapa-border pt-4">
+              <div className="text-xs text-etapa-textMuted uppercase tracking-wide mb-3">Overrides (leave blank to use global defaults)</div>
+              <div className="grid grid-cols-2 gap-4">
+                <label className="block">
+                  <span className="text-xs text-etapa-textMid block mb-1">Weekly plan limit</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={rlForm.plans}
+                    onChange={(e) => setRlForm((f) => ({ ...f, plans: e.target.value }))}
+                    placeholder={`default: ${rlData.defaults.plansPerWeek}`}
+                    className="w-full bg-etapa-surfaceLight border border-etapa-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-etapa-textFaint"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-etapa-textMid block mb-1">Weekly coach message limit</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={rlForm.coach}
+                    onChange={(e) => setRlForm((f) => ({ ...f, coach: e.target.value }))}
+                    placeholder={`default: ${rlData.defaults.coachMsgsPerWeek}`}
+                    className="w-full bg-etapa-surfaceLight border border-etapa-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-etapa-textFaint"
+                  />
+                </label>
+              </div>
+              <label className="block mt-4">
+                <span className="text-xs text-etapa-textMid block mb-1">Note (optional — why this override exists)</span>
+                <input
+                  type="text"
+                  value={rlForm.note}
+                  onChange={(e) => setRlForm((f) => ({ ...f, note: e.target.value }))}
+                  placeholder="e.g. beta tester, support request #42, founder account"
+                  className="w-full bg-etapa-surfaceLight border border-etapa-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-etapa-textFaint"
+                />
+              </label>
+
+              <div className="flex items-center gap-3 mt-4">
+                <button
+                  type="button"
+                  disabled={rlSaving}
+                  onClick={saveRateLimits}
+                  className="px-4 py-2 rounded-lg bg-etapa-primary text-white text-sm font-medium disabled:opacity-50"
+                >
+                  {rlSaving ? "Saving..." : "Save override"}
+                </button>
+                {(rlData.weeklyPlanLimit != null || rlData.weeklyCoachMsgLimit != null) && (
+                  <button
+                    type="button"
+                    disabled={rlSaving}
+                    onClick={resetRateLimits}
+                    className="px-4 py-2 rounded-lg border border-etapa-border text-sm text-etapa-textMid disabled:opacity-50"
+                  >
+                    Reset to defaults
+                  </button>
+                )}
+                {rlData.updatedAt && (
+                  <span className="text-[11px] text-etapa-textFaint ml-auto">
+                    Updated {new Date(rlData.updatedAt).toLocaleString()}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <EmptyRow text="No rate-limit data." />
         )}
       </Section>
 

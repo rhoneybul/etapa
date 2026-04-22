@@ -1295,6 +1295,163 @@ router.delete('/user-overrides/:userId', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Rate limit overrides (per-user) ─────────────────────────────────────────
+// Typed overrides for the two usage caps. NULL => use the global default from
+// env (PLANS_PER_WEEK_DEFAULT, COACH_MSGS_PER_WEEK_DEFAULT).
+
+// GET /api/admin/users/:id/rate-limits
+// Returns: { weeklyPlanLimit, weeklyCoachMsgLimit, note, updatedAt,
+//            defaults: { plansPerWeek, coachMsgsPerWeek },
+//            usage: { plans7d, coachMsgs7d } }
+router.get('/users/:id/rate-limits', async (req, res, next) => {
+  try {
+    const userId = req.params.id;
+    const rateLimits = require('../lib/rateLimits');
+
+    const [overrideRes, usageView, globals] = await Promise.all([
+      supabase
+        .from('user_rate_limits')
+        .select('weekly_plan_limit, weekly_coach_msg_limit, note, updated_at')
+        .eq('user_id', userId)
+        .maybeSingle(),
+      supabase
+        .from('user_rate_limit_usage')
+        .select('plans_7d, coach_msgs_7d')
+        .eq('user_id', userId)
+        .maybeSingle(),
+      rateLimits.getGlobalDefaults(),
+    ]);
+    if (overrideRes.error && overrideRes.error.code !== 'PGRST116') throw overrideRes.error;
+
+    res.json({
+      weeklyPlanLimit: overrideRes.data?.weekly_plan_limit ?? null,
+      weeklyCoachMsgLimit: overrideRes.data?.weekly_coach_msg_limit ?? null,
+      note: overrideRes.data?.note || null,
+      updatedAt: overrideRes.data?.updated_at || null,
+      defaults: {
+        plansPerWeek: globals.plansPerWeek,
+        coachMsgsPerWeek: globals.coachMsgsPerWeek,
+      },
+      usage: {
+        plans7d: usageView.data?.plans_7d || 0,
+        coachMsgs7d: usageView.data?.coach_msgs_7d || 0,
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+// ── Global rate-limit defaults (admin-editable) ─────────────────────────────
+
+// GET /api/admin/rate-limit-defaults
+// Returns the current global limits. Reads from app_config with env fallback.
+router.get('/rate-limit-defaults', async (req, res, next) => {
+  try {
+    const rateLimits = require('../lib/rateLimits');
+    const globals = await rateLimits.getGlobalDefaults();
+    res.json({
+      plansPerWeek: globals.plansPerWeek,
+      coachMsgsPerWeek: globals.coachMsgsPerWeek,
+      envFallback: {
+        plansPerWeek: rateLimits.PLANS_PER_WEEK_DEFAULT,
+        coachMsgsPerWeek: rateLimits.COACH_MSGS_PER_WEEK_DEFAULT,
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/admin/rate-limit-defaults
+// Body: { plansPerWeek?: number, coachMsgsPerWeek?: number }
+// Writes to app_config rows `limits.plansPerWeek` and `limits.coachMsgsPerWeek`.
+// Invalidates the 5min in-memory cache so the next limit check picks up the
+// change immediately.
+router.put('/rate-limit-defaults', async (req, res, next) => {
+  try {
+    const rateLimits = require('../lib/rateLimits');
+    const { plansPerWeek, coachMsgsPerWeek } = req.body || {};
+
+    const validate = (v, name) => {
+      if (v === null || v === undefined) return null;
+      const n = parseInt(v, 10);
+      if (!Number.isFinite(n) || n < 0 || n > 10000) {
+        const err = new Error(`${name} must be a non-negative integer`);
+        err.status = 400;
+        throw err;
+      }
+      return n;
+    };
+    const toWrite = [];
+    const p = validate(plansPerWeek, 'plansPerWeek');
+    if (p !== null) toWrite.push({ key: 'limits.plansPerWeek', value: String(p) });
+    const c = validate(coachMsgsPerWeek, 'coachMsgsPerWeek');
+    if (c !== null) toWrite.push({ key: 'limits.coachMsgsPerWeek', value: String(c) });
+
+    if (toWrite.length === 0) {
+      return res.status(400).json({ error: 'No values provided' });
+    }
+
+    // Upsert both rows.
+    const { error } = await supabase
+      .from('app_config')
+      .upsert(toWrite, { onConflict: 'key' });
+    if (error) throw error;
+
+    rateLimits.invalidateGlobalDefaultsCache();
+    const globals = await rateLimits.getGlobalDefaults();
+    res.json({ ok: true, plansPerWeek: globals.plansPerWeek, coachMsgsPerWeek: globals.coachMsgsPerWeek });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+});
+
+// PUT /api/admin/users/:id/rate-limits
+// Body: { weeklyPlanLimit?: number|null, weeklyCoachMsgLimit?: number|null, note?: string }
+// Pass null to clear an override (fall back to global default).
+router.put('/users/:id/rate-limits', async (req, res, next) => {
+  try {
+    const userId = req.params.id;
+    const { weeklyPlanLimit, weeklyCoachMsgLimit, note } = req.body || {};
+
+    // Validate: must be null or a positive integer.
+    const validate = (v, name) => {
+      if (v === null || v === undefined) return null;
+      const n = parseInt(v, 10);
+      if (!Number.isFinite(n) || n < 0 || n > 10000) {
+        const err = new Error(`${name} must be a non-negative integer or null`);
+        err.status = 400;
+        throw err;
+      }
+      return n;
+    };
+    const row = {
+      user_id: userId,
+      weekly_plan_limit: validate(weeklyPlanLimit, 'weeklyPlanLimit'),
+      weekly_coach_msg_limit: validate(weeklyCoachMsgLimit, 'weeklyCoachMsgLimit'),
+      note: note || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from('user_rate_limits')
+      .upsert(row, { onConflict: 'user_id' });
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/admin/users/:id/rate-limits — reset to global defaults.
+router.delete('/users/:id/rate-limits', async (req, res, next) => {
+  try {
+    const userId = req.params.id;
+    const { error } = await supabase
+      .from('user_rate_limits')
+      .delete()
+      .eq('user_id', userId);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 // POST /api/admin/user-overrides/:userId/quick/:action
 // Preset one-tap support actions. Each mutates the existing overrides doc
 // with a well-known patch so the admin UI can stay stupid and mobile-friendly.

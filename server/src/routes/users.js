@@ -1,7 +1,23 @@
 const { Router } = require('express');
 const { supabase } = require('../lib/supabase');
 const { applyPromotionalGrant, TIER_SPECS } = require('../lib/lifetimeGrant');
+const rateLimits = require('../lib/rateLimits');
 const router = Router();
+
+// GET /api/user/limits — current rolling usage + the user's effective caps.
+// The mobile client calls this to show "X of Y plans today" / "X of 25 messages
+// this week" banners before the user starts an action. Cheap — 60s-cached.
+router.get('/limits', async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorised' });
+  try {
+    const summary = await rateLimits.getUsageSummary(userId, req);
+    res.json(summary);
+  } catch (err) {
+    console.error('[user/limits] failed:', err);
+    res.status(500).json({ error: 'Failed to fetch limits' });
+  }
+});
 
 /**
  * Does the user already have a lifetime subscription? Used to short-circuit
