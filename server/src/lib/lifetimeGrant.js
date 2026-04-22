@@ -94,31 +94,47 @@ async function applyLifetimeGrant(userId, {
       .eq('plan', 'lifetime')
       .limit(1);
 
+    // NOTE: `source` is a COMPUTED field in the admin UI derived from `store`.
+    // The actual DB column is `store`, not `source`. STORE_LABEL.PROMOTIONAL
+    // renders as "Promotional" in the dashboard. Mirrors what the RevenueCat
+    // webhook writes for real promotional subscriptions.
     const subRow = {
       user_id:             userId,
       plan:                'lifetime',
       status:              'active',
-      source:              'Promotional',
-      store:               null,
+      store:               'PROMOTIONAL',
       product_id:          productId,
+      // stripe_customer_id is NOT NULL in the legacy schema; use a synthetic
+      // value for promotional grants so the insert doesn't bounce.
+      stripe_customer_id:  `promo_${userId}`,
       trial_end:           null,
       current_period_end:  null,
       updated_at:          new Date().toISOString(),
     };
 
     if (existingSubs && existingSubs.length > 0) {
+      // Only update the fields we actually care about so we don't overwrite
+      // stripe_customer_id on a pre-existing row.
+      const updateFields = { ...subRow };
+      delete updateFields.stripe_customer_id;
       const { error } = await supabase
         .from('subscriptions')
-        .update(subRow)
+        .update(updateFields)
         .eq('id', existingSubs[0].id);
       results.subscription.ok = !error;
       results.subscription.detail = error
         ? error.message
         : { id: existingSubs[0].id, action: 'updated' };
     } else {
+      // Primary key is `id` (text) in the subscriptions table — generate one.
+      const newId = `promo_${userId}_${Date.now().toString(36)}`;
       const { data: inserted, error } = await supabase
         .from('subscriptions')
-        .insert({ ...subRow, created_at: new Date().toISOString() })
+        .insert({
+          id: newId,
+          ...subRow,
+          created_at: new Date().toISOString(),
+        })
         .select('id')
         .maybeSingle();
       results.subscription.ok = !error;

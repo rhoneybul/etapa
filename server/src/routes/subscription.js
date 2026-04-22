@@ -78,7 +78,16 @@ router.get('/status', async (req, res) => {
 
   const now = new Date();
   const periodEnd = data.current_period_end ? new Date(data.current_period_end) : null;
-  const active = periodEnd ? periodEnd > now : data.status === 'trialing';
+  // Active if:
+  //   - there's a period_end and it's in the future (normal recurring sub)
+  //   - OR status is 'trialing' (free trial, period_end not yet set)
+  //   - OR plan is 'lifetime' / 'starter' with status 'active'/'paid'
+  //     (one-off purchases + promotional grants — no period_end by design)
+  const oneOffPlans = new Set(['lifetime', 'starter']);
+  const active = periodEnd
+    ? periodEnd > now
+    : data.status === 'trialing'
+      || (oneOffPlans.has(data.plan) && ['active', 'paid'].includes(data.status));
 
   res.json({
     active,

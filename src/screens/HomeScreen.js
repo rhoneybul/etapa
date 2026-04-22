@@ -768,7 +768,17 @@ export default function HomeScreen({ navigation, route }) {
             <View style={s.headerLeft}>
               <Image source={require('../../assets/icon.png')} style={s.headerLogo} />
               <View>
-                <Text style={s.appName}>Etapa</Text>
+                <View style={s.appNameRow}>
+                  <Text style={s.appName}>Etapa</Text>
+                  {/* Lifetime chip — shown once the user has both a plan AND
+                      lifetime access, so new lifetime grantees see it land
+                      the moment their first plan generates. */}
+                  {subPlan === 'lifetime' && plans.length > 0 && (
+                    <View style={s.lifetimeChip}>
+                      <Text style={s.lifetimeChipText}>LIFETIME</Text>
+                    </View>
+                  )}
+                </View>
                 {firstName && <Text style={s.greeting}>Hi, {firstName}</Text>}
               </View>
             </View>
@@ -1490,6 +1500,24 @@ const s = StyleSheet.create({
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   headerLogo: { width: 38, height: 38, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)' },
   appName: { fontSize: 24, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, letterSpacing: 0.5 },
+  appNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // Subtle magenta chip so lifetime owners feel the glow every time they
+  // open the app, without it shouting over the rest of the header.
+  lifetimeChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(232,69,139,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(232,69,139,0.35)',
+  },
+  lifetimeChipText: {
+    fontSize: 10,
+    fontWeight: '600',
+    fontFamily: FF.semibold,
+    color: colors.primary,
+    letterSpacing: 0.8,
+  },
   greeting: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 1 },
 
   // Minimalist icon button (three dots)
