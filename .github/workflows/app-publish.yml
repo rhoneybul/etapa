@@ -373,6 +373,24 @@ jobs:
             exit 1
           fi
 
+      # ── Pin EAS remote version to $NEW ─────────────────────────────────────
+      # eas.json has `autoIncrement: true` which only bumps the BUILD number,
+      # not the version string. To bump the semver version we have to set
+      # it explicitly on the EAS remote before calling `eas build`. Done
+      # here in the workflow only — local `eas build` calls just bump build
+      # number, which is the safer default for dev work.
+      - name: Pin EAS remote version to ${{ steps.version.outputs.new }}
+        if: needs.decide.outputs.release_type != 'ota' && needs.decide.outputs.dry_run != 'true'
+        run: |
+          NEW="${{ steps.version.outputs.new }}"
+          echo "→ Setting EAS remote version for iOS + Android to $NEW"
+          # --non-interactive prevents a prompt; errors are non-fatal — the
+          # collision precheck above already caught any real version mismatch.
+          eas build:version:set --platform ios --profile production --value "$NEW" --non-interactive || \
+            echo "::warning::Failed to pin iOS remote version to $NEW — proceeding; EAS autoIncrement will bump build number only"
+          eas build:version:set --platform android --profile production --value "$NEW" --non-interactive || \
+            echo "::warning::Failed to pin Android remote version to $NEW — proceeding; EAS autoIncrement will bump versionCode only"
+
       - name: Skip publish (dry run)
         if: needs.decide.outputs.dry_run == 'true'
         run: |

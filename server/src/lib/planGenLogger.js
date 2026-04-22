@@ -12,6 +12,16 @@
 
 const { supabase } = require('./supabase');
 
+// plan_generations.user_id is a UUID foreign key. Synthetic callers like the
+// test runner (req.user.id === 'test-runner') use non-UUID ids — those
+// inserts would be rejected by Postgres with "invalid input syntax for type
+// uuid". Normalise to null so the row still writes and the admin debug UI
+// can filter to "no user = test-runner" via the reason field.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function toUuidOrNull(v) {
+  return typeof v === 'string' && UUID_RE.test(v) ? v : null;
+}
+
 /**
  * Insert a 'running' row at job start.
  * Returns the inserted row id (or null if the insert failed) so the caller
@@ -26,10 +36,12 @@ async function start({ userId, jobId, goal, config, reason = 'generate', model =
     const { data, error } = await supabase
       .from('plan_generations')
       .insert({
-        user_id: userId || null,
+        user_id: toUuidOrNull(userId),
         job_id: jobId,
         status: 'running',
-        reason,
+        // Tag test-runner rows with a distinct reason so admins can filter
+        // real generations from automated test noise.
+        reason: userId === 'test-runner' ? 'test-runner' : reason,
         goal,
         config,
         model,
