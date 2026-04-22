@@ -94,6 +94,9 @@ export default function ResultsPage() {
           <span style={{ color: '#E8458B' }}>Etapa</span> Test Runner
         </h1>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, fontSize: 12 }}>
+          <Link href="/speed-rules" style={{ padding: '5px 14px', borderRadius: 6, background: '#22222f', color: '#E8458B', textDecoration: 'none', fontWeight: 500, fontSize: 12, border: '1px solid #2d2d3d' }}>
+            Speed rules
+          </Link>
           <Link href="/" style={{ padding: '5px 14px', borderRadius: 6, background: '#22222f', color: '#e4e4ef', textDecoration: 'none', fontWeight: 500, fontSize: 12, border: '1px solid #2d2d3d' }}>
             Dashboard
           </Link>

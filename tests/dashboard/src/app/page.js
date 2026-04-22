@@ -68,6 +68,9 @@ export default function Dashboard() {
           ) : (
             <span style={{ padding: '3px 10px', borderRadius: 5, background: '#22222f', color: '#8888a0' }}>No results loaded</span>
           )}
+          <Link href="/speed-rules" style={{ padding: '5px 12px', borderRadius: 6, background: '#22222f', color: '#E8458B', fontWeight: 500, textDecoration: 'none', fontSize: 12, border: '1px solid #2d2d3d' }}>
+            Speed rules
+          </Link>
           <Link href="/results" style={{ padding: '5px 14px', borderRadius: 6, background: '#E8458B', color: 'white', fontWeight: 500, textDecoration: 'none', fontSize: 12 }}>
             Run Tests
           </Link>
