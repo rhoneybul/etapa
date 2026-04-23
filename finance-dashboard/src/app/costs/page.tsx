@@ -28,6 +28,11 @@ type Cost = {
   cadence: string;
   notes: string | null;
   card_on_file: string | null;
+  next_month_override: number | null;
+  override_note: string | null;
+  override_set_at: string | null;
+  last_paid_date: string | null;
+  last_paid_amount: number | null;
 };
 
 const CATEGORIES = ["software", "marketing", "legal", "accounting", "insurance", "bank_fees", "other"];
@@ -125,57 +130,251 @@ function Table({
           </thead>
           <tbody className="divide-y divide-zinc-900">
             {items.map((c) => (
-              <tr key={c.id} className="hover:bg-zinc-900/40">
-                <td className="px-3 py-2">
-                  <input
-                    defaultValue={c.name}
-                    onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.name) onUpdate(c.id, { name: v }); }}
-                    className="bg-transparent text-zinc-100 w-full outline-none"
-                  />
-                </td>
-                <td className="px-3 py-2">
-                  <select
-                    value={c.category}
-                    onChange={(e) => onUpdate(c.id, { category: e.target.value })}
-                    className="bg-transparent text-zinc-300 outline-none"
-                  >
-                    {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
-                  </select>
-                </td>
-                <td className="px-3 py-2 text-right">
-                  <input
-                    type="number"
-                    step="0.01"
-                    defaultValue={c.monthly_amount}
-                    onBlur={(e) => { const v = Number(e.target.value); if (v !== c.monthly_amount) onUpdate(c.id, { monthly_amount: v }); }}
-                    className="bg-transparent text-zinc-100 w-20 text-right outline-none tabular-nums"
-                  />
-                </td>
-                <td className="px-3 py-2">
-                  <input
-                    defaultValue={c.notes ?? ""}
-                    onBlur={(e) => { const v = e.target.value.trim(); if (v !== (c.notes ?? "")) onUpdate(c.id, { notes: v || null }); }}
-                    className="bg-transparent text-zinc-400 w-full outline-none text-xs"
-                  />
-                </td>
-                <td className="px-3 py-2 text-center">
-                  <input
-                    type="checkbox"
-                    checked={c.is_active}
-                    onChange={(e) => onUpdate(c.id, { is_active: e.target.checked })}
-                  />
-                </td>
-                <td className="px-3 py-2">
-                  <button onClick={() => onDelete(c.id)} className="text-zinc-600 hover:text-red-400 text-xs">×</button>
-                </td>
-              </tr>
+              <CostRow key={c.id} c={c} onUpdate={onUpdate} onDelete={onDelete} />
             ))}
             {items.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-xs text-zinc-500">No items yet. Click &quot;+ Add item&quot;.</td></tr>
+              <tr><td colSpan={7} className="px-3 py-4 text-center text-xs text-zinc-500">No items yet. Click &quot;+ Add item&quot;.</td></tr>
             )}
           </tbody>
         </table>
       </div>
     </section>
+  );
+}
+
+/**
+ * Per-row component so the watch/override state (open/closed) can live
+ * locally without rerendering the whole table on every keystroke.
+ */
+function CostRow({
+  c, onUpdate, onDelete,
+}: {
+  c: Cost;
+  onUpdate: (id: number, patch: Partial<Cost>) => void;
+  onDelete: (id: number) => void;
+}) {
+  const hasOverride = c.next_month_override != null;
+
+  function setOverride(amount: number | null, note: string | null) {
+    onUpdate(c.id, {
+      next_month_override: amount,
+      override_note: note,
+      override_set_at: amount == null ? null : new Date().toISOString(),
+    });
+  }
+
+  return (
+    <>
+      <tr className="hover:bg-zinc-900/40">
+        <td className="px-3 py-2">
+          <input
+            defaultValue={c.name}
+            onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.name) onUpdate(c.id, { name: v }); }}
+            className="bg-transparent text-zinc-100 w-full outline-none"
+          />
+        </td>
+        <td className="px-3 py-2">
+          <select
+            value={c.category}
+            onChange={(e) => onUpdate(c.id, { category: e.target.value })}
+            className="bg-transparent text-zinc-300 outline-none"
+          >
+            {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+          </select>
+        </td>
+        <td className="px-3 py-2 text-right">
+          <input
+            type="number"
+            step="0.01"
+            defaultValue={c.monthly_amount}
+            onBlur={(e) => { const v = Number(e.target.value); if (v !== c.monthly_amount) onUpdate(c.id, { monthly_amount: v }); }}
+            className="bg-transparent text-zinc-100 w-20 text-right outline-none tabular-nums"
+          />
+          {hasOverride && (
+            <div className="text-xs text-amber-400 mt-0.5 tabular-nums">
+              next: £{c.next_month_override}
+            </div>
+          )}
+        </td>
+        <td className="px-3 py-2">
+          <input
+            defaultValue={c.notes ?? ""}
+            onBlur={(e) => { const v = e.target.value.trim(); if (v !== (c.notes ?? "")) onUpdate(c.id, { notes: v || null }); }}
+            className="bg-transparent text-zinc-400 w-full outline-none text-xs"
+          />
+          {c.last_paid_date && (
+            <div className="text-xs text-emerald-400 mt-0.5">
+              ✓ Paid {c.last_paid_amount != null ? `£${c.last_paid_amount}` : ""} on {c.last_paid_date}
+            </div>
+          )}
+        </td>
+        <td className="px-3 py-2 text-center">
+          <input
+            type="checkbox"
+            checked={c.is_active}
+            onChange={(e) => onUpdate(c.id, { is_active: e.target.checked })}
+          />
+        </td>
+        <td className="px-3 py-2">
+          <div className="flex gap-1 justify-end">
+            <PaidControl c={c} onUpdate={onUpdate} />
+            <WatchControl c={c} setOverride={setOverride} hasOverride={hasOverride} />
+            <button onClick={() => onDelete(c.id)} className="text-zinc-600 hover:text-red-400 text-xs">×</button>
+          </div>
+        </td>
+      </tr>
+    </>
+  );
+}
+
+/**
+ * "£" button: record a lump-sum payment. Opens an inline panel asking for
+ * date + amount. Useful for annual items (GoDaddy, Apple Developer Program)
+ * so the UI can show "already paid for this year" without affecting the
+ * monthly_amount that drives runway maths.
+ */
+function PaidControl({
+  c, onUpdate,
+}: {
+  c: Cost;
+  onUpdate: (id: number, patch: Partial<Cost>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState<string>(c.last_paid_date ?? new Date().toISOString().slice(0, 10));
+  const [amount, setAmount] = useState<string>(c.last_paid_amount != null ? String(c.last_paid_amount) : "");
+
+  function save() {
+    const n = amount ? Number(amount) : null;
+    onUpdate(c.id, { last_paid_date: date, last_paid_amount: n });
+    setOpen(false);
+  }
+
+  function clear() {
+    onUpdate(c.id, { last_paid_date: null, last_paid_amount: null });
+    setAmount("");
+    setOpen(false);
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        title={c.last_paid_date ? `Paid ${c.last_paid_amount != null ? `£${c.last_paid_amount}` : ""} on ${c.last_paid_date}` : "Record a lump-sum payment"}
+        className={`text-xs px-1.5 py-0.5 rounded border ${
+          c.last_paid_date
+            ? "border-emerald-700 bg-emerald-950/40 text-emerald-300"
+            : "border-zinc-800 text-zinc-600 hover:border-zinc-600 hover:text-zinc-300"
+        }`}
+      >
+        £
+      </button>
+    );
+  }
+
+  return (
+    <div className="absolute right-16 bg-zinc-900 border border-zinc-700 rounded-lg p-3 shadow-xl z-20 w-64 text-left">
+      <div className="text-xs font-semibold text-white mb-2">Record lump payment</div>
+      <label className="block text-xs text-zinc-400 mb-1">Date</label>
+      <input
+        type="date"
+        value={date}
+        onChange={(e) => setDate(e.target.value)}
+        className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-100"
+      />
+      <label className="block text-xs text-zinc-400 mb-1 mt-2">Amount paid (£)</label>
+      <input
+        type="number"
+        step="0.01"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        placeholder="e.g. 80.00 for annual Apple Dev"
+        className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-100 tabular-nums"
+      />
+      <div className="flex gap-2 justify-end mt-2">
+        {c.last_paid_date && (
+          <button onClick={clear} className="text-xs text-zinc-400 hover:text-zinc-200 px-2">Clear</button>
+        )}
+        <button onClick={() => setOpen(false)} className="text-xs text-zinc-400 hover:text-zinc-200 px-2">Cancel</button>
+        <button onClick={save} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white rounded px-3 py-1 font-medium">Save</button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Inline watch/override control. Collapsed state is an icon button with
+ * colour indicating whether an override is active. Expanded state is a
+ * small panel with amount + note + clear.
+ */
+function WatchControl({
+  c, setOverride, hasOverride,
+}: {
+  c: Cost;
+  setOverride: (amount: number | null, note: string | null) => void;
+  hasOverride: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState<string>(c.next_month_override != null ? String(c.next_month_override) : "");
+  const [note, setNote] = useState<string>(c.override_note ?? "");
+
+  function save() {
+    const n = Number(amount);
+    if (!amount || !isFinite(n)) { setOverride(null, null); }
+    else { setOverride(n, note.trim() || null); }
+    setOpen(false);
+  }
+
+  function clear() {
+    setAmount("");
+    setNote("");
+    setOverride(null, null);
+    setOpen(false);
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        title={hasOverride ? `Flagged: next charge £${c.next_month_override}${c.override_note ? ` — ${c.override_note}` : ""}` : "Flag as abnormally high / low next month"}
+        className={`text-xs px-1.5 py-0.5 rounded border ${
+          hasOverride
+            ? "border-amber-700 bg-amber-950/40 text-amber-300"
+            : "border-zinc-800 text-zinc-600 hover:border-zinc-600 hover:text-zinc-300"
+        }`}
+      >
+        ⚑
+      </button>
+    );
+  }
+
+  return (
+    <div className="absolute right-8 bg-zinc-900 border border-zinc-700 rounded-lg p-3 shadow-xl z-20 w-64 text-left">
+      <div className="text-xs font-semibold text-white mb-2">Flag next charge</div>
+      <label className="block text-xs text-zinc-400 mb-1">Expected amount (£)</label>
+      <input
+        type="number"
+        step="0.01"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        placeholder={`Normally £${c.monthly_amount}`}
+        className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-100 tabular-nums"
+        autoFocus
+      />
+      <label className="block text-xs text-zinc-400 mb-1 mt-2">Why</label>
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="e.g. bulk test run pushed API usage up"
+        rows={2}
+        className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200"
+      />
+      <div className="flex gap-2 justify-end mt-2">
+        {hasOverride && (
+          <button onClick={clear} className="text-xs text-zinc-400 hover:text-zinc-200 px-2">Clear</button>
+        )}
+        <button onClick={() => setOpen(false)} className="text-xs text-zinc-400 hover:text-zinc-200 px-2">Cancel</button>
+        <button onClick={save} className="text-xs bg-brand text-brand-fg rounded px-3 py-1 font-medium">Save</button>
+      </div>
+    </div>
   );
 }

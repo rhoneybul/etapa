@@ -20,15 +20,18 @@
 import Link from "next/link";
 import { getServerSupabase } from "@/lib/supabase/server";
 import Nav from "@/components/Nav";
+import CashFlowChart from "@/components/CashFlowChart";
 import {
   fmtGBP,
   fmtMonths,
+  fmtPctDelta,
   runwayZone,
   RED_ZONE_RULES,
   evaluateRule,
   currentStage,
   type Zone,
 } from "@/lib/finance/calculations";
+import { project, burnSummary, type CostItemForProjection } from "@/lib/finance/projection";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +52,7 @@ export default async function HomePage() {
   ] = await Promise.all([
     supabase.schema("finance").from("imports").select("*", { head: true, count: "exact" }),
     supabase.schema("finance").from("cash_snapshots").select("tide_balance, snapshot_date, notes").order("snapshot_date", { ascending: false }).limit(1).maybeSingle(),
-    supabase.schema("finance").from("cost_items").select("name, category, monthly_amount, is_projected, is_active").order("monthly_amount", { ascending: false }),
+    supabase.schema("finance").from("cost_items").select("name, category, monthly_amount, is_projected, is_active, next_month_override, override_note").order("monthly_amount", { ascending: false }),
     supabase.schema("finance").from("todos").select("id, priority, category, title, context, status, display_order").order("display_order", { ascending: true, nullsFirst: false }),
     supabase.schema("finance").from("milestones").select("id, stage, stage_name, name, target_text, is_hit, display_order").order("display_order"),
   ]);
@@ -76,14 +79,38 @@ export default async function HomePage() {
   }
 
   // ── Derived numbers ────────────────────────────────────────────────────
-  const activeCosts = (costs ?? []).filter((c) => c.is_active && !c.is_projected);
-  const projectedCosts = (costs ?? []).filter((c) => c.is_active && c.is_projected);
-  const burnActual = activeCosts.reduce((s, c) => s + Number(c.monthly_amount || 0), 0);
-  const burnProjected = burnActual + projectedCosts.reduce((s, c) => s + Number(c.monthly_amount || 0), 0);
+  // Normalise the costs array into the shape the projection lib expects,
+  // coercing numeric fields that Supabase returns as strings for NUMERIC
+  // columns into actual JS numbers.
+  const costsForProj: CostItemForProjection[] = (costs ?? []).map((c) => ({
+    name: c.name,
+    monthly_amount: Number(c.monthly_amount ?? 0),
+    is_active: !!c.is_active,
+    is_projected: !!c.is_projected,
+    next_month_override: c.next_month_override != null ? Number(c.next_month_override) : null,
+    override_note: c.override_note ?? null,
+  }));
+  const summary = burnSummary(costsForProj);
+  const burnActual = summary.steady;
+  const burnProjected = summary.withProjected;
   const cashBalance = cash?.tide_balance != null ? Number(cash.tide_balance) : null;
   const runwayActual = cashBalance != null && burnActual > 0 ? cashBalance / burnActual : null;
   const runwayProjected = cashBalance != null && burnProjected > 0 ? cashBalance / burnProjected : null;
   const zone = runwayZone(runwayActual);
+
+  // Forward projection — feeds the CashFlowChart. 12 months is the spec.
+  const projection = cashBalance != null
+    ? project({ cash: cashBalance, costs: costsForProj, months: 12 })
+    : [];
+
+  // Variance zone for the "expected next month" KPI. If next-month expected
+  // burn is >15% above steady-state, flag amber; >30% → red. Thresholds
+  // match typical SaaS-budget variance tolerances.
+  const varianceZone: Zone =
+    summary.overridesActive === 0 ? "green"
+    : Math.abs(summary.variancePct) > 30 ? "red"
+    : Math.abs(summary.variancePct) > 15 ? "amber"
+    : "green";
 
   // MRR + paying users land in Phase 5 (RevenueCat webhook).
   const mrr = 0;
@@ -93,10 +120,14 @@ export default async function HomePage() {
   const stageInfo = currentStage((milestones ?? []).map((m) => ({ stage: m.stage, is_hit: m.is_hit })));
   const nextMilestone = (milestones ?? []).find((m) => m.stage === stageInfo.stage && !m.is_hit) ?? null;
 
-  // Burn-by-category breakdown for the right-hand tile.
+  // Burn-by-category breakdown for the right-hand tile. Uses the raw
+  // DB-shaped costs array because the projection type doesn't carry
+  // category (it's irrelevant to the math).
   const burnByCategory = new Map<string, number>();
-  for (const c of activeCosts) {
-    burnByCategory.set(c.category, (burnByCategory.get(c.category) ?? 0) + Number(c.monthly_amount || 0));
+  for (const c of (costs ?? [])) {
+    if (!c.is_active || c.is_projected) continue;
+    const cat = c.category ?? "other";
+    burnByCategory.set(cat, (burnByCategory.get(cat) ?? 0) + Number(c.monthly_amount || 0));
   }
   const burnRows = Array.from(burnByCategory.entries()).sort((a, b) => b[1] - a[1]);
 
@@ -119,11 +150,37 @@ export default async function HomePage() {
         {activeZones.length > 0 && <RedZoneBanner zones={activeZones} />}
 
         {/* ── KPI strip ───────────────────────────────────────────────── */}
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <section className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <KpiCard label="Cash" value={fmtGBP(cashBalance)} sub={cash?.snapshot_date ? `as of ${cash.snapshot_date}` : ""} />
-          <KpiCard label="MRR" value={fmtGBP(mrr)} sub="Phase 5: RevenueCat webhook" />
+          <KpiCard label="MRR" value={fmtGBP(mrr)} sub="Phase 5: RevenueCat" />
           <KpiCard label="Runway" value={fmtMonths(runwayActual)} sub={`${fmtMonths(runwayProjected)} inc. projected`} zone={zone} />
-          <KpiCard label="Paying users" value={payingUsers.toString()} sub="Phase 5: RevenueCat webhook" />
+          <KpiCard
+            label="Expected next month"
+            value={fmtGBP(summary.expectedNext)}
+            sub={summary.overridesActive > 0
+              ? `${fmtPctDelta(summary.variancePct)} vs ${fmtGBP(summary.steady)} · ${summary.overridesActive} flagged`
+              : `matches steady-state ${fmtGBP(summary.steady)}`}
+            zone={varianceZone}
+          />
+          <KpiCard label="Paying users" value={payingUsers.toString()} sub="Phase 5: RevenueCat" />
+        </section>
+
+        {/* ── Cash projection chart ─────────────────────────────────────── */}
+        <section className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Cash projection (12 months)</h3>
+              <p className="text-xs text-zinc-500 mt-1">
+                At current active burn of {fmtGBP(burnActual)}/mo, with zero revenue assumed.
+                {summary.overridesActive > 0 && " Next-month marker shows the effect of your flagged items."}
+              </p>
+            </div>
+          </div>
+          {cashBalance == null ? (
+            <p className="text-sm text-zinc-500">Upload the Excel or set a Tide balance in Settings to project.</p>
+          ) : (
+            <CashFlowChart points={projection} />
+          )}
         </section>
 
         {/* ── Stage + next milestone ──────────────────────────────────── */}
