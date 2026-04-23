@@ -17,10 +17,10 @@ export async function getServerSupabase() {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(all) {
+        setAll(all: { name: string; value: string; options: CookieOptions }[]) {
           try {
             for (const { name, value, options } of all) {
-              cookieStore.set(name, value, options as CookieOptions);
+              cookieStore.set(name, value, options);
             }
           } catch {
             // Called from a Server Component — cookie writes are no-ops

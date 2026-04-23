@@ -7,9 +7,6 @@
   "outputDirectory": ".next",
   "public": false,
 
-  "// ignoreCommand": "Only build when finance-dashboard/** actually changed. Without this every push to main — even React-Native-only or admin-dashboard-only changes — triggers a Vercel build and burns free-tier minutes.",
-  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- .",
-
   "headers": [
     {
       "source": "/(.*)",
