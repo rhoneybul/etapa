@@ -77,10 +77,15 @@ export default function GoalSetupScreen({ navigation, route }) {
   const [targetDate, setTargetDate] = useState(intake?.eventDate || '');
   const [eventName, setEventName] = useState(intake?.eventName || '');
 
-  // Whether the intake already has all the event specifics we need. When
-  // true, step 3 is skipped in both the forward and back directions — the
-  // user answered these questions 1 screen ago already.
-  const skipGoalDetailsStep = intake?.intent === 'event' && !!intake?.eventName;
+  // Whether the intake already gave us enough event specifics to skip
+  // step 3. "Enough" means the user supplied at least one concrete piece
+  // of info — name, distance or date — so we're not firing plan-gen on
+  // an empty goal. Mirrors the intake's own can-advance rule.
+  const skipGoalDetailsStep = intake?.intent === 'event' && (
+    !!intake?.eventName ||
+    intake?.targetDistance != null ||
+    !!intake?.eventDate
+  );
   const [raceLooking, setRaceLooking] = useState(false);
   const [raceResult, setRaceResult] = useState(null);
 

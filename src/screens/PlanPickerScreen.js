@@ -33,9 +33,9 @@ const FF = fontFamily;
 
 // ── Question answers ────────────────────────────────────────────────────────
 const INTENT_OPTIONS = [
-  { key: 'getting_started', title: "I'm getting started",       sub: 'New, or coming back after time off' },
-  { key: 'event',           title: "I'm training for an event", sub: 'Sportive, race, first 100 km' },
-  { key: 'fitter',          title: "I want to get fitter",       sub: 'No deadline, just ride more' },
+  { key: 'getting_started', title: "I'm getting started",              sub: 'New, or coming back after time off' },
+  { key: 'event',           title: "I'm training for an event or goal", sub: 'Sportive, race, or a distance by a date' },
+  { key: 'fitter',          title: "I want to get fitter",              sub: 'No deadline, just ride more' },
 ];
 
 // Longest-ride options. Full set used for event + fitter branches; a
@@ -261,12 +261,17 @@ export default function PlanPickerScreen({ navigation }) {
     setEventDate(iso);
   };
 
+  // At least one of name / distance / date must be set to advance —
+  // anything less is just an empty form. Users building toward an
+  // unnamed goal (e.g. "100 km by July") can skip the event name.
+  const canAdvanceEventStep =
+    !!eventName.trim() || !!targetDistance.trim() || !!eventDate;
+
   const onContinueFromEventDate = () => {
-    // Event name is required to advance — everything else (date, distance,
-    // elevation, time) is optional. User can refine later.
-    if (!eventName.trim()) return;
+    if (!canAdvanceEventStep) return;
     analytics.events.planPickerAnswered?.({
       question: 'event_details',
+      hasName: !!eventName.trim(),
       hasDate: !!eventDate,
       hasDistance: !!targetDistance,
       hasElevation: !!targetElevation,
@@ -525,19 +530,18 @@ export default function PlanPickerScreen({ navigation }) {
         {step === 2 && isEvent && (
           <>
             {renderQuestionHeader()}
-            <Text style={s.title}>Tell us about your event</Text>
-            <Text style={s.subtitle}>Name is required — everything else can be filled in later.</Text>
+            <Text style={s.title}>Tell us about your event or goal</Text>
+            <Text style={s.subtitle}>Give us at least a name, a distance, or a date — whatever you&apos;ve got.</Text>
 
-            <Text style={s.fieldLabel}>Race / event name</Text>
+            <Text style={s.fieldLabel}>Event name (optional)</Text>
             <TextInput
               style={s.input}
-              placeholder="e.g. Traka 360, London to Brighton"
+              placeholder="e.g. Traka 360, London to Brighton, or leave blank"
               placeholderTextColor={colors.textFaint}
               value={eventName}
               onChangeText={setEventName}
               returnKeyType="search"
               onSubmitEditing={handleRaceLookup}
-              autoFocus
             />
             <TouchableOpacity
               style={[s.lookupBtn, !eventName.trim() && s.lookupBtnDisabled]}
@@ -602,9 +606,9 @@ export default function PlanPickerScreen({ navigation }) {
             />
 
             <TouchableOpacity
-              style={[s.primaryBtn, !eventName.trim() && s.primaryBtnDisabled, { marginTop: 20 }]}
+              style={[s.primaryBtn, !canAdvanceEventStep && s.primaryBtnDisabled, { marginTop: 20 }]}
               onPress={onContinueFromEventDate}
-              disabled={!eventName.trim()}
+              disabled={!canAdvanceEventStep}
               activeOpacity={0.85}
             >
               <Text style={s.primaryBtnText}>Continue</Text>
