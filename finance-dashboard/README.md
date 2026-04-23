@@ -138,6 +138,21 @@ Two copies of the allowlist, kept in sync:
 
 If middleware is ever bypassed (e.g. direct API calls with a stolen anon key), the DB still refuses to return rows. The env var is the fast rejection; the DB is correctness.
 
+## Keeping the dashboard fresh (do NOT keep the Excel up to date)
+
+The Excel file is a **one-off seed**. After the first `/import` run it's obsolete — every subsequent edit goes straight to Postgres via the dashboard UI, not back through Excel.
+
+Day-to-day workflow:
+
+- **Cash balance drifts?** Click "Update balance" on the home dashboard. Writes a new `finance.cash_snapshots` row with today's date.
+- **Payment happened?** Click "+ Log payment" on the home dashboard. Writes a `finance.transactions` row. Takes about 5 seconds. Category auto-signs the amount (outflows negative, `revenue` / `capital` / `refund` positive).
+- **Cost item price changed?** Edit in place on `/costs` — click the £ cell, type new amount, blur.
+- **Know a charge is coming on a specific date?** `/costs` → the ⚑ flag icon → type the expected amount, the date, and why. The 12-month chart moves that charge into the right month automatically.
+- **Annual expense landed?** `/costs` → the £ paid button → record date + amount. Monthly burn numbers don't change; the row just stamps "✓ Paid £X on DATE" so you can see the cash has already left.
+- **Setting a budget?** `/budgets` → "+ Add budget". Marketing, legal, finance, etc. get their own allocations that feed into the 12-month cash projection.
+
+You should never need to reopen the Excel after the first seed. If you find yourself wanting to — tell me what's missing from the dashboard and I'll add it.
+
 ## Why Excel upload, not git-committed Excel
 
 The spec originally had a seed script that read `docs/budget-dashboard/Etapa_Financial_Model.xlsx` from the repo. We don't do that. Reasons:

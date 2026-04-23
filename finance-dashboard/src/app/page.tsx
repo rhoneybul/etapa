@@ -31,7 +31,8 @@ import {
   currentStage,
   type Zone,
 } from "@/lib/finance/calculations";
-import { project, burnSummary, type CostItemForProjection } from "@/lib/finance/projection";
+import { project, burnSummary, coverSummary, type CostItemForProjection, type BudgetForProjection } from "@/lib/finance/projection";
+import QuickActions from "@/components/QuickActions";
 
 export const dynamic = "force-dynamic";
 
@@ -47,12 +48,14 @@ export default async function HomePage() {
     { count: importCount },
     { data: cash },
     { data: costs },
+    { data: budgets },
     { data: todos },
     { data: milestones },
   ] = await Promise.all([
     supabase.schema("finance").from("imports").select("*", { head: true, count: "exact" }),
     supabase.schema("finance").from("cash_snapshots").select("tide_balance, snapshot_date, notes").order("snapshot_date", { ascending: false }).limit(1).maybeSingle(),
-    supabase.schema("finance").from("cost_items").select("name, category, monthly_amount, is_projected, is_active, next_month_override, override_note").order("monthly_amount", { ascending: false }),
+    supabase.schema("finance").from("cost_items").select("name, category, monthly_amount, is_projected, is_active, next_month_override, override_note, next_charge_date").order("monthly_amount", { ascending: false }),
+    supabase.schema("finance").from("budgets").select("id, category, name, monthly_allowance, starts_on, ends_on, is_active").eq("is_active", true),
     supabase.schema("finance").from("todos").select("id, priority, category, title, context, status, display_order").order("display_order", { ascending: true, nullsFirst: false }),
     supabase.schema("finance").from("milestones").select("id, stage, stage_name, name, target_text, is_hit, display_order").order("display_order"),
   ]);
@@ -89,19 +92,38 @@ export default async function HomePage() {
     is_projected: !!c.is_projected,
     next_month_override: c.next_month_override != null ? Number(c.next_month_override) : null,
     override_note: c.override_note ?? null,
+    next_charge_date: c.next_charge_date ?? null,
+  }));
+  // Active budgets fold into the projection alongside committed costs so
+  // the 12-month cover number reflects *planned* spend, not just locked-in.
+  const budgetsForProj: BudgetForProjection[] = (budgets ?? []).map((b) => ({
+    id: b.id,
+    category: b.category,
+    name: b.name,
+    monthly_allowance: Number(b.monthly_allowance ?? 0),
+    starts_on: b.starts_on,
+    ends_on: b.ends_on,
+    is_active: !!b.is_active,
   }));
   const summary = burnSummary(costsForProj);
   const burnActual = summary.steady;
   const burnProjected = summary.withProjected;
+  // Budgeted spend adds another slug of forward-looking burn on top of
+  // committed costs. Shown separately in the KPI so it's obvious which
+  // piece is "locked-in" vs "allocated but flexible".
+  const budgetedMonthly = budgetsForProj.reduce((s, b) => s + b.monthly_allowance, 0);
   const cashBalance = cash?.tide_balance != null ? Number(cash.tide_balance) : null;
   const runwayActual = cashBalance != null && burnActual > 0 ? cashBalance / burnActual : null;
   const runwayProjected = cashBalance != null && burnProjected > 0 ? cashBalance / burnProjected : null;
   const zone = runwayZone(runwayActual);
 
-  // Forward projection — feeds the CashFlowChart. 12 months is the spec.
+  // Forward projection — feeds the CashFlowChart. 12 months is the spec, and
+  // now also drives the 12-month cover KPI below.
   const projection = cashBalance != null
-    ? project({ cash: cashBalance, costs: costsForProj, months: 12 })
+    ? project({ cash: cashBalance, costs: costsForProj, budgets: budgetsForProj, months: 12 })
     : [];
+  const cover = projection.length > 0 ? coverSummary(projection, 12) : null;
+  const coverZone: Zone = cover == null ? "amber" : cover.covered ? "green" : cover.depleteMonth != null && cover.depleteMonth < 9 ? "red" : "amber";
 
   // Variance zone for the "expected next month" KPI. If next-month expected
   // burn is >15% above steady-state, flag amber; >30% → red. Thresholds
@@ -149,11 +171,27 @@ export default async function HomePage() {
         {/* ── Red zone banner ─────────────────────────────────────────── */}
         {activeZones.length > 0 && <RedZoneBanner zones={activeZones} />}
 
+        {/* ── Quick actions — log payment or update balance in seconds ── */}
+        <QuickActions />
+
         {/* ── KPI strip ───────────────────────────────────────────────── */}
-        <section className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <section className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <KpiCard label="Cash" value={fmtGBP(cashBalance)} sub={cash?.snapshot_date ? `as of ${cash.snapshot_date}` : ""} />
           <KpiCard label="MRR" value={fmtGBP(mrr)} sub="Phase 5: RevenueCat" />
           <KpiCard label="Runway" value={fmtMonths(runwayActual)} sub={`${fmtMonths(runwayProjected)} inc. projected`} zone={zone} />
+          {/* 12-month cover KPI — answers "are we alive in a year?" and if
+              not, which month we'd run out. Uses the same projection series
+              as the chart so numbers can't disagree. */}
+          <KpiCard
+            label="12-month cover"
+            value={cover == null ? "—" : cover.covered ? "Covered" : `Out in M${cover.depleteMonth ?? "—"}`}
+            sub={cover == null
+              ? "Set a balance + costs to project"
+              : cover.covered
+                ? `Burn ${fmtGBP(cover.totalBurn)} · cushion ${fmtGBP(cover.startingCash - cover.totalBurn)}`
+                : `Shortfall ${fmtGBP(cover.shortfall)} by ${cover.depleteLabel ?? "—"}`}
+            zone={coverZone}
+          />
           <KpiCard
             label="Expected next month"
             value={fmtGBP(summary.expectedNext)}
@@ -171,8 +209,8 @@ export default async function HomePage() {
             <div>
               <h3 className="text-sm font-semibold text-white">Cash projection (12 months)</h3>
               <p className="text-xs text-zinc-500 mt-1">
-                At current active burn of {fmtGBP(burnActual)}/mo, with zero revenue assumed.
-                {summary.overridesActive > 0 && " Next-month marker shows the effect of your flagged items."}
+                Committed burn {fmtGBP(burnActual)}/mo{budgetedMonthly > 0 ? ` + ${fmtGBP(budgetedMonthly)}/mo budgeted` : ""}, with zero revenue assumed.
+                {summary.overridesActive > 0 && " Flagged charges move to their expected date."}
               </p>
             </div>
           </div>

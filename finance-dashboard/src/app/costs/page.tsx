@@ -31,6 +31,10 @@ type Cost = {
   next_month_override: number | null;
   override_note: string | null;
   override_set_at: string | null;
+  // When the next charge is expected to land. Drives the cash-projection
+  // chart (moves the override into the correct month) and lets
+  // projected/contingency items show a due date directly in the table.
+  next_charge_date: string | null;
   last_paid_date: string | null;
   last_paid_amount: number | null;
 };
@@ -155,11 +159,14 @@ function CostRow({
 }) {
   const hasOverride = c.next_month_override != null;
 
-  function setOverride(amount: number | null, note: string | null) {
+  function setOverride(amount: number | null, note: string | null, chargeDate: string | null) {
     onUpdate(c.id, {
       next_month_override: amount,
       override_note: note,
       override_set_at: amount == null ? null : new Date().toISOString(),
+      // Date clears when override clears. Kept separately for projected items
+      // which can own a date without owning an amount override.
+      next_charge_date: amount == null ? null : chargeDate,
     });
   }
 
@@ -193,6 +200,7 @@ function CostRow({
           {hasOverride && (
             <div className="text-xs text-amber-400 mt-0.5 tabular-nums">
               next: £{c.next_month_override}
+              {c.next_charge_date && <span className="ml-1 text-amber-500/80">({c.next_charge_date})</span>}
             </div>
           )}
         </td>
@@ -202,6 +210,23 @@ function CostRow({
             onBlur={(e) => { const v = e.target.value.trim(); if (v !== (c.notes ?? "")) onUpdate(c.id, { notes: v || null }); }}
             className="bg-transparent text-zinc-400 w-full outline-none text-xs"
           />
+          {/* Inline due-date input for projected/contingency rows — they often
+              have a known timing (annual filing due Nov, Apple dev renewal
+              March) that should show up in the cash projection. */}
+          {c.is_projected && (
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-xs text-zinc-600">Due</span>
+              <input
+                type="date"
+                defaultValue={c.next_charge_date ?? ""}
+                onBlur={(e) => {
+                  const v = e.target.value || null;
+                  if (v !== c.next_charge_date) onUpdate(c.id, { next_charge_date: v });
+                }}
+                className="bg-transparent text-zinc-400 text-xs outline-none"
+              />
+            </div>
+          )}
           {c.last_paid_date && (
             <div className="text-xs text-emerald-400 mt-0.5">
               ✓ Paid {c.last_paid_amount != null ? `£${c.last_paid_amount}` : ""} on {c.last_paid_date}
@@ -310,24 +335,26 @@ function WatchControl({
   c, setOverride, hasOverride,
 }: {
   c: Cost;
-  setOverride: (amount: number | null, note: string | null) => void;
+  setOverride: (amount: number | null, note: string | null, chargeDate: string | null) => void;
   hasOverride: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState<string>(c.next_month_override != null ? String(c.next_month_override) : "");
   const [note, setNote] = useState<string>(c.override_note ?? "");
+  const [chargeDate, setChargeDate] = useState<string>(c.next_charge_date ?? "");
 
   function save() {
     const n = Number(amount);
-    if (!amount || !isFinite(n)) { setOverride(null, null); }
-    else { setOverride(n, note.trim() || null); }
+    if (!amount || !isFinite(n)) { setOverride(null, null, null); }
+    else { setOverride(n, note.trim() || null, chargeDate || null); }
     setOpen(false);
   }
 
   function clear() {
     setAmount("");
     setNote("");
-    setOverride(null, null);
+    setChargeDate("");
+    setOverride(null, null, null);
     setOpen(false);
   }
 
@@ -335,7 +362,7 @@ function WatchControl({
     return (
       <button
         onClick={() => setOpen(true)}
-        title={hasOverride ? `Flagged: next charge £${c.next_month_override}${c.override_note ? ` — ${c.override_note}` : ""}` : "Flag as abnormally high / low next month"}
+        title={hasOverride ? `Flagged: next charge £${c.next_month_override}${c.next_charge_date ? ` on ${c.next_charge_date}` : ""}${c.override_note ? ` — ${c.override_note}` : ""}` : "Flag as abnormally high / low next month"}
         className={`text-xs px-1.5 py-0.5 rounded border ${
           hasOverride
             ? "border-amber-700 bg-amber-950/40 text-amber-300"
@@ -359,6 +386,14 @@ function WatchControl({
         placeholder={`Normally £${c.monthly_amount}`}
         className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-100 tabular-nums"
         autoFocus
+      />
+      {/* Date field — drives which month the chart + KPIs apply the override to. */}
+      <label className="block text-xs text-zinc-400 mb-1 mt-2">When (optional)</label>
+      <input
+        type="date"
+        value={chargeDate}
+        onChange={(e) => setChargeDate(e.target.value)}
+        className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200"
       />
       <label className="block text-xs text-zinc-400 mb-1 mt-2">Why</label>
       <textarea

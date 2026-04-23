@@ -52,6 +52,42 @@ interface ComingSoonConfig {
   features: ComingSoonFeature[];
 }
 
+// ── Feature flags ────────────────────────────────────────────────────────────
+// Shape matches what the mobile app reads via remoteConfig.getBool(
+// 'features.<flagId>.enabled', <fallback>). Adding a flag here gives you a
+// global toggle; per-user overrides live on the user detail page and merge
+// on top via user_config_overrides.
+type FeatureFlagsConfig = Record<string, { enabled: boolean }>;
+
+type FeatureFlagDef = {
+  id: string;
+  label: string;
+  description: string;
+  defaultEnabled: boolean;
+};
+
+const FEATURE_FLAGS: FeatureFlagDef[] = [
+  {
+    id: "planPicker",
+    label: "Guided plan picker (intake flow)",
+    description:
+      "Opt-in 3-step coach-voiced intake shown to users with no plan yet. Asks intent, longest ride, timeline and recommends a path.",
+    defaultEnabled: false,
+  },
+  {
+    id: "beginnerProgram",
+    label: "Beginner program pathway",
+    description: "The 12-week beginner programme card on the home empty state and its flow.",
+    defaultEnabled: true,
+  },
+  {
+    id: "quickPlan",
+    label: "Quick plan pathway",
+    description: "The 'Just get better' ongoing plan card on the home empty state.",
+    defaultEnabled: true,
+  },
+];
+
 const TRIAL_DEFAULTS: TrialConfig = {
   days: 7,
   bannerMessage: "Subscribe to unlock full training access",
@@ -112,6 +148,13 @@ export default function ConfigPage() {
   const [savingCoupons, setSavingCoupons] = useState(false);
   const [savedCouponsFlash, setSavedCouponsFlash] = useState(false);
 
+  // Feature flags — one row per known flag. Values come from the server's
+  // `features` key (jsonb object). Unknown-to-the-server flags default to
+  // their defaultEnabled. Save writes the whole features object back.
+  const [features, setFeatures] = useState<FeatureFlagsConfig>({});
+  const [savingFeatures, setSavingFeatures] = useState(false);
+  const [savedFeaturesFlash, setSavedFeaturesFlash] = useState(false);
+
   // Rate limits — global defaults, admin-editable. Written into app_config.
   const [rateLimitDefaults, setRateLimitDefaults] = useState<{
     plansPerWeek: number;
@@ -131,6 +174,7 @@ export default function ConfigPage() {
   const savedComingSoon = useRef<ComingSoonConfig>(comingSoon);
   const savedPricing = useRef<PricingConfig>(pricing);
   const savedCoupons = useRef<CouponConfig>(coupons);
+  const savedFeatures = useRef<FeatureFlagsConfig>(features);
 
   // Saving / saved flash state
   const [savingMaintenance, setSavingMaintenance] = useState(false);
@@ -148,8 +192,9 @@ export default function ConfigPage() {
   const minVersionDirty = !isEqual(minVersion, savedMinVersion.current);
   const comingSoonDirty = !isEqual(comingSoon, savedComingSoon.current);
   const pricingDirty = !isEqual(pricing, savedPricing.current);
+  const featuresDirty = !isEqual(features, savedFeatures.current);
   const couponsDirty = !isEqual(coupons, savedCoupons.current);
-  const anyDirty = maintenanceDirty || trialDirty || minVersionDirty || comingSoonDirty || pricingDirty || couponsDirty;
+  const anyDirty = maintenanceDirty || trialDirty || minVersionDirty || comingSoonDirty || pricingDirty || couponsDirty || featuresDirty;
 
   // Warn on page exit with unsaved changes
   const anyDirtyRef = useRef(anyDirty);
@@ -207,6 +252,15 @@ export default function ConfigPage() {
           setCoupons(merged);
           savedCoupons.current = merged;
         }
+        // Features — seed each known flag from server state, or fall back to
+        // its defaultEnabled so the UI always shows a full set of toggles.
+        const seed: FeatureFlagsConfig = {};
+        for (const f of FEATURE_FLAGS) {
+          const existing = data?.features?.[f.id];
+          seed[f.id] = { enabled: existing ? !!existing.enabled : f.defaultEnabled };
+        }
+        setFeatures(seed);
+        savedFeatures.current = seed;
       })
       .finally(() => setLoading(false));
 
@@ -296,6 +350,21 @@ export default function ConfigPage() {
       setTimeout(() => setSavedMinVersionFlash(false), 2500);
     } catch { /* ignore */ }
     setSavingMinVersion(false);
+  }
+
+  async function saveFeatures_() {
+    setSavingFeatures(true);
+    try {
+      await fetch("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "features", value: features }),
+      });
+      savedFeatures.current = { ...features };
+      setSavedFeaturesFlash(true);
+      setTimeout(() => setSavedFeaturesFlash(false), 2500);
+    } catch { /* ignore */ }
+    setSavingFeatures(false);
   }
 
   async function saveComingSoon_() {
@@ -773,6 +842,56 @@ export default function ConfigPage() {
           className="mt-4 px-4 py-2 bg-etapa-primary text-white text-sm font-medium rounded-lg hover:bg-etapa-primaryDark disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {savingComingSoon ? "Saving..." : savedComingSoonFlash ? "Saved!" : "Save Coming Soon"}
+        </button>
+      </div>
+
+      {/* Feature Flags — global toggles. Per-user overrides live on the
+          user detail page and deep-merge on top of whatever is set here. */}
+      <div className="bg-etapa-surface border border-etapa-border rounded-xl p-6">
+        <h2 className="text-sm font-semibold text-white mb-1">Feature flags</h2>
+        <p className="text-xs text-etapa-textMuted mb-4">
+          Global on/off for each feature. The mobile app reads these via remote config (<code className="text-etapa-textMuted">features.&lt;id&gt;.enabled</code>) and caches for ~5 minutes, so changes take effect within a few minutes on next app open. Per-user overrides are on the user detail page.
+        </p>
+        <div className="space-y-3">
+          {FEATURE_FLAGS.map((f) => {
+            const v = features[f.id]?.enabled ?? f.defaultEnabled;
+            return (
+              <div
+                key={f.id}
+                className="bg-etapa-surfaceLight border border-etapa-border rounded-lg p-4 flex items-start justify-between gap-4"
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-white">{f.label}</p>
+                    <code className="text-[10px] text-etapa-textMuted">features.{f.id}.enabled</code>
+                  </div>
+                  <p className="text-xs text-etapa-textMuted mt-1">{f.description}</p>
+                </div>
+                <label className="flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={v}
+                    onChange={(e) =>
+                      setFeatures((prev) => ({
+                        ...prev,
+                        [f.id]: { enabled: e.target.checked },
+                      }))
+                    }
+                    className="sr-only peer"
+                  />
+                  <div className="relative w-11 h-6 bg-etapa-border peer-checked:bg-etapa-primary rounded-full transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-transform peer-checked:after:translate-x-5" />
+                </label>
+              </div>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={saveFeatures_}
+          disabled={savingFeatures || !featuresDirty}
+          className="mt-4 px-4 py-2 bg-etapa-primary text-white text-sm font-medium rounded-lg hover:bg-etapa-primaryDark disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {savingFeatures ? "Saving..." : savedFeaturesFlash ? "Saved!" : "Save feature flags"}
         </button>
       </div>
 
