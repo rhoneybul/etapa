@@ -5,7 +5,7 @@
  */
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image, ImageBackground, Animated, RefreshControl,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image, Animated, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
@@ -28,7 +28,7 @@ import ComingSoon from '../components/ComingSoon';
 import StravaLogo from '../components/StravaLogo';
 import { triggerMaintenanceMode } from '../../App';
 import { syncPlansToServer } from '../services/storageService';
-import PlanPickerScreen from './PlanPickerScreen';
+import WelcomeScreen from './WelcomeScreen';
 
 const FF = fontFamily;
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -111,11 +111,6 @@ export default function HomeScreen({ navigation, route }) {
   const [trialConfig, setTrialConfig] = useState({ days: 7, bannerMessage: 'Subscribe to unlock full training access' });
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [comingSoonConfig, setComingSoonConfig] = useState(null);
-  // PlanPicker (guided intake) visibility — starts true on mount if the
-  // remote flag is on AND no plans exist. User can "Skip" to fall back to
-  // the legacy three-card empty state. Flag defaults to false so this is
-  // strictly opt-in until turned on via remote config.
-  const [pickerDismissed, setPickerDismissed] = useState(false);
   // Delete-in-progress overlay. When truthy, we render a full-screen spinner
   // on top of whatever the home would otherwise show. Also prevents downstream
   // components from rendering against stale state during the reload (seen in
@@ -458,133 +453,14 @@ export default function HomeScreen({ navigation, route }) {
   }
 
   if (plans.length === 0) {
-    // Guided PlanPicker flow — opt-in via remote config. Defaults off so the
-    // legacy three-card layout below keeps working exactly as it did until
-    // `features.planPicker.enabled` is flipped to true.
-    const pickerOn = remoteConfig.getBool('features.planPicker.enabled', false);
-    if (pickerOn && !pickerDismissed) {
-      return (
-        <PlanPickerScreen
-          navigation={navigation}
-          onDismiss={() => setPickerDismissed(true)}
-        />
-      );
-    }
+    // Guided PlanPicker intake is the default empty-state flow. The Skip
+    // Empty-state home → WelcomeScreen inline. The user has one primary
+    // action (Get started → intake) and one escape ("I already know what I
+    // want" → PlanSelection). The legacy three-card layout is gone — its
+    // role is now covered by PlanSelection which renders the same cards
+    // from either path of the welcome.
     return (
-      <ImageBackground
-        source={require('../../assets/bg-mountain.jpg')}
-        style={s.container}
-        imageStyle={s.bgImage}
-        resizeMode="cover"
-      >
-        {/* Dark overlay to make the photo very faint */}
-        <View style={s.bgOverlay} />
-        <SafeAreaView style={s.safe}>
-          <View style={s.header}>
-            <View style={s.headerLeft}>
-              <Image source={require('../../assets/icon.png')} style={s.headerLogo} />
-              <View>
-                <Text style={s.appName}>Etapa</Text>
-                {firstName && <Text style={s.greeting}>Hi, {firstName}</Text>}
-              </View>
-            </View>
-            <TouchableOpacity onPress={() => navigation.navigate('Settings')} hitSlop={HIT}>
-              <View style={s.iconBtn}><Text style={s.iconBtnText}>{'\u2022\u2022\u2022'}</Text></View>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView contentContainerStyle={s.emptyPlanWrap} showsVerticalScrollIndicator={false}>
-            <Text style={s.emptyTitle}>
-              {firstName ? `Hey ${firstName}, let's ride` : "Let's ride"}
-            </Text>
-            <Text style={s.emptySub}>{t('home.chooseSub')}</Text>
-
-            {/* Pathway 1 — Getting into cycling (beginner program) */}
-            {remoteConfig.getBool('features.beginnerProgram.enabled', true) && (
-            <TouchableOpacity
-              style={s.beginnerCard}
-              onPress={() => navigation.navigate('BeginnerProgram')}
-              activeOpacity={0.88}
-            >
-              <View style={s.beginnerBadge}>
-                <Text style={s.beginnerBadgeText}>{t('home.pathway.beginner.badge')}</Text>
-              </View>
-              <Text style={s.beginnerTitle}>{t('home.pathway.beginner.title')}</Text>
-              <Text style={s.beginnerSub} numberOfLines={2}>
-                {t('home.pathway.beginner.description')}
-              </Text>
-              <View style={s.cardFeatureRow}>
-                {['12-week programme', 'Couch to 100k', 'No experience needed'].map(f => (
-                  <View key={f} style={s.cardFeaturePill}>
-                    <Text style={s.cardFeaturePillText}>{f}</Text>
-                  </View>
-                ))}
-              </View>
-            </TouchableOpacity>
-            )}
-
-            {/* Pathway 2 — Building a plan (goal-driven) */}
-            <TouchableOpacity
-              style={s.createBtn}
-              onPress={handleMakePlan}
-              activeOpacity={0.88}
-            >
-              <View style={s.beginnerBadge}>
-                <Text style={s.beginnerBadgeText}>{t('home.pathway.plan.badge')}</Text>
-              </View>
-              <Text style={s.createBtnTitle}>{t('home.pathway.plan.title')}</Text>
-              <Text style={s.createBtnSub} numberOfLines={2}>
-                {t('home.pathway.plan.description')}
-              </Text>
-              <View style={s.cardFeatureRow}>
-                {['Pick your target date', 'Built around your week', 'Adjusts as you go'].map(f => (
-                  <View key={f} style={s.cardFeaturePill}>
-                    <Text style={s.cardFeaturePillText}>{f}</Text>
-                  </View>
-                ))}
-              </View>
-            </TouchableOpacity>
-
-            {/* Pathway 3 — Just want to improve (quick plan) */}
-            {remoteConfig.getBool('features.quickPlan.enabled', true) && (
-            <TouchableOpacity
-              style={s.createBtn}
-              onPress={handleQuickPlan}
-              activeOpacity={0.88}
-            >
-              <View style={s.beginnerBadge}>
-                <Text style={s.beginnerBadgeText}>{t('home.pathway.quick.badge')}</Text>
-              </View>
-              <Text style={s.createBtnTitle}>{t('home.pathway.quick.title')}</Text>
-              <Text style={s.createBtnSub} numberOfLines={2}>
-                {t('home.pathway.quick.description')}
-              </Text>
-              <View style={s.cardFeatureRow}>
-                {['Ongoing plan', 'Flexible', '2 minutes to set up'].map(f => (
-                  <View key={f} style={s.cardFeaturePill}>
-                    <Text style={s.cardFeaturePillText}>{f}</Text>
-                  </View>
-                ))}
-              </View>
-            </TouchableOpacity>
-            )}
-          </ScrollView>
-        </SafeAreaView>
-        <UpgradePrompt
-          visible={showUpgrade}
-          onClose={() => setShowUpgrade(false)}
-          onUpgrade={handleUpgrade}
-          upgrading={upgrading}
-        />
-        <OnboardingTour
-          visible={showOnboarding}
-          onComplete={() => {
-            setShowOnboarding(false);
-            setOnboardingDone();
-          }}
-          onCreatePlan={handleMakePlan}
-        />
-      </ImageBackground>
+      <WelcomeScreen navigation={navigation} firstName={firstName} />
     );
   }
 
@@ -908,10 +784,22 @@ export default function HomeScreen({ navigation, route }) {
           {/* Coming Soon — only on home when admin sets showOnHome */}
           {comingSoonConfig?.showOnHome && <ComingSoon config={comingSoonConfig} />}
 
-          {/* New plan button */}
+          {/* New plan button — goes to PlanSelection (three-card picker,
+              no recommendation). Returning users already know they want a
+              plan, so we skip the welcome + intake. */}
           <TouchableOpacity
             style={[s.newPlanBtn, planLimits && !planLimits.unlimited && planLimits.remaining === 0 && { opacity: 0.5 }]}
-            onPress={handleMakePlan}
+            onPress={() => {
+              if (planLimits && !planLimits.unlimited && planLimits.remaining === 0) {
+                Alert.alert(
+                  'Weekly plan limit reached',
+                  `You've generated ${planLimits.used} of ${planLimits.limit} plans in the last 7 days. The count resets as individual plans age out. If you need more, contact support.`,
+                  [{ text: 'OK' }],
+                );
+                return;
+              }
+              navigation.navigate('PlanSelection');
+            }}
             activeOpacity={0.8}
           >
             <Text style={s.newPlanBtnPlus}>+</Text>
@@ -1811,8 +1699,6 @@ const s = StyleSheet.create({
   beginnerCompactSub: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
 
   // Background image for empty state
-  bgImage: { opacity: 0.08 },
-  bgOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.15)' },
 
   // Empty plan state — compacted so all three pathway cards fit in one viewport
   // on standard phone sizes (~820pt tall). Previous sizing pushed the third

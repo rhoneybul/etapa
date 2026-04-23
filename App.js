@@ -55,6 +55,8 @@ import analytics from './src/services/analyticsService';
 import SignInScreen          from './src/screens/SignInScreen';
 import OnboardingNameScreen  from './src/screens/OnboardingNameScreen';
 import HomeScreen            from './src/screens/HomeScreen';
+import PlanPickerScreen      from './src/screens/PlanPickerScreen';
+import PlanSelectionScreen   from './src/screens/PlanSelectionScreen';
 import GoalSetupScreen     from './src/screens/GoalSetupScreen';
 import PlanConfigScreen    from './src/screens/PlanConfigScreen';
 import WeekViewScreen      from './src/screens/WeekViewScreen';
@@ -381,6 +383,12 @@ function App() {
               {/* First-login onboarding — prompts for display name + optional
                   comms email. Shown once, skipped afterwards via user_prefs. */}
               <Stack.Screen name="OnboardingName" component={OnboardingNameScreen} />
+              {/* Plan-creation flow — reached from WelcomeScreen (Get Started)
+                  and from "+ New plan" on home. PlanPicker does the intake;
+                  PlanSelection is the shared three-card picker with an
+                  optional recommendation badge. */}
+              <Stack.Screen name="PlanPicker"     component={PlanPickerScreen} />
+              <Stack.Screen name="PlanSelection"  component={PlanSelectionScreen} />
               <Stack.Screen name="Home"           component={HomeScreen} />
               <Stack.Screen name="GoalSetup"      component={GoalSetupScreen} />
               <Stack.Screen name="PlanConfig"     component={PlanConfigScreen} />

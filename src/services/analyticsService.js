@@ -243,6 +243,11 @@ const events = {
   // Fired when the user cancels the Apple/Google payment sheet.
   purchaseCancelled: (props = {})        => track('purchase_cancelled', props),
 
+  // ── Welcome (first action from the empty-state home) ─────────────────────
+  // Fires when the user taps either CTA on WelcomeScreen. `action` is
+  // 'get_started' (routes to intake) or 'already_know' (skips to Selection).
+  welcomeStarted:        (props = {}) => track('welcome_started', props),
+
   // ── Plan picker (guided intake on the empty-state home) ──────────────────
   // Fired when the picker mounts — i.e. someone started the intake flow.
   planPickerStarted:     (props = {}) => track('plan_picker_started', props),

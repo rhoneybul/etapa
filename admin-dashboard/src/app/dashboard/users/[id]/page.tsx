@@ -219,24 +219,10 @@ export default function UserDetailPage() {
     note: "",
   });
 
-  // Per-user feature-flag overrides. UI is tri-state: "default" (no override),
-  // "on" (force true), "off" (force false). Stored under user_config_overrides
-  // as `{ features: { flagId: { enabled: bool } } }` so the shape deep-merges
-  // cleanly on top of the global config payload at read time.
-  type FlagDef = { id: string; label: string; description: string; defaultEnabled: boolean };
-  const USER_FEATURE_FLAGS: FlagDef[] = [
-    { id: "planPicker",        label: "Guided plan picker",    description: "Intake flow on empty-state home.", defaultEnabled: false },
-    { id: "beginnerProgram",   label: "Beginner program",      description: "12-week beginner pathway card.",   defaultEnabled: true  },
-    { id: "quickPlan",         label: "Quick plan",            description: "Ongoing 'Just get better' card.",  defaultEnabled: true  },
-  ];
-  type FlagChoice = "default" | "on" | "off";
-  const [flagsLoading, setFlagsLoading] = useState(false);
-  const [flagsSaving, setFlagsSaving] = useState(false);
-  const [flagsError, setFlagsError] = useState<string | null>(null);
-  const [flagsSavedFlash, setFlagsSavedFlash] = useState(false);
-  const [flagChoices, setFlagChoices] = useState<Record<string, FlagChoice>>({});
-  const [flagNote, setFlagNote] = useState("");
-  const [flagOriginal, setFlagOriginal] = useState<Record<string, FlagChoice>>({});
+  // Per-user feature-flag overrides have been retired — the only flag that
+  // lived here (planPicker) is now the default flow for all users. When a
+  // future flag genuinely needs per-user control, restore the block from
+  // git history — the plumbing is unchanged.
 
   const refresh = useCallback(() => {
     if (!params?.id) return;
@@ -283,77 +269,7 @@ export default function UserDetailPage() {
       })
       .catch((e) => setRlError(e.message))
       .finally(() => setRlLoading(false));
-
-    // ── Feature-flag overrides ─────────────────────────────────────────
-    setFlagsLoading(true);
-    setFlagsError(null);
-    fetch(`/api/user-overrides?userId=${params.id}`)
-      .then(async (r) => {
-        const body = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(body.error || `Overrides request failed (${r.status})`);
-        return body as { overrides: Record<string, unknown>; note: string | null };
-      })
-      .then((d) => {
-        const feats = (d.overrides?.features ?? {}) as Record<string, { enabled?: boolean }>;
-        const choices: Record<string, FlagChoice> = {};
-        for (const f of USER_FEATURE_FLAGS) {
-          const v = feats?.[f.id];
-          if (v == null || typeof v.enabled !== "boolean") choices[f.id] = "default";
-          else choices[f.id] = v.enabled ? "on" : "off";
-        }
-        setFlagChoices(choices);
-        setFlagOriginal(choices);
-        setFlagNote(d.note || "");
-      })
-      .catch((e) => setFlagsError(e.message))
-      .finally(() => setFlagsLoading(false));
   }, [params?.id]);
-
-  async function saveFeatureOverrides() {
-    if (!params?.id) return;
-    setFlagsSaving(true);
-    setFlagsError(null);
-    try {
-      // Fetch current overrides so we don't stomp non-feature keys (e.g.
-      // entitlement) that other admin actions write into this row.
-      const current = await fetch(`/api/user-overrides?userId=${params.id}`).then((r) => r.json()).catch(() => ({ overrides: {} }));
-      const base = (current?.overrides ?? {}) as Record<string, unknown>;
-
-      const featuresOverride: Record<string, { enabled: boolean }> = {};
-      for (const [id, choice] of Object.entries(flagChoices)) {
-        if (choice === "on")  featuresOverride[id] = { enabled: true };
-        if (choice === "off") featuresOverride[id] = { enabled: false };
-        // choice === "default" → omit so global wins
-      }
-      const mergedOverrides: Record<string, unknown> = { ...base };
-      if (Object.keys(featuresOverride).length > 0) {
-        mergedOverrides.features = featuresOverride;
-      } else {
-        // No explicit flag overrides → remove the key entirely so the merge
-        // falls back to global for every flag.
-        delete mergedOverrides.features;
-      }
-
-      const res = await fetch(`/api/user-overrides`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: params.id, overrides: mergedOverrides, note: flagNote.trim() || null }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Save failed (${res.status})`);
-      }
-      setFlagOriginal(flagChoices);
-      setFlagsSavedFlash(true);
-      setTimeout(() => setFlagsSavedFlash(false), 2500);
-    } catch (e) {
-      setFlagsError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setFlagsSaving(false);
-    }
-  }
-
-  const flagsDirty = JSON.stringify(flagChoices) !== JSON.stringify(flagOriginal);
 
   async function saveRateLimits() {
     if (!params?.id) return;
@@ -1194,91 +1110,6 @@ export default function UserDetailPage() {
           </div>
         ) : (
           <EmptyRow text="No rate-limit data." />
-        )}
-      </Section>
-
-      {/* Feature flags — per-user override. Deep-merges on top of the global
-          feature-flags card on /dashboard/config. "Default" means this user
-          follows the global setting for that flag. */}
-      <Section title="Feature Flags">
-        {flagsLoading ? (
-          <EmptyRow text="Loading feature flags..." />
-        ) : flagsError ? (
-          <div className="bg-etapa-surface rounded-xl border border-red-500/40 p-4 text-sm text-red-400">
-            {flagsError}
-          </div>
-        ) : (
-          <div className="bg-etapa-surface rounded-xl border border-etapa-border p-5 space-y-4">
-            <p className="text-xs text-etapa-textMuted">
-              Per-user overrides. &quot;Default&quot; uses the global value on the Config page. &quot;On&quot; / &quot;Off&quot; force that flag for this user regardless of global.
-            </p>
-            <div className="space-y-3">
-              {USER_FEATURE_FLAGS.map((f) => {
-                const choice = flagChoices[f.id] ?? "default";
-                return (
-                  <div
-                    key={f.id}
-                    className="bg-etapa-surfaceLight border border-etapa-border rounded-lg p-4 flex items-start justify-between gap-4"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-semibold text-white">{f.label}</p>
-                        <code className="text-[10px] text-etapa-textMuted">features.{f.id}.enabled</code>
-                      </div>
-                      <p className="text-xs text-etapa-textMuted mt-1">{f.description}</p>
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      {(["default", "on", "off"] as FlagChoice[]).map((opt) => {
-                        const active = choice === opt;
-                        return (
-                          <button
-                            key={opt}
-                            type="button"
-                            onClick={() => setFlagChoices((prev) => ({ ...prev, [f.id]: opt }))}
-                            className={
-                              "px-3 py-1.5 text-xs rounded-md border transition-colors " +
-                              (active
-                                ? opt === "on"
-                                  ? "bg-emerald-500/20 border-emerald-500/60 text-emerald-300"
-                                  : opt === "off"
-                                    ? "bg-red-500/20 border-red-500/60 text-red-300"
-                                    : "bg-etapa-primary/20 border-etapa-primary/60 text-white"
-                                : "bg-etapa-surface border-etapa-border text-etapa-textMid hover:text-white")
-                            }
-                          >
-                            {opt === "default" ? "Default" : opt === "on" ? "On" : "Off"}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <label className="block">
-              <span className="text-xs text-etapa-textMid block mb-1">Note (optional — why this override exists)</span>
-              <input
-                type="text"
-                value={flagNote}
-                onChange={(e) => setFlagNote(e.target.value)}
-                placeholder="e.g. beta tester for the new intake flow"
-                className="w-full bg-etapa-surfaceLight border border-etapa-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-etapa-textFaint"
-              />
-            </label>
-            <div className="flex items-center gap-3 pt-1">
-              <button
-                type="button"
-                disabled={flagsSaving || !flagsDirty}
-                onClick={saveFeatureOverrides}
-                className="px-4 py-2 rounded-lg bg-etapa-primary text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {flagsSaving ? "Saving..." : flagsSavedFlash ? "Saved!" : "Save overrides"}
-              </button>
-              <span className="text-[11px] text-etapa-textFaint">
-                Takes ~5 min to reach the device (remote-config cache).
-              </span>
-            </div>
-          </div>
         )}
       </Section>
 

@@ -67,13 +67,10 @@ type FeatureFlagDef = {
 };
 
 const FEATURE_FLAGS: FeatureFlagDef[] = [
-  {
-    id: "planPicker",
-    label: "Guided plan picker (intake flow)",
-    description:
-      "Opt-in 3-step coach-voiced intake shown to users with no plan yet. Asks intent, longest ride, timeline and recommends a path.",
-    defaultEnabled: false,
-  },
+  // NOTE: planPicker used to live here as an opt-in flag. It's now the
+  // default empty-state flow on mobile (the Skip button falls back to the
+  // legacy three-card layout for anyone who wants to bypass the intake), so
+  // it no longer needs a toggle.
   {
     id: "beginnerProgram",
     label: "Beginner program pathway",
