@@ -75,11 +75,13 @@ function generateRideTips(activity) {
 }
 
 export default function ActivityDetailScreen({ navigation, route }) {
-  const { activityId } = route.params;
+  const { activityId, initialEditing } = route.params;
   const [activity, setActivity] = useState(null);
   const [plan, setPlan] = useState(null);
   const [goal, setGoal] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
+  // Allow callers (e.g. HomeScreen long-press → Edit) to open this screen
+  // directly in edit mode so the user doesn't have to tap "Edit" again.
+  const [isEditing, setIsEditing] = useState(!!initialEditing);
   const [editValues, setEditValues] = useState({});
   const [showTips, setShowTips] = useState(false);
 

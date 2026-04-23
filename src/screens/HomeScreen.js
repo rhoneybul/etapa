@@ -601,6 +601,16 @@ export default function HomeScreen({ navigation, route }) {
     setActionActivity(null);
   };
 
+  // Open ActivityDetail directly in edit mode so the user can tweak distance /
+  // duration / effort / day without first tapping "Edit" on the detail screen.
+  const handleActionEdit = () => {
+    if (!actionActivity) return;
+    const id = actionActivity.activity.id;
+    setActionActivity(null);
+    setSelectedDayIdx(null);
+    navigation.navigate('ActivityDetail', { activityId: id, initialEditing: true });
+  };
+
   const handleActionDelete = async () => {
     if (!actionActivity || !activePlan) return;
     const allPlans = await getPlans();
@@ -1166,7 +1176,22 @@ export default function HomeScreen({ navigation, route }) {
                   <TouchableOpacity
                     key={`wl-${i}`}
                     style={[s.weekListRow, isTodayRow && s.weekListRowToday]}
-                    onPress={() => handleDayPress(i)}
+                    onPress={() => {
+                      // If we're mid-move, or it's a rest day, keep the day-select
+                      // panel behaviour. Otherwise go straight to the activity so
+                      // the user doesn't have to tap twice to open a session.
+                      if (movingActivity || isRest || !primary?.id) {
+                        handleDayPress(i);
+                        return;
+                      }
+                      navigation.navigate('ActivityDetail', { activityId: primary.id });
+                    }}
+                    onLongPress={() => {
+                      // Long-press on a session day surfaces the Edit / Move /
+                      // Delete action bar (same UX as the Today card).
+                      if (!isRest && primary) handleActivityLongPress(primary);
+                    }}
+                    delayLongPress={350}
                     activeOpacity={0.7}
                   >
                     <Text style={[s.weekListDay, isTodayRow && s.weekListDayToday]}>{dLabel.slice(0, 3)}</Text>
@@ -1482,6 +1507,10 @@ export default function HomeScreen({ navigation, route }) {
           <View style={s.actionBar}>
             <Text style={s.actionBarTitle} numberOfLines={1}>{actionActivity.activity.title}</Text>
             <View style={s.actionBarBtns}>
+              <TouchableOpacity style={s.actionBarBtn} onPress={handleActionEdit} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="pencil-outline" size={20} color={colors.text} />
+                <Text style={s.actionBarBtnText}>Edit</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={s.actionBarBtn} onPress={handleActionMove} activeOpacity={0.7}>
                 <MaterialCommunityIcons name="calendar-arrow-right" size={20} color={colors.text} />
                 <Text style={s.actionBarBtnText}>Move</Text>
@@ -1609,7 +1638,7 @@ const s = StyleSheet.create({
   // New plan button
   newPlanBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
-    marginLeft: 20, marginBottom: 12,
+    marginLeft: 20, marginBottom: 6,
     paddingVertical: 7, paddingHorizontal: 14,
     borderRadius: 20, borderWidth: 1,
     borderColor: colors.border,
@@ -1618,7 +1647,7 @@ const s = StyleSheet.create({
   newPlanBtnPlus: { fontSize: 16, fontWeight: '400', color: colors.primary },
   newPlanBtnText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
   planLimitHint: {
-    marginLeft: 20, marginBottom: 16, marginTop: -4,
+    marginLeft: 20, marginBottom: 24,
     fontSize: 11, fontWeight: '400', fontFamily: FF.regular,
     color: colors.textFaint,
   },
@@ -1626,7 +1655,7 @@ const s = StyleSheet.create({
   planLimitHintBlocked: { color: '#ef4444', fontWeight: '500' },
 
   // Plan tabs
-  planTabsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 8 },
+  planTabsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 10 },
   planTabsLabel: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 },
   planDots: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   planDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
@@ -1882,7 +1911,7 @@ const s = StyleSheet.create({
   },
   weekListRest: {
     fontSize: 14, fontWeight: '400', fontFamily: FF.regular,
-    color: colors.textFaint, fontStyle: 'italic',
+    color: colors.textFaint,
   },
   weekListExtra: {
     fontSize: 12, fontWeight: '400', fontFamily: FF.regular,
