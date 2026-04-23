@@ -83,8 +83,8 @@ import { registerForPushNotifications, addNotificationResponseListener } from '.
 import { api } from './src/services/api';
 import remoteConfig from './src/services/remoteConfig';
 
-import Constants from 'expo-constants';
-
+// Constants is already imported at the top of the file for Sentry's release
+// tag. APP_VERSION reuses the same object — don't re-import.
 const APP_VERSION = Constants.expoConfig?.version || Constants.manifest?.version || '0.0.0';
 
 const Stack = createStackNavigator();
