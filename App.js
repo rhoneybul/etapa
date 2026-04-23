@@ -47,13 +47,14 @@ import { View } from 'react-native';
 import { useFonts, Poppins_300Light, Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold } from '@expo-google-fonts/poppins';
 import * as SplashScreen from 'expo-splash-screen';
 import { getSession, getCurrentUser, signOut, onAuthStateChange } from './src/services/authService';
-import { ensureUserData, hydrateFromServer } from './src/services/storageService';
+import { ensureUserData, hydrateFromServer, getUserPrefs } from './src/services/storageService';
 // Stripe removed — all payments go through Apple IAP via RevenueCat
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from './src/services/revenueCatService';
 import analytics from './src/services/analyticsService';
 
-import SignInScreen        from './src/screens/SignInScreen';
-import HomeScreen          from './src/screens/HomeScreen';
+import SignInScreen          from './src/screens/SignInScreen';
+import OnboardingNameScreen  from './src/screens/OnboardingNameScreen';
+import HomeScreen            from './src/screens/HomeScreen';
 import GoalSetupScreen     from './src/screens/GoalSetupScreen';
 import PlanConfigScreen    from './src/screens/PlanConfigScreen';
 import WeekViewScreen      from './src/screens/WeekViewScreen';
@@ -230,7 +231,18 @@ function App() {
 
         // Stripe checkout removed — payments are handled via Apple IAP / RevenueCat
       }
-      setInitialRoute(session ? 'Home' : 'SignIn');
+      // Decide the landing screen. A signed-in user with no displayName set
+      // goes through the OnboardingName prompt before reaching Home. One-shot
+      // — once displayName is stored in user_prefs (local + server), we skip
+      // the prompt on every subsequent cold start.
+      if (session) {
+        let prefs = null;
+        try { prefs = await getUserPrefs(); } catch {}
+        const hasName = !!(prefs?.displayName || '').trim();
+        setInitialRoute(hasName ? 'Home' : 'OnboardingName');
+      } else {
+        setInitialRoute('SignIn');
+      }
     });
 
     // Handle notification taps — route to the appropriate screen
@@ -366,6 +378,9 @@ function App() {
               }}
             >
               <Stack.Screen name="SignIn"         component={SignInScreen} />
+              {/* First-login onboarding — prompts for display name + optional
+                  comms email. Shown once, skipped afterwards via user_prefs. */}
+              <Stack.Screen name="OnboardingName" component={OnboardingNameScreen} />
               <Stack.Screen name="Home"           component={HomeScreen} />
               <Stack.Screen name="GoalSetup"      component={GoalSetupScreen} />
               <Stack.Screen name="PlanConfig"     component={PlanConfigScreen} />

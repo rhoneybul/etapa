@@ -147,6 +147,11 @@ export default function PlanConfigScreen({ navigation, route }) {
   const intake = route.params?.intake || null;
   const prefillWeeks = route.params?.prefillWeeks || null;
   const prefillLevel = route.params?.prefillLevel || intake?.userLevel || null;
+  // Athlete's self-reported longest recent ride in km (from the PlanPicker
+  // intake). Nullable — absent on the legacy three-card flow. Flows into
+  // the config payload sent to the plan generator. Declared alongside the
+  // other pre-fill reads so handleContinue can reference it in scope.
+  const prefillLongestRideKm = route.params?.prefillLongestRideKm ?? intake?.longestRideKm ?? null;
 
   // Abandon tracking — set true right before advancing to PlanLoading. Used
   // by the beforeRemove listener to distinguish progress from back/close.
@@ -609,7 +614,25 @@ export default function PlanConfigScreen({ navigation, route }) {
     });
 
     completedRef.current = true;
-    navigation.replace('PlanLoading', { goal, config, requirePaywall, defaultPlan });
+    // Breadcrumb for the "nothing happens on Generate" TestFlight report.
+    // If the user taps Generate but never lands on PlanLoading, this log +
+    // Sentry breadcrumb will tell us exactly where we stopped.
+    try {
+      console.log('[PlanConfig] navigating to PlanLoading', {
+        goalId: goal?.id, weeks: config?.weeks, fitnessLevel: config?.fitnessLevel,
+        trainingTypes: config?.trainingTypes, requirePaywall, hasDefaultPlan: !!defaultPlan,
+      });
+    } catch {}
+    try {
+      navigation.replace('PlanLoading', { goal, config, requirePaywall, defaultPlan });
+    } catch (err) {
+      console.warn('[PlanConfig] navigation.replace(PlanLoading) failed:', err);
+      // Surface the failure so the user doesn't sit on a dead screen.
+      Alert.alert(
+        'Couldn\'t start generation',
+        err?.message || 'Please try again. If this keeps happening, restart the app.',
+      );
+    }
   };
 
   const handleBack = () => {

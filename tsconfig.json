@@ -5,9 +5,7 @@
     "src/**/*",
     "App.tsx",
     "index.js",
-    "app.json",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "app.json"
   ],
   "exclude": [
     "node_modules",

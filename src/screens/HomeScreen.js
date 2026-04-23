@@ -116,6 +116,11 @@ export default function HomeScreen({ navigation, route }) {
   // the legacy three-card empty state. Flag defaults to false so this is
   // strictly opt-in until turned on via remote config.
   const [pickerDismissed, setPickerDismissed] = useState(false);
+  // Delete-in-progress overlay. When truthy, we render a full-screen spinner
+  // on top of whatever the home would otherwise show. Also prevents downstream
+  // components from rendering against stale state during the reload (seen in
+  // Sentry as "Cannot read property 'weeks' of undefined" on delete).
+  const [deleting, setDeleting] = useState(false);
   const [stravaActivities, setStravaActivities] = useState([]);
   const [selectedDayIdx, setSelectedDayIdx] = useState(null); // tapped day in the week strip
   const [movingActivity, setMovingActivity] = useState(null); // { activity } when hold-to-move
@@ -417,6 +422,27 @@ export default function HomeScreen({ navigation, route }) {
           <Animated.View style={[s.loadingLogoWrap, { transform: [{ scale: pulseAnim }] }]}>
             <Image source={require('../../assets/icon.png')} style={s.loadingLogo} />
           </Animated.View>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  // ── Delete-in-progress overlay ────────────────────────────────────────────
+  // Short (well under a second) gap between `deletePlan` resolving and
+  // `load()` repopulating `plans`. Rendering the full page during that window
+  // can hit stale state (see Sentry "Cannot read property 'weeks' of
+  // undefined"). We return a dedicated spinner screen so no downstream
+  // component renders against an inconsistent world.
+  if (deleting) {
+    return (
+      <View style={s.container}>
+        <SafeAreaView style={[s.safe, s.loadingWrap]}>
+          <View style={s.deletingCard}>
+            <Animated.View style={[s.loadingLogoWrap, { transform: [{ scale: pulseAnim }], marginBottom: 12 }]}>
+              <Image source={require('../../assets/icon.png')} style={s.loadingLogoSmall} />
+            </Animated.View>
+            <Text style={s.deletingText}>Deleting plan…</Text>
+          </View>
         </SafeAreaView>
       </View>
     );
@@ -747,9 +773,14 @@ export default function HomeScreen({ navigation, route }) {
             const completed = (targetPlan.activities || []).filter(a => a.completed).length;
             const total = (targetPlan.activities || []).length;
             analytics.events.planDeleted({ weeks: targetPlan.weeks, completionPct: total > 0 ? Math.round((completed / total) * 100) : 0 });
-            await deletePlan(targetPlan.id);
-            setSelectedPlanIdx(0);
-            await load();
+            setDeleting(true);
+            try {
+              await deletePlan(targetPlan.id);
+              setSelectedPlanIdx(0);
+              await load();
+            } finally {
+              setDeleting(false);
+            }
           },
         },
       ],
@@ -794,9 +825,14 @@ export default function HomeScreen({ navigation, route }) {
             const completed = (targetPlan.activities || []).filter(a => a.completed).length;
             const total = (targetPlan.activities || []).length;
             analytics.events.planDeleted({ weeks: targetPlan.weeks, completionPct: total > 0 ? Math.round((completed / total) * 100) : 0 });
-            await deletePlan(targetPlan.id);
-            setSelectedPlanIdx(0);
-            await load();
+            setDeleting(true);
+            try {
+              await deletePlan(targetPlan.id);
+              setSelectedPlanIdx(0);
+              await load();
+            } finally {
+              setDeleting(false);
+            }
           },
         },
         { text: 'Cancel', style: 'cancel' },
@@ -958,13 +994,13 @@ export default function HomeScreen({ navigation, route }) {
                   <Text style={s.lockedBadgeText}>PAYMENT REQUIRED</Text>
                 </View>
                 <Text style={s.lockedTitle}>{activePlan.name || 'Get into Cycling'}</Text>
-                <Text style={s.lockedMeta}>{activePlan.weeks} weeks {'\u00B7'} starts {parseDateLocal(activePlan.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
+                <Text style={s.lockedMeta}>{activePlan?.weeks ?? '—'} weeks {'\u00B7'} starts {activePlan?.startDate ? parseDateLocal(activePlan.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</Text>
 
                 {/* High-level overview */}
                 <View style={s.lockedOverview}>
                   <Text style={s.lockedOverviewTitle}>Plan overview</Text>
                   <Text style={s.lockedOverviewText}>
-                    {activePlan.activities?.length || 0} sessions across {activePlan.weeks} weeks
+                    {activePlan?.activities?.length || 0} sessions across {activePlan?.weeks ?? '—'} weeks
                     {activePlanConfig?.daysPerWeek ? ` \u00B7 ${activePlanConfig.daysPerWeek} days/week` : ''}
                   </Text>
                   <Text style={s.lockedOverviewHint}>
@@ -1041,7 +1077,7 @@ export default function HomeScreen({ navigation, route }) {
                       : 'Improve my cycling'}
               </Text>
               <Text style={s.goalMeta}>
-                {CYCLING_LABELS[activeGoal.cyclingType] || activeGoal.cyclingType} {'\u00B7'} {activePlan.weeks} week plan
+                {CYCLING_LABELS[activeGoal.cyclingType] || activeGoal.cyclingType} {'\u00B7'} {activePlan?.weeks ?? '—'} week plan
                 {activeGoal.targetDate ? ` ${'\u00B7'} Target: ${activeGoal.targetDate}` : ''}
               </Text>
             </View>
@@ -1630,6 +1666,15 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
   },
   loadingLogo: { width: 80, height: 80 },
+  loadingLogoSmall: { width: 44, height: 44 },
+  // Card used by the delete-in-progress overlay so the spinner reads as
+  // explicit, bounded progress rather than "the whole screen is loading".
+  deletingCard: {
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    borderRadius: 16, paddingVertical: 22, paddingHorizontal: 30,
+  },
+  deletingText: { fontSize: 13, fontFamily: FF.semibold, fontWeight: '500', color: colors.text },
   safe:      { flex: 1 },
 
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },

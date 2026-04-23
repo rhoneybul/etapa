@@ -258,6 +258,11 @@ const events = {
   // layout. `atStep` says where in the flow they bailed.
   planPickerSkipped:     (props = {}) => track('plan_picker_skipped', props),
 
+  // ── First-login onboarding ─────────────────────────────────────────────────
+  // Fired when the user completes the name prompt (required) + optional
+  // comms email. Tracked so we can measure email-capture rate at onboarding.
+  onboardingNameCompleted: (props = {}) => track('onboarding_name_completed', props),
+
   // ── Connections & settings ─────────────────────────────────────────────────
   stravaConnected:    ()                 => track('strava_connected'),
   stravaDisconnected: ()                 => track('strava_disconnected'),
