@@ -795,6 +795,9 @@ router.post('/plans/:id/regenerate', async (req, res, next) => {
       sessionCounts: config.session_counts || {},
       availableDays: config.available_days || [],
       longRideDay: config.long_ride_day || null,
+      // PlanPicker intake field. Null for legacy plans; the prompt falls
+      // back to the fitness-level benchmark when null.
+      longestRideKm: config.longest_ride_km != null ? config.longest_ride_km : null,
       startDate: plan.start_date,
       extraNotes: config.extra_notes,
       ...configOverrides,

@@ -32,6 +32,10 @@ const GOAL_TYPES = [
 
 export default function GoalSetupScreen({ navigation, route }) {
   const requirePaywall = route?.params?.requirePaywall || false;
+  // Pre-fills from the guided PlanPicker (opt-in intake flow on home). Only
+  // reads the intake — never branches on it — so downstream plan generation
+  // is unchanged. If intake is absent, the screen behaves exactly as before.
+  const intake = route?.params?.intake || null;
   const [step, setStep] = useState(1);
   // Used by the abandon-tracking effect below to distinguish "user progressed
   // to the next screen" (set true on success) from "user hit back / closed".
@@ -53,26 +57,38 @@ export default function GoalSetupScreen({ navigation, route }) {
     return unsub;
   }, [navigation]);
   const [cyclingType, setCyclingType] = useState(null);
-  const [goalType, setGoalType] = useState(null);
+  // PlanPicker pre-fill: if user came from the intake flow with intent=event,
+  // seed goalType so step 1 can advance past the "pick a goal type" prompt
+  // straight into the specifics. User can still change it on the screen.
+  const [goalType, setGoalType] = useState(intake?.intent === 'event' ? 'race' : null);
   const [planName, setPlanName] = useState('');
   const [targetDistance, setTargetDistance] = useState('');
   const [targetElevation, setTargetElevation] = useState('');
   const [targetTime, setTargetTime] = useState('');
-  const [targetDate, setTargetDate] = useState('');
+  // PlanPicker pre-fill: event date captured in the intake carries through.
+  const [targetDate, setTargetDate] = useState(intake?.eventDate || '');
   const [eventName, setEventName] = useState('');
   const [raceLooking, setRaceLooking] = useState(false);
   const [raceResult, setRaceResult] = useState(null);
 
   const handleRaceLookup = async () => {
     if (!eventName.trim()) return;
+    // Wipe the previous lookup state BEFORE firing a new request. Prevents
+    // the "typed Traka 360, got 360km; changed to London Marathon, fields
+    // still show 360km" bug (reported by Nick, Apr 2026). Only reason the
+    // old code had `!targetDistance` guards was to respect manually-typed
+    // values — but users who have clicked "Look up" explicitly want the
+    // fields to sync to whatever the new lookup returns.
     setRaceLooking(true);
     setRaceResult(null);
+    setTargetDistance('');
+    setTargetElevation('');
     try {
       const result = await lookupRace(eventName.trim());
       if (result?.found) {
         setRaceResult(result);
-        if (result.distanceKm && !targetDistance) setTargetDistance(String(result.distanceKm));
-        if (result.elevationM && !targetElevation) setTargetElevation(String(result.elevationM));
+        if (result.distanceKm) setTargetDistance(String(result.distanceKm));
+        if (result.elevationM) setTargetElevation(String(result.elevationM));
       } else {
         setRaceResult({ found: false });
       }
@@ -129,7 +145,15 @@ export default function GoalSetupScreen({ navigation, route }) {
     });
 
     completedRef.current = true; // Tell the abandon listener this is a successful advance.
-    navigation.replace('PlanConfig', { goal, requirePaywall });
+    // Forward the PlanPicker intake + its derived pre-fills. Absent when the
+    // user came from the legacy three-card flow — PlanConfig tolerates null.
+    navigation.replace('PlanConfig', {
+      goal,
+      requirePaywall,
+      intake,
+      prefillLevel: intake?.userLevel || null,
+      prefillLongestRideKm: intake?.longestRideKm || null,
+    });
   };
 
   const handleBack = () => {

@@ -17,18 +17,12 @@
     "preview": {
       "distribution": "store",
       "autoIncrement": true,
-      "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
-      },
       "ios": {
         "image": "sdk-55"
       }
     },
     "production": {
       "autoIncrement": true,
-      "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
-      },
       "ios": {
         "image": "sdk-55"
       }

@@ -17,7 +17,7 @@ import { isSubscribed, getSubscriptionStatus, openCheckout, getPrices } from '..
 import UpgradePrompt from '../components/UpgradePrompt';
 import { isStravaConnected } from '../services/stravaService';
 import { syncStravaActivities, getStravaActivitiesForWeek, getStravaActivitiesForDate } from '../services/stravaSyncService';
-import { getSessionColor, getSessionLabel, getMetricLabel, getCrossTrainingForDay, getActivityIcon, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
+import { getSessionColor, getSessionLabel, getSessionTag, getMetricLabel, getCrossTrainingForDay, getActivityIcon, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getCoach } from '../data/coaches';
 import analytics from '../services/analyticsService';
@@ -28,6 +28,7 @@ import ComingSoon from '../components/ComingSoon';
 import StravaLogo from '../components/StravaLogo';
 import { triggerMaintenanceMode } from '../../App';
 import { syncPlansToServer } from '../services/storageService';
+import PlanPickerScreen from './PlanPickerScreen';
 
 const FF = fontFamily;
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -110,6 +111,11 @@ export default function HomeScreen({ navigation, route }) {
   const [trialConfig, setTrialConfig] = useState({ days: 7, bannerMessage: 'Subscribe to unlock full training access' });
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [comingSoonConfig, setComingSoonConfig] = useState(null);
+  // PlanPicker (guided intake) visibility — starts true on mount if the
+  // remote flag is on AND no plans exist. User can "Skip" to fall back to
+  // the legacy three-card empty state. Flag defaults to false so this is
+  // strictly opt-in until turned on via remote config.
+  const [pickerDismissed, setPickerDismissed] = useState(false);
   const [stravaActivities, setStravaActivities] = useState([]);
   const [selectedDayIdx, setSelectedDayIdx] = useState(null); // tapped day in the week strip
   const [movingActivity, setMovingActivity] = useState(null); // { activity } when hold-to-move
@@ -426,6 +432,18 @@ export default function HomeScreen({ navigation, route }) {
   }
 
   if (plans.length === 0) {
+    // Guided PlanPicker flow — opt-in via remote config. Defaults off so the
+    // legacy three-card layout below keeps working exactly as it did until
+    // `features.planPicker.enabled` is flipped to true.
+    const pickerOn = remoteConfig.getBool('features.planPicker.enabled', false);
+    if (pickerOn && !pickerDismissed) {
+      return (
+        <PlanPickerScreen
+          navigation={navigation}
+          onDismiss={() => setPickerDismissed(true)}
+        />
+      );
+    }
     return (
       <ImageBackground
         source={require('../../assets/bg-mountain.jpg')}
@@ -975,6 +993,40 @@ export default function HomeScreen({ navigation, route }) {
             </View>
           )}
 
+          {/* Coach chat card — moved ABOVE the goal card so it's the first
+              thing the user sees after the header. Coach chat is the single
+              highest-value interaction on the home screen (advice, plan
+              tweaks, quick questions) but was previously buried below the
+              week strip + Today. Discoverability hit reported via TestFlight
+              + user research. */}
+          {activePlan && activePlan.paymentStatus !== 'pending' && (() => {
+            const coach = getCoach(activePlanConfig?.coachId);
+            const coachName = coach?.name || 'Your coach';
+            const coachColor = coach?.avatarColor || colors.primary;
+            const coachInitials = coach?.avatarInitials || '?';
+            return (
+              <TouchableOpacity
+                style={s.coachCard}
+                onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
+                activeOpacity={0.8}
+              >
+                <View style={s.coachCardTop}>
+                  <View style={[s.coachAvatar, { backgroundColor: coachColor }]}>
+                    <Text style={s.coachAvatarText}>{coachInitials}</Text>
+                  </View>
+                  <View style={s.coachCardTextWrap}>
+                    <Text style={s.coachCardName}>{coachName}</Text>
+                    <Text style={s.coachCardHint}>Chat with your coach</Text>
+                  </View>
+                  <View style={s.coachCardArrowWrap}>
+                    <Text style={s.coachCardArrow}>{'\u203A'}</Text>
+                  </View>
+                </View>
+                <Text style={s.coachCardSub}>Get advice, tweak your plan, ask anything about your training</Text>
+              </TouchableOpacity>
+            );
+          })()}
+
           {/* Goal summary — at top (only for paid plans) */}
           {activeGoal && activePlan?.paymentStatus !== 'pending' && (
             <View style={s.goalCard}>
@@ -1199,6 +1251,19 @@ export default function HomeScreen({ navigation, route }) {
                         <Text style={s.weekListRest}>Rest</Text>
                       ) : (
                         <>
+                          {/* Tiny-caps session-type tag — matches the pill
+                              already used on the Today card ("STRENGTH"). Tells
+                              the user at a glance what kind of session the day
+                              is without them having to parse a coach-named
+                              session title like "Melt". Monochrome. */}
+                          {(() => {
+                            const tag = getSessionTag(primary);
+                            return tag ? (
+                              <View style={s.weekListTag}>
+                                <Text style={s.weekListTagText}>{tag}</Text>
+                              </View>
+                            ) : null;
+                          })()}
                           <Text style={[s.weekListTitle, isTodayRow && s.weekListTitleToday]} numberOfLines={1}>
                             {primary?.title || 'Session'}
                             {extras > 0 ? <Text style={s.weekListExtra}>  +{extras} more</Text> : null}
@@ -1393,35 +1458,6 @@ export default function HomeScreen({ navigation, route }) {
               ))}
             </View>
           )}
-
-          {/* Coach chat — prominent card */}
-          {activePlan && (() => {
-            const coach = getCoach(activePlanConfig?.coachId);
-            const coachName = coach?.name || 'Your coach';
-            const coachColor = coach?.avatarColor || colors.primary;
-            const coachInitials = coach?.avatarInitials || '?';
-            return (
-              <TouchableOpacity
-                style={s.coachCard}
-                onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
-                activeOpacity={0.8}
-              >
-                <View style={s.coachCardTop}>
-                  <View style={[s.coachAvatar, { backgroundColor: coachColor }]}>
-                    <Text style={s.coachAvatarText}>{coachInitials}</Text>
-                  </View>
-                  <View style={s.coachCardTextWrap}>
-                    <Text style={s.coachCardName}>{coachName}</Text>
-                    <Text style={s.coachCardHint}>Chat with your coach</Text>
-                  </View>
-                  <View style={s.coachCardArrowWrap}>
-                    <Text style={s.coachCardArrow}>{'\u203A'}</Text>
-                  </View>
-                </View>
-                <Text style={s.coachCardSub}>Get advice, tweak your plan, ask anything about your training</Text>
-              </TouchableOpacity>
-            );
-          })()}
 
           {/* Coach suggestions — always shown when plan has an assessment */}
           {((activePlan?.assessment?.suggestions?.length > 0) || (activePlan?.assessment?.recommendations?.length > 0)) && (
@@ -1891,6 +1927,19 @@ const s = StyleSheet.create({
   },
   weekListDayToday: { color: colors.primary },
   weekListContent: { flex: 1, gap: 2 },
+  // Tiny-caps session-type tag. Intentionally low-contrast so it reads as a
+  // secondary label, not as competition for the session title itself.
+  weekListTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 0.5, borderColor: colors.border,
+    paddingHorizontal: 6, paddingVertical: 2,
+    borderRadius: 4, marginBottom: 3,
+  },
+  weekListTagText: {
+    fontSize: 9, fontWeight: '500', fontFamily: FF.semibold,
+    color: colors.textMid, letterSpacing: 0.6,
+  },
   weekListTitle: {
     fontSize: 14, fontWeight: '500', fontFamily: FF.medium,
     color: colors.text,

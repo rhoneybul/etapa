@@ -141,6 +141,12 @@ export default function PlanConfigScreen({ navigation, route }) {
   const adjustPlanId = route.params?.planId || null;
   const requirePaywall = route.params?.requirePaywall || false;
   const defaultPlan = route.params?.defaultPlan || null;
+  // PlanPicker intake pre-fills (opt-in intake flow on home). Read-only —
+  // we never branch on these, they just seed existing state. Downstream
+  // plan generation is untouched. Absence of intake = behaviour as before.
+  const intake = route.params?.intake || null;
+  const prefillWeeks = route.params?.prefillWeeks || null;
+  const prefillLevel = route.params?.prefillLevel || intake?.userLevel || null;
 
   // Abandon tracking — set true right before advancing to PlanLoading. Used
   // by the beforeRemove listener to distinguish progress from back/close.
@@ -178,7 +184,7 @@ export default function PlanConfigScreen({ navigation, route }) {
     return unsub;
   }, [navigation]);
   const [fitnessLevel, setFitnessLevel] = useState(
-    adjustmentDefaults?.fitnessLevel || beginnerDefaults?.fitnessLevel || null
+    adjustmentDefaults?.fitnessLevel || beginnerDefaults?.fitnessLevel || prefillLevel || null
   );
   const [trainingTypes, setTrainingTypes] = useState(
     adjustmentDefaults?.trainingTypes || ['outdoor']
@@ -186,7 +192,7 @@ export default function PlanConfigScreen({ navigation, route }) {
   const [startDateChoice, setStartDateChoice] = useState('next_monday');
   const [customStartDate, setCustomStartDate] = useState('');
   const [planWeeks, setPlanWeeks] = useState(
-    adjustmentDefaults?.weeks || beginnerDefaults?.weeks || null
+    adjustmentDefaults?.weeks || beginnerDefaults?.weeks || prefillWeeks || null
   );
 
   // If there's no target date, we show a suggested duration pill as "selected".
@@ -582,6 +588,11 @@ export default function PlanConfigScreen({ navigation, route }) {
       startDate: `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`,
       recurringRides,
       longRideDay: effectiveLongRideDay,
+      // Athlete's current longest ride in km (from the PlanPicker intake).
+      // Optional — null when the user came from the legacy flow. The server
+      // plan-gen prompt uses this as the "max comfortable distance now" so
+      // Week 1 long rides start sensibly from where the user actually is.
+      ...(prefillLongestRideKm != null && { longestRideKm: prefillLongestRideKm }),
       ...(beginnerDefaults?.paymentStatus && { paymentStatus: beginnerDefaults.paymentStatus }),
       ...(adjustment && { adjustment, adjustmentData }),
     });

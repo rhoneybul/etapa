@@ -588,6 +588,8 @@ export default function CoachChatScreen({ navigation, route }) {
             style={s.messageList}
             contentContainerStyle={s.messageContent}
             showsVerticalScrollIndicator={false}
+            onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+            keyboardShouldPersistTaps="handled"
           >
             {messages.length === 0 && (
               <View style={s.emptyState}>
@@ -775,7 +777,7 @@ const s = StyleSheet.create({
   clearBtn: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, width: 40, textAlign: 'right' },
 
   messageList: { flex: 1 },
-  messageContent: { paddingHorizontal: 16, paddingTop: 16 },
+  messageContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 },
 
   // Empty state
   emptyState: { alignItems: 'center', paddingTop: 40, paddingHorizontal: 20 },

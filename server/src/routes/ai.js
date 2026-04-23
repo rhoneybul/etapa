@@ -95,11 +95,34 @@ function getCoachPromptBlock(coachId) {
   const coach = coachId ? COACHES[coachId] : null;
   if (!coach) return '';
   const qualLine = coach.qualifications ? `\nQualifications: ${coach.qualifications}` : '';
+
+  // Felix told us (Apr 2026 TestFlight): "These responses are super long,
+  // more than a page. Not all of it useful." Athletes read coaching replies
+  // mid-day on their phone — between meetings, at lunch. They skim. A real
+  // coach texts: "Easy spin today, 45 min, keep it conversational." Not a
+  // paragraph about the philosophy of base training.
+  //
+  // We enforce brevity here so it applies to EVERY coach persona, not just
+  // the ones whose personality definition already hints at it.
+  const brevity = `
+## Response length — STRICT
+- Default: 2 short paragraphs max, ~80-120 words total.
+- Lead with the direct answer in sentence one. No preamble, no "Great question!".
+- Skip philosophical framing, river metaphors, long analogies.
+- Bullet points only for true lists (3+ items). Prefer inline prose for 1-2 items.
+- If the question genuinely needs depth (e.g. "explain how threshold training works"),
+  you may go up to ~200 words — but make every sentence earn its place.
+- Close with ONE concrete next action where relevant ("try 4×5 min at threshold this Thursday").
+
+Think SMS from a real coach, not an essay. Short beats thorough here.
+`;
+
   return `\n\n## Your coaching persona
 You are ${coach.name} (${coach.pronouns}), a ${coach.nationality} cycling coach.
 Bio: ${coach.bio}${qualLine}
 Your coaching style: ${coach.personality}
-IMPORTANT: Stay fully in character as ${coach.name.split(' ')[0]}. Your tone, word choice, and approach should consistently reflect the personality described above. Do NOT break character or speak generically.`;
+IMPORTANT: Stay fully in character as ${coach.name.split(' ')[0]}. Your tone, word choice, and approach should consistently reflect the personality described above. Do NOT break character or speak generically.
+${brevity}`;
 }
 
 // ── Rider level benchmarks ─────────────────────────────────────────────────
@@ -555,6 +578,10 @@ function buildPlanPrompt(goal, config) {
     oneOffRides = [],
     trainingTypes = ['outdoor'],
     daysPerWeek,
+    // Athlete's current longest ride in km — optional. Populated by the
+    // PlanPicker intake flow. When present we trust this number over the
+    // generic benchmark's `maxComfortableDistKm`.
+    longestRideKm = null,
   } = config;
   const weeks = config.weeks || 8;
   const hasTargetDate = !!goal.targetDate;
@@ -823,7 +850,9 @@ ${fewShotExemplar}
 ## Athlete profile
 - Fitness level: ${fitnessLevel} (${benchmark.description})
 - Average speed: ~${benchmark.avgSpeedKmh} km/h
-- Max comfortable distance currently: ~${benchmark.maxComfortableDistKm} km
+- Max comfortable distance currently: ${longestRideKm != null
+    ? `${longestRideKm} km (athlete told us this is their longest ride in the last 6 months — use this as the Week 1 long-ride anchor and ramp from here, rather than the generic benchmark)`
+    : `~${benchmark.maxComfortableDistKm} km`}
 - Cycling type: ${goal.cyclingType || 'road'}${goal.cyclingType === 'ebike' ? ' (electric-assisted — focus on endurance and enjoyment rather than raw power. Adjust distances up since e-bikes allow longer rides at lower effort. Still include some sessions without motor assist for fitness building.)' : ''}
 - Goal: ${goal.goalType === 'race' ? 'Race preparation' : goal.goalType === 'distance' ? 'Hit a distance target' : 'General fitness improvement'}
 ${goal.eventName ? `- Event: ${goal.eventName}` : ''}

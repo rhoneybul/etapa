@@ -1,4 +1,21 @@
 import * as Sentry from '@sentry/react-native';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+
+// Build a stable release identifier that matches the app version + native
+// build number. The Sentry Expo plugin (@sentry/react-native/expo in app.json)
+// uploads source maps against this release during `eas build` and `eas update`,
+// so runtime events MUST use the same string to symbolicate stacks.
+//
+// Format mirrors Sentry CLI's default: `org.bundle@<version>+<build>`.
+// Org/bundle prefix is picked up from app.json automatically, so we just need
+// a `<version>+<build>` suffix here.
+const _cfg = Constants.expoConfig || Constants.manifest || {};
+const _build =
+  Platform.OS === 'ios'
+    ? (_cfg.ios?.buildNumber || '0')
+    : String(_cfg.android?.versionCode || 0);
+const _release = `${_cfg.version || '0.0.0'}+${_build}`;
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -6,6 +23,19 @@ Sentry.init({
   debug: false,
   tracesSampleRate: 0.2,
   environment: __DEV__ ? 'development' : 'production',
+  // Release + dist must line up with source maps uploaded at build time,
+  // otherwise stack traces stay minified in the Sentry UI.
+  release: _release,
+  dist: _build,
+  // Tags the telemetry doc promises on every event. user_id is filled in
+  // later via Sentry.setUser() on sign-in.
+  initialScope: {
+    tags: {
+      app_version: _cfg.version || 'unknown',
+      build: _build,
+      platform: Platform.OS,
+    },
+  },
 });
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -179,6 +209,12 @@ function App() {
 
         analytics.identify(session.user?.id, { email: session.user?.email });
 
+        // Attach the authenticated user to every Sentry event from now on.
+        // Cleared via Sentry.setUser(null) in the sign-out path below.
+        try {
+          Sentry.setUser({ id: session.user?.id, email: session.user?.email });
+        } catch {}
+
         // Link RevenueCat to the authenticated user — awaited so that subscription
         // checks in HomeScreen see the correct entitlements for this user.
         await loginRevenueCat(session.user?.id).catch(() => {});
@@ -223,6 +259,7 @@ function App() {
         // to the signed-out user. Critical for correct cohort analysis.
         try { analytics.events.signedOut(); } catch {}
         try { analytics.reset(); } catch {}
+        try { Sentry.setUser(null); } catch {}
         const nav = navigationRef.current;
         if (nav) {
           nav.reset({ index: 0, routes: [{ name: 'SignIn' }] });

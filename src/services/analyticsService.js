@@ -243,6 +243,21 @@ const events = {
   // Fired when the user cancels the Apple/Google payment sheet.
   purchaseCancelled: (props = {})        => track('purchase_cancelled', props),
 
+  // ── Plan picker (guided intake on the empty-state home) ──────────────────
+  // Fired when the picker mounts — i.e. someone started the intake flow.
+  planPickerStarted:     (props = {}) => track('plan_picker_started', props),
+  // Fired for every answered question. `question` ∈ intent | longest_ride |
+  // event_date | training_length. `choice` is the raw answer key (or ISO date).
+  planPickerAnswered:    (props = {}) => track('plan_picker_answered', props),
+  // Fired when the picker shows its recommendation. Properties: path.
+  planPickerRecommended: (props = {}) => track('plan_picker_recommended', props),
+  // Fired when the user picks a path from the recommendation screen. Includes
+  // whether they overrode the recommendation (useful for measuring fit).
+  planPickerChose:       (props = {}) => track('plan_picker_chose', props),
+  // Fired when the user taps "Skip" and falls back to the legacy three-card
+  // layout. `atStep` says where in the flow they bailed.
+  planPickerSkipped:     (props = {}) => track('plan_picker_skipped', props),
+
   // ── Connections & settings ─────────────────────────────────────────────────
   stravaConnected:    ()                 => track('strava_connected'),
   stravaDisconnected: ()                 => track('strava_disconnected'),

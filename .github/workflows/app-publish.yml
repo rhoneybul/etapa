@@ -398,10 +398,20 @@ jobs:
           echo "- **DRY RUN** — no actual publish happened" >> "$GITHUB_STEP_SUMMARY"
 
       # ── OTA update path ─────────────────────────────────────────────────────
+      # SENTRY_AUTH_TOKEN is piped in so the @sentry/react-native/expo plugin
+      # can upload source maps for the JS bundle this update ships. Without
+      # it, OTA updates produce un-symbolicated crash stacks in Sentry even
+      # if native builds are wired up correctly.
       - name: EAS Update (OTA)
         if: needs.decide.outputs.release_type == 'ota' && needs.decide.outputs.dry_run != 'true'
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: |
           CHANNEL="${{ needs.decide.outputs.channel }}"
+          if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
+            echo "::warning::SENTRY_AUTH_TOKEN not set — OTA source maps will NOT be uploaded."
+            echo "::warning::Set it in GitHub → Settings → Secrets → Actions to symbolicate Sentry stacks for OTA releases."
+          fi
           eas update \
             --branch "$CHANNEL" \
             --message "v${{ steps.version.outputs.new }} — $(git log -1 --pretty=%s | head -c 80)" \

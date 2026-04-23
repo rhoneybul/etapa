@@ -252,10 +252,37 @@ export async function updateActivity(activityId, updates) {
   return null;
 }
 
-export async function markActivityComplete(activityId) {
+/**
+ * Toggle an activity's completion state.
+ *
+ * Lucia reported (Apr 2026 TestFlight) that she tapped the check "to see
+ * what happens and I cannot undo it". The old behaviour hard-coded
+ * completed=true, so tapping the check always set true, never unset it.
+ * Now the tap is a proper toggle: if the user explicitly flips a session
+ * back to uncompleted, we clear completedAt too so the timeline doesn't
+ * show a stale completion timestamp.
+ *
+ * Optional `forceState` (true/false) lets future callers bypass the
+ * toggle — e.g. a bulk-mark-week-complete flow that should always set
+ * true regardless of current state.
+ */
+export async function markActivityComplete(activityId, forceState) {
+  // Look up current activity to know what we're toggling from.
+  let nextCompleted = forceState;
+  if (forceState === undefined) {
+    // Fetch current plan → find activity → flip its completed flag.
+    // We do this ad-hoc rather than accepting the current state as a
+    // caller parameter because not every caller has it at hand, and
+    // the DB is already our source of truth.
+    const plans = await getPlans();
+    const act = plans
+      .flatMap((p) => p.activities || [])
+      .find((a) => a && a.id === activityId);
+    nextCompleted = !(act && act.completed);
+  }
   return updateActivity(activityId, {
-    completed: true,
-    completedAt: new Date().toISOString(),
+    completed: nextCompleted,
+    completedAt: nextCompleted ? new Date().toISOString() : null,
   });
 }
 

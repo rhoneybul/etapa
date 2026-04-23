@@ -62,6 +62,26 @@ Text inputs are masked by default for GDPR compliance. Network telemetry and con
 
 Attaches `user_id`, `app_version`, `platform`, `subscription_status` to every error as tags. Only P0 issues (crashes, payment failures, plan generation failures) route to email/Slack alerts. Everything else stays in the dashboard — no alert fatigue.
 
+### Source maps
+
+Minified stack traces are useless. The `@sentry/react-native/expo` plugin in `app.json` uploads source maps for both native builds (EAS Build) and OTA updates (EAS Update), tagged against a release string of `<version>+<buildNumber>` that matches what the app reports at runtime (`App.js` constructs the same identifier).
+
+One-time setup (do this once; after that everything is automatic):
+
+1. **Create a Sentry auth token** — [sentry.io → Settings → Account → API → Auth Tokens](https://sentry.io/settings/account/api/auth-tokens/). Scopes: `project:releases`, `project:write`, `org:read`.
+
+2. **Set the token as an EAS secret** (used by `eas build` to upload native-bundle source maps):
+
+   ```bash
+   eas secret:create --scope project --name SENTRY_AUTH_TOKEN --value sntrys_xxx
+   ```
+
+3. **Set the token as a GitHub secret** named `SENTRY_AUTH_TOKEN` (used by the `EAS Update (OTA)` step in `.github/workflows/app-publish.yml` to upload JS-bundle source maps for OTA releases).
+
+If either secret is missing, the build/update still succeeds but Sentry stack traces stay minified. The workflow prints a warning for the OTA case; EAS Build fails silently on this one — check the build log for `Uploading source maps` if you want to verify.
+
+To verify source maps are landing, trigger a test error in the app (`throw new Error('sentry source map test')`) and confirm the stack trace in Sentry shows original filenames (`src/screens/CoachChatScreen.js`) not `index.android.bundle`.
+
 ## Server-side Claude cost tracking
 
 Every Claude API call the server makes is logged to `public.claude_usage_log` (Supabase) via `server/src/lib/claudeLogger.js`. One row per call, with:

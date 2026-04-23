@@ -83,14 +83,15 @@ function getWeekFlags(weekVolumes, phases, plan) {
 }
 
 // Ride type colors for stacked bars
-// Keep the palette simple and brand-forward: pink family + neutral slate.
+// Effort-zone palette: cool -> warm as intensity rises, so the chart is
+// readable at a glance. Brand pink is reserved for the current-week border.
 const RIDE_TYPE_COLORS = {
-  endurance:  colors.primary,
-  tempo:      colors.primaryDark,
-  intervals:  '#9E2258',      // deeper rosa (less "alarm" than red)
-  recovery:   '#64748B',      // slate
-  indoor:     colors.primary, // keep single family for simplicity
-  strength:   colors.primaryDark,
+  recovery:   '#5EBFB0',      // teal — easiest, cool
+  endurance:  '#4CAF7A',      // green — aerobic base
+  tempo:      '#E8A33D',      // amber — moderate intensity
+  intervals:  '#E86C3D',      // orange — high intensity
+  indoor:     '#6B8CC7',      // blue-slate — distinct from outdoor rides
+  strength:   '#8B6FBF',      // purple — different modality
   other:      '#94A3B8',
 };
 

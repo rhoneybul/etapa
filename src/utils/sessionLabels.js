@@ -87,6 +87,38 @@ export function getCellLabel(activity) {
   return label;
 }
 
+// ── Session-type tag — tiny-caps label for week-list rows ──────────────────
+// Returns a short uppercase string suitable for a pill tag above a session
+// title (matches the existing "STRENGTH" pill style used on the Today card).
+// Null for rest days — the row just reads "Rest".
+//
+// Monochrome, no emojis, no colour coding. One more text signal that tells
+// the user *what kind* of session each day is without them having to parse
+// the session title (which is often a coach-named thing like "Melt" that
+// gives no type info on its own).
+export function getSessionTag(activity) {
+  if (!activity) return null;
+  if (activity.type === 'rest')     return null;
+  if (activity.type === 'strength') return 'STRENGTH';
+  if (activity.type === 'ride') {
+    const title = (activity.title || '').toLowerCase();
+    const sub = activity.subType || '';
+    if (sub === 'indoor' || title.includes('indoor'))             return 'INDOOR';
+    if (sub === 'recovery' || activity.effort === 'recovery')     return 'RECOVERY';
+    if (sub === 'intervals' || title.includes('interval') ||
+        title.includes('sprint'))                                 return 'INTERVALS';
+    if (sub === 'tempo' || title.includes('tempo') ||
+        title.includes('threshold') || title.includes('ftp') ||
+        title.includes('sweet spot'))                             return 'TEMPO';
+    if (title.includes('long'))                                   return 'LONG RIDE';
+    if (title.includes('hill') || title.includes('climb'))        return 'HILLS';
+    return 'ENDURANCE';
+  }
+  // Cross-training activity types surface as their label uppercased
+  if (activity.type) return String(activity.type).toUpperCase().replace(/_/g, ' ');
+  return null;
+}
+
 // ── Minimal metric only ─────────────────────────────────────────────────────
 export function getMetricLabel(activity) {
   if (activity.distanceKm) return `${activity.distanceKm}km`;
@@ -163,6 +195,7 @@ const CT_LABELS = {
 export function getCrossTrainingLabel(key) {
   return CT_LABELS[key] || key;
 }
+
 
 /**
  * Build cross-training items for a specific day of the week.

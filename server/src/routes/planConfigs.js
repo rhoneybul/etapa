@@ -67,6 +67,10 @@ function toRow(c, userId) {
     indoor_trainer: c.indoorTrainer || false,
     extra_notes: c.extraNotes || null,
     coach_id: c.coachId || null,
+    // Athlete's self-reported longest ride in the last 6 months (from the
+    // PlanPicker intake flow). Nullable — older configs won't have it.
+    longest_ride_km: (typeof c.longestRideKm === 'number' && c.longestRideKm >= 0)
+      ? Math.round(c.longestRideKm) : null,
     created_at: c.createdAt || new Date().toISOString(),
   };
 }
@@ -81,6 +85,7 @@ function toClient(row) {
     indoorTrainer: row.indoor_trainer,
     extraNotes: row.extra_notes,
     coachId: row.coach_id,
+    longestRideKm: row.longest_ride_km != null ? row.longest_ride_km : null,
     createdAt: row.created_at,
   };
 }

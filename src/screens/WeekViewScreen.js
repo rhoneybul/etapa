@@ -533,6 +533,22 @@ export default function WeekViewScreen({ navigation, route }) {
             <TouchableOpacity style={s.orgModalBg} onPress={() => setShowOrgRide(false)} activeOpacity={1} />
             <View style={s.orgModalSheet}>
               <View style={s.orgModalHandle} />
+              {/*
+                Lucia reported (Apr 2026 TestFlight): "I am stuck on this
+                screen because I cannot scroll from top to bottom to hide it".
+                The keyboard was covering the Add-to-plan button with no way
+                to dismiss it. Fix: wrap the form body in a ScrollView with:
+                  - keyboardDismissMode="on-drag" → swipe down to dismiss
+                  - keyboardShouldPersistTaps="handled" → day-pills still tap-through
+                  - extra bottom padding so the keyboard doesn't cover the
+                    submit button on the smallest iPhones.
+              */}
+              <ScrollView
+                keyboardDismissMode="on-drag"
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 40 }}
+              >
               <Text style={s.orgModalTitle}>Add organised ride</Text>
 
               {/* Day / date picker for current week */}
@@ -562,6 +578,8 @@ export default function WeekViewScreen({ navigation, route }) {
                 placeholderTextColor={colors.textFaint}
                 value={orgRideForm.description}
                 onChangeText={v => setOrgRideForm(f => ({ ...f, description: v }))}
+                returnKeyType="done"
+                blurOnSubmit
                 multiline
               />
 
@@ -615,6 +633,7 @@ export default function WeekViewScreen({ navigation, route }) {
                   <Text style={s.orgModalAddText}>Add to plan</Text>
                 )}
               </TouchableOpacity>
+              </ScrollView>
             </View>
           </KeyboardAvoidingView>
         </Modal>
