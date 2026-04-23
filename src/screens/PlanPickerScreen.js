@@ -23,7 +23,10 @@ import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
-import { setUserPrefs } from '../services/storageService';
+import DatePicker from '../components/DatePicker';
+import { setUserPrefs, saveGoal } from '../services/storageService';
+import { isSubscribed } from '../services/subscriptionService';
+import { lookupRace } from '../services/llmPlanService';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
@@ -35,7 +38,12 @@ const INTENT_OPTIONS = [
   { key: 'fitter',          title: "I want to get fitter",       sub: 'No deadline, just ride more' },
 ];
 
-const LONGEST_RIDE_OPTIONS = [
+// Longest-ride options. Full set used for event + fitter branches; a
+// trimmed set is used for the "getting started" branch since options above
+// 50 km are out of place for someone saying they're new — if a self-
+// described beginner has actually ridden further, Enter exact distance
+// catches the edge case without cluttering the primary list.
+const LONGEST_RIDE_OPTIONS_FULL = [
   { key: 'none',      title: "Haven't ridden yet" },
   { key: 'under_15',  title: 'Under 15 km' },
   { key: '15_30',     title: '15–30 km' },
@@ -46,20 +54,29 @@ const LONGEST_RIDE_OPTIONS = [
   { key: 'custom',    title: 'Enter exact distance' },
 ];
 
+const LONGEST_RIDE_OPTIONS_GETTING_STARTED = [
+  { key: 'none',      title: "Haven't ridden yet" },
+  { key: 'under_15',  title: 'Under 15 km' },
+  { key: '15_30',     title: '15–30 km' },
+  { key: '30_50',     title: '30–50 km' },
+  { key: 'custom',    title: 'Enter exact distance' },
+];
+
+function getLongestRideOptions(intent) {
+  return intent === 'getting_started'
+    ? LONGEST_RIDE_OPTIONS_GETTING_STARTED
+    : LONGEST_RIDE_OPTIONS_FULL;
+}
+
 const BUCKET_TO_KM = {
-  none: 0, under_15: 10, '15_30': 22, '30_60': 45,
+  none: 0, under_15: 10, '15_30': 22, '30_50': 40, '30_60': 45,
   '60_100': 80, '100_160': 130, over_160: 180,
 };
 
-// Event-date buckets. Real date is captured properly later in GoalSetup —
-// the intake only needs rough timing to shape the recommendation.
-const EVENT_DATE_OPTIONS = [
-  { key: 'within_6w', title: 'Within 6 weeks',   sub: 'Tight — we\'ll focus on finishing' },
-  { key: '6_12w',     title: '6–12 weeks away',  sub: 'Sweet spot' },
-  { key: '3_6m',      title: '3–6 months away',  sub: 'Plenty of time to build' },
-  { key: '6m_plus',   title: '6+ months away' },
-  { key: 'not_sure',  title: 'Not sure yet' },
-];
+// Event date is captured as a real date picker here rather than a bucket.
+// We pass it straight through to GoalSetup so the user doesn't have to
+// re-enter it. A "not sure yet" escape hatch lives below the picker for
+// users who don't have a date locked in.
 
 const DURATION_OPTIONS_EVENT = [
   { key: '4',       title: '4 weeks',  sub: 'Short, focused block' },
@@ -80,7 +97,7 @@ const DURATION_OPTIONS_NONEVENT = [
 
 function levelFromLongestRide(key) {
   if (key === 'none' || key === 'under_15') return 'beginner';
-  if (key === '15_30' || key === '30_60')    return 'intermediate';
+  if (key === '15_30' || key === '30_50' || key === '30_60') return 'intermediate';
   return 'advanced';
 }
 
@@ -105,10 +122,10 @@ function computeRecommendation({ intent, longestRide }) {
   if (intent === 'event') return 'event';
 
   if (intent === 'getting_started') {
-    return (longestRide === '30_60' || longestRide === '60_100' ||
-            longestRide === '100_160' || longestRide === 'over_160')
-      ? 'quick'
-      : 'beginner';
+    // Anything 30 km+ means the user already has a base — ongoing plan
+    // suits them better than the rigid 12-week beginner programme.
+    const hasBase = ['30_50', '30_60', '60_100', '100_160', 'over_160'].includes(longestRide);
+    return hasBase ? 'quick' : 'beginner';
   }
   // 'fitter'
   if (longestRide === 'none' || longestRide === 'under_15') return 'beginner';
@@ -150,19 +167,63 @@ export default function PlanPickerScreen({ navigation }) {
   const [longestRide, setLongestRide] = useState(null);
   const [customKm, setCustomKm]     = useState('');
   const [showCustomKm, setShowCustomKm] = useState(false);
-  const [eventBucket, setEventBucket] = useState(null);  // new: bucket key instead of date
+  // Real ISO date string (yyyy-mm-dd) when the user picks from the
+  // DatePicker; null when they tap "Not sure yet". Either value advances.
+  const [eventDate, setEventDate] = useState('');
+  // Full event details captured on the same step as the date — rolled up
+  // from what used to live on GoalSetup step 3 so the user doesn't fill
+  // almost the same form twice.
+  const [eventName, setEventName] = useState('');
+  const [targetDistance, setTargetDistance] = useState('');
+  const [targetElevation, setTargetElevation] = useState('');
+  const [targetTime, setTargetTime] = useState('');
+  const [raceLooking, setRaceLooking] = useState(false);
+  const [raceResult, setRaceResult] = useState(null);
   const [trainingLen, setTrainingLen] = useState(null);
+
+  const handleRaceLookup = async () => {
+    const q = eventName.trim();
+    if (!q) return;
+    setRaceLooking(true);
+    setRaceResult(null);
+    // Clear previous distance/elevation so the new lookup doesn't clash
+    // with a stale value (same fix that GoalSetup shipped a while back).
+    setTargetDistance('');
+    setTargetElevation('');
+    try {
+      const result = await lookupRace(q);
+      if (result?.found) {
+        setRaceResult(result);
+        if (result.distanceKm) setTargetDistance(String(result.distanceKm));
+        if (result.elevationM) setTargetElevation(String(result.elevationM));
+      } else {
+        setRaceResult({ found: false });
+      }
+    } catch {
+      setRaceResult({ found: false });
+    }
+    setRaceLooking(false);
+  };
 
   const isEvent = intent === 'event';
   const totalSteps = isEvent ? 4 : 3;
 
   // ── Step advance helpers ────────────────────────────────────────────────
+  // Flow differs by intent:
+  //   Event     : 1 intent → 2 event date → 3 duration → 4 longest ride → route
+  //   Non-event : 1 intent → 2 longest ride → 3 duration → route
+  // Longest ride is last in the event branch because it's the weakest
+  // signal once we know the user has a real event + timeline — asking it
+  // upfront would feel out of order.
+
   const onPickIntent = (key) => {
     setIntent(key);
     analytics.events.planPickerAnswered?.({ question: 'intent', choice: key });
     setStep(2);
   };
 
+  // Non-event step 2 OR event step 4 → longest ride. For event, answering
+  // this completes the flow. For non-event, advance to duration.
   const onPickLongestRide = (key) => {
     if (key === 'custom') {
       setShowCustomKm(true);
@@ -173,37 +234,67 @@ export default function PlanPickerScreen({ navigation }) {
     setCustomKm('');
     setLongestRide(key);
     analytics.events.planPickerAnswered?.({ question: 'longest_ride', choice: key });
-    // event branch → date step, others → straight to duration
-    setStep(intent === 'event' ? 3 : 4);
+    if (intent === 'event') {
+      // Event branch — longest ride is the last question, route now.
+      completeAndRoute({ ride: key });
+      return;
+    }
+    setStep(3);
   };
 
   const onConfirmCustomKm = () => {
     const n = Number(String(customKm).trim());
     if (!isFinite(n) || n < 0 || n > 500) return;
-    setLongestRide(bucketFromKm(n));
+    const derivedBucket = bucketFromKm(n);
+    setLongestRide(derivedBucket);
     analytics.events.planPickerAnswered?.({ question: 'longest_ride', choice: 'custom', km: n });
     Keyboard.dismiss();
-    setStep(intent === 'event' ? 3 : 4);
+    if (intent === 'event') {
+      completeAndRoute({ ride: derivedBucket, km: Math.round(n) });
+      return;
+    }
+    setStep(3);
   };
 
-  const onPickEventDate = (key) => {
-    setEventBucket(key);
-    analytics.events.planPickerAnswered?.({ question: 'event_date', choice: key });
-    setStep(4);
+  const onPickEventDate = (iso) => {
+    // DatePicker fires onChange on every tap — just store, don't advance.
+    setEventDate(iso);
   };
 
+  const onContinueFromEventDate = () => {
+    // Event name is required to advance — everything else (date, distance,
+    // elevation, time) is optional. User can refine later.
+    if (!eventName.trim()) return;
+    analytics.events.planPickerAnswered?.({
+      question: 'event_details',
+      hasDate: !!eventDate,
+      hasDistance: !!targetDistance,
+      hasElevation: !!targetElevation,
+      hasTime: !!targetTime,
+    });
+    setStep(3);
+  };
+
+  // Event step 3 → duration → then longest ride (step 4).
+  // Non-event step 3 → duration → route.
   const onPickDuration = async (key) => {
     setTrainingLen(key);
     analytics.events.planPickerAnswered?.({ question: 'training_length', choice: key });
-    await completeAndRoute(key);
+    if (intent === 'event') {
+      setStep(4);
+      return;
+    }
+    await completeAndRoute({ trainingLen: key });
   };
 
   const onBack = () => {
     if (step === 0) { navigation.goBack(); return; }
     if (step === 1) { setStep(0); return; }
     if (step === 2) { setStep(1); return; }
+    // step 3: both branches come here after step 2.
     if (step === 3) { setStep(2); return; }
-    if (step === 4) { setStep(isEvent ? 3 : 2); return; }
+    // step 4: event-only longest ride, goes back to duration.
+    if (step === 4) { setStep(3); return; }
   };
 
   const onSkip = () => {
@@ -214,37 +305,100 @@ export default function PlanPickerScreen({ navigation }) {
   };
 
   // ── Build intake + route to PlanSelection with recommendation ───────────
-  const buildIntake = useCallback(() => {
+  // Accepts overrides so the caller can pass values that were just set via
+  // setState (which won't be visible in this closure yet). `ride`, `km`, and
+  // `trainingLen` all fall back to current state if not overridden.
+  const completeAndRoute = useCallback(async (overrides = {}) => {
     const customKmNum = Number(String(customKm).trim());
-    const km = isFinite(customKmNum) && customKmNum > 0
-      ? Math.round(customKmNum)
-      : (BUCKET_TO_KM[longestRide] ?? null);
-    return {
+    const rideKey = overrides.ride ?? longestRide;
+    const km = overrides.km != null
+      ? overrides.km
+      : isFinite(customKmNum) && customKmNum > 0
+        ? Math.round(customKmNum)
+        : (BUCKET_TO_KM[rideKey] ?? null);
+    const finalTrainingLen = overrides.trainingLen ?? trainingLen;
+
+    const intake = {
       version: 1,
       answeredAt: new Date().toISOString(),
       intent,
-      longestRide,
+      longestRide: rideKey,
       longestRideKm: km,
       longestRideIsExact: isFinite(customKmNum) && customKmNum > 0,
-      eventBucket,
-      trainingLength: trainingLen,
-      userLevel: km != null ? levelFromKm(km) : levelFromLongestRide(longestRide),
-    };
-  }, [intent, longestRide, customKm, eventBucket, trainingLen]);
-
-  const completeAndRoute = useCallback(async (finalTrainingLen) => {
-    const intake = {
-      ...buildIntake(),
+      eventDate: eventDate || null,
+      // Event details, captured in the intake instead of on GoalSetup.
+      eventName: eventName.trim() || null,
+      targetDistance: targetDistance ? Number(targetDistance) : null,
+      targetElevation: targetElevation ? Number(targetElevation) : null,
+      targetTime: targetTime ? Number(targetTime) : null,
       trainingLength: finalTrainingLen,
+      userLevel: km != null ? levelFromKm(km) : levelFromLongestRide(rideKey),
     };
-    const recommendedPath = computeRecommendation({ intent, longestRide });
+    const recommendedPath = computeRecommendation({ intent, longestRide: rideKey });
     intake.recommendedPath = recommendedPath;
 
     try { await setUserPrefs({ skillIntake: intake }); } catch {}
     analytics.events.planPickerRecommended?.({ path: recommendedPath });
 
+    // Skip the PlanSelection confirmation when the recommendation matches
+    // what the user already told us they wanted. The confirmation screen
+    // only earns its place when there's a *surprise* — e.g. user said
+    // "getting started" but we're routing them to the ongoing plan because
+    // they already have a 60 km base. Otherwise it's a redundant tap.
+    //
+    //   intent=event            → always matches → skip
+    //   intent=fitter + quick   → matches → skip
+    //   intent=getting_started + beginner → matches → skip
+    //   any other combination   → show PlanSelection with rationale
+    const intentMatchesRecommendation =
+      (intent === 'event' && recommendedPath === 'event') ||
+      (intent === 'fitter' && recommendedPath === 'quick') ||
+      (intent === 'getting_started' && recommendedPath === 'beginner');
+
+    if (intentMatchesRecommendation) {
+      const subscribed = __DEV__ ? false : await isSubscribed();
+      const requirePaywall = !subscribed;
+
+      if (recommendedPath === 'event') {
+        navigation.replace('GoalSetup', { requirePaywall, intake });
+        return;
+      }
+      if (recommendedPath === 'beginner') {
+        navigation.replace('BeginnerProgram', { intake });
+        return;
+      }
+      // 'quick' — save an improve-goal and route straight to PlanConfig.
+      // Mirrors PlanSelectionScreen.onChoose so downstream behaviour is
+      // identical whether the user went through the confirmation or not.
+      const weeks = finalTrainingLen && finalTrainingLen !== 'ongoing' && finalTrainingLen !== 'to_date'
+        ? Number(finalTrainingLen) : null;
+      try {
+        const goal = await saveGoal({
+          cyclingType: 'mixed',
+          goalType: 'improve',
+          planName: 'Keep improving',
+          targetDistance: null,
+          targetElevation: null,
+          targetTime: null,
+          targetDate: null,
+          eventName: null,
+        });
+        navigation.replace('PlanConfig', {
+          goal,
+          requirePaywall,
+          intake,
+          prefillWeeks: weeks,
+          prefillLevel: intake.userLevel,
+          prefillLongestRideKm: intake.longestRideKm,
+        });
+      } catch {
+        navigation.replace('QuickPlan', { requirePaywall, intake });
+      }
+      return;
+    }
+
     navigation.replace('PlanSelection', { recommendedPath, intake });
-  }, [buildIntake, intent, longestRide, navigation]);
+  }, [intent, longestRide, customKm, eventDate, eventName, targetDistance, targetElevation, targetTime, trainingLen, navigation]);
 
   // ── Track funnel start once we leave the landing ────────────────────────
   const startedRef = React.useRef(false);
@@ -256,6 +410,54 @@ export default function PlanPickerScreen({ navigation }) {
   }, [step]);
 
   // ── Render ──────────────────────────────────────────────────────────────
+  // Longest-ride question body — factored out because it renders at step 2
+  // (non-event branch) AND step 4 (event branch, as the final question).
+  const renderLongestRide = () => (
+    <>
+      {renderQuestionHeader()}
+      <Text style={s.title}>Your longest recent ride?</Text>
+      <Text style={s.subtitle}>Honest answer — we&apos;ll pitch the plan to match.</Text>
+      <View style={s.choiceGroup}>
+        {getLongestRideOptions(intent).map(o => (
+          <Choice
+            key={o.key}
+            title={o.title}
+            highlighted={o.key === 'custom' && showCustomKm}
+            onPress={() => onPickLongestRide(o.key)}
+          />
+        ))}
+      </View>
+      {showCustomKm && (
+        <View style={s.customKmWrap}>
+          <Text style={s.customKmLabel}>How many kilometres?</Text>
+          <View style={s.customKmRow}>
+            <TextInput
+              style={s.customKmInput}
+              value={customKm}
+              onChangeText={setCustomKm}
+              placeholder="e.g. 42"
+              placeholderTextColor={colors.textFaint}
+              keyboardType="numeric"
+              returnKeyType="done"
+              onSubmitEditing={onConfirmCustomKm}
+              autoFocus
+              maxLength={3}
+            />
+            <Text style={s.customKmUnit}>km</Text>
+            <TouchableOpacity
+              style={[s.customKmBtn, (!customKm || !isFinite(Number(customKm)) || Number(customKm) <= 0) && s.customKmBtnDisabled]}
+              onPress={onConfirmCustomKm}
+              disabled={!customKm || !isFinite(Number(customKm)) || Number(customKm) <= 0}
+              activeOpacity={0.8}
+            >
+              <Text style={s.customKmBtnText}>Continue</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+    </>
+  );
+
   const renderQuestionHeader = () => (
     <View style={s.headerRow}>
       <TouchableOpacity onPress={onBack} style={s.headerBtn} hitSlop={HIT}>
@@ -317,69 +519,102 @@ export default function PlanPickerScreen({ navigation }) {
           </>
         )}
 
-        {/* Q2 — longest ride */}
-        {step === 2 && (
+        {/* Step 2 — event details (event branch) OR longest ride (non-event)
+            The event form used to live on GoalSetup step 3; rolling it up
+            here means the user enters race specifics once, not twice. */}
+        {step === 2 && isEvent && (
           <>
             {renderQuestionHeader()}
-            <Text style={s.title}>Your longest recent ride?</Text>
-            <Text style={s.subtitle}>Honest answer — we&apos;ll pitch the plan to match.</Text>
-            <View style={s.choiceGroup}>
-              {LONGEST_RIDE_OPTIONS.map(o => (
-                <Choice
-                  key={o.key}
-                  title={o.title}
-                  highlighted={o.key === 'custom' && showCustomKm}
-                  onPress={() => onPickLongestRide(o.key)}
-                />
-              ))}
-            </View>
-            {showCustomKm && (
-              <View style={s.customKmWrap}>
-                <Text style={s.customKmLabel}>How many kilometres?</Text>
-                <View style={s.customKmRow}>
-                  <TextInput
-                    style={s.customKmInput}
-                    value={customKm}
-                    onChangeText={setCustomKm}
-                    placeholder="e.g. 42"
-                    placeholderTextColor={colors.textFaint}
-                    keyboardType="numeric"
-                    returnKeyType="done"
-                    onSubmitEditing={onConfirmCustomKm}
-                    autoFocus
-                    maxLength={3}
-                  />
-                  <Text style={s.customKmUnit}>km</Text>
-                  <TouchableOpacity
-                    style={[s.customKmBtn, (!customKm || !isFinite(Number(customKm)) || Number(customKm) <= 0) && s.customKmBtnDisabled]}
-                    onPress={onConfirmCustomKm}
-                    disabled={!customKm || !isFinite(Number(customKm)) || Number(customKm) <= 0}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={s.customKmBtnText}>Continue</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+            <Text style={s.title}>Tell us about your event</Text>
+            <Text style={s.subtitle}>Name is required — everything else can be filled in later.</Text>
+
+            <Text style={s.fieldLabel}>Race / event name</Text>
+            <TextInput
+              style={s.input}
+              placeholder="e.g. Traka 360, London to Brighton"
+              placeholderTextColor={colors.textFaint}
+              value={eventName}
+              onChangeText={setEventName}
+              returnKeyType="search"
+              onSubmitEditing={handleRaceLookup}
+              autoFocus
+            />
+            <TouchableOpacity
+              style={[s.lookupBtn, !eventName.trim() && s.lookupBtnDisabled]}
+              onPress={handleRaceLookup}
+              disabled={!eventName.trim() || raceLooking}
+              activeOpacity={0.8}
+            >
+              <Text style={s.lookupBtnText}>
+                {raceLooking ? 'Looking up…' : 'Look up distance & elevation'}
+              </Text>
+            </TouchableOpacity>
+            {raceResult && !raceResult.found && (
+              <Text style={s.lookupMissText}>
+                Couldn&apos;t find that race — fill the fields in manually.
+              </Text>
             )}
+            {raceResult?.found && (
+              <Text style={s.lookupHitText}>
+                Found it. Check the numbers below are right.
+              </Text>
+            )}
+
+            <Text style={s.fieldLabel}>Distance (km, optional)</Text>
+            <TextInput
+              style={s.input}
+              placeholder="e.g. 100"
+              placeholderTextColor={colors.textFaint}
+              value={targetDistance}
+              onChangeText={setTargetDistance}
+              keyboardType="numeric"
+              returnKeyType="next"
+            />
+
+            <Text style={s.fieldLabel}>Elevation gain (m, optional)</Text>
+            <TextInput
+              style={s.input}
+              placeholder="e.g. 2500"
+              placeholderTextColor={colors.textFaint}
+              value={targetElevation}
+              onChangeText={setTargetElevation}
+              keyboardType="numeric"
+              returnKeyType="next"
+            />
+
+            <Text style={s.fieldLabel}>Target time (hours, optional)</Text>
+            <TextInput
+              style={s.input}
+              placeholder="e.g. 5.5"
+              placeholderTextColor={colors.textFaint}
+              value={targetTime}
+              onChangeText={setTargetTime}
+              keyboardType="decimal-pad"
+              returnKeyType="done"
+              onSubmitEditing={() => Keyboard.dismiss()}
+            />
+
+            <Text style={s.fieldLabel}>Race date (optional)</Text>
+            <DatePicker
+              value={eventDate}
+              onChange={onPickEventDate}
+              minDate={new Date().toISOString().slice(0, 10)}
+            />
+
+            <TouchableOpacity
+              style={[s.primaryBtn, !eventName.trim() && s.primaryBtnDisabled, { marginTop: 20 }]}
+              onPress={onContinueFromEventDate}
+              disabled={!eventName.trim()}
+              activeOpacity={0.85}
+            >
+              <Text style={s.primaryBtnText}>Continue</Text>
+            </TouchableOpacity>
           </>
         )}
+        {step === 2 && !isEvent && renderLongestRide()}
 
-        {/* Q3 — event date (bucket) */}
-        {step === 3 && isEvent && (
-          <>
-            {renderQuestionHeader()}
-            <Text style={s.title}>When&apos;s your event?</Text>
-            <Text style={s.subtitle}>Tight timelines change the approach. We&apos;ll capture the exact date in a moment.</Text>
-            <View style={s.choiceGroup}>
-              {EVENT_DATE_OPTIONS.map(o => (
-                <Choice key={o.key} title={o.title} sub={o.sub} onPress={() => onPickEventDate(o.key)} />
-              ))}
-            </View>
-          </>
-        )}
-
-        {/* Q4 — duration */}
-        {step === 4 && (
+        {/* Step 3 — duration */}
+        {step === 3 && (
           <>
             {renderQuestionHeader()}
             <Text style={s.title}>
@@ -397,6 +632,9 @@ export default function PlanPickerScreen({ navigation }) {
             </View>
           </>
         )}
+
+        {/* Step 4 — longest ride (event branch only) */}
+        {step === 4 && isEvent && renderLongestRide()}
 
       </ScrollView>
     </SafeAreaView>
@@ -482,10 +720,32 @@ const s = StyleSheet.create({
   customKmBtnDisabled: { opacity: 0.35 },
   customKmBtnText: { color: '#fff', fontFamily: FF.semibold, fontWeight: '500', fontSize: 13 },
 
-  // Primary CTA (landing)
+  // Primary CTA (landing + date-picker continue)
   primaryBtn: {
     backgroundColor: colors.primary, paddingVertical: 14,
     borderRadius: 14, alignItems: 'center',
   },
+  primaryBtnDisabled: { opacity: 0.35 },
   primaryBtnText: { color: '#fff', fontSize: 15, fontFamily: FF.semibold, fontWeight: '500' },
+
+  // Event-details form (step 2, event branch)
+  fieldLabel: {
+    fontSize: 13, color: colors.textMid, fontFamily: FF.medium, fontWeight: '500',
+    marginTop: 16, marginBottom: 6,
+  },
+  input: {
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
+    color: colors.text, fontFamily: FF.regular, fontSize: 15,
+  },
+  lookupBtn: {
+    marginTop: 10, paddingVertical: 11,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.35)',
+    borderRadius: 12, backgroundColor: 'rgba(232,69,139,0.08)',
+  },
+  lookupBtnDisabled: { opacity: 0.4 },
+  lookupBtnText: { color: colors.primary, fontSize: 13, fontFamily: FF.semibold, fontWeight: '500' },
+  lookupMissText: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, marginTop: 8 },
+  lookupHitText: { fontSize: 12, color: colors.primary, fontFamily: FF.medium, fontWeight: '500', marginTop: 8 },
 });

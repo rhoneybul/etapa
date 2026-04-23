@@ -36,6 +36,11 @@ export default function GoalSetupScreen({ navigation, route }) {
   // reads the intake — never branches on it — so downstream plan generation
   // is unchanged. If intake is absent, the screen behaves exactly as before.
   const intake = route?.params?.intake || null;
+  // If the PlanPicker intake already fixed the goalType (event users have
+  // implicitly said "race"), we don't need to show step 2 — auto-advance
+  // past it. The user can still go back to change it, but the default path
+  // skips a redundant tap.
+  const skipGoalTypeStep = intake?.intent === 'event';
   const [step, setStep] = useState(1);
   // Used by the abandon-tracking effect below to distinguish "user progressed
   // to the next screen" (set true on success) from "user hit back / closed".
@@ -62,12 +67,20 @@ export default function GoalSetupScreen({ navigation, route }) {
   // straight into the specifics. User can still change it on the screen.
   const [goalType, setGoalType] = useState(intake?.intent === 'event' ? 'race' : null);
   const [planName, setPlanName] = useState('');
-  const [targetDistance, setTargetDistance] = useState('');
-  const [targetElevation, setTargetElevation] = useState('');
-  const [targetTime, setTargetTime] = useState('');
-  // PlanPicker pre-fill: event date captured in the intake carries through.
+  // PlanPicker pre-fill: the intake flow now asks for race name, distance,
+  // elevation and time directly. Pre-seed the form and — when we have an
+  // event name — skip GoalSetup's step 3 entirely. User can still edit
+  // anything via Settings / Edit plan later.
+  const [targetDistance, setTargetDistance] = useState(intake?.targetDistance != null ? String(intake.targetDistance) : '');
+  const [targetElevation, setTargetElevation] = useState(intake?.targetElevation != null ? String(intake.targetElevation) : '');
+  const [targetTime, setTargetTime] = useState(intake?.targetTime != null ? String(intake.targetTime) : '');
   const [targetDate, setTargetDate] = useState(intake?.eventDate || '');
-  const [eventName, setEventName] = useState('');
+  const [eventName, setEventName] = useState(intake?.eventName || '');
+
+  // Whether the intake already has all the event specifics we need. When
+  // true, step 3 is skipped in both the forward and back directions — the
+  // user answered these questions 1 screen ago already.
+  const skipGoalDetailsStep = intake?.intent === 'event' && !!intake?.eventName;
   const [raceLooking, setRaceLooking] = useState(false);
   const [raceResult, setRaceResult] = useState(null);
 
@@ -111,9 +124,20 @@ export default function GoalSetupScreen({ navigation, route }) {
   };
 
   const handleContinue = async () => {
-    if (step < TOTAL_STEPS) {
+    // Step-advance path — only runs when we're not at the final step and
+    // not about to short-circuit to save.
+    // Event users who filled in the full event form on the intake already
+    // have everything we need after tapping Continue on step 1 (bike type),
+    // so we skip both step 2 (goalType) and step 3 (race specifics) and
+    // fall through to the save block below.
+    const shouldFinishNow = step === 1 && skipGoalTypeStep && skipGoalDetailsStep;
+    if (step < TOTAL_STEPS && !shouldFinishNow) {
       if (step === 1) analytics.events.goalStepCompleted(1, { cyclingType });
       if (step === 2) analytics.events.goalStepCompleted(2, { goalType });
+      if (step === 1 && skipGoalTypeStep) {
+        setStep(3); // jump past goalType; step 3 still needs answering
+        return;
+      }
       setStep(step + 1);
       return;
     }
@@ -147,18 +171,29 @@ export default function GoalSetupScreen({ navigation, route }) {
     completedRef.current = true; // Tell the abandon listener this is a successful advance.
     // Forward the PlanPicker intake + its derived pre-fills. Absent when the
     // user came from the legacy three-card flow — PlanConfig tolerates null.
+    // `trainingLength` from the intake becomes `prefillWeeks` so PlanConfig
+    // can skip its own "how long is this plan?" step for event users who
+    // already answered that in the intake.
+    const trainingLen = intake?.trainingLength;
+    const prefillWeeks = (trainingLen && trainingLen !== 'ongoing' && trainingLen !== 'to_date')
+      ? Number(trainingLen)
+      : null;
     navigation.replace('PlanConfig', {
       goal,
       requirePaywall,
       intake,
+      prefillWeeks,
       prefillLevel: intake?.userLevel || null,
       prefillLongestRideKm: intake?.longestRideKm || null,
     });
   };
 
   const handleBack = () => {
-    if (step > 1) setStep(step - 1);
-    else navigation.goBack();
+    if (step <= 1) { navigation.goBack(); return; }
+    // If goalType was auto-selected from the intake, skipping back from
+    // step 3 → step 2 would show a question we pre-answered. Jump to step 1.
+    if (step === 3 && skipGoalTypeStep) { setStep(1); return; }
+    setStep(step - 1);
   };
 
   const renderStep = () => {
@@ -299,11 +334,39 @@ export default function GoalSetupScreen({ navigation, route }) {
                 returnKeyType="done"
                 onSubmitEditing={() => Keyboard.dismiss()}
               />
-              <DatePicker
-                label="Race date (optional)"
-                value={targetDate}
-                onChange={setTargetDate}
-              />
+              {/* Race date — hidden when the PlanPicker intake already
+                  captured one. The user answered this 3 screens ago and
+                  shouldn't be asked again. A small confirmation row is
+                  shown instead, with a tap-to-edit fallback for anyone
+                  who wants to change it. */}
+              {intake?.eventDate ? (
+                <View style={s.prefilledRow}>
+                  <View>
+                    <Text style={s.prefilledLabel}>Race date</Text>
+                    <Text style={s.prefilledValue}>
+                      {new Date(intake.eventDate).toLocaleDateString('en-GB', {
+                        weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+                      })}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      // Let the user override — wipe the state and fall back
+                      // to the regular picker on the next render.
+                      setTargetDate('');
+                    }}
+                    hitSlop={HIT}
+                  >
+                    <Text style={s.prefilledEdit}>Change</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <DatePicker
+                  label="Race date (optional)"
+                  value={targetDate}
+                  onChange={setTargetDate}
+                />
+              )}
             </>
           )}
 
@@ -384,6 +447,23 @@ export default function GoalSetupScreen({ navigation, route }) {
 
 const s = StyleSheet.create({
   fieldLabel: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid, marginBottom: 8, marginTop: 16, marginHorizontal: 8 },
+  // Read-only confirmation row for a value that was captured earlier in
+  // the flow (e.g. race date from the PlanPicker intake). Same visual
+  // weight as a field but non-editable, with a small "Change" link for
+  // the user to fall back to the full picker.
+  prefilledRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14,
+    marginHorizontal: 8, marginTop: 16,
+  },
+  prefilledLabel: {
+    fontSize: 11, fontFamily: FF.medium, fontWeight: '500',
+    color: colors.textMuted, letterSpacing: 0.5, textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  prefilledValue: { fontSize: 15, fontFamily: FF.semibold, fontWeight: '500', color: colors.text },
+  prefilledEdit: { fontSize: 13, fontFamily: FF.medium, fontWeight: '500', color: colors.primary },
   input: {
     backgroundColor: colors.surface, borderRadius: 12, padding: 16, marginBottom: 16,
     fontSize: 16, fontWeight: '400', fontFamily: FF.regular, color: colors.text,

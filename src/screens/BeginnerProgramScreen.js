@@ -7,9 +7,9 @@
  * Stage 2: PaywallScreen handles the subscription purchase. On success
  * it navigates directly to PlanConfig with the goal pre-populated.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Animated, Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
@@ -80,11 +80,93 @@ const BIKE_TYPES = [
   { key: 'gravel',label: 'Gravel bike' },
 ];
 
-export default function BeginnerProgramScreen({ navigation }) {
+// ── Pre-pick quiz ──────────────────────────────────────────────────────────
+// Two short questions that pre-select the user's goal distance. Skipped
+// entirely when the PlanPicker intake already captured longest-ride data.
+const RIDE_OPTIONS = [
+  { key: 'none',     title: "I haven't really ridden" },
+  { key: 'under_10', title: 'Under 10 km' },
+  { key: '10_25',    title: '10–25 km' },
+  { key: '25_50',    title: '25–50 km' },
+  { key: 'over_50',  title: 'Over 50 km' },
+];
+
+const ACTIVITY_OPTIONS = [
+  { key: 'desk',     title: 'Mostly desk work, not much else right now' },
+  { key: 'walking',  title: 'Walking and on my feet a lot, no structured workouts' },
+  { key: 'regular',  title: 'I work out 2–3 times a week (gym, running, a class)' },
+  { key: 'trained',  title: "I work out 4+ times a week or I'm training for something" },
+];
+
+// Lookup matrix → recommended beginner goal key (habit=25 km, endurance=50 km,
+// century=100 km). Derived from a coach rubric: current riding tier anchors
+// the choice; non-cycling cardio bumps it up when the user has fitness we
+// can lean on.
+const SUGGESTION_MATRIX = {
+  none:     { desk: 'habit',     walking: 'habit',     regular: 'endurance', trained: 'endurance' },
+  under_10: { desk: 'habit',     walking: 'habit',     regular: 'endurance', trained: 'endurance' },
+  '10_25':  { desk: 'endurance', walking: 'endurance', regular: 'endurance', trained: 'century'   },
+  '25_50':  { desk: 'endurance', walking: 'century',   regular: 'century',   trained: 'century'   },
+  over_50:  { desk: 'century',   walking: 'century',   regular: 'century',   trained: 'century'   },
+};
+
+// Map PlanPicker intake's longest-ride bucket → local RIDE_OPTIONS key.
+// The intake uses finer buckets; we collapse the upper three into over_50.
+const PLANPICKER_RIDE_MAP = {
+  none:      'none',
+  under_15:  'under_10',
+  '15_30':   '10_25',
+  '30_50':   '25_50',     // 'getting started'-specific bucket from PlanPicker
+  '30_60':   '25_50',
+  '60_100':  'over_50',
+  '100_160': 'over_50',
+  over_160:  'over_50',
+};
+
+function suggestGoalKey(rideKey, activityKey) {
+  const row = SUGGESTION_MATRIX[rideKey];
+  if (!row) return 'endurance';
+  return row[activityKey] || 'endurance';
+}
+
+export default function BeginnerProgramScreen({ navigation, route }) {
+  // Pre-pick quiz: gate the main screen behind two short questions unless
+  // the PlanPicker intake already gave us a longest-ride bucket. `phase`
+  // drives what renders: q1 → q2 → calculating → done (main screen visible).
+  const intake = route?.params?.intake || null;
+  const hasIntakeRide = !!intake?.longestRide && PLANPICKER_RIDE_MAP[intake.longestRide];
+  const [phase, setPhase] = useState(hasIntakeRide ? 'calculating' : 'q1');
+  const [rideAnswer, setRideAnswer] = useState(hasIntakeRide ? PLANPICKER_RIDE_MAP[intake.longestRide] : null);
+  const [activityAnswer, setActivityAnswer] = useState(null);
+  // Whether the currently-selected goalOption came from the quiz (as opposed
+  // to a manual tap). Drives the "Based on your answers…" banner.
+  const [autoSuggested, setAutoSuggested] = useState(false);
+
   const [goalOption, setGoalOption] = useState(null);
   const [bikeType, setBikeType] = useState('road');
   const [showTips, setShowTips] = useState(false);
   const [continuing, setContinuing] = useState(false);
+
+  // When we land in the 'calculating' phase, pause ~1400ms so the user feels
+  // something is happening — then flip to 'done' with the suggestion
+  // pre-selected. Activity answer defaults to 'walking' (neutral midpoint)
+  // when we came in via the intake path where we didn't ask Q2.
+  useEffect(() => {
+    if (phase !== 'calculating') return undefined;
+    const t = setTimeout(() => {
+      const ride = rideAnswer;
+      const activity = activityAnswer || 'walking';
+      const key = suggestGoalKey(ride, activity);
+      setGoalOption(key);
+      setAutoSuggested(true);
+      setPhase('done');
+      analytics.capture?.('beginner_quiz_completed', {
+        ride, activity: activityAnswer || null, suggestion: key,
+        source: hasIntakeRide ? 'intake' : 'quiz',
+      });
+    }, 1400);
+    return () => clearTimeout(t);
+  }, [phase, rideAnswer, activityAnswer, hasIntakeRide]);
 
   /** Save goal then hand off to Paywall (or directly to PlanConfig if already subscribed) */
   const handleContinue = async () => {
@@ -128,6 +210,43 @@ export default function BeginnerProgramScreen({ navigation }) {
       setContinuing(false);
     }
   };
+
+  // ── Quiz + calculating phases ───────────────────────────────────────────
+  if (phase === 'q1') {
+    return (
+      <QuizShell
+        navigation={navigation}
+        step={1}
+        title="What's your longest recent ride?"
+        subtitle="Or ever, if nothing lately. This shapes where we start you."
+        options={RIDE_OPTIONS}
+        onPick={(key) => {
+          setRideAnswer(key);
+          analytics.capture?.('beginner_quiz_answered', { question: 'ride', choice: key });
+          setPhase('q2');
+        }}
+      />
+    );
+  }
+  if (phase === 'q2') {
+    return (
+      <QuizShell
+        navigation={navigation}
+        step={2}
+        title="What does a typical week of movement look like?"
+        subtitle="Helps us know how much we can push in week 1."
+        options={ACTIVITY_OPTIONS}
+        onPick={(key) => {
+          setActivityAnswer(key);
+          analytics.capture?.('beginner_quiz_answered', { question: 'activity', choice: key });
+          setPhase('calculating');
+        }}
+      />
+    );
+  }
+  if (phase === 'calculating') {
+    return <CalculatingShell />;
+  }
 
   return (
     <View style={s.container}>
@@ -176,6 +295,21 @@ export default function BeginnerProgramScreen({ navigation }) {
           <View style={s.section}>
             <Text style={s.sectionTitle}>What's your goal?</Text>
             <Text style={s.sectionSub}>Pick the milestone you want to work towards</Text>
+            {autoSuggested && goalOption && (
+              // Small banner above the three cards — shows when the quiz
+              // pre-selected a distance. Dismisses itself once the user
+              // taps a different option (they've overridden us).
+              <View style={s.suggestionBanner}>
+                <Text style={s.suggestionBannerText}>
+                  <Text style={s.suggestionBannerStrong}>Based on your answers, </Text>
+                  we&apos;d start you at{' '}
+                  <Text style={s.suggestionBannerStrong}>
+                    {(GOAL_OPTIONS.find(g => g.key === goalOption) || {}).distance} km
+                  </Text>
+                  . Change it if you want.
+                </Text>
+              </View>
+            )}
             <View style={s.daysOptions}>
               {GOAL_OPTIONS.map(opt => {
                 const isSelected = goalOption === opt.key;
@@ -183,7 +317,10 @@ export default function BeginnerProgramScreen({ navigation }) {
                   <TouchableOpacity
                     key={opt.key}
                     style={[s.dayCard, isSelected && s.dayCardSelected]}
-                    onPress={() => setGoalOption(opt.key)}
+                    onPress={() => {
+                      if (goalOption !== opt.key) setAutoSuggested(false);
+                      setGoalOption(opt.key);
+                    }}
                     activeOpacity={0.8}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
@@ -256,6 +393,67 @@ export default function BeginnerProgramScreen({ navigation }) {
             )}
           </TouchableOpacity>
         </View>
+      </SafeAreaView>
+    </View>
+  );
+}
+
+// ── Quiz shells ────────────────────────────────────────────────────────────
+// Shared shape for the two quiz screens — header, progress dots, question,
+// tap-card options. Kept local because they're only used here and the style
+// intentionally mirrors the rest of BeginnerProgramScreen so the transition
+// between quiz and main screen feels continuous.
+function QuizShell({ navigation, step, title, subtitle, options, onPick }) {
+  return (
+    <View style={s.container}>
+      <SafeAreaView style={s.safe}>
+        <View style={s.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={HIT}>
+            <Text style={s.backArrow}>{'\u2190'}</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
+          <View style={s.progressRow}>
+            <View style={[s.progressDot, step >= 1 && s.progressDotActive]} />
+            <View style={[s.progressDot, step >= 2 && s.progressDotActive]} />
+          </View>
+          <Text style={s.quizTitle}>{title}</Text>
+          <Text style={s.quizSubtitle}>{subtitle}</Text>
+          <View style={s.quizOptions}>
+            {options.map(o => (
+              <TouchableOpacity
+                key={o.key}
+                style={s.quizOption}
+                onPress={() => onPick(o.key)}
+                activeOpacity={0.85}
+              >
+                <Text style={s.quizOptionText}>{o.title}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
+  );
+}
+
+// Short calculating screen between the last answer and the main screen. The
+// work is actually instant — this is a deliberate pause so the user feels
+// the answers are being processed. ~1400 ms is long enough to read
+// "Building your recommendation…" and short enough to not annoy.
+function CalculatingShell() {
+  const [dots, setDots] = useState(1);
+  useEffect(() => {
+    const id = setInterval(() => setDots(d => (d % 3) + 1), 420);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <View style={s.container}>
+      <SafeAreaView style={[s.safe, s.calcSafe]}>
+        <ActivityIndicator size="large" color="#E8458B" />
+        <Text style={s.calcText}>
+          Building your recommendation{'.'.repeat(dots)}
+        </Text>
       </SafeAreaView>
     </View>
   );
@@ -338,6 +536,46 @@ const s = StyleSheet.create({
   },
   tipTitle: { fontSize: 14, fontFamily: FF.semibold, color: colors.text, marginBottom: 6 },
   tipBody: { fontSize: 13, fontFamily: FF.regular, color: colors.textMid, lineHeight: 20 },
+
+  // Quiz
+  progressRow: { flexDirection: 'row', gap: 6, marginBottom: 22 },
+  progressDot: { flex: 1, height: 3, borderRadius: 2, backgroundColor: colors.border },
+  progressDotActive: { backgroundColor: '#E8458B' },
+  quizTitle: {
+    fontSize: 24, fontFamily: FF.semibold, color: colors.text, lineHeight: 30,
+    marginBottom: 8,
+  },
+  quizSubtitle: {
+    fontSize: 14, fontFamily: FF.regular, color: colors.textMid, lineHeight: 21,
+    marginBottom: 22,
+  },
+  quizOptions: { gap: 10 },
+  quizOption: {
+    backgroundColor: colors.surface, borderRadius: 14, padding: 16,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  quizOptionText: { fontSize: 15, fontFamily: FF.medium, color: colors.text, lineHeight: 20 },
+
+  // Calculating
+  calcSafe: { alignItems: 'center', justifyContent: 'center' },
+  calcText: {
+    fontSize: 14, fontFamily: FF.medium, color: colors.textMid,
+    marginTop: 16, letterSpacing: 0.3,
+  },
+
+  // "Based on your answers" banner
+  suggestionBanner: {
+    backgroundColor: 'rgba(232,69,139,0.08)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.25)',
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10,
+    marginBottom: 12,
+  },
+  suggestionBannerText: {
+    fontSize: 13, fontFamily: FF.regular, color: colors.textMid, lineHeight: 18,
+  },
+  suggestionBannerStrong: {
+    fontFamily: FF.semibold, color: '#E8458B',
+  },
 
   // CTAs
   ctaWrap: { paddingHorizontal: 24, paddingBottom: 16 + BOTTOM_INSET, paddingTop: 8, gap: 10 },

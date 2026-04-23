@@ -40,10 +40,22 @@ export default function WelcomeScreen({ navigation, firstName }) {
 
         <View style={s.headerRow}>
           <Image source={require('../../assets/icon.png')} style={s.logo} />
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={s.appName}>Etapa</Text>
             {firstName ? <Text style={s.greeting}>Hi, {firstName}</Text> : null}
           </View>
+          {/* Settings — accessible even pre-plan so users can sign out,
+              update their display name, or connect Strava before they
+              commit to a plan. Matches the "..." button position used on
+              the post-plan home screen. */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={s.settingsBtn}
+            accessibilityLabel="Settings"
+          >
+            <Text style={s.settingsDots}>{'\u2022\u2022\u2022'}</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={s.heroWrap}>
@@ -76,6 +88,12 @@ const s = StyleSheet.create({
   logo: { width: 34, height: 34, borderRadius: 8 },
   appName: { fontSize: 17, color: colors.text, fontFamily: FF.semibold, fontWeight: '500' },
   greeting: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, marginTop: 1 },
+  settingsBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    borderWidth: 1, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  settingsDots: { fontSize: 16, color: colors.textMid, letterSpacing: 1 },
 
   heroWrap: { flex: 1, justifyContent: 'center', paddingVertical: 40 },
   title: {

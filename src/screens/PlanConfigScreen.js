@@ -566,6 +566,14 @@ export default function PlanConfigScreen({ navigation, route }) {
       if (step === 5) analytics.events.configStepCompleted(3, { sessionsPerWeek: totalSessions, daysPlaced: Object.keys(dayActivities).length });
       if (step === 6) analytics.events.configStepCompleted(4, { planWeeks, startDateChoice });
       if (step === 7) analytics.events.configStepCompleted(5, { coachId });
+      // Skip step 6 (weeks + start date) when the intake already gave us a
+      // plan length. Start date falls back to its own default ('next_monday')
+      // — that's the safe assumption for an event user who just walked
+      // through an intake. User can still edit the weeks by going back.
+      if (step === 5 && prefillWeeks && planWeeks) {
+        setStep(7);
+        return;
+      }
       setStep(step + 1);
       return;
     }
@@ -636,8 +644,10 @@ export default function PlanConfigScreen({ navigation, route }) {
   };
 
   const handleBack = () => {
-    if (step > 1) setStep(step - 1);
-    else navigation.goBack();
+    if (step <= 1) { navigation.goBack(); return; }
+    // Mirror the forward-skip when prefillWeeks fixed the weeks step.
+    if (step === 7 && prefillWeeks && planWeeks) { setStep(5); return; }
+    setStep(step - 1);
   };
 
   const renderStep = () => {
