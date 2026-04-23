@@ -14,8 +14,10 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ImportSummary } from "@/lib/finance/types";
+import Nav from "@/components/Nav";
+import { getBrowserSupabase } from "@/lib/supabase/browser";
 
 type Result = ImportSummary | null;
 
@@ -25,6 +27,15 @@ export default function ImportPage() {
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<Result>(null);
   const [filename, setFilename] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const supa = getBrowserSupabase();
+      const { data: { user } } = await supa.auth.getUser();
+      setEmail(user?.email ?? null);
+    })();
+  }, []);
 
   async function uploadFile(file: File) {
     setUploading(true);
@@ -60,7 +71,9 @@ export default function ImportPage() {
   }
 
   return (
-    <main className="min-h-dvh p-6 md:p-10 max-w-3xl mx-auto">
+    <>
+      <Nav email={email} />
+      <main className="p-6 md:p-10 max-w-3xl mx-auto">
       <Link href="/" className="text-xs text-zinc-500 hover:text-zinc-300">← Home</Link>
       <h1 className="text-xl font-semibold mt-4 mb-2">Import Excel model</h1>
       <p className="text-sm text-zinc-400 mb-8">
@@ -153,6 +166,7 @@ export default function ImportPage() {
         never leaves your machine unintentionally. The server reads the upload, parses it, and
         discards the bytes — only the normalised rows land in the database.
       </p>
-    </main>
+      </main>
+    </>
   );
 }
