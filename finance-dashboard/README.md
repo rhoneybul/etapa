@@ -75,10 +75,38 @@ Open http://localhost:3002 → click Continue with Google → should land back o
 
 ### 6. Deploy to Vercel
 
-1. `vercel link` inside `finance-dashboard/`.
-2. Add the env vars from `.env.example` in the Vercel project settings.
-3. `vercel --prod`.
-4. Update the Supabase redirect URLs with the production callback.
+`vercel.json` in this directory pre-configures framework, build command, dev port, and security headers. What's left — Root Directory, env vars, domain — has to be set via the CLI (or once in the Vercel UI). Prefer the CLI: running `vercel` from inside `finance-dashboard/` makes this directory the project root automatically, so the monorepo gotcha disappears.
+
+```bash
+# One-off setup
+cd finance-dashboard
+npm install -g vercel       # if you don't already have it
+vercel login                 # opens a browser
+vercel link                  # creates the project. Answer: own scope, new project,
+                             # name "etapa-finance", framework auto-detected.
+                             # Don't override build/output/install — vercel.json handles those.
+
+# Push env vars. Paste the value when prompted; pick "all environments" unless
+# you want prod-only. These four are the minimum.
+vercel env add NEXT_PUBLIC_SUPABASE_URL
+vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY
+vercel env add ALLOWED_EMAILS
+vercel env add NEXT_PUBLIC_API_BASE_URL
+
+# Ship
+vercel --prod
+```
+
+Vercel prints a `*.vercel.app` URL on success. Finally, map `finance.getetapa.com`:
+
+```bash
+vercel domains add finance.getetapa.com etapa-finance
+# Follow the DNS CNAME instructions Vercel prints.
+```
+
+Once DNS propagates (a few minutes), `https://finance.getetapa.com` serves the dashboard with an auto-issued SSL cert.
+
+**After deploy**: make sure `https://finance.getetapa.com/auth/callback` is in the Supabase **Redirect URLs** allowlist (Authentication → URL Configuration). Without it, post-Google redirects will fail with an unauthorised URL error.
 
 ## How the allowlist works
 
