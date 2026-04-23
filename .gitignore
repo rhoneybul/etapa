@@ -53,3 +53,13 @@ tests/**results**
 .vscode
 
 .mcp.*
+
+# finance dashboard — the Excel model is local-only, never committed.
+# The dashboard's /import page uploads the .xlsx at runtime and seeds
+# the `finance` schema from there.
+docs/budget-dashboard/*.xlsx
+docs/budget-dashboard/*.xlsm
+docs/budget-dashboard/*.xls
+finance-dashboard/.next/
+finance-dashboard/node_modules/
+finance-dashboard/.env*.local
