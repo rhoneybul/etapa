@@ -61,6 +61,27 @@ values ('honeybulr@gmail.com', 'founder')
 on conflict (email) do nothing;
 ```
 
+### 4b. Expose the `finance` schema to PostgREST
+
+By default Supabase's REST API only exposes the `public` schema. The dashboard reads + writes `finance.*` tables directly via the Supabase JS client, so that schema has to be on the exposed list.
+
+**Dashboard → Project Settings → Data API → Exposed schemas.** Add `finance` to the comma-separated list (typically becomes `public, graphql_public, storage, finance`). Save. PostgREST auto-restarts.
+
+Symptom if missed: importing the Excel fails with `Invalid schema: finance`, and home page database calls return empty.
+
+### 4c. Make sure the grants migration ran
+
+If you applied the schema migration but skip this one, you'll hit `permission denied for schema finance` on every write. Migration `20260423000003_finance_grants.sql` grants USAGE on the schema + CRUD on every table to the `authenticated` role (RLS still filters rows). `supabase db push` picks it up automatically — just make sure it ran.
+
+To sanity-check from the Supabase SQL editor after push:
+
+```sql
+select has_schema_privilege('authenticated', 'finance', 'USAGE');
+-- → true
+select has_table_privilege('authenticated', 'finance.cost_items', 'SELECT');
+-- → true
+```
+
 ### 5. Local dev
 
 ```bash

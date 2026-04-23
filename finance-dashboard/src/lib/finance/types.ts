@@ -14,7 +14,7 @@ export type ParsedCashSnapshot = {
 
 export type ParsedCostItem = {
   name: string;
-  category: "software" | "legal" | "accounting" | "insurance" | "bank_fees" | "other";
+  category: "software" | "legal" | "accounting" | "insurance" | "bank_fees" | "marketing" | "other";
   monthlyAmount: number;
   isProjected: boolean;
   cadence?: "monthly" | "annual" | "usage";

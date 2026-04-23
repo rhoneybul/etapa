@@ -92,9 +92,19 @@ function isSubtotalRow(label: string): boolean {
 function categoriseCostItem(name: string): ParsedCostItem["category"] {
   const n = name.toLowerCase();
   if (/tide.*fee|bank fee/.test(n)) return "bank_fees";
-  if (/insurance/.test(n)) return "insurance";
+  if (/insurance|cyber|d&o/.test(n)) return "insurance";
   if (/legal|privacy|eula|ico|registered office/.test(n)) return "legal";
   if (/accounting|filing|confirmation|accounts|tax|corporation/.test(n)) return "accounting";
+  // Marketing & growth — ads, influencers, content production, referrals,
+  // scheduling tools, imagery, ASO. Ordered BEFORE `software` so tools that
+  // are primarily a marketing lever (Canva, Publer) land here.
+  //   - "buffer" deliberately omitted — collides with "Contingency buffer".
+  //     If you ever start using Buffer the social tool, rename the cost
+  //     item to "Buffer (social scheduling)" and update the pattern.
+  //   - "app store optim" isn't \b-bounded because "optimization" trips the
+  //     trailing word boundary.
+  if (/\b(ads?|search ads|influencer|referral|marketing|canva|publer|stock imagery|aso)\b/.test(n)) return "marketing";
+  if (/app store optim|content production/.test(n)) return "marketing";
   if (/anthropic|supabase|railway|expo|godaddy|appscreen|perplexity|cursor|hosting|iconikai|holo/.test(n)) return "software";
   return "other";
 }
