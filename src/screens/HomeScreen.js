@@ -1947,6 +1947,22 @@ export default function HomeScreen({ navigation, route }) {
         onUpgrade={handleUpgrade}
         upgrading={upgrading}
       />
+
+      {/* Onboarding tour — shown once on first launch for users who have
+          no plan yet AND haven't seen it before. Was previously imported
+          and had its state wired up, but the <OnboardingTour /> element
+          was never actually rendered — which is why first-time users
+          weren't seeing the 5-step walkthrough. Fixed April 2026.
+          onComplete marks the onboarding-done flag so the modal never
+          re-shows, even if the user lands back on Home before creating
+          a plan. */}
+      <OnboardingTour
+        visible={showOnboarding}
+        onComplete={async () => {
+          setShowOnboarding(false);
+          try { await setOnboardingDone(); } catch {}
+        }}
+      />
     </View>
   );
 }
