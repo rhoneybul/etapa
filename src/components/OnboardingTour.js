@@ -1,169 +1,276 @@
 /**
- * OnboardingTour — Interactive overlay tour for first-time users.
- * Shows spotlight tooltips on the HomeScreen with dummy data,
- * walking through: training plan, coach chat, and progress tracking.
+ * OnboardingTour — first-run overlay walking a new user through the
+ * most valuable parts of the app.
+ *
+ * 5 steps (rewritten April 2026):
+ *   1. Welcome                    — warm positioning, who the app is for
+ *   2. Today                      — the Today hero, the one thing you see daily
+ *   3. Pick your coach            — 6 personalities; tap to pick; saves to prefs
+ *   4. Sessions, clearly explained — structured breakdown (warm-up/main/cool-down)
+ *   5. Units + Get started        — km/mi toggle + primary CTA
+ *
+ * Old content showed a generic "Build Base Fitness" plan with tempo intervals
+ * at Week 3, which contradicted the beginner/returning-rider positioning in
+ * BRAND.md. The new flow leans into what the app actually shows + is proud
+ * of, and captures the units preference at the natural moment instead of
+ * surfacing it later in Settings.
  */
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated, Dimensions,
-  Modal, ScrollView, Image,
+  Modal, ScrollView,
 } from 'react-native';
 import { colors, fontFamily } from '../theme';
+import { getCoaches, DEFAULT_COACH_ID } from '../data/coaches';
+import { getUserPrefs, setUserPrefs } from '../services/storageService';
 
 const FF = fontFamily;
-const { width: SW, height: SH } = Dimensions.get('window');
+const { height: SH } = Dimensions.get('window');
 
-// ── Tour steps ──────────────────────────────────────────────────────────────
+// ── Tour steps ─────────────────────────────────────────────────────────────
+// Step order and copy are tuned for Etapa's positioning (beginners,
+// returning riders, women). Every string is in plain English — no FTP,
+// TSS, or "Week 3 tempo intervals" vocabulary.
 const STEPS = [
   {
     id: 'welcome',
     title: 'Welcome to Etapa',
-    body: 'Your personal cycling coach. Let\'s take a quick look at what\'s waiting for you.',
-    position: 'center',
-    icon: null,
+    body: 'Your AI cycling coach — built for new riders, returning riders, and anyone who wants a plan without the jargon.',
   },
   {
-    id: 'plan',
-    title: 'Your Training Plan',
-    body: 'We\'ll build a personalised weekly plan based on your goals — with sessions tailored to your level, schedule, and target event.',
-    position: 'top',
-    icon: null,
-    dummyCard: {
-      type: 'plan',
-      title: 'Build Base Fitness',
-      meta: '42 km · 8 wks · ~4 h/wk',
-      week: 'Week 3 of 8',
-      activities: [
-        { day: 'Mon', name: 'Easy Spin', dist: '15 km', effort: 'Easy', done: true },
-        { day: 'Wed', name: 'Tempo Intervals', dist: '25 km', effort: 'Moderate', done: true },
-        { day: 'Fri', name: 'Endurance Ride', dist: '40 km', effort: 'Moderate', done: false },
-        { day: 'Sun', name: 'Recovery Ride', dist: '12 km', effort: 'Easy', done: false },
-      ],
-    },
+    id: 'today',
+    title: 'Open the app. See today.',
+    body: 'Your next session is the first thing you see — with one tap to open it, ask your coach about it, or tick it off. Tomorrow sits right underneath.',
+    dummyCard: { type: 'today' },
   },
   {
     id: 'coach',
-    title: 'Your AI Coach',
-    body: 'After each session, your coach checks in — asking how it went, offering tips, and preparing you for what\'s next.',
-    position: 'middle',
-    icon: null,
-    dummyCard: {
-      type: 'chat',
-      messages: [
-        { role: 'coach', text: 'Great work on yesterday\'s tempo ride! 25 km at moderate effort is solid for Week 3. How did your legs feel on the intervals?' },
-        { role: 'user', text: 'Felt good! The last two intervals were tough but manageable.' },
-        { role: 'coach', text: 'That\'s exactly where you want to be. Friday\'s endurance ride is 40 km — take the first half easy and build into it. Stay hydrated.' },
-      ],
-    },
+    title: 'Pick your coach',
+    body: 'Six personalities. Pick the one you\'d actually ride with — you can switch later if they\'re not for you.',
+    dummyCard: { type: 'coachPicker' },
   },
   {
-    id: 'progress',
-    title: 'Track Your Progress',
-    body: 'See your weekly distance, completed sessions, and how you\'re tracking against your plan. Connect Strava for automatic syncing.',
-    position: 'middle',
-    icon: null,
-    dummyCard: {
-      type: 'stats',
-      stats: [
-        { label: 'This Week', value: '40 km', sub: 'of 92 km goal' },
-        { label: 'Sessions', value: '2 / 4', sub: 'completed' },
-        { label: 'Streak', value: '3 wks', sub: 'consistent' },
-        { label: 'Total', value: '186 km', sub: 'all time' },
-      ],
-    },
+    id: 'sessions',
+    title: 'Every session, clearly explained',
+    body: 'Hard sessions come with a warm-up, main set, and cool-down — and we show the target three ways: by feel, heart rate, or watts. Whichever works for you.',
+    dummyCard: { type: 'sessionBreakdown' },
   },
   {
     id: 'ready',
-    title: 'Ready to ride?',
-    body: 'Choose how you\'d like to get started.',
-    position: 'center',
-    icon: null,
+    title: 'One last thing — km or miles?',
+    body: 'Just so we know how to show your distances. You can change this anytime in Settings.',
+    dummyCard: { type: 'units' },
     cta: 'Get started',
   },
 ];
 
-// ── Dummy card renderers ────────────────────────────────────────────────────
+// ── Dummy card renderers ───────────────────────────────────────────────────
 
-function PlanCard({ data }) {
+/**
+ * Step 2 — Today hero preview.
+ * Mirrors the real HomeScreen Today hero: pink eyebrow, title, meta line,
+ * action buttons. Below it a tiny Tomorrow preview so users see the pattern.
+ */
+function TodayCard() {
   return (
     <View style={cs.card}>
-      <Text style={cs.cardLabel}>SAMPLE PLAN</Text>
-      <Text style={cs.planTitle}>{data.title}</Text>
-      <Text style={cs.planMeta}>{data.meta}</Text>
-      <View style={cs.weekBadge}>
-        <Text style={cs.weekText}>{data.week}</Text>
-      </View>
-      {data.activities.map((a, i) => (
-        <View key={i} style={cs.actRow}>
-          <Text style={[cs.actDay, a.done && cs.actDone]}>{a.day}</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={[cs.actName, a.done && cs.actDone]}>{a.name}</Text>
-            <Text style={cs.actMeta}>{a.dist} · {a.effort}</Text>
-          </View>
-          <Text style={cs.actCheck}>{a.done ? '✓' : '○'}</Text>
+      <Text style={cs.todayEyebrow}>TODAY</Text>
+      <Text style={cs.todayTitle}>First Adventure</Text>
+      <Text style={cs.todayMeta}>8 km · 30 min · easy</Text>
+      <View style={cs.todayActions}>
+        <View style={cs.todayCta}>
+          <Text style={cs.todayCtaText}>View details</Text>
+          <Text style={cs.todayCtaArrow}>{'\u203A'}</Text>
         </View>
-      ))}
-    </View>
-  );
-}
-
-function ChatCard({ data }) {
-  return (
-    <View style={cs.card}>
-      <Text style={cs.cardLabel}>COACH CHAT</Text>
-      {data.messages.map((m, i) => (
-        <View key={i} style={[cs.chatBubble, m.role === 'user' ? cs.chatUser : cs.chatCoach]}>
-          <Text style={cs.chatText}>{m.text}</Text>
+        <View style={cs.todayGhost}>
+          <Text style={cs.todayGhostText}>Ask Clara</Text>
         </View>
-      ))}
+      </View>
+
+      {/* Divider — visually separates Today from Tomorrow, like the
+          real home screen stacks them */}
+      <View style={cs.divider} />
+
+      <Text style={cs.tomorrowEyebrow}>TOMORROW</Text>
+      <Text style={cs.tomorrowTitle}>Rest day</Text>
+      <Text style={cs.tomorrowMeta}>Recovery is training too.</Text>
     </View>
   );
 }
 
-function StatsCard({ data }) {
+/**
+ * Step 3 — Coach picker.
+ * Real grid of the 6 coaches. Tapping one:
+ *   - highlights the tapped card in pink
+ *   - persists userPrefs.coachId immediately (the user's choice sticks even
+ *     if they skip the rest of the tour)
+ *   - shows a small sample quote from the picked coach so they know what
+ *     they're getting tone-wise
+ */
+function CoachPickerCard({ selectedId, onSelect }) {
+  const coaches = getCoaches();
+  const selected = coaches.find(c => c.id === selectedId) || coaches[0];
   return (
     <View style={cs.card}>
-      <Text style={cs.cardLabel}>YOUR PROGRESS</Text>
-      <View style={cs.statsGrid}>
-        {data.stats.map((s, i) => (
-          <View key={i} style={cs.statBox}>
-            <Text style={cs.statValue}>{s.value}</Text>
-            <Text style={cs.statLabel}>{s.label}</Text>
-            <Text style={cs.statSub}>{s.sub}</Text>
+      <Text style={cs.cardLabel}>YOUR COACH</Text>
+
+      {/* 3×2 grid of coach chips — initials + name + tagline */}
+      <View style={cs.coachGrid}>
+        {coaches.map((c) => {
+          const picked = c.id === selectedId;
+          return (
+            <TouchableOpacity
+              key={c.id}
+              style={[cs.coachChip, picked && cs.coachChipPicked]}
+              onPress={() => onSelect(c.id)}
+              activeOpacity={0.85}
+            >
+              <View style={[cs.coachAvatar, { backgroundColor: c.avatarColor }]}>
+                <Text style={cs.coachAvatarText}>{c.avatarInitials}</Text>
+              </View>
+              <Text style={[cs.coachName, picked && cs.coachNamePicked]} numberOfLines={1}>{c.name}</Text>
+              <Text style={cs.coachTag} numberOfLines={2}>{c.tagline}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Sample quote from the currently-selected coach — gives the user a
+          feel for the voice before they commit. Updates live as they tap
+          different chips. */}
+      {selected && (
+        <View style={cs.quoteBox}>
+          <Text style={cs.quoteAttrib}>{selected.name} says</Text>
+          <Text style={cs.quoteText}>&ldquo;{selected.sampleQuote}&rdquo;</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+/**
+ * Step 4 — Structured session breakdown preview.
+ * Shows the same three-stage layout the real ActivityDetail renders for
+ * hard sessions: warm-up, main set (with triple-intensity), cool-down.
+ * The point is the TRIPLE intensity — RPE / HR / power — which is the
+ * best new thing in the app + the most beginner-friendly feature (RPE
+ * needs no kit).
+ */
+function SessionBreakdownCard() {
+  return (
+    <View style={cs.card}>
+      <Text style={cs.cardLabel}>HOW TO DO THIS SESSION</Text>
+
+      {/* Warm-up */}
+      <View style={cs.stage}>
+        <Text style={cs.stageTitle}>Warm up · 10 min</Text>
+        <Text style={cs.stageBody}>Easy spin, nothing to prove.</Text>
+      </View>
+
+      {/* Main set — pink-tinted to match the real screen */}
+      <View style={[cs.stage, cs.stageMain]}>
+        <Text style={[cs.stageTitle, cs.stageTitleMain]}>4 × 4 min hard, 3 min easy between</Text>
+        <Text style={cs.stageBody}>Hold the effort steady. If the last rep drops off, the target was too high.</Text>
+
+        <View style={cs.intensityBlock}>
+          <View style={cs.intensityRow}>
+            <Text style={cs.intensityKey}>Feel</Text>
+            <Text style={cs.intensityVal}>8/10 — hard, short breaths</Text>
           </View>
-        ))}
+          <View style={cs.intensityRow}>
+            <Text style={cs.intensityKey}>Heart rate</Text>
+            <Text style={cs.intensityVal}>Zone 4 · 85–92% of max</Text>
+          </View>
+          <View style={cs.intensityRow}>
+            <Text style={cs.intensityKey}>Power</Text>
+            <Text style={cs.intensityVal}>Zone 4 · 91–105% of FTP</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Cool-down */}
+      <View style={cs.stage}>
+        <Text style={cs.stageTitle}>Cool down · 10 min</Text>
+        <Text style={cs.stageBody}>Easy spin, let the heart rate come down.</Text>
       </View>
     </View>
   );
 }
 
-function DummyCardRenderer({ dummyCard }) {
+/**
+ * Step 5 — Units picker.
+ * Big km / mi toggle, saves to userPrefs.units IMMEDIATELY on tap so the
+ * choice persists even if the user bails before hitting Get Started. The
+ * Get Started CTA lives in the main tour chrome (the "nextBtn" with
+ * isLast styling) — this card just houses the toggle.
+ */
+function UnitsCard({ units, onSelect }) {
+  return (
+    <View style={cs.card}>
+      <Text style={cs.cardLabel}>DISTANCE UNITS</Text>
+      <View style={cs.unitsRow}>
+        <TouchableOpacity
+          style={[cs.unitsBtn, units === 'km' && cs.unitsBtnPicked]}
+          onPress={() => onSelect('km')}
+          activeOpacity={0.85}
+        >
+          <Text style={[cs.unitsBtnText, units === 'km' && cs.unitsBtnTextPicked]}>Kilometres</Text>
+          <Text style={[cs.unitsBtnSub, units === 'km' && cs.unitsBtnSubPicked]}>km</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[cs.unitsBtn, units === 'miles' && cs.unitsBtnPicked]}
+          onPress={() => onSelect('miles')}
+          activeOpacity={0.85}
+        >
+          <Text style={[cs.unitsBtnText, units === 'miles' && cs.unitsBtnTextPicked]}>Miles</Text>
+          <Text style={[cs.unitsBtnSub, units === 'miles' && cs.unitsBtnSubPicked]}>mi</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Dispatcher — picks the right renderer for the current step's card. The
+ * coach + units cards need handlers, the other cards are stateless.
+ */
+function DummyCardRenderer({ dummyCard, selectedCoachId, onPickCoach, units, onPickUnits }) {
   if (!dummyCard) return null;
   switch (dummyCard.type) {
-    case 'plan': return <PlanCard data={dummyCard} />;
-    case 'chat': return <ChatCard data={dummyCard} />;
-    case 'stats': return <StatsCard data={dummyCard} />;
-    default: return null;
+    case 'today':              return <TodayCard />;
+    case 'coachPicker':        return <CoachPickerCard selectedId={selectedCoachId} onSelect={onPickCoach} />;
+    case 'sessionBreakdown':   return <SessionBreakdownCard />;
+    case 'units':              return <UnitsCard units={units} onSelect={onPickUnits} />;
+    default:                    return null;
   }
 }
 
-// ── Main Component ──────────────────────────────────────────────────────────
+// ── Main Component ─────────────────────────────────────────────────────────
 
-export default function OnboardingTour({ visible, onComplete, onCreatePlan }) {
+export default function OnboardingTour({ visible, onComplete }) {
   const [step, setStep] = useState(0);
+  const [selectedCoachId, setSelectedCoachId] = useState(DEFAULT_COACH_ID);
+  const [units, setUnits] = useState('km');
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
+  // Hydrate existing prefs on open so repeat visitors don't have their
+  // previous choices reset. Also means if the user picks a coach in
+  // onboarding and re-enters it later (e.g. via a "View tour" link in
+  // Settings — not built yet but likely), their pick is pre-highlighted.
   useEffect(() => {
-    if (visible) {
-      setStep(0);
-      fadeAnim.setValue(0);
-      slideAnim.setValue(30);
-      Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
-        Animated.timing(slideAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
-      ]).start();
-    }
+    if (!visible) return;
+    setStep(0);
+    fadeAnim.setValue(0);
+    slideAnim.setValue(30);
+    getUserPrefs().then((p) => {
+      if (p?.coachId) setSelectedCoachId(p.coachId);
+      if (p?.units) setUnits(p.units);
+    }).catch(() => {});
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
+    ]).start();
   }, [visible]);
 
   const animateTransition = (cb) => {
@@ -181,10 +288,26 @@ export default function OnboardingTour({ visible, onComplete, onCreatePlan }) {
     });
   };
 
+  // Save coach choice immediately. Fire-and-forget — setUserPrefs mirrors
+  // to AsyncStorage synchronously enough that by the time the user
+  // completes the tour, the first plan config can read userPrefs.coachId
+  // as its default.
+  const handlePickCoach = (coachId) => {
+    setSelectedCoachId(coachId);
+    setUserPrefs({ coachId }).catch(() => {});
+  };
+
+  // Same pattern for units — persisted immediately so the rest of the
+  // app (useUnits hook on Home, Calendar, WeekView, ActivityDetail)
+  // picks up the choice from first render.
+  const handlePickUnits = (nextUnits) => {
+    setUnits(nextUnits);
+    setUserPrefs({ units: nextUnits }).catch(() => {});
+  };
+
   const handleNext = () => {
     if (step >= STEPS.length - 1) {
-      // Final step — dismiss the tour so the user can choose their path
-      // (Get into Cycling or Create a custom plan)
+      // Final step — dismiss; units + coachId are already saved.
       onComplete?.();
       return;
     }
@@ -192,6 +315,9 @@ export default function OnboardingTour({ visible, onComplete, onCreatePlan }) {
   };
 
   const handleSkip = () => {
+    // Skip still preserves any picks the user already made in earlier
+    // steps because handlePickCoach / handlePickUnits wrote them as the
+    // user tapped. Nothing to do here except dismiss.
     onComplete?.();
   };
 
@@ -204,7 +330,8 @@ export default function OnboardingTour({ visible, onComplete, onCreatePlan }) {
   return (
     <Modal visible={visible} transparent animationType="none" statusBarTranslucent>
       <View style={s.overlay}>
-        {/* Skip button */}
+        {/* Skip button — only shown on non-final steps; on the final step
+            "Get started" is the only reasonable next action */}
         {!isLast && (
           <TouchableOpacity style={s.skipBtn} onPress={handleSkip} activeOpacity={0.7}>
             <Text style={s.skipText}>Skip</Text>
@@ -220,14 +347,18 @@ export default function OnboardingTour({ visible, onComplete, onCreatePlan }) {
             showsVerticalScrollIndicator={false}
             bounces={false}
           >
-            {/* Title + body */}
             <Text style={s.title}>{current.title}</Text>
             <Text style={s.body}>{current.body}</Text>
 
-            {/* Dummy data card */}
             {current.dummyCard && (
               <View style={s.cardWrap}>
-                <DummyCardRenderer dummyCard={current.dummyCard} />
+                <DummyCardRenderer
+                  dummyCard={current.dummyCard}
+                  selectedCoachId={selectedCoachId}
+                  onPickCoach={handlePickCoach}
+                  units={units}
+                  onPickUnits={handlePickUnits}
+                />
               </View>
             )}
           </ScrollView>
@@ -266,7 +397,7 @@ export default function OnboardingTour({ visible, onComplete, onCreatePlan }) {
   );
 }
 
-// ── Styles ──────────────────────────────────────────────────────────────────
+// ── Styles ─────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
   overlay: {
@@ -285,14 +416,11 @@ const s = StyleSheet.create({
   contentWrap: {
     flex: 1,
     justifyContent: 'center',
-    maxHeight: SH * 0.8,
+    maxHeight: SH * 0.88,
   },
   scrollContent: {
     alignItems: 'center',
     paddingBottom: 16,
-  },
-  icon: {
-    fontSize: 48, textAlign: 'center', marginBottom: 16,
   },
   title: {
     fontSize: 26, fontFamily: FF.semibold, fontWeight: '600',
@@ -300,10 +428,10 @@ const s = StyleSheet.create({
   },
   body: {
     fontSize: 15, fontFamily: FF.regular, color: colors.textMid,
-    textAlign: 'center', lineHeight: 22, maxWidth: 320, marginBottom: 20,
+    textAlign: 'center', lineHeight: 22, maxWidth: 340, marginBottom: 20,
   },
   cardWrap: {
-    width: '100%', maxWidth: 340, alignSelf: 'center',
+    width: '100%', maxWidth: 360, alignSelf: 'center',
   },
   dotsRow: {
     flexDirection: 'row', justifyContent: 'center',
@@ -345,7 +473,7 @@ const s = StyleSheet.create({
   },
 });
 
-// ── Card styles ─────────────────────────────────────────────────────────────
+// ── Card styles ────────────────────────────────────────────────────────────
 const cs = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
@@ -357,73 +485,171 @@ const cs = StyleSheet.create({
     color: colors.primary, letterSpacing: 1,
     marginBottom: 10, textTransform: 'uppercase',
   },
+  divider: {
+    height: 1, backgroundColor: colors.border,
+    marginVertical: 14,
+  },
 
-  // Plan card
-  planTitle: {
-    fontSize: 18, fontFamily: FF.semibold, fontWeight: '600',
+  // ── Today card ───────────────────────────────────────────────────────
+  todayEyebrow: {
+    fontSize: 10, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.primary, letterSpacing: 1.2,
+    marginBottom: 6, textTransform: 'uppercase',
+  },
+  todayTitle: {
+    fontSize: 19, fontFamily: FF.semibold, fontWeight: '600',
     color: colors.text, marginBottom: 4,
   },
-  planMeta: {
-    fontSize: 13, fontFamily: FF.regular, color: colors.textMid, marginBottom: 10,
+  todayMeta: {
+    fontSize: 13, fontFamily: FF.regular, color: colors.textMid,
+    marginBottom: 14,
   },
-  weekBadge: {
-    backgroundColor: colors.primaryLight,
-    borderRadius: 8, paddingVertical: 4, paddingHorizontal: 10,
-    alignSelf: 'flex-start', marginBottom: 12,
+  todayActions: {
+    flexDirection: 'row', gap: 8,
   },
-  weekText: {
-    fontSize: 12, fontFamily: FF.medium, color: colors.primary,
+  todayCta: {
+    flex: 1.6,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 10, borderRadius: 10,
   },
-  actRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 8,
-    borderTopWidth: 1, borderTopColor: colors.border,
+  todayCtaText: {
+    fontSize: 13, fontFamily: FF.semibold, fontWeight: '600', color: '#fff',
   },
-  actDay: {
-    width: 36, fontSize: 12, fontFamily: FF.medium, fontWeight: '500',
-    color: colors.textMid,
+  todayCtaArrow: {
+    fontSize: 14, color: '#fff', fontWeight: '300',
   },
-  actName: {
-    fontSize: 14, fontFamily: FF.regular, color: colors.text,
+  todayGhost: {
+    flex: 1,
+    alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 10, borderRadius: 10,
+    borderWidth: 1, borderColor: colors.border,
   },
-  actMeta: {
-    fontSize: 12, fontFamily: FF.regular, color: colors.textMid, marginTop: 1,
+  todayGhostText: {
+    fontSize: 13, fontFamily: FF.medium, color: colors.text,
   },
-  actDone: { opacity: 0.5 },
-  actCheck: {
-    fontSize: 16, color: colors.primary, marginLeft: 8,
+  tomorrowEyebrow: {
+    fontSize: 10, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.textMuted, letterSpacing: 1.2,
+    marginBottom: 4, textTransform: 'uppercase',
   },
-
-  // Chat card
-  chatBubble: {
-    borderRadius: 12, padding: 12, marginBottom: 8, maxWidth: '88%',
+  tomorrowTitle: {
+    fontSize: 15, fontFamily: FF.medium, color: colors.text, marginBottom: 2,
   },
-  chatCoach: {
-    backgroundColor: colors.surfaceLight, alignSelf: 'flex-start',
-    borderBottomLeftRadius: 4,
-  },
-  chatUser: {
-    backgroundColor: colors.primary + '20', alignSelf: 'flex-end',
-    borderBottomRightRadius: 4,
-  },
-  chatText: {
-    fontSize: 14, fontFamily: FF.regular, color: colors.text, lineHeight: 20,
+  tomorrowMeta: {
+    fontSize: 12, fontFamily: FF.regular, color: colors.textMid,
   },
 
-  // Stats card
-  statsGrid: {
+  // ── Coach picker ─────────────────────────────────────────────────────
+  coachGrid: {
     flexDirection: 'row', flexWrap: 'wrap',
+    gap: 8, marginBottom: 12,
   },
-  statBox: {
-    width: '50%', paddingVertical: 10, alignItems: 'center',
+  coachChip: {
+    width: '31.5%',
+    alignItems: 'center',
+    paddingVertical: 12, paddingHorizontal: 6,
+    borderRadius: 10, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.bg,
   },
-  statValue: {
-    fontSize: 22, fontFamily: FF.semibold, fontWeight: '600', color: colors.text,
+  coachChipPicked: {
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(232,69,139,0.08)',
   },
-  statLabel: {
-    fontSize: 12, fontFamily: FF.medium, color: colors.textMid, marginTop: 2,
+  coachAvatar: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 6,
   },
-  statSub: {
-    fontSize: 11, fontFamily: FF.regular, color: colors.textFaint,
+  coachAvatarText: {
+    fontSize: 12, fontFamily: FF.semibold, fontWeight: '700', color: '#fff',
   },
+  coachName: {
+    fontSize: 13, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.text, marginBottom: 2,
+  },
+  coachNamePicked: {
+    color: colors.primary,
+  },
+  coachTag: {
+    fontSize: 10, fontFamily: FF.regular,
+    color: colors.textMuted, textAlign: 'center', lineHeight: 13,
+  },
+  quoteBox: {
+    padding: 12, borderRadius: 10,
+    backgroundColor: 'rgba(232,69,139,0.06)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.18)',
+  },
+  quoteAttrib: {
+    fontSize: 10, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.primary, letterSpacing: 1.2,
+    marginBottom: 4, textTransform: 'uppercase',
+  },
+  quoteText: {
+    fontSize: 13, fontFamily: FF.regular, color: colors.text,
+    lineHeight: 19, fontStyle: 'italic',
+  },
+
+  // ── Session breakdown ────────────────────────────────────────────────
+  stage: {
+    paddingVertical: 8,
+  },
+  stageMain: {
+    backgroundColor: 'rgba(232,69,139,0.06)', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10, marginVertical: 2,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.18)',
+  },
+  stageTitle: {
+    fontSize: 13, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.text, marginBottom: 3,
+  },
+  stageTitleMain: { color: colors.primary },
+  stageBody: {
+    fontSize: 12.5, fontFamily: FF.regular, color: colors.textMid,
+    lineHeight: 17,
+  },
+  intensityBlock: {
+    marginTop: 8, paddingTop: 8,
+    borderTopWidth: 1, borderTopColor: 'rgba(232,69,139,0.14)',
+    gap: 4,
+  },
+  intensityRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+  },
+  intensityKey: {
+    width: 74, fontSize: 10, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5,
+    paddingTop: 2,
+  },
+  intensityVal: {
+    flex: 1, fontSize: 12, fontFamily: FF.regular, color: colors.text,
+    lineHeight: 16,
+  },
+
+  // ── Units picker ─────────────────────────────────────────────────────
+  unitsRow: {
+    flexDirection: 'row', gap: 10,
+  },
+  unitsBtn: {
+    flex: 1,
+    paddingVertical: 16, paddingHorizontal: 12,
+    borderRadius: 12, borderWidth: 1.5, borderColor: colors.border,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+  },
+  unitsBtnPicked: {
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(232,69,139,0.08)',
+  },
+  unitsBtnText: {
+    fontSize: 15, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.text, marginBottom: 2,
+  },
+  unitsBtnTextPicked: { color: colors.primary },
+  unitsBtnSub: {
+    fontSize: 11, fontFamily: FF.regular, color: colors.textMuted,
+    letterSpacing: 1, textTransform: 'uppercase',
+  },
+  unitsBtnSubPicked: { color: colors.primary },
 });

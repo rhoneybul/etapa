@@ -167,6 +167,13 @@ export default function PlanPickerScreen({ navigation }) {
   const [longestRide, setLongestRide] = useState(null);
   const [customKm, setCustomKm]     = useState('');
   const [showCustomKm, setShowCustomKm] = useState(false);
+  // Cycling type captured on Step 1 (optional — defaults to Mixed). Used
+  // to live on GoalSetup Step 1 and BeginnerProgram bike-type. Moving it
+  // to the intake means every pathway inherits a consistent value
+  // instead of event users being forced to answer mid-flow, beginners
+  // answering a question that never reached plan-gen, and quick users
+  // being hardcoded to "mixed" with no way to override.
+  const [cyclingType, setCyclingType] = useState('mixed');
   // Real ISO date string (yyyy-mm-dd) when the user picks from the
   // DatePicker; null when they tap "Not sure yet". Either value advances.
   const [eventDate, setEventDate] = useState('');
@@ -370,6 +377,11 @@ export default function PlanPickerScreen({ navigation }) {
       targetTime: targetTime ? Number(targetTime) : null,
       trainingLength: finalTrainingLen,
       userLevel: km != null ? levelFromKm(km) : levelFromLongestRide(rideKey),
+      // Cycling type (road / gravel / mtb / ebike / mixed). Answered on
+      // Step 1 of this screen; downstream pathways (event / beginner /
+      // quick) all read this instead of re-asking on GoalSetup or
+      // BeginnerProgram.
+      cyclingType,
     };
     const recommendedPath = computeRecommendation({ intent, longestRide: rideKey });
     intake.recommendedPath = recommendedPath;
@@ -553,6 +565,35 @@ export default function PlanPickerScreen({ navigation }) {
               {INTENT_OPTIONS.map(o => (
                 <Choice key={o.key} title={o.title} sub={o.sub} onPress={() => onPickIntent(o.key)} />
               ))}
+            </View>
+
+            {/* Cycling type — optional, defaults to Mixed. Tiny chip row
+                so it feels secondary to the primary intent choice above.
+                Previously this lived on GoalSetup Step 1 (event path)
+                and was re-asked as "bike type" on BeginnerProgram (where
+                it was never actually read downstream). Consolidating
+                here means every pathway inherits a consistent value. */}
+            <Text style={[s.fieldLabel, { marginTop: 8 }]}>What kind of cycling?</Text>
+            <View style={s.cyclingTypeRow}>
+              {[
+                { key: 'road',   label: 'Road' },
+                { key: 'gravel', label: 'Gravel' },
+                { key: 'mtb',    label: 'MTB' },
+                { key: 'ebike',  label: 'E-bike' },
+                { key: 'mixed',  label: 'Mixed' },
+              ].map(o => {
+                const picked = cyclingType === o.key;
+                return (
+                  <TouchableOpacity
+                    key={o.key}
+                    style={[s.cyclingTypeChip, picked && s.cyclingTypeChipPicked]}
+                    onPress={() => setCyclingType(o.key)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[s.cyclingTypeChipText, picked && s.cyclingTypeChipTextPicked]}>{o.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </>
         )}
@@ -764,6 +805,25 @@ const s = StyleSheet.create({
   },
   primaryBtnDisabled: { opacity: 0.35 },
   primaryBtnText: { color: '#fff', fontSize: 15, fontFamily: FF.semibold, fontWeight: '500' },
+
+  // Cycling-type chips on Step 1 — smaller + less visually heavy than the
+  // primary intent cards so it reads as the secondary/optional question.
+  cyclingTypeRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4,
+  },
+  cyclingTypeChip: {
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: 100, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  cyclingTypeChipPicked: {
+    backgroundColor: 'rgba(232,69,139,0.08)',
+    borderColor: colors.primary,
+  },
+  cyclingTypeChipText: {
+    fontSize: 13, fontFamily: FF.medium, fontWeight: '500', color: colors.textMid,
+  },
+  cyclingTypeChipTextPicked: { color: colors.primary },
 
   // Event-details form (step 2, event branch)
   fieldLabel: {

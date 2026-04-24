@@ -130,20 +130,44 @@ function suggestGoalKey(rideKey, activityKey) {
 }
 
 export default function BeginnerProgramScreen({ navigation, route }) {
-  // Pre-pick quiz: gate the main screen behind two short questions unless
-  // the PlanPicker intake already gave us a longest-ride bucket. `phase`
+  // Pre-pick quiz REMOVED. The old flow asked two questions here:
+  //   Q1 "What's your longest recent ride?"
+  //   Q2 "What does a typical week of movement look like?"
+  // Both are either redundant (Q1 duplicates the PlanPicker intake
+  // bucket) or pointlessly thrown away (Q2 nudged the suggestion but
+  // was never passed to plan-gen). Every user arrives here via the
+  // PlanPicker intake, so we now derive the goal suggestion directly
+  // from `intake.longestRide` and default activity to 'walking' (the
+  // neutral midpoint). Users reaching this screen without intake data
+  // (deep link / legacy path) fall back to 'none' / 'walking' which
+  // suggests the Habit plan — a safe default for an unknown rider.
+  //
+  // `phase`
   // drives what renders: q1 → q2 → calculating → done (main screen visible).
   const intake = route?.params?.intake || null;
   const hasIntakeRide = !!intake?.longestRide && PLANPICKER_RIDE_MAP[intake.longestRide];
-  const [phase, setPhase] = useState(hasIntakeRide ? 'calculating' : 'q1');
-  const [rideAnswer, setRideAnswer] = useState(hasIntakeRide ? PLANPICKER_RIDE_MAP[intake.longestRide] : null);
+  // Always start in 'calculating' now that the pre-quiz is gone. The
+  // ~1400ms pause before landing on 'done' still gives the user a
+  // "something is happening" moment without making them answer anything.
+  const [phase, setPhase] = useState('calculating');
+  // Seed the ride bucket from intake (mapped via PLANPICKER_RIDE_MAP) or
+  // fall back to 'none' for the rare no-intake case.
+  const [rideAnswer, setRideAnswer] = useState(
+    hasIntakeRide ? PLANPICKER_RIDE_MAP[intake.longestRide] : 'none'
+  );
   const [activityAnswer, setActivityAnswer] = useState(null);
   // Whether the currently-selected goalOption came from the quiz (as opposed
   // to a manual tap). Drives the "Based on your answers…" banner.
   const [autoSuggested, setAutoSuggested] = useState(false);
 
   const [goalOption, setGoalOption] = useState(null);
-  const [bikeType, setBikeType] = useState('road');
+  // Bike / cycling type — now sourced from the PlanPicker intake. The
+  // old in-screen bike-type picker was removed because (a) it duplicated
+  // the question already asked on PlanPickerScreen and (b) its value
+  // was actually read by plan-gen as `cyclingType`, while the intake
+  // value was being thrown away. Fall back to 'mixed' if somehow we
+  // reach this screen without an intake.
+  const bikeType = intake?.cyclingType || 'mixed';
   const [showTips, setShowTips] = useState(false);
   const [continuing, setContinuing] = useState(false);
 
@@ -211,39 +235,12 @@ export default function BeginnerProgramScreen({ navigation, route }) {
     }
   };
 
-  // ── Quiz + calculating phases ───────────────────────────────────────────
-  if (phase === 'q1') {
-    return (
-      <QuizShell
-        navigation={navigation}
-        step={1}
-        title="What's your longest recent ride?"
-        subtitle="Or ever, if nothing lately. This shapes where we start you."
-        options={RIDE_OPTIONS}
-        onPick={(key) => {
-          setRideAnswer(key);
-          analytics.capture?.('beginner_quiz_answered', { question: 'ride', choice: key });
-          setPhase('q2');
-        }}
-      />
-    );
-  }
-  if (phase === 'q2') {
-    return (
-      <QuizShell
-        navigation={navigation}
-        step={2}
-        title="What does a typical week of movement look like?"
-        subtitle="Helps us know how much we can push in week 1."
-        options={ACTIVITY_OPTIONS}
-        onPick={(key) => {
-          setActivityAnswer(key);
-          analytics.capture?.('beginner_quiz_answered', { question: 'activity', choice: key });
-          setPhase('calculating');
-        }}
-      />
-    );
-  }
+  // ── Calculating phase ───────────────────────────────────────────────────
+  // The q1 and q2 pre-quiz phases were removed — see the comment on the
+  // `phase` state declaration above. QuizShell / RIDE_OPTIONS /
+  // ACTIVITY_OPTIONS are retained in the module in case a future flow
+  // wants to resurrect the in-screen quiz; they're just not reachable
+  // from the main component anymore.
   if (phase === 'calculating') {
     return <CalculatingShell />;
   }
@@ -334,25 +331,13 @@ export default function BeginnerProgramScreen({ navigation, route }) {
             </View>
           </View>
 
-          {/* Bike type selector */}
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>What bike will you ride?</Text>
-            <View style={s.bikeTypeRow}>
-              {BIKE_TYPES.map(bt => {
-                const isSelected = bikeType === bt.key;
-                return (
-                  <TouchableOpacity
-                    key={bt.key}
-                    style={[s.bikeTypePill, isSelected && s.bikeTypePillSelected]}
-                    onPress={() => setBikeType(bt.key)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[s.bikeTypePillText, isSelected && s.bikeTypePillTextSelected]}>{bt.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
+          {/* Bike-type selector removed — cyclingType now comes from the
+              PlanPicker intake (Step 1). Removing the duplicate question
+              shortens this screen and fixes the bug where this screen's
+              value was being thrown away in favour of a hardcoded
+              default later in the flow. See BIKE_TYPES constant (dead
+              code, kept for the rare case of a legacy deep link that
+              somehow skipped the intake). */}
 
           {/* Tips section */}
           <TouchableOpacity

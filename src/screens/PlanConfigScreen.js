@@ -11,7 +11,7 @@ import { colors, fontFamily } from '../theme';
 import useScreenGuard from '../hooks/useScreenGuard';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import WizardShell, { CheckCard } from '../components/WizardShell';
-import { savePlanConfig } from '../services/storageService';
+import { savePlanConfig, getUserPrefs } from '../services/storageService';
 import { suggestWeeks } from '../services/planGenerator';
 import DatePicker from '../components/DatePicker';
 import { COACHES } from '../data/coaches';
@@ -226,8 +226,20 @@ export default function PlanConfigScreen({ navigation, route }) {
   // Currently selected activity type for tap-to-place
   const [selectedActivity, setSelectedActivity] = useState('outdoor');
 
-  // Coach selection — no default, user must make an explicit choice
+  // Coach selection. Pre-filled from userPrefs.coachId — the choice the
+  // user made in the OnboardingTour — so users who picked a coach
+  // during onboarding see it pre-selected on Step 7 and can skip
+  // straight through. If they never set one (skipped onboarding),
+  // stays null and Step 7 still requires an explicit pick before
+  // finish — matching the historic behaviour.
   const [coachId, setCoachId] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    getUserPrefs()
+      .then((p) => { if (alive && p?.coachId) setCoachId(p.coachId); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   // Activity search (for cross-training)
   const [activitySearch, setActivitySearch] = useState('');

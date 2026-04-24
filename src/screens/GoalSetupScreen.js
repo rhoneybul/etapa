@@ -41,7 +41,11 @@ export default function GoalSetupScreen({ navigation, route }) {
   // past it. The user can still go back to change it, but the default path
   // skips a redundant tap.
   const skipGoalTypeStep = intake?.intent === 'event';
-  const [step, setStep] = useState(1);
+  // Cycling type now lives in the PlanPicker intake (Step 1). If we have
+  // it from there, this screen's Step 1 is redundant — start at Step 2
+  // so the user isn't asked the same question twice.
+  const skipCyclingTypeStep = !!intake?.cyclingType;
+  const [step, setStep] = useState(skipCyclingTypeStep ? 2 : 1);
   // Used by the abandon-tracking effect below to distinguish "user progressed
   // to the next screen" (set true on success) from "user hit back / closed".
   const completedRef = useRef(false);
@@ -61,7 +65,10 @@ export default function GoalSetupScreen({ navigation, route }) {
     });
     return unsub;
   }, [navigation]);
-  const [cyclingType, setCyclingType] = useState(null);
+  // Seeded from the PlanPicker intake when present. Fallback to null
+  // keeps the legacy "pick a cycling type on Step 1" behaviour for any
+  // unusual path that reaches this screen without intake data.
+  const [cyclingType, setCyclingType] = useState(intake?.cyclingType || null);
   // PlanPicker pre-fill: if user came from the intake flow with intent=event,
   // seed goalType so step 1 can advance past the "pick a goal type" prompt
   // straight into the specifics. User can still change it on the screen.
@@ -137,11 +144,14 @@ export default function GoalSetupScreen({ navigation, route }) {
   const handleContinue = async () => {
     // Step-advance path — only runs when we're not at the final step and
     // not about to short-circuit to save.
-    // Event users who filled in the full event form on the intake already
-    // have everything we need after tapping Continue on step 1 (bike type),
-    // so we skip both step 2 (goalType) and step 3 (race specifics) and
-    // fall through to the save block below.
-    const shouldFinishNow = step === 1 && skipGoalTypeStep && skipGoalDetailsStep;
+    // Event users who filled in the full event form on the intake have
+    // everything we need immediately — either arriving at step 1 (legacy
+    // flow, no cyclingType in intake) or step 2 (new flow, cyclingType
+    // came from PlanPicker). In both cases we skip to save rather than
+    // marching through an all-pre-filled wizard.
+    const shouldFinishNow =
+      (step === 1 && skipGoalTypeStep && skipGoalDetailsStep) ||
+      (step === 2 && skipGoalTypeStep && skipGoalDetailsStep);
     if (step < TOTAL_STEPS && !shouldFinishNow) {
       if (step === 1) analytics.events.goalStepCompleted(1, { cyclingType });
       if (step === 2) analytics.events.goalStepCompleted(2, { goalType });

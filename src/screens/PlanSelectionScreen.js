@@ -119,7 +119,10 @@ export default function PlanSelectionScreen({ navigation, route }) {
       ? Number(trainingLen) : null;
     try {
       const goal = await saveGoal({
-        cyclingType: 'mixed',
+        // Honour the cyclingType the user picked on PlanPicker Step 1.
+        // Falls back to 'mixed' for the rare case they arrive here
+        // without an intake.
+        cyclingType: intake?.cyclingType || 'mixed',
         goalType: 'improve',
         planName: 'Keep improving',
         targetDistance: null,
