@@ -19,7 +19,7 @@
  * PlanSelection as a prop so the selection UI is shared between the
  * intake-recommended flow and the "+ New plan" (no recommendation) flow.
  */
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
@@ -196,6 +196,14 @@ export default function PlanPickerScreen({ navigation }) {
         setRaceResult(result);
         if (result.distanceKm) setTargetDistance(String(result.distanceKm));
         if (result.elevationM) setTargetElevation(String(result.elevationM));
+        // Auto-fill the race date from the lookup — saves the user
+        // figuring out the calendar for big known events (Traka 200,
+        // Gran Fondo, etc.). Only fills if the field is currently empty
+        // so we don't stomp on what the user already picked. Still
+        // fully editable via the date picker below.
+        if (result.eventDate && !eventDate) {
+          setEventDate(result.eventDate);
+        }
       } else {
         setRaceResult({ found: false });
       }
@@ -266,6 +274,30 @@ export default function PlanPickerScreen({ navigation }) {
   // unnamed goal (e.g. "100 km by July") can skip the event name.
   const canAdvanceEventStep =
     !!eventName.trim() || !!targetDistance.trim() || !!eventDate;
+
+  // Ref to the outer ScrollView so we can auto-scroll to the Continue
+  // button the moment the form becomes valid. Saves users hunting for
+  // the button below the keyboard / date picker.
+  const scrollRef = useRef(null);
+  // Stronger "is the form filled out" signal than canAdvanceEventStep —
+  // fires when the user has EVERYTHING they need (name + distance +
+  // date) rather than the looser "at least one field" gate. That's the
+  // right trigger for auto-scrolling: we're not nagging them after the
+  // first field, we're helpfully scrolling once they've finished.
+  const formFullyFilled = isEvent
+    ? (!!eventName.trim() && !!targetDistance.trim() && !!eventDate)
+    : canAdvanceEventStep;
+  useEffect(() => {
+    if (formFullyFilled && scrollRef.current) {
+      // Small delay lets any keyboard-dismiss layout settle before we
+      // measure scroll extents — otherwise scrollToEnd stops at the
+      // pre-dismiss height.
+      const t = setTimeout(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }, 150);
+      return () => clearTimeout(t);
+    }
+  }, [formFullyFilled]);
 
   const onContinueFromEventDate = () => {
     if (!canAdvanceEventStep) return;
@@ -478,6 +510,7 @@ export default function PlanPickerScreen({ navigation }) {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={step === 0 ? s.landingScrollWrap : s.scrollWrap}
         showsVerticalScrollIndicator={false}
       >
@@ -493,14 +526,14 @@ export default function PlanPickerScreen({ navigation }) {
               </View>
               <Text style={s.landingEyebrow}>Let's go</Text>
               <Text style={s.landingTitle}>Let&apos;s find the right plan for you</Text>
+              {/* "30 seconds · 3 questions" bullet removed — it duplicated
+                  "Three quick questions" on the line above. The 30-second
+                  reassurance is folded into the body copy so the info is
+                  still there without the extra meta row. */}
               <Text style={s.landingBody}>
-                Three quick questions — we&apos;ll point you at the kind of plan that fits.
+                Three quick questions, about 30 seconds — we&apos;ll point you at the kind of plan that fits.
                 You can always switch later.
               </Text>
-              <View style={s.landingMetaRow}>
-                <View style={s.landingMetaDot} />
-                <Text style={s.landingMetaText}>30 seconds &middot; 3 questions</Text>
-              </View>
             </View>
             <View style={s.landingActions}>
               <TouchableOpacity style={s.primaryBtn} onPress={() => setStep(1)} activeOpacity={0.88}>

@@ -42,6 +42,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 import { useFonts, Poppins_300Light, Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold } from '@expo-google-fonts/poppins';
@@ -260,6 +261,13 @@ function App() {
         nav.navigate('SupportChat', { feedbackId: data.feedbackId, isNew: false });
       } else if (type === 'coach_checkin' && data?.planId) {
         nav.navigate('CoachChat', { planId: data.planId });
+      } else if (type === 'coach_reply' && data?.planId) {
+        // Async coach-chat reply — deep link to the chat at the same scope
+        // (full plan / specific week) the user was in when they sent it.
+        nav.navigate('CoachChat', {
+          planId: data.planId,
+          weekNum: data.weekNum || null,
+        });
       } else {
         nav.navigate('Notifications');
       }
@@ -348,6 +356,13 @@ function App() {
   }
 
   return (
+    // GestureHandlerRootView is required as the app root so RNGH's
+    // composed gestures (used on HomeScreen for drag-and-drop session
+    // rows) have a layer to attach their native views to. Wraps
+    // SafeAreaProvider on the outside so the whole tree has gesture
+    // support — gesture-handler docs require this to be the top-most
+    // component in your tree.
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaProvider>
       <StatusBar style="light" />
       <WebWrapper>
@@ -417,6 +432,7 @@ function App() {
         </View>
       </WebWrapper>
     </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 

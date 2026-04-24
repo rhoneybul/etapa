@@ -591,6 +591,42 @@ export async function editActivityWithAI(activity, goal, instruction, onProgress
 }
 
 /**
+ * Ask the server for a structured breakdown of a single session.
+ * Used by ActivityDetailScreen's "Explain this session" button when the
+ * activity doesn't already have a `structure` field (i.e. it was generated
+ * before the structure schema shipped, or the user has an old cached
+ * version of a plan).
+ *
+ * Returns:
+ *   { structure: {...} } on success — caller should cache this back onto
+ *   the activity via updateActivity(). The server also returns `fallback`
+ *   or `cached` booleans for telemetry / analytics but those aren't
+ *   needed at the UI layer.
+ *
+ * On network / server failure, returns null — the UI can fall back to
+ * showing just the existing title/description/notes.
+ */
+export async function explainActivity(activity, goal) {
+  const serverUrl = getServerUrl();
+  if (!serverUrl) return null;
+
+  try {
+    const authHeaders = await getAuthHeaders();
+    const response = await fetch(`${serverUrl}/api/ai/explain-activity`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ activity, goal }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data?.structure || null;
+  } catch (err) {
+    console.warn('explainActivity failed:', err);
+    return null;
+  }
+}
+
+/**
  * Adjust a week's existing activities when an organised ride is added.
  * Calls the server AI to decide what to reduce/shift; falls back to
  * a simple local heuristic (reduce the easiest ride's volume by ~20%).
@@ -711,6 +747,180 @@ export async function coachChat(messages, context) {
   } catch (err) {
     console.warn('Coach chat failed:', err);
     return { reply: 'Could not connect to the server. Check your internet connection and try again.' };
+  }
+}
+
+/**
+ * ── Async coach chat (Phase 1/2/3) ──────────────────────────────────────────
+ *
+ * Replaces the blocking `coachChat` above for screens that can tolerate a
+ * pending state. Flow:
+ *
+ *   1. startCoachChatJob(msgs, ctx)          → { jobId }          (202)
+ *   2. openCoachChatStream(jobId, handlers)  → live token deltas  (SSE)
+ *   3. pollCoachChatJob(jobId) as a fallback loop every 2s if SSE dies.
+ *   4. Terminal state produces a push notification server-side, so even if
+ *      the user leaves the chat mid-request the reply still lands on their
+ *      device.
+ *
+ * The server still enforces rate limits, cost caps, and the topic guard at
+ * the moment the job starts — those come back in the response to step 1
+ * (blocked/rateLimited/...). Once a jobId exists, the Claude call is
+ * committed and the client just has to wait for the result.
+ */
+
+/**
+ * Kick off an async coach chat job. Returns immediately with either:
+ *   - { jobId }                                       — job accepted, poll/stream it
+ *   - { blocked: true, reply, blockedMessage }         — topic guard fired (synchronous)
+ *   - { rateLimited, rateLimitKind, reply, ... }       — quota / cost cap hit (synchronous)
+ *   - { error }                                        — network / auth / server error
+ *
+ * Callers should check for `jobId` first; the other shapes are terminal.
+ */
+export async function startCoachChatJob(messages, context) {
+  const serverUrl = getServerUrl();
+  if (!serverUrl) {
+    return { error: 'Coach chat requires a server connection.' };
+  }
+  try {
+    const authHeaders = await getAuthHeaders();
+    const response = await fetch(`${serverUrl}/api/ai/coach-chat-async`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ messages, context }),
+    });
+
+    // 202 = job accepted. 200 = synchronous terminal (blocked by topic guard).
+    if (response.status === 202 || response.ok) {
+      const data = await response.json();
+      return data;
+    }
+
+    // Same 429 parsing as the sync path so the UI can render the exact
+    // "N of M messages this week" / "daily limit" copy.
+    if (response.status === 429) {
+      try {
+        const errData = await response.json();
+        if (errData?.kind === 'coach_msgs_per_week') {
+          return {
+            rateLimited: true,
+            rateLimitKind: 'coach_msgs_per_week',
+            rateLimitUsed: errData?.used ?? null,
+            rateLimitMax: errData?.limit ?? null,
+            reply: errData?.detail
+              || `You've sent ${errData?.used} of ${errData?.limit} coach messages this week.`,
+          };
+        }
+        return {
+          rateLimited: true,
+          rateLimitKind: 'cost_cap',
+          capUsd: errData?.cap_usd ?? null,
+          spentUsd: errData?.spent_usd ?? null,
+          reply: errData?.detail || "You've reached today's AI limit. It resets in 24 hours.",
+        };
+      } catch { /* fall through */ }
+    }
+    if (response.status === 401 || response.status === 403) {
+      return { error: 'Your session has expired. Please sign in again to chat with your coach.' };
+    }
+    let errMsg = 'Could not reach your AI coach right now.';
+    try { const body = await response.json(); if (body?.error) errMsg = body.error; } catch {}
+    return { error: errMsg };
+  } catch (err) {
+    console.warn('startCoachChatJob failed:', err);
+    return { error: 'Could not connect to the server.' };
+  }
+}
+
+/**
+ * Poll a coach chat job for its current status. Safe to call repeatedly.
+ * Returns { status, reply, updatedActivities, blocked, error }.
+ */
+export async function pollCoachChatJob(jobId) {
+  const serverUrl = getServerUrl();
+  if (!serverUrl || !jobId) return { status: 'failed', error: 'No server or jobId' };
+  try {
+    const authHeaders = await getAuthHeaders();
+    const response = await fetch(`${serverUrl}/api/ai/coach-chat-job/${encodeURIComponent(jobId)}`, {
+      method: 'GET',
+      headers: { ...authHeaders },
+    });
+    if (response.status === 404) return { status: 'failed', error: 'Job not found' };
+    if (!response.ok) return { status: 'failed', error: `HTTP ${response.status}` };
+    return await response.json();
+  } catch (err) {
+    return { status: 'failed', error: err?.message || 'Network error' };
+  }
+}
+
+/**
+ * Cancel an in-flight coach chat job. Best-effort — if the job already
+ * finished this is a no-op server-side.
+ */
+export async function cancelCoachChatJob(jobId) {
+  const serverUrl = getServerUrl();
+  if (!serverUrl || !jobId) return;
+  try {
+    const authHeaders = await getAuthHeaders();
+    await fetch(`${serverUrl}/api/ai/coach-chat-job/${encodeURIComponent(jobId)}`, {
+      method: 'DELETE',
+      headers: { ...authHeaders },
+    });
+  } catch { /* best effort */ }
+}
+
+/**
+ * Open an SSE stream for a coach chat job. Calls handlers as events arrive:
+ *   onDelta({ text })     — full visible reply so far (cumulative)
+ *   onDone({ reply, updatedActivities })
+ *   onError({ error, timeout? })
+ *
+ * Returns a cleanup function. Caller MUST invoke it to close the connection
+ * (e.g. on unmount or when a terminal event has fired).
+ *
+ * If react-native-sse isn't installed or construction throws for any
+ * reason (e.g. older RN runtime), returns a no-op cleanup and the caller
+ * should fall back to polling. The polling path is always set up in
+ * parallel so a failed SSE subscription doesn't strand the message.
+ */
+export async function openCoachChatStream(jobId, { onDelta, onDone, onError } = {}) {
+  const serverUrl = getServerUrl();
+  if (!serverUrl || !jobId) return () => {};
+  let RNEventSource;
+  try {
+    // Dynamic import — the package is optional. If Metro can't find it, we
+    // silently skip streaming and the caller's poll loop takes over.
+    // eslint-disable-next-line
+    RNEventSource = require('react-native-sse').default || require('react-native-sse');
+  } catch {
+    return () => {};
+  }
+  try {
+    const authHeaders = await getAuthHeaders();
+    const url = `${serverUrl}/api/ai/coach-chat-stream/${encodeURIComponent(jobId)}`;
+    const es = new RNEventSource(url, { headers: authHeaders });
+
+    es.addEventListener('delta', (ev) => {
+      try { onDelta?.(JSON.parse(ev.data)); } catch {}
+    });
+    es.addEventListener('done', (ev) => {
+      try { onDone?.(JSON.parse(ev.data)); } catch { onDone?.({ reply: '' }); }
+      try { es.close(); } catch {}
+    });
+    es.addEventListener('error', (ev) => {
+      // react-native-sse fires `error` both for transport failures AND our
+      // server-side "event: error" frames. We hand both up to the caller —
+      // it already has a polling fallback in either case.
+      try { onError?.(ev?.data ? JSON.parse(ev.data) : { error: 'stream error' }); }
+      catch { onError?.({ error: 'stream error' }); }
+      try { es.close(); } catch {}
+    });
+
+    return () => { try { es.close(); } catch {} };
+  } catch (e) {
+    console.warn('openCoachChatStream failed:', e?.message);
+    return () => {};
   }
 }
 

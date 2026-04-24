@@ -13,7 +13,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import useScreenGuard from '../hooks/useScreenGuard';
-import { openCheckout, getSubscriptionOfferings, restorePurchases, getPrices, validateCoupon, redeemCoupon, startFreeTrial } from '../services/subscriptionService';
+// validateCoupon / redeemCoupon intentionally NOT imported here. The
+// in-app "Enter coupon code" UI was removed (April 2026) to comply with
+// App Store Review Guideline 3.1.1 — Apple disallows unlocking paid
+// functionality through any non-IAP mechanism from inside the app.
+// The server-side coupon endpoints remain so pre-signup grants keep
+// auto-redeeming silently on signup, but the user-facing code-entry
+// surface has been removed. See server/src/routes/coupons.js.
+import { openCheckout, getSubscriptionOfferings, restorePurchases, getPrices, startFreeTrial } from '../services/subscriptionService';
 import { isRevenueCatAvailable } from '../services/revenueCatService';
 import analytics from '../services/analyticsService';
 
@@ -171,10 +178,9 @@ export default function PaywallScreen({ navigation, route }) {
   const [restoring, setRestoring] = useState(false);
   const [plans, setPlans] = useState(() => buildPlans(null));
   const [serverPrices, setServerPrices] = useState(null);
-  const [couponCode, setCouponCode] = useState('');
-  const [couponState, setCouponState] = useState(null); // null | { valid, plan, message }
-  const [couponLoading, setCouponLoading] = useState(false);
-  const [redeeming, setRedeeming] = useState(false);
+  // Coupon state removed — see the import block above. Any future
+  // discount / grant flow has to go through Apple's Offer Codes API or
+  // a silent pre-signup grant (see server/src/routes/users.js).
 
   // RevenueCat handles all purchases via App Store / Play Store
   const hasRevenueCat = isRevenueCatAvailable();
@@ -256,71 +262,19 @@ export default function PaywallScreen({ navigation, route }) {
     });
   };
 
-  const handleCouponValidate = async (code) => {
-    if (!code.trim()) { setCouponState(null); return; }
-    setCouponLoading(true);
-    try {
-      const result = await validateCoupon(code.trim());
-      setCouponState(result);
-    } catch {
-      setCouponState({ valid: false, message: 'Could not validate code' });
-    } finally {
-      setCouponLoading(false);
-    }
-  };
-
-  const handleCouponRedeem = async () => {
-    if (!couponState?.valid) return;
-    setRedeeming(true);
-    try {
-      const result = await redeemCoupon(couponCode.trim());
-      if (result.success) {
-        analytics.capture?.('coupon_redeemed', { plan: result.plan, code: couponCode.trim().toUpperCase() });
-        Alert.alert(
-          'Access granted!',
-          result.plan === 'lifetime'
-            ? 'You now have lifetime access to Etapa. Enjoy!'
-            : 'You now have 3 months of Starter access. Enjoy!',
-          [{ text: 'Get started', onPress: () => navigation.replace(nextScreen, nextParams) }],
-        );
-      } else {
-        Alert.alert('Could not redeem', result.error || 'Please try again.');
-      }
-    } catch {
-      Alert.alert('Something went wrong', 'Please try again.');
-    } finally {
-      setRedeeming(false);
-    }
-  };
+  // handleCouponValidate / handleCouponRedeem removed — the coupon UI
+  // was pulled to satisfy App Store Review 3.1.1. Any future "redeem a
+  // code" flow must go through Apple Offer Codes (Purchases.present-
+  // CodeRedemptionSheet), not a custom input box.
 
   const handleSubscribe = async () => {
-    const couponAppliesToSelected = couponState?.valid && couponState.plan === selected;
     setLoading(true);
     analytics.capture?.('paywall_subscribe_tapped', {
       plan: selected,
-      source: couponAppliesToSelected ? 'coupon' : 'revenuecat',
+      source: 'revenuecat',
     });
 
     try {
-      // If a coupon grants this exact plan for free, don't open RevenueCat at all.
-      if (couponAppliesToSelected) {
-        const result = await redeemCoupon(couponCode.trim());
-        if (result?.success) {
-          analytics.capture('subscription_started', { plan: selected, source: 'coupon' });
-          analytics.events.purchaseCompleted({
-            plan: selected, source: 'coupon', paywallSource,
-          });
-          purchasedRef.current = true;
-          navigation.replace(nextScreen, nextParams);
-        } else {
-          analytics.events.purchaseFailed({
-            plan: selected, source: 'coupon', reason: result?.error || 'unknown',
-          });
-          Alert.alert('Could not apply code', result?.error || 'Please try again.');
-        }
-        return;
-      }
-
       // Use RevenueCat package for the purchase.
       // If offerings haven't loaded yet, retry fetching them before giving up.
       let rcPkg = findRcPackage(selected);
@@ -455,12 +409,12 @@ export default function PaywallScreen({ navigation, route }) {
             return p.id !== 'starter';
           }).map(p => {
             const isSelected = selected === p.id;
-            // Use hardcoded/server price for display; rcPkg is used only for the purchase transaction
+            // Use hardcoded/server price for display; rcPkg is used only for the purchase transaction.
+            // (Previously had a `couponMakesFree` branch that swapped the price to £0.00 when a
+            // coupon matched — removed along with the rest of the in-app coupon flow.)
             const rcPkg = findRcPackage(p.id);
-            const couponMakesFree = couponState?.valid && couponState.plan === p.id;
-            const originalPrice = serverPrices?.[p.id]?.formatted || p.defaultPrice || p.price;
-            const displayPrice = couponMakesFree ? '£0.00' : p.price;
-            const displayPer = couponMakesFree ? null : p.per;
+            const displayPrice = p.price;
+            const displayPer = p.per;
 
             return (
               <TouchableOpacity
@@ -498,9 +452,6 @@ export default function PaywallScreen({ navigation, route }) {
 
                   {/* Price */}
                   <View style={s.priceWrap}>
-                    {couponMakesFree && !rcPkg && (
-                      <Text style={s.priceOriginal}>{originalPrice}</Text>
-                    )}
                     <Text style={[s.priceMain, isSelected && s.priceMainSelected]}>{displayPrice}</Text>
                     {!rcPkg && displayPer ? <Text style={s.pricePer}>{displayPer}</Text> : null}
                   </View>
@@ -558,48 +509,13 @@ export default function PaywallScreen({ navigation, route }) {
           </View>
         </View>
 
-        {/* Coupon code */}
-        <View style={s.couponWrap}>
-          <Text style={s.couponLabel}>Have a coupon code?</Text>
-          <View style={s.couponRow}>
-            <TextInput
-              style={s.couponInput}
-              value={couponCode}
-              onChangeText={(t) => {
-                setCouponCode(t);
-                setCouponState(null);
-              }}
-              onBlur={() => handleCouponValidate(couponCode)}
-              placeholder="Enter code"
-              placeholderTextColor={colors.textFaint}
-              autoCapitalize="characters"
-              autoCorrect={false}
-            />
-            <TouchableOpacity
-              style={[s.couponBtn, (!couponState?.valid || redeeming) && s.couponBtnDisabled]}
-              onPress={() => {
-                if (!couponState?.valid) return;
-                if (couponState.plan && couponState.plan !== selected) {
-                  const planLabel = couponState.plan === 'lifetime' ? 'Lifetime' : 'Starter';
-                  Alert.alert('Code valid', `This code applies to the ${planLabel} plan. Select it above to continue.`);
-                  return;
-                }
-                handleSubscribe();
-              }}
-              disabled={!couponState?.valid || redeeming}
-              activeOpacity={0.8}
-            >
-              <Text style={s.couponBtnText}>
-                {redeeming ? 'Applying...' : couponLoading ? '...' : 'Apply'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          {couponState && (
-            <Text style={[s.couponMessage, couponState.valid ? s.couponMessageValid : s.couponMessageInvalid]}>
-              {couponState.message}
-            </Text>
-          )}
-        </View>
+        {/* Coupon code entry UI removed (April 2026) — unlocking paid
+            functionality through any non-IAP mechanism is disallowed
+            by App Store Review Guideline 3.1.1. Pre-signup grants are
+            still honoured silently at signup time via the server — no
+            in-app code entry required, which is what keeps that flow
+            compliant. Any future "redeem a code" UX must use Apple's
+            Offer Codes (Purchases.presentCodeRedemptionSheet) instead. */}
 
         <Text style={s.legal}>
           {plan.isLifetime

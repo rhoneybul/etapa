@@ -10,13 +10,37 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { api } from './api';
 
-// Configure how notifications appear when the app is in the foreground
+// ── Foreground-focus gate ─────────────────────────────────────────────────
+// Screens can set this to their route name while mounted; when a push
+// arrives we drop the banner if the screen that owns that notification
+// type is already on screen. Prevents the "your coach replied" push from
+// appearing on top of the chat you're literally looking at. Kept simple —
+// `null` means "not on any silenced screen".
+let focusedScreen = null;
+export function setFocusedScreen(name) { focusedScreen = name; }
+
+// Configure how notifications appear when the app is in the foreground.
+// Drops the banner when the user is already viewing the screen that owns
+// this notification type — e.g. `coach_reply` on the CoachChat screen.
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
+  handleNotification: async (notification) => {
+    const data = notification?.request?.content?.data;
+    const type = data?.type;
+    // Silent-in-context rules:
+    //   coach_reply → don't interrupt if already in CoachChat
+    //   coach_checkin → same (already talking to the coach)
+    //   support_reply / admin_reply → don't interrupt if in SupportChat
+    const silent = (
+      (type === 'coach_reply' && focusedScreen === 'CoachChat') ||
+      (type === 'coach_checkin' && focusedScreen === 'CoachChat') ||
+      ((type === 'support_reply' || type === 'admin_reply') && focusedScreen === 'SupportChat')
+    );
+    return {
+      shouldShowAlert: !silent,
+      shouldPlaySound: !silent,
+      shouldSetBadge: true,
+    };
+  },
 });
 
 /**

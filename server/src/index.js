@@ -739,6 +739,12 @@ app.listen(PORT, () => {
   // stale threshold and marks them failed so the app stops showing the
   // creeping progress bar forever. See server/src/lib/planGenReaper.js.
   const { startReaper } = require('./lib/planGenReaper');
-  const { _planJobs } = require('./routes/ai');
+  const { _planJobs, _coachChatJobs } = require('./routes/ai');
   startReaper({ planJobs: _planJobs });
+
+  // Same treatment for async coach chat jobs — rows at pending/running past
+  // the stale threshold (3 min) get flipped to failed so the client stops
+  // polling. See server/src/lib/coachChatReaper.js.
+  const { startCoachChatReaper } = require('./lib/coachChatReaper');
+  startCoachChatReaper({ coachChatJobs: _coachChatJobs });
 });

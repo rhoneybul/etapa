@@ -5,13 +5,14 @@
  */
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image, Animated, RefreshControl,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image, Animated, RefreshControl, Platform, Dimensions, PanResponder,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import useScreenGuard from '../hooks/useScreenGuard';
 import { getCurrentUser } from '../services/authService';
-import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig, getUserPrefs, isOnboardingDone, setOnboardingDone, saveGoal } from '../services/storageService';
+import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig, getUserPrefs, isOnboardingDone, setOnboardingDone, saveGoal, markActivityComplete, getActivityDate } from '../services/storageService';
 import OnboardingTour from '../components/OnboardingTour';
 import { isSubscribed, getSubscriptionStatus, openCheckout, getPrices } from '../services/subscriptionService';
 import UpgradePrompt from '../components/UpgradePrompt';
@@ -19,6 +20,7 @@ import { isStravaConnected } from '../services/stravaService';
 import { syncStravaActivities, getStravaActivitiesForWeek, getStravaActivitiesForDate } from '../services/stravaSyncService';
 import { getSessionColor, getSessionLabel, getSessionTag, getMetricLabel, getCrossTrainingForDay, getActivityIcon, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { getCoach } from '../data/coaches';
 import analytics from '../services/analyticsService';
 import api from '../services/api';
@@ -26,6 +28,8 @@ import remoteConfig from '../services/remoteConfig';
 import { t } from '../services/strings';
 import ComingSoon from '../components/ComingSoon';
 import StravaLogo from '../components/StravaLogo';
+import CoachChatCard from '../components/CoachChatCard';
+import { useUnits } from '../utils/units';
 import { triggerMaintenanceMode } from '../../App';
 import { syncPlansToServer } from '../services/storageService';
 import WelcomeScreen from './WelcomeScreen';
@@ -81,6 +85,8 @@ function getPlanStats(plan) {
 export default function HomeScreen({ navigation, route }) {
   // Remote kill-switch / redirect — see WORKFLOWS.md.
   const _screenGuard = useScreenGuard('HomeScreen', navigation);
+  // Distance unit preference (km / mi) — formatter pulls from user prefs.
+  const { formatDistance } = useUnits();
 
   // When arriving from plan creation, freshPlanId is set — skip the Home
   // pulsing-logo loading state AND the no-plan empty state until the new
@@ -121,6 +127,109 @@ export default function HomeScreen({ navigation, route }) {
   const [movingActivity, setMovingActivity] = useState(null); // { activity } when hold-to-move
   const [actionActivity, setActionActivity] = useState(null); // { activity } when action bar shown
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  // ── Drag-and-drop state ─────────────────────────────────────────────
+  // dragActivity = the session currently being dragged (null = no drag)
+  // dragPos = animated XY the ghost card follows; updated on finger move
+  // dropZonesRef = screen-coordinate { y, height, dayOfWeek } for each
+  //                week-list row. Populated via onLayout + measureInWindow
+  //                so we can figure out which row the finger is over at
+  //                release time. Keyed by dayOfWeek (0–6) for a stable
+  //                lookup as the list re-renders.
+  const [dragActivity, setDragActivity] = useState(null);
+  const dragPos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const dropZonesRef = useRef({});
+  // Which dayOfWeek is the finger currently hovering over. Only set
+  // during an active drag and only the hovered row gets the pink glow
+  // — we don't flag every row as a "drop here" target because users
+  // found that visually noisy. We debounce via a ref-compare so we
+  // only re-render when the hovered zone actually changes.
+  const [hoveredDayIdx, setHoveredDayIdx] = useState(null);
+  const hoveredDayIdxRef = useRef(null);
+  // After a drag, the underlying TouchableOpacity's onPress still fires
+  // once the gesture ends — the RNGH Pan doesn't cancel the native
+  // touchable's tap. This ref suppresses that onPress so a release from
+  // a drag doesn't navigate the user to ActivityDetail as if they'd
+  // tapped the card. Reset on a timer just long enough to swallow the
+  // trailing onPress event.
+  const justDraggedRef = useRef(false);
+  // Register/measure a drop zone. Called from each week-list row's
+  // onLayout + measureInWindow so we have screen-space coordinates
+  // (flex layout alone gives relative-to-parent, useless for hit-testing
+  // a finger at pageY).
+  const registerDropZone = (dayOfWeek, ref) => {
+    if (!ref || !ref.measureInWindow) return;
+    ref.measureInWindow((x, y, w, h) => {
+      dropZonesRef.current[dayOfWeek] = { y, height: h };
+    });
+  };
+  // Given a screen-space Y, find which dayOfWeek the finger is over.
+  // Returns null if the finger isn't over any tracked drop zone.
+  const findDropTargetAtY = (pageY) => {
+    for (const [dayOfWeek, zone] of Object.entries(dropZonesRef.current)) {
+      if (pageY >= zone.y && pageY <= zone.y + zone.height) {
+        return parseInt(dayOfWeek, 10);
+      }
+    }
+    return null;
+  };
+  // Build the composed gesture for a session row. Long-press (350ms)
+  // activates pan capture — from that point the finger drives dragPos
+  // (which the floating ghost card follows) until release, where we
+  // match the release Y against dropZonesRef to pick a target day.
+  // runOnJS(true) executes callbacks on the JS thread so we can use
+  // regular React state + Animated.Value (no reanimated needed).
+  const makeDragGesture = (activity) => {
+    // Tracks whether THIS gesture actually activated (i.e. the user
+    // held for 350ms and then dragged). Without this, onFinalize would
+    // fire for every touch — including quick taps that never hit the
+    // long-press threshold — and set justDraggedRef true, which made
+    // the TouchableOpacity's onPress bail and taps stopped navigating.
+    let didActivate = false;
+    return Gesture.Pan()
+      .activateAfterLongPress(350)
+      .runOnJS(true)
+      .onStart((e) => {
+        didActivate = true;
+        setDragActivity(activity);
+        setMovingActivity({ activity });
+        dragPos.setValue({ x: e.absoluteX - 140, y: e.absoluteY - 24 });
+      })
+      .onChange((e) => {
+        dragPos.setValue({ x: e.absoluteX - 140, y: e.absoluteY - 24 });
+        // Hit-test against drop zones on every frame but only re-render
+        // when the hovered zone ACTUALLY changes. This gives a "live"
+        // pink highlight that follows the finger into a row without
+        // spamming setState on every pixel of drag movement.
+        const target = findDropTargetAtY(e.absoluteY);
+        if (target !== hoveredDayIdxRef.current) {
+          hoveredDayIdxRef.current = target;
+          setHoveredDayIdx(target);
+        }
+      })
+      .onEnd(async (e) => {
+        const target = findDropTargetAtY(e.absoluteY);
+        setDragActivity(null);
+        setHoveredDayIdx(null);
+        hoveredDayIdxRef.current = null;
+        justDraggedRef.current = true;
+        setTimeout(() => { justDraggedRef.current = false; }, 300);
+        if (target != null) {
+          await handlePlaceActivity(target);
+        } else {
+          setMovingActivity(null);
+        }
+      })
+      .onFinalize(() => {
+        if (didActivate) {
+          setDragActivity(null);
+          setHoveredDayIdx(null);
+          hoveredDayIdxRef.current = null;
+          justDraggedRef.current = true;
+          setTimeout(() => { justDraggedRef.current = false; }, 300);
+        }
+        didActivate = false;
+      });
+  };
   const cachedPlanHash = useRef(null); // Track plan state to avoid unnecessary reloads
   const initialLoadDone = useRef(false);
   const isMounted = useRef(true); // Guard against setState after unmount
@@ -243,7 +352,18 @@ export default function HomeScreen({ navigation, route }) {
         const now = new Date();
         const daysSince = Math.round((now - start) / (1000 * 60 * 60 * 24));
         const totalWeeks = (typeof plan.weeks === 'number' && !isNaN(plan.weeks) && plan.weeks > 0) ? plan.weeks : 8;
-        const wk = Math.max(1, Math.min(Math.floor(daysSince / 7) + 1, totalWeeks));
+        // Normally clamp to [1, totalWeeks]. But if the user has moved
+        // activities to a pre-plan-start calendar week (week 0 or
+        // negative), we want the home screen to default to THAT week
+        // so the Today hero + week strip line up with reality.
+        const rawWeek = Math.floor(daysSince / 7) + 1;
+        const hasPreStartActivities = rawWeek < 1 && (plan.activities || []).some(a => a.week === rawWeek);
+        let wk;
+        if (hasPreStartActivities) {
+          wk = rawWeek; // allow week 0 / negative
+        } else {
+          wk = Math.max(1, Math.min(rawWeek, totalWeeks));
+        }
         setCurrentWeek(isNaN(wk) ? 1 : wk);
         analytics.events.planViewed({ planId: plan.id, currentWeek: wk, totalWeeks });
       }
@@ -410,14 +530,43 @@ export default function HomeScreen({ navigation, route }) {
   };
 
   // ── Loading state ─────────────────────────────────────────────────────────
+  // Render the exact same splash image the OS just showed. This is the only
+  // way to guarantee the app-icon doesn't shift/resize in the hand-off from
+  // native splash → first React screen. DO NOT change this to a separate
+  // icon.png + flex-centre layout — that was the old behaviour and it caused
+  // a visible icon-jump bug that Rob raised twice (see task #9 and #124).
+  //
+  // Throb: we overlay a second copy of the same splash image and animate
+  // ONLY its scale. Because both layers are the same pixel-for-pixel image
+  // and the icon is close to the image's centre, scaling the overlay makes
+  // the icon appear to breathe without moving out of alignment. The static
+  // base layer keeps the position locked so nothing ever jumps.
   if (loading) {
+    // Platform-match: iOS gets splash.png (portrait 1284×2778), Android gets
+    // splash-android.png (1440×3120). Using Platform.select keeps the two
+    // code paths symmetric with app.json's splash config.
+    const splashImg = Platform.OS === 'android'
+      ? require('../../assets/splash-android.png')
+      : require('../../assets/splash.png');
     return (
-      <View style={s.container}>
-        <SafeAreaView style={[s.safe, s.loadingWrap]}>
-          <Animated.View style={[s.loadingLogoWrap, { transform: [{ scale: pulseAnim }] }]}>
-            <Image source={require('../../assets/icon.png')} style={s.loadingLogo} />
-          </Animated.View>
-        </SafeAreaView>
+      <View style={[s.container, { backgroundColor: '#000000' }]}>
+        {/* Base layer — never moves. Holds the exact splash pixels the OS
+            just rendered so nothing jumps in the hand-off. */}
+        <Image
+          source={splashImg}
+          style={StyleSheet.absoluteFill}
+          resizeMode="contain"
+        />
+        {/* Throb layer — same image, animated scale only. Pulses 1.00 → 1.05
+            → 1.00 on a 2-second cycle. Scaling around the layer's centre
+            keeps the icon (which is near centre in the source image) pulsing
+            in place. `pulseAnim` is driven by the existing animation loop
+            further up in this file so no extra setup is needed here. */}
+        <Animated.Image
+          source={splashImg}
+          style={[StyleSheet.absoluteFill, { transform: [{ scale: pulseAnim }] }]}
+          resizeMode="contain"
+        />
       </View>
     );
   }
@@ -475,15 +624,15 @@ export default function HomeScreen({ navigation, route }) {
   // ── Real today's week — independent of which week the user is browsing ────
   // We compute this so "Today" always shows actual today's sessions, not whatever
   // week happens to be selected in the strip.
+  // May return 0 or negative when the plan hasn't started AND the user has
+  // moved activities into the current calendar week — we want the week strip
+  // to render that calendar week (not clamp to plan week 1).
   const realTodayWeek = (() => {
     if (!activePlan?.startDate) return currentWeek;
     const monday = snapToMonday(parseDateLocal(activePlan.startDate));
     const now = new Date();
     now.setHours(12, 0, 0, 0);
     const diffDays = Math.floor((now - monday) / (1000 * 60 * 60 * 24));
-    // If the plan hasn't started yet, "today" isn't inside the plan timeline.
-    // In that case, treat the "go to today" control as "go to start".
-    if (diffDays < 0) return 1;
     return Math.min(Math.floor(diffDays / 7) + 1, activePlan.weeks || 1);
   })();
   const planHasStarted = (() => {
@@ -493,13 +642,58 @@ export default function HomeScreen({ navigation, route }) {
     now.setHours(12, 0, 0, 0);
     return now >= monday;
   })();
+  // Has the user got ANY activities in the current calendar week? When true,
+  // we show the usual week strip + progress (even if the plan technically
+  // hasn't started yet) rather than the "Plan starts Mon Apr 27" placeholder
+  // card. This covers the edge case where the user drags a session to a
+  // pre-plan-start day and expects to see it in the usual week view.
+  const hasActivitiesThisCalendarWeek = (() => {
+    if (!activePlan?.startDate || !activePlan.activities) return false;
+    return activePlan.activities.some(a => a.week === realTodayWeek);
+  })();
+  // Effective "treat the plan as running" flag — used by the UI gate.
+  const effectivePlanRunning = planHasStarted || hasActivitiesThisCalendarWeek;
+  // How many days until the plan's Week 1 Monday, for the pre-start card.
+  // Positive = future; 0 = today is the start day; negative = past (in which
+  // case planHasStarted would already be true).
+  const daysUntilPlanStart = (() => {
+    if (!activePlan?.startDate) return 0;
+    const monday = snapToMonday(parseDateLocal(activePlan.startDate));
+    const now = new Date();
+    now.setHours(12, 0, 0, 0);
+    return Math.round((monday - now) / (1000 * 60 * 60 * 24));
+  })();
   const viewingToday = planHasStarted && currentWeek === realTodayWeek;
 
-  // Today's activities always come from the real today's week
-  const todayWeekActivities = viewingToday
-    ? weekActivities
-    : getWeekActivities(activePlan, realTodayWeek);
-  const todayActivities = todayWeekActivities.filter(a => a.dayOfWeek === todayIdx);
+  // ── Today / Tomorrow activity lookup by CALENDAR DATE ──────────────────
+  // Previously we filtered by (week, dayOfWeek). That broke when an activity
+  // was moved to a pre-plan-start day (week=0 or negative) because
+  // realTodayWeek clamps to 1, so the Today card never saw week-0 sessions.
+  // Filtering by actual date instead makes "today" mean "today", regardless
+  // of which week number the activity is tagged with.
+  const buildActivityMatchers = () => {
+    const now = new Date(); now.setHours(12, 0, 0, 0);
+    const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+    const sameDate = (d, target) =>
+      d.getFullYear() === target.getFullYear()
+      && d.getMonth() === target.getMonth()
+      && d.getDate() === target.getDate();
+    return {
+      isToday: (a) => {
+        if (!activePlan?.startDate || a.dayOfWeek == null || a.week == null) return false;
+        return sameDate(getActivityDate(activePlan.startDate, a.week, a.dayOfWeek), now);
+      },
+      isTomorrow: (a) => {
+        if (!activePlan?.startDate || a.dayOfWeek == null || a.week == null) return false;
+        return sameDate(getActivityDate(activePlan.startDate, a.week, a.dayOfWeek), tomorrow);
+      },
+    };
+  };
+  const { isToday: matchesToday, isTomorrow: matchesTomorrow } = buildActivityMatchers();
+  const allPlanActivities = activePlan?.activities || [];
+  const todayActivities = allPlanActivities.filter(matchesToday);
+  const tomorrowActivities = allPlanActivities.filter(matchesTomorrow);
+
   const todayDateStr = activePlan?.startDate ? getDayDateStr(activePlan.startDate, realTodayWeek, todayIdx) : null;
   const todayStravaRides = todayDateStr
     ? getStravaActivitiesForDate(stravaActivities, todayDateStr).filter(sa =>
@@ -632,17 +826,38 @@ export default function HomeScreen({ navigation, route }) {
       setMovingActivity(null);
       return;
     }
-    const allPlans = await getPlans();
-    const plan = allPlans.find(p => p.id === activePlan.id);
-    if (!plan) { setMovingActivity(null); return; }
-    const act = plan.activities.find(a => a.id === activity.id);
-    if (act) {
-      act.week = currentWeek;
-      act.dayOfWeek = targetDayIdx;
-      await savePlan(plan);
-    }
+    // Optimistic UI update — mutate the in-memory `plans` state FIRST
+    // so the moved card appears on the new day the moment the finger
+    // releases, not after the async storage round-trip. The save +
+    // re-hydrate happens in the background. Without this the user
+    // sees a ~200ms gap where the card disappears.
+    setPlans((prevPlans) => prevPlans.map((p) => {
+      if (p.id !== activePlan.id) return p;
+      return {
+        ...p,
+        activities: (p.activities || []).map((a) =>
+          a.id === activity.id
+            ? { ...a, week: currentWeek, dayOfWeek: targetDayIdx }
+            : a
+        ),
+      };
+    }));
     setMovingActivity(null);
-    load();
+    // Persist in the background.
+    try {
+      const allPlans = await getPlans();
+      const plan = allPlans.find((p) => p.id === activePlan.id);
+      if (plan) {
+        const act = plan.activities.find((a) => a.id === activity.id);
+        if (act) {
+          act.week = currentWeek;
+          act.dayOfWeek = targetDayIdx;
+          await savePlan(plan);
+        }
+      }
+    } catch (e) {
+      console.warn('[home] place activity persist failed:', e?.message);
+    }
   };
 
   const handleDeletePlan = (targetPlan, targetGoal) => {
@@ -796,15 +1011,39 @@ export default function HomeScreen({ navigation, route }) {
 
           {/* New plan button — goes to PlanSelection (three-card picker,
               no recommendation). Returning users already know they want a
-              plan, so we skip the welcome + intake. */}
+              plan, so we skip the welcome + intake.
+              Plan-limit UX (April 2026): we no longer show an always-on
+              "N of M plans left this week" hint below this button — it was
+              noisy chrome for something most users never hit. The remaining
+              count is instead surfaced as a confirmation dialog at the
+              moment of creation so the user sees it exactly when it
+              matters. If they've already hit the limit, same dialog path
+              but with a different tone. */}
           <TouchableOpacity
             style={[s.newPlanBtn, planLimits && !planLimits.unlimited && planLimits.remaining === 0 && { opacity: 0.5 }]}
             onPress={() => {
+              // Blocked — already out of plans this week.
               if (planLimits && !planLimits.unlimited && planLimits.remaining === 0) {
                 Alert.alert(
                   'Weekly plan limit reached',
                   `You've generated ${planLimits.used} of ${planLimits.limit} plans in the last 7 days. The count resets as individual plans age out. If you need more, contact support.`,
                   [{ text: 'OK' }],
+                );
+                return;
+              }
+              // Confirm — "are you sure?" style dialog that also tells the
+              // user what this will cost them against their weekly quota.
+              // Users with unlimited plans bypass the confirm entirely
+              // (there's nothing to warn them about).
+              if (planLimits && !planLimits.unlimited) {
+                const after = Math.max(0, planLimits.remaining - 1);
+                Alert.alert(
+                  'Create a new plan?',
+                  `This will use 1 of your ${planLimits.limit} plans this week. You'll have ${after} left after this.`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Create plan', onPress: () => navigation.navigate('PlanSelection') },
+                  ],
                 );
                 return;
               }
@@ -815,19 +1054,6 @@ export default function HomeScreen({ navigation, route }) {
             <Text style={s.newPlanBtnPlus}>+</Text>
             <Text style={s.newPlanBtnText}>New plan</Text>
           </TouchableOpacity>
-          {/* Rolling 24h plan usage — always visible when non-unlimited, so the
-              user can see their remaining quota before starting a generation. */}
-          {planLimits && !planLimits.unlimited && (
-            <Text style={[
-              s.planLimitHint,
-              planLimits.remaining === 0 && s.planLimitHintBlocked,
-              planLimits.remaining > 0 && planLimits.remaining <= 2 && s.planLimitHintWarning,
-            ]}>
-              {planLimits.remaining === 0
-                ? `Weekly limit reached \u2014 ${planLimits.used}/${planLimits.limit} plans in last 7 days`
-                : `${planLimits.remaining} of ${planLimits.limit} plans left this week`}
-            </Text>
-          )}
 
           {/* Plan tabs — always visible, scrollable */}
           {plans.length > 0 && (
@@ -844,15 +1070,14 @@ export default function HomeScreen({ navigation, route }) {
                   </View>
                 )}
               </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={s.planTabs}
-                contentContainerStyle={s.planTabsContent}
-                snapToAlignment="start"
-                decelerationRate="fast"
-              >
-                {plans.map((p, i) => {
+              {/* Single plan = no horizontal scroll. The ScrollView was
+                  letting the card drift off-screen when the title was
+                  long. For 1 plan we render the card in a plain View so
+                  the card is width-constrained by its parent and the
+                  title can wrap onto 2 lines if needed. Multi-plan users
+                  still get a horizontal snap-scroll between plans. */}
+              {(() => {
+                const renderCard = (p, i) => {
                   const g = goals.find(gl => gl.id === p.goalId);
                   const stats = getPlanStats(p);
                   const title = p.name
@@ -864,23 +1089,99 @@ export default function HomeScreen({ navigation, route }) {
                     `${p.weeks} wks`,
                     stats.weeklyHrs > 0 ? `~${stats.weeklyHrs} h/wk` : null,
                   ].filter(Boolean).join(' \u00B7 ');
+                  const goalLine = (() => {
+                    if (!g) return null;
+                    const headline = g.goalType === 'race'
+                      ? (g.eventName || 'Race')
+                      : g.goalType === 'distance'
+                        ? `Ride ${g.targetDistance} km`
+                        : g.goalType === 'beginner' && g.targetDistance
+                          ? `Ride ${g.targetDistance} km`
+                          : 'Improve my cycling';
+                    const cyclingLabel = CYCLING_LABELS[g.cyclingType] || g.cyclingType;
+                    const parts = [headline, cyclingLabel, g.targetDate ? `by ${g.targetDate}` : null].filter(Boolean);
+                    return parts.join(' \u00B7 ');
+                  })();
                   const isActive = i === selectedPlanIdx;
-
+                  const activeSubtitle = isActive
+                    ? [goalLine, meta].filter(Boolean).join(' \u00B7 ')
+                    : meta;
+                  // Multi-plan: fixed card width so snap-scroll works.
+                  // Single plan: no width — card fills its parent View
+                  // and the title wraps naturally.
+                  const cardWidth = plans.length > 1
+                    ? Math.min(Dimensions.get('window').width, 500) - 40
+                    : null;
                   return (
-                    <TouchableOpacity
+                    // Outer container is a plain View so sibling Touchables
+                    // (body + manage button) each handle their OWN taps
+                    // without bubbling. React Native's gesture responder
+                    // doesn't support stopPropagation on onPress — so a
+                    // nested Touchable-in-Touchable would fire both, which
+                    // is why the manage button appeared to do nothing
+                    // (navigate + sheet open were racing each other).
+                    <View
                       key={p.id}
-                      style={[s.planTab, isActive && s.planTabActive]}
-                      onPress={() => setSelectedPlanIdx(i)}
-                      onLongPress={() => handlePlanLongPress(p, g)}
-                      activeOpacity={0.8}
-                      delayLongPress={400}
+                      style={[
+                        s.planTab,
+                        isActive && s.planTabActive,
+                        cardWidth ? { width: cardWidth } : null,
+                      ]}
                     >
-                      <Text style={[s.planTabTitle, isActive && s.planTabTitleActive]} numberOfLines={1}>{title}</Text>
-                      <Text style={[s.planTabMeta, isActive && s.planTabMetaActive]} numberOfLines={1}>{meta}</Text>
-                    </TouchableOpacity>
+                      {isActive && <View style={s.planTabAccent} />}
+                      {/* Body = the tappable card area → PlanOverview (or
+                          select-as-active for inactive tabs). */}
+                      <TouchableOpacity
+                        style={s.planTabBody}
+                        onPress={() => {
+                          if (isActive) {
+                            navigation.navigate('PlanOverview', { planId: p.id });
+                          } else {
+                            setSelectedPlanIdx(i);
+                          }
+                        }}
+                        onLongPress={() => handlePlanLongPress(p, g)}
+                        activeOpacity={0.8}
+                        delayLongPress={400}
+                      >
+                        <Text style={[s.planTabTitle, isActive && s.planTabTitleActive]} numberOfLines={2}>{title}</Text>
+                        <Text style={[s.planTabMeta, isActive && s.planTabMetaActive]} numberOfLines={2}>{activeSubtitle}</Text>
+                      </TouchableOpacity>
+                      {isActive && (
+                        <View style={s.planTabActions}>
+                          <TouchableOpacity
+                            onPress={() => handlePlanLongPress(p, g)}
+                            style={s.planTabManageDots}
+                            hitSlop={HIT}
+                            activeOpacity={0.7}
+                          >
+                            <MaterialCommunityIcons name="dots-horizontal" size={18} color={colors.primary} />
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
                   );
-                })}
-              </ScrollView>
+                };
+                if (plans.length > 1) {
+                  return (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={s.planTabs}
+                      contentContainerStyle={s.planTabsContent}
+                      snapToAlignment="start"
+                      decelerationRate="fast"
+                    >
+                      {plans.map(renderCard)}
+                    </ScrollView>
+                  );
+                }
+                return (
+                  <View style={s.planTabsSingle}>
+                    {plans.map(renderCard)}
+                  </View>
+                );
+              })()}
             </View>
           )}
 
@@ -933,83 +1234,46 @@ export default function HomeScreen({ navigation, route }) {
               tweaks, quick questions) but was previously buried below the
               week strip + Today. Discoverability hit reported via TestFlight
               + user research. */}
-          {activePlan && activePlan.paymentStatus !== 'pending' && (() => {
-            const coach = getCoach(activePlanConfig?.coachId);
-            const coachName = coach?.name || 'Your coach';
-            const coachColor = coach?.avatarColor || colors.primary;
-            const coachInitials = coach?.avatarInitials || '?';
-            return (
-              <TouchableOpacity
-                style={s.coachCard}
-                onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
-                activeOpacity={0.8}
-              >
-                <View style={s.coachCardTop}>
-                  <View style={[s.coachAvatar, { backgroundColor: coachColor }]}>
-                    <Text style={s.coachAvatarText}>{coachInitials}</Text>
-                  </View>
-                  <View style={s.coachCardTextWrap}>
-                    <Text style={s.coachCardName}>{coachName}</Text>
-                    <Text style={s.coachCardHint}>Chat with your coach</Text>
-                  </View>
-                  <View style={s.coachCardArrowWrap}>
-                    <Text style={s.coachCardArrow}>{'\u203A'}</Text>
-                  </View>
-                </View>
-                <Text style={s.coachCardSub}>Get advice, tweak your plan, ask anything about your training</Text>
-              </TouchableOpacity>
-            );
-          })()}
-
-          {/* Goal summary — at top (only for paid plans) */}
-          {activeGoal && activePlan?.paymentStatus !== 'pending' && (
-            <View style={s.goalCard}>
-              <Text style={s.goalLabel}>YOUR GOAL</Text>
-              <Text style={s.goalTitle}>
-                {activeGoal.goalType === 'race'
-                  ? activeGoal.eventName || 'Race'
-                  : activeGoal.goalType === 'distance'
-                    ? `Ride ${activeGoal.targetDistance} km`
-                    : activeGoal.goalType === 'beginner' && activeGoal.targetDistance
-                      ? `Ride ${activeGoal.targetDistance} km`
-                      : 'Improve my cycling'}
-              </Text>
-              <Text style={s.goalMeta}>
-                {CYCLING_LABELS[activeGoal.cyclingType] || activeGoal.cyclingType} {'\u00B7'} {activePlan?.weeks ?? '—'} week plan
-                {activeGoal.targetDate ? ` ${'\u00B7'} Target: ${activeGoal.targetDate}` : ''}
-              </Text>
-            </View>
+          {activePlan && activePlan.paymentStatus !== 'pending' && (
+            <CoachChatCard
+              coach={getCoach(activePlanConfig?.coachId)}
+              onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
+              style={s.coachCardWrap}
+            />
           )}
+
+          {/* Goal summary merged into the active plan tab above — see
+              goalLine in the plans.map block. The standalone "YOUR GOAL"
+              card was removed April 2026 because it duplicated info the
+              plan card already carried. Headline, cycling type, and target
+              date now render on the active plan tab itself. */}
 
           {/* Full plan content — only shown for paid plans */}
           {activePlan?.paymentStatus !== 'pending' && (<>
 
-          {/* Moving activity banner */}
-          {movingActivity && (
-            <View style={s.moveBanner}>
-              <MaterialCommunityIcons name="cursor-move" size={16} color="#fff" />
-              <Text style={s.moveBannerText} numberOfLines={1}>
-                Moving: {movingActivity.activity.title}
-              </Text>
-              <TouchableOpacity onPress={() => setMovingActivity(null)} hitSlop={HIT}>
-                <Text style={s.moveBannerCancel}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          {/* Moving banner is now rendered as a floating overlay at the
+              BOTTOM of the screen (see actionBar-sibling block below
+              the ScrollView) so it stays visible while the user scrolls
+              the week list to drop the activity. The inline top banner
+              disappeared behind the fold during a drag. */}
 
           {/* ── Today hero card ─────────────────────────────────────────────
               The first thing a returning user should see: "here's what you're
               doing today." Strong CTA to open the session, secondary CTA to
-              ask the coach. Three states: active ride, rest day, done. Only
-              renders when the plan has actually started (pre-start users see
-              the week strip start hint instead). */}
-          {planHasStarted && (() => {
+              ask the coach. Three states: active ride, rest day, done.
+              Renders when the plan has started OR when the user has moved
+              an activity to today (pre-plan-start) — the old gate hid
+              moved-to-today sessions. The "Rest day" fallback only shows
+              once the plan is running; pre-plan-start users shouldn't
+              see a Rest Day card for every day before their plan begins. */}
+          {(planHasStarted || todayActivities.length > 0) && (() => {
             const primary = todayActivities.find(a => a.type === 'ride') || todayActivities[0] || null;
             const coach = getCoach(activePlanConfig?.coachId);
             const coachFirstName = (coach?.name || 'your coach').split(' ')[0];
 
-            // ── Rest day ────────────────────────────────────────────────
+            // ── Rest day (only shown once the plan is actually running) ────
             if (!primary) {
+              if (!planHasStarted) return null;
               return (
                 <View style={s.todayHero}>
                   <Text style={s.todayHeroLabel}>TODAY</Text>
@@ -1031,7 +1295,7 @@ export default function HomeScreen({ navigation, route }) {
 
             // ── Active / completed ride ─────────────────────────────────
             const metaParts = [];
-            if (primary.distanceKm) metaParts.push(`${primary.distanceKm} km`);
+            if (primary.distanceKm) metaParts.push(formatDistance(primary.distanceKm));
             if (primary.durationMins) metaParts.push(`${primary.durationMins} min`);
             if (primary.effort) metaParts.push(primary.effort);
             const meta = metaParts.join(' \u00B7 ');
@@ -1050,12 +1314,17 @@ export default function HomeScreen({ navigation, route }) {
                 <Text style={s.todayHeroTitle} numberOfLines={2}>{primary.title}</Text>
                 {meta ? <Text style={s.todayHeroSub}>{meta}</Text> : null}
                 <View style={s.todayHeroActions}>
+                  {/* Primary CTA opens the ACTIVITY DETAIL (not the
+                      whole week view) so users land on the specific
+                      session and can tick it off / edit / chat about
+                      it. "View details" is the honest label since no
+                      actual ride-tracking happens in-app. */}
                   <TouchableOpacity
                     style={[s.todayHeroCta, isDone && s.todayHeroCtaDone]}
-                    onPress={() => navigation.navigate('WeekView', { week: realTodayWeek, planId: activePlan.id })}
+                    onPress={() => navigation.navigate('ActivityDetail', { activityId: primary.id })}
                     activeOpacity={0.85}
                   >
-                    <Text style={s.todayHeroCtaText}>{isDone ? 'View session' : 'See session'}</Text>
+                    <Text style={s.todayHeroCtaText}>View details</Text>
                     <Text style={s.todayHeroCtaArrow}>{'\u203A'}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -1070,50 +1339,211 @@ export default function HomeScreen({ navigation, route }) {
             );
           })()}
 
-          {/* Week calendar strip with navigation */}
+          {/* ── Tomorrow preview ───────────────────────────────────────
+              Sits directly below the Today hero so the user sees both
+              "what am I doing now" and "what's next" without scrolling.
+              Compact card — just the tag + title + metrics — because
+              Tomorrow is FYI, not the primary action. Tapping opens the
+              activity detail; tapping through to the week list still
+              works below for anyone who wants to see the full context. */}
+          {planHasStarted && tomorrowActivities.length > 0 && (
+            <View style={s.tomorrowSection}>
+              <Text style={s.tomorrowLabel}>TOMORROW</Text>
+              {tomorrowActivities.map((activity) => (
+                <TouchableOpacity
+                  key={activity.id}
+                  style={s.tomorrowCard}
+                  onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
+                  activeOpacity={0.85}
+                >
+                  <View style={s.tomorrowCardBody}>
+                    <View style={[s.todayTypeBadge, { backgroundColor: ACTIVITY_BLUE + '18', alignSelf: 'flex-start' }]}>
+                      <Text style={[s.todayTypeText, { color: ACTIVITY_BLUE }]}>{getSessionLabel(activity)}</Text>
+                    </View>
+                    <Text style={s.tomorrowTitle}>{activity.title}</Text>
+                    <Text style={s.tomorrowMeta}>
+                      {activity.distanceKm ? formatDistance(activity.distanceKm) : ''}
+                      {activity.distanceKm && activity.durationMins ? ' \u00B7 ' : ''}
+                      {activity.durationMins ? `${activity.durationMins} min` : ''}
+                      {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          {/* Also show "Tomorrow · Rest" as a tiny hint when tomorrow
+              is a rest day — helps users who check the app before bed
+              know they can have a lie-in. */}
+          {planHasStarted && tomorrowActivities.length === 0 && (
+            <View style={s.tomorrowRestWrap}>
+              <Text style={s.tomorrowRestText}>Tomorrow · Rest day</Text>
+            </View>
+          )}
+
+          {/* ── This week progress ─────────────────────────────────────
+              The sibling "View full week" / "View full plan" buttons were
+              removed April 2026 — tapping the pink plan card goes to
+              PlanOverview, tapping the week label inside the week strip
+              goes to WeekView. Keeping just the progress bar here so the
+              user has a quick "where am I this week" glance without extra
+              chrome. Hidden pre-plan-start because "0/0 done" for a plan
+              that hasn't started is noise, not information. */}
+          {activePlan && effectivePlanRunning && (
+            <View style={s.section}>
+              <View style={s.sectionRow}>
+                <Text style={s.sectionTitle}>This week</Text>
+                <Text style={s.sectionMeta}>{progress.done}/{progress.total} done</Text>
+              </View>
+              <View style={s.weekProgressTrack}>
+                <View style={[s.weekProgressFill, { width: `${progress.pct}%` }]} />
+              </View>
+            </View>
+          )}
+
+          {/* Pre-plan-start card — shown in place of the Week 1/12 strip
+              when the plan hasn't started yet. Previously the home screen
+              showed Week 1 of the plan immediately, which was misleading:
+              "This week" was actually "next week" and the week-strip
+              header implied the plan was already running. Now we honour
+              the calendar: until the plan's Monday arrives, we tell the
+              user when it starts and give them a quick shortcut to
+              preview week 1 via the full week view. Today/Tomorrow hero
+              cards above still surface any activities the user has
+              moved to pre-plan-start days (week 0 / negative weeks). */}
+          {!effectivePlanRunning && activePlan && (() => {
+            const startDate = parseDateLocal(activePlan.startDate);
+            const startLabel = startDate.toLocaleDateString('en-GB', {
+              weekday: 'long', day: 'numeric', month: 'long',
+            });
+            const daysCopy = daysUntilPlanStart === 0
+              ? 'starting today'
+              : daysUntilPlanStart === 1
+                ? 'in 1 day'
+                : `in ${daysUntilPlanStart} days`;
+            return (
+              <View style={s.preStartCard}>
+                {/* Calendar access — absolutely positioned top-right to
+                    match the pattern on the running-plan week strip
+                    (s.weekHeaderCalendarBtn). Hiding the strip pre-start
+                    would otherwise strip the only home-screen entry to
+                    the Calendar, leaving users no way to scrub ahead to
+                    future weeks or place activities before their plan
+                    starts without leaving this screen. */}
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('Calendar')}
+                  style={s.preStartCalendarBtn}
+                  hitSlop={HIT}
+                  activeOpacity={0.7}
+                  accessibilityLabel="View calendar"
+                >
+                  <MaterialCommunityIcons name="calendar-month-outline" size={18} color={colors.primary} />
+                </TouchableOpacity>
+
+                <Text style={s.preStartEyebrow}>YOUR PLAN</Text>
+                <Text style={s.preStartTitle}>Starts {startLabel}</Text>
+                <Text style={s.preStartSub}>
+                  Your first session is {daysCopy}. Until then, take it easy — or get a feel for what's coming.
+                </Text>
+                <TouchableOpacity
+                  style={s.preStartCta}
+                  onPress={() => navigation.navigate('WeekView', { week: 1, planId: activePlan.id })}
+                  activeOpacity={0.85}
+                >
+                  <Text style={s.preStartCtaText}>Go to start of plan</Text>
+                  <MaterialCommunityIcons name="chevron-right" size={20} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            );
+          })()}
+
+          {/* Week calendar strip with navigation — only once the plan is
+              actually running. See the pre-plan-start card above for the
+              pre-start treatment.
+              Layout convention — iOS / Material mobile pattern:
+                - Nav arrows flank the week title (prev / title / next)
+                - The title itself is the primary tap target → WeekView
+                - Secondary actions (here: open full Calendar screen) sit
+                  in the top-right corner of the card, NOT competing
+                  with the navigation bar for space
+              This stops the header row overflowing on narrow screens. */}
+          {effectivePlanRunning && (
           <View style={s.weekStrip}>
-            <View style={s.weekNav}>
+            {/* Header row — title CENTERED, calendar icon on the right.
+                An invisible spacer (same width as the calendar button)
+                on the left balances the layout so the title sits at the
+                visual centre of the card despite the icon on one side.
+                Standard iOS app-bar pattern. Week 1/12 is the primary
+                tap target (→ WeekView); calendar opens the full
+                Calendar screen. Prev/next chevrons live in the day row
+                below, not in this header. */}
+            <View style={s.weekHeader}>
+              <View style={s.weekHeaderSpacer} />
+              <TouchableOpacity
+                onPress={() => navigation.navigate('WeekView', { week: currentWeek, planId: activePlan.id })}
+                hitSlop={HIT}
+                activeOpacity={0.7}
+                style={s.weekLabelInnerRow}
+              >
+                <Text style={s.weekLabel}>Week {currentWeek}/{activePlan.weeks}</Text>
+                <MaterialCommunityIcons name="chevron-right" size={18} color={colors.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('Calendar')}
+                style={s.weekHeaderCalendarBtn}
+                hitSlop={HIT}
+                activeOpacity={0.7}
+                accessibilityLabel="View calendar"
+              >
+                <MaterialCommunityIcons name="calendar-month-outline" size={18} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={s.monthLabel}>{monthLabel}</Text>
+            {(!viewingToday && (planHasStarted ? currentWeek !== realTodayWeek : currentWeek !== 1)) && (
+              <TouchableOpacity
+                onPress={() => {
+                  setCurrentWeek(planHasStarted ? realTodayWeek : 1);
+                }}
+                hitSlop={HIT}
+                style={s.goTodayBtn}
+              >
+                <Text style={s.goTodayText}>{planHasStarted ? 'Go to today' : 'Go to start'}</Text>
+              </TouchableOpacity>
+            )}
+            {/* Day row + prev/next chevrons on the same horizontal line,
+                flanking the 7-day grid. Lowers the chevrons so they
+                don't compete with the title on the header row, and puts
+                them right where users' thumbs naturally swipe to
+                navigate between weeks. */}
+            <View style={s.dayRowWithNav}>
               <TouchableOpacity
                 onPress={() => { const to = Math.max(1, currentWeek - 1); analytics.events.weekNavigated('prev', currentWeek, to); setCurrentWeek(to); }}
                 disabled={currentWeek <= 1}
                 hitSlop={HIT}
+                style={s.weekNavSideBtn}
               >
                 <Text style={[s.weekNavArrow, currentWeek <= 1 && s.weekNavDisabled]}>{'\u2039'}</Text>
               </TouchableOpacity>
-              <View style={s.weekNavCenter}>
-                <Text style={s.weekLabel}>Week {currentWeek}/{activePlan.weeks}</Text>
-                <Text style={s.monthLabel}>{monthLabel}</Text>
-                {(!viewingToday && (planHasStarted ? currentWeek !== realTodayWeek : currentWeek !== 1)) && (
-                  <TouchableOpacity
-                    onPress={() => {
-                      // If the plan hasn't started yet, jump to week 1 (plan start week).
-                      // Otherwise, jump to the actual week containing today's date.
-                      setCurrentWeek(planHasStarted ? realTodayWeek : 1);
-                    }}
-                    hitSlop={HIT}
-                    style={s.goTodayBtn}
-                  >
-                    <Text style={s.goTodayText}>{planHasStarted ? 'Go to today' : 'Go to start'}</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              <TouchableOpacity
-                onPress={() => { const to = Math.min(activePlan.weeks, currentWeek + 1); analytics.events.weekNavigated('next', currentWeek, to); setCurrentWeek(to); }}
-                disabled={currentWeek >= activePlan.weeks}
-                hitSlop={HIT}
-              >
-                <Text style={[s.weekNavArrow, currentWeek >= activePlan.weeks && s.weekNavDisabled]}>{'\u203A'}</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={s.dayRow}>
+              <View style={[s.dayRow, { flex: 1 }]}>
               {DAY_LABELS.map((d, i) => {
                 const items = getDayItems(i);
                 const isSelected = i === selectedDayIdx;
                 return (
                   <TouchableOpacity
                     key={i}
-                    style={[s.dayCell, isSelected && s.dayCellSelected, movingActivity && s.dayCellDropTarget]}
-                    onPress={() => handleDayPress(i)}
+                    style={[s.dayCell, isSelected && s.dayCellSelected]}
+                    onPress={() => {
+                      // Day strip up here is a PREVIEW only. When the user
+                      // is mid-move, drops must happen on the larger week
+                      // list below (where each session row is clearly
+                      // labelled "Drop here · Mon" etc.). Ignoring taps
+                      // up here avoids users accidentally dropping on the
+                      // tiny 40pt day cells when their thumb was aiming
+                      // for a highlighted session row.
+                      if (movingActivity) return;
+                      handleDayPress(i);
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={[s.dayLabelText, viewingToday && i === todayIdx && s.dayLabelToday, isSelected && s.dayLabelSelected]}>{d}</Text>
@@ -1146,7 +1576,26 @@ export default function HomeScreen({ navigation, route }) {
                   </TouchableOpacity>
                 );
               })}
+              </View>
+              <TouchableOpacity
+                onPress={() => { const to = Math.min(activePlan.weeks, currentWeek + 1); analytics.events.weekNavigated('next', currentWeek, to); setCurrentWeek(to); }}
+                disabled={currentWeek >= activePlan.weeks}
+                hitSlop={HIT}
+                style={s.weekNavSideBtn}
+              >
+                <Text style={[s.weekNavArrow, currentWeek >= activePlan.weeks && s.weekNavDisabled]}>{'\u203A'}</Text>
+              </TouchableOpacity>
             </View>
+
+            {/* Gesture hint — sits above the inline list so it's the
+                FIRST thing users see in the week section. Was previously
+                at the bottom which made the gesture hard to discover.
+                Copy switches mid-move so the user is guided through. */}
+            <Text style={s.weekListHint}>
+              {movingActivity
+                ? 'Tap a day to drop the session there · long-press Cancel to bail'
+                : 'Tap a session to open · press and hold to move'}
+            </Text>
 
             {/* Inline week list — full session titles for every day so the
                 user sees the whole week at a glance without tapping through
@@ -1155,16 +1604,12 @@ export default function HomeScreen({ navigation, route }) {
               {DAY_LABELS.map((dLabel, i) => {
                 const dayActs = activitiesByDay[i] || [];
                 const isTodayRow = viewingToday && i === todayIdx;
-                const rides = dayActs.filter(a => a.type === 'ride');
-                const strengths = dayActs.filter(a => a.type === 'strength');
-                const other = dayActs.filter(a => a.type !== 'ride' && a.type !== 'strength');
                 const isRest = dayActs.length === 0 || dayActs.every(a => a.type === 'rest');
-                const primary = rides[0] || strengths[0] || other[0] || null;
-                const extras = dayActs.length - (primary ? 1 : 0);
+                const isSelectedRow = selectedDayIdx === i;
                 const formatMeta = (a) => {
                   if (!a) return '';
                   const bits = [];
-                  if (a.distanceKm) bits.push(`${a.distanceKm} km`);
+                  if (a.distanceKm) bits.push(formatDistance(a.distanceKm));
                   if (a.durationMins) {
                     const h = Math.floor(a.durationMins / 60);
                     const m = a.durationMins % 60;
@@ -1172,241 +1617,156 @@ export default function HomeScreen({ navigation, route }) {
                   }
                   return bits.join(' \u00B7 ');
                 };
-                return (
-                  <TouchableOpacity
-                    key={`wl-${i}`}
-                    style={[s.weekListRow, isTodayRow && s.weekListRowToday]}
-                    onPress={() => {
-                      // If we're mid-move, or it's a rest day, keep the day-select
-                      // panel behaviour. Otherwise go straight to the activity so
-                      // the user doesn't have to tap twice to open a session.
-                      if (movingActivity || isRest || !primary?.id) {
-                        handleDayPress(i);
-                        return;
-                      }
-                      navigation.navigate('ActivityDetail', { activityId: primary.id });
-                    }}
-                    onLongPress={() => {
-                      // Long-press on a session day surfaces the Edit / Move /
-                      // Delete action bar (same UX as the Today card).
-                      if (!isRest && primary) handleActivityLongPress(primary);
-                    }}
-                    delayLongPress={350}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[s.weekListDay, isTodayRow && s.weekListDayToday]}>{dLabel.slice(0, 3)}</Text>
-                    <View style={s.weekListContent}>
-                      {isRest ? (
+
+                // Only the HOVERED row (the one the finger is over right
+                // now) shows the pink drop-target highlight. Previously
+                // every row was dashed-outlined in drag mode which read
+                // as noisy. Now it behaves like a native drag — the
+                // specific target lights up live as the finger moves.
+                //
+                // Skip the source day — dropping on the day you lifted
+                // from is a no-op, so highlighting it as a valid drop
+                // target is misleading. (Also fixes the "two big pink
+                // boxes stacked" look on pick-up, where both the source
+                // card AND its row were going pink at once.)
+                const isSourceDay = movingActivity?.activity?.dayOfWeek === i;
+                const isHovered = movingActivity && hoveredDayIdx === i && !isSourceDay;
+
+                if (isRest) {
+                  return (
+                    <TouchableOpacity
+                      key={`wl-${i}`}
+                      ref={(r) => registerDropZone(i, r)}
+                      style={[
+                        s.weekListRow,
+                        isTodayRow && s.weekListRowToday,
+                        isSelectedRow && s.weekListRowSelected,
+                        isHovered && s.weekListRowDropTarget,
+                      ]}
+                      onPress={() => handleDayPress(i)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[s.weekListDay, isTodayRow && s.weekListDayToday]}>{dLabel.slice(0, 3)}</Text>
+                      <View style={s.weekListContent}>
                         <Text style={s.weekListRest}>Rest</Text>
-                      ) : (
-                        <>
-                          {/* Tiny-caps session-type tag — matches the pill
-                              already used on the Today card ("STRENGTH"). Tells
-                              the user at a glance what kind of session the day
-                              is without them having to parse a coach-named
-                              session title like "Melt". Monochrome. */}
-                          {(() => {
-                            const tag = getSessionTag(primary);
-                            return tag ? (
-                              <View style={s.weekListTag}>
-                                <Text style={s.weekListTagText}>{tag}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }
+
+                return (
+                  <View
+                    key={`wl-${i}`}
+                    ref={(r) => registerDropZone(i, r)}
+                    style={[
+                      s.weekListDayBlock,
+                      isTodayRow && s.weekListRowToday,
+                      isSelectedRow && s.weekListRowSelected,
+                      isHovered && s.weekListRowDropTarget,
+                    ]}
+                  >
+                    <Text style={[s.weekListDay, isTodayRow && s.weekListDayToday, s.weekListDayTop]}>{dLabel.slice(0, 3)}</Text>
+                    <View style={s.weekListSessions}>
+                      {dayActs.map((act, sIdx) => {
+                        const tag = getSessionTag(act);
+                        const isDone = !!act.completed;
+                        const isMovingSource = movingActivity?.activity?.id === act.id;
+                        // Composed gesture: tap navigates to ActivityDetail,
+                        // long-press-then-drag enters drag mode and follows
+                        // the finger. Gesture.Pan().activateAfterLongPress
+                        // means the same continuous touch can start as a
+                        // press, escalate to a drag, and resolve on release
+                        // — no finger-lift between pick up and drop.
+                        const dragGesture = makeDragGesture(act);
+                        return (
+                          <GestureDetector key={act.id || sIdx} gesture={dragGesture}>
+                          <TouchableOpacity
+                            onPress={() => {
+                              // Swallow the tap that fires immediately after
+                              // a drag ends — the native Touchable doesn't
+                              // know the Pan gesture took priority.
+                              if (justDraggedRef.current) return;
+                              if (movingActivity) { handleDayPress(i); return; }
+                              navigation.navigate('ActivityDetail', { activityId: act.id });
+                            }}
+                            activeOpacity={0.7}
+                            style={[
+                              s.weekListSession,
+                              sIdx > 0 && s.weekListSessionStacked,
+                              // Lifted-card styling on the source while
+                              // dragging (pink border + shadow + slight
+                              // scale). See weekListSessionMoving style.
+                              isMovingSource && s.weekListSessionMoving,
+                            ]}
+                          >
+                            <View style={s.weekListSessionBody}>
+                              {tag ? (
+                                <View style={s.weekListTag}>
+                                  <Text style={s.weekListTagText}>{tag}</Text>
+                                </View>
+                              ) : null}
+                              <Text style={[
+                                s.weekListTitle,
+                                isTodayRow && s.weekListTitleToday,
+                                isDone && s.weekListTitleDone,
+                              ]} numberOfLines={1}>
+                                {act.title || 'Session'}
+                              </Text>
+                              {!!formatMeta(act) && (
+                                <Text style={s.weekListMeta} numberOfLines={1}>{formatMeta(act)}</Text>
+                              )}
+                            </View>
+                            {isTodayRow && sIdx === 0 && (
+                              <View style={s.weekListTodayPill}>
+                                <Text style={s.weekListTodayPillText}>TODAY</Text>
                               </View>
-                            ) : null;
-                          })()}
-                          <Text style={[s.weekListTitle, isTodayRow && s.weekListTitleToday]} numberOfLines={1}>
-                            {primary?.title || 'Session'}
-                            {extras > 0 ? <Text style={s.weekListExtra}>  +{extras} more</Text> : null}
-                          </Text>
-                          {!!formatMeta(primary) && (
-                            <Text style={s.weekListMeta} numberOfLines={1}>{formatMeta(primary)}</Text>
-                          )}
-                        </>
-                      )}
+                            )}
+                            <TouchableOpacity
+                              onPress={async (e) => {
+                                e.stopPropagation?.();
+                                await markActivityComplete(act.id);
+                                // force:true bypasses load()'s plan-hash
+                                // cache, which only tracks plan id / updatedAt
+                                // / activity count — toggling `completed` on
+                                // a single activity doesn't change any of
+                                // those so a plain load() would short-
+                                // circuit and the UI wouldn't update.
+                                await load({ force: true });
+                              }}
+                              style={[s.weekListDoneCircle, isDone && s.weekListDoneCircleDone]}
+                              hitSlop={HIT}
+                              activeOpacity={0.7}
+                            >
+                              {isDone ? <Text style={s.weekListDoneTick}>{'\u2713'}</Text> : null}
+                            </TouchableOpacity>
+                          </TouchableOpacity>
+                          </GestureDetector>
+                        );
+                      })}
                     </View>
-                    {isTodayRow && <View style={s.weekListTodayPill}><Text style={s.weekListTodayPillText}>TODAY</Text></View>}
-                  </TouchableOpacity>
+                  </View>
                 );
               })}
             </View>
 
-            {/* Calendar button */}
-            <TouchableOpacity
-              style={s.calendarBtn}
-              onPress={() => navigation.navigate('Calendar')}
-              activeOpacity={0.8}
-            >
-              <Text style={s.calendarBtnText}>View calendar</Text>
-              <Text style={s.calendarBtnArrow}>{'\u203A'}</Text>
-            </TouchableOpacity>
+            {/* Hint + calendar button moved — hint is now above the day
+                strip (more discoverable at the top of the list), and the
+                calendar action became a small icon inside the week
+                header row itself (see weekNavCenter above). */}
           </View>
-
-          {/* Selected day panel — shown when user taps a day in the strip */}
-          {selectedDayIdx !== null && (
-            <View style={s.section}>
-              <View style={s.selectedDayHeader}>
-                <Text style={s.sectionTitle}>{selectedDayDisplayLabel}</Text>
-              </View>
-              {!selectedDayHasContent && (
-                <View style={s.restDayCard}>
-                  <MaterialCommunityIcons name="sleep" size={16} color={colors.textFaint} />
-                  <Text style={s.restDayText}>Rest day — no activities scheduled</Text>
-                </View>
-              )}
-              {selectedDayCT.map((ct, idx) => (
-                <View key={`sel-ct-${idx}`} style={s.todayCard}>
-                  <View style={[s.todayAccent, { backgroundColor: ACTIVITY_BLUE }]} />
-                  <View style={s.todayBody}>
-                    <View style={s.todayTitleRow}>
-                      <View style={s.todayTypeCol}>
-                        <View style={[s.todayTypeBadge, { backgroundColor: ACTIVITY_BLUE + '24' }]}>
-                          <Text style={[s.todayTypeText, { color: ACTIVITY_BLUE }]}>YOUR ACTIVITY</Text>
-                        </View>
-                      </View>
-                      <View style={s.todayTitleWrap}>
-                        <Text style={s.todayTitle}>{ct.label}</Text>
-                        <Text style={s.todayMeta}>Factored into plan recovery</Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              ))}
-              {selectedDayActivities.map(activity => (
-                <TouchableOpacity
-                  key={activity.id}
-                  style={[s.todayCard, actionActivity?.activity?.id === activity.id && s.todayCardActive]}
-                  onPress={() => actionActivity ? setActionActivity(null) : navigation.navigate('ActivityDetail', { activityId: activity.id })}
-                  onLongPress={() => handleActivityLongPress(activity)}
-                  delayLongPress={400}
-                  activeOpacity={0.8}
-                >
-                  <View style={[s.todayAccent, { backgroundColor: ACTIVITY_BLUE }]} />
-                  <View style={s.todayBody}>
-                    <View style={s.todayTitleRow}>
-                      <View style={s.todayTypeCol}>
-                        <View style={[s.todayTypeBadge, { backgroundColor: ACTIVITY_BLUE + '18' }]}>
-                          <Text style={[s.todayTypeText, { color: ACTIVITY_BLUE }]}>{getSessionLabel(activity)}</Text>
-                        </View>
-                      </View>
-                      <View style={s.todayTitleWrap}>
-                        <Text style={s.todayTitle}>{activity.title}</Text>
-                        <Text style={s.todayMeta}>
-                          {activity.distanceKm ? `${activity.distanceKm} km` : ''}
-                          {activity.distanceKm && activity.durationMins ? ' \u00B7 ' : ''}
-                          {activity.durationMins ? `${activity.durationMins} min` : ''}
-                          {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                  {activity.completed
-                    ? <View style={s.doneBadge}><Text style={s.doneMark}>{'\u2713'}</Text></View>
-                    : <MaterialCommunityIcons name="dots-vertical" size={18} color={colors.textFaint} style={{ paddingRight: 10 }} />
-                  }
-                </TouchableOpacity>
-              ))}
-              {selectedDayStrava.map(sa => (
-                <View key={sa.stravaId} style={s.todayCard}>
-                  <View style={[s.todayAccent, { backgroundColor: '#FC4C02' }]} />
-                  <View style={s.todayBody}>
-                    <View style={s.todayTitleRow}>
-                      <View style={s.todayTypeCol}>
-                        <View style={[s.todayTypeBadge, { backgroundColor: 'rgba(252,76,2,0.12)' }]}>
-                          <Text style={[s.todayTypeText, { color: '#FC4C02' }]}>STRAVA</Text>
-                        </View>
-                      </View>
-                      <View style={s.todayTitleWrap}>
-                        <Text style={s.todayTitle}>{sa.name || 'Ride'}</Text>
-                        <Text style={s.todayMeta}>
-                          {sa.distanceKm ? `${sa.distanceKm} km` : ''}
-                          {sa.distanceKm && sa.durationMins ? ' \u00B7 ' : ''}
-                          {sa.durationMins ? `${sa.durationMins} min` : ''}
-                          {sa.avgSpeedKmh ? ` \u00B7 ${sa.avgSpeedKmh} km/h` : ''}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                  <View style={s.stravaRideLogo}><StravaLogo size={18} /></View>
-                </View>
-              ))}
-            </View>
           )}
 
-          {/* Today's workouts — shown only when no day is explicitly selected */}
-          {selectedDayIdx === null && (todayActivities.length > 0 || todayStravaRides.length > 0) && (
-            <View style={s.section}>
-              <Text style={s.sectionTitle}>Today</Text>
-              {todayActivities.map(activity => (
-                <TouchableOpacity
-                  key={activity.id}
-                  style={[s.todayCard, actionActivity?.activity?.id === activity.id && s.todayCardActive]}
-                  onPress={() => actionActivity ? setActionActivity(null) : navigation.navigate('ActivityDetail', { activityId: activity.id })}
-                  onLongPress={() => handleActivityLongPress(activity)}
-                  delayLongPress={400}
-                  activeOpacity={0.8}
-                >
-                  <View style={[s.todayAccent, { backgroundColor: ACTIVITY_BLUE }]} />
-                  <View style={s.todayBody}>
-                    <View style={s.todayTitleRow}>
-                      <View style={s.todayTypeCol}>
-                        <View style={[s.todayTypeBadge, { backgroundColor: ACTIVITY_BLUE + '18' }]}>
-                          <Text style={[s.todayTypeText, { color: ACTIVITY_BLUE }]}>{getSessionLabel(activity)}</Text>
-                        </View>
-                      </View>
-                      <View style={s.todayTitleWrap}>
-                        <Text style={s.todayTitle}>{activity.title}</Text>
-                        <Text style={s.todayMeta}>
-                          {activity.distanceKm ? `${activity.distanceKm} km` : ''}
-                          {activity.distanceKm && activity.durationMins ? ' \u00B7 ' : ''}
-                          {activity.durationMins ? `${activity.durationMins} min` : ''}
-                          {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
-                        </Text>
-                        {activity.stravaActivityId && (
-                          <View style={s.stravaMatchBadge}>
-                            <StravaLogo size={12} />
-                            <Text style={s.stravaMatchText}>
-                              {activity.stravaData?.distanceKm ? `${activity.stravaData.distanceKm} km` : ''}
-                              {activity.stravaData?.distanceKm && activity.stravaData?.durationMins ? ' \u00B7 ' : ''}
-                              {activity.stravaData?.durationMins ? `${activity.stravaData.durationMins} min` : ''}
-                              {activity.stravaData?.avgSpeedKmh ? ` \u00B7 ${activity.stravaData.avgSpeedKmh} km/h` : ''}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                  </View>
-                  {activity.completed
-                    ? <View style={s.doneBadge}><Text style={s.doneMark}>{'\u2713'}</Text></View>
-                    : <MaterialCommunityIcons name="dots-vertical" size={18} color={colors.textFaint} style={{ paddingRight: 10 }} />
-                  }
-                </TouchableOpacity>
-              ))}
-              {/* Unmatched Strava rides — shown with Strava orange accent */}
-              {todayStravaRides.map(sa => (
-                <View key={sa.stravaId} style={s.todayCard}>
-                  <View style={[s.todayAccent, { backgroundColor: '#FC4C02' }]} />
-                  <View style={s.todayBody}>
-                    <View style={s.todayTitleRow}>
-                      <View style={s.todayTypeCol}>
-                        <View style={[s.todayTypeBadge, { backgroundColor: 'rgba(252,76,2,0.12)' }]}>
-                          <Text style={[s.todayTypeText, { color: '#FC4C02' }]}>STRAVA</Text>
-                        </View>
-                      </View>
-                      <View style={s.todayTitleWrap}>
-                        <Text style={s.todayTitle}>{sa.name || 'Ride'}</Text>
-                        <Text style={s.todayMeta}>
-                          {sa.distanceKm ? `${sa.distanceKm} km` : ''}
-                          {sa.distanceKm && sa.durationMins ? ' \u00B7 ' : ''}
-                          {sa.durationMins ? `${sa.durationMins} min` : ''}
-                          {sa.avgSpeedKmh ? ` \u00B7 ${sa.avgSpeedKmh} km/h` : ''}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                  <View style={s.stravaRideLogo}><StravaLogo size={18} /></View>
-                </View>
-              ))}
-            </View>
-          )}
+          {/* Selected-day panel removed April 2026 — tapping a day in the
+              strip now just highlights the corresponding row in the week
+              list above (see weekListRowSelected style). The separate
+              panel duplicated what the week list already showed and made
+              the home screen feel cluttered. */}
+
+          {/* Today's workouts section — REMOVED and consolidated with
+              the Today hero card at the top of the screen (see above).
+              Previously the screen had two Today blocks competing
+              (compact hero + full card below the week strip) which was
+              redundant. Tomorrow now sits next to Today at the top. */}
 
           {/* Coach suggestions — always shown when plan has an assessment */}
           {((activePlan?.assessment?.suggestions?.length > 0) || (activePlan?.assessment?.recommendations?.length > 0)) && (
@@ -1451,56 +1811,110 @@ export default function HomeScreen({ navigation, route }) {
             </View>
           )}
 
-          {/* Week progress */}
-          <View style={s.section}>
-            <View style={s.sectionRow}>
-              <Text style={s.sectionTitle}>This week</Text>
-              <Text style={s.sectionMeta}>{progress.done}/{progress.total} done</Text>
+          {/* Moved up to sit directly after the Today hero card. See the
+              matching block earlier in this render. */}
+
+          {/* Standalone "Manage plan" link removed — the ••• button on the
+              active plan card at the top of the page now owns this action,
+              alongside the › chevron for "view plan". Keeps all the plan-level
+              controls in one predictable place instead of sprinkling them
+              across the page. */}
+
+          {/* ── Footer ─────────────────────────────────────────────────
+              Rounds out the bottom of the scroll. Two elements:
+                - "Send feedback" link (→ FeedbackScreen) so users can
+                  tell us what's broken / missing without digging in settings
+                - The Etapa wordmark + logo, centered + muted — subtle
+                  brand moment + signals end of content
+              Version line intentionally omitted — it's already in Settings
+              (the canonical place) and the app.json value shown here
+              doesn't always match the shipped build version after the
+              release script rewrites it. */}
+          <View style={s.homeFooter}>
+            <TouchableOpacity
+              style={s.homeFooterLink}
+              onPress={() => navigation.navigate('Feedback')}
+              activeOpacity={0.7}
+              hitSlop={HIT}
+            >
+              <MaterialCommunityIcons name="message-text-outline" size={14} color={colors.textMuted} />
+              <Text style={s.homeFooterLinkText}>Send feedback</Text>
+            </TouchableOpacity>
+            <View style={s.homeFooterBrandRow}>
+              <Image source={require('../../assets/icon.png')} style={s.homeFooterLogo} />
+              <Text style={s.homeFooterBrand}>Etapa</Text>
             </View>
-            <View style={s.weekProgressTrack}>
-              <View style={[s.weekProgressFill, { width: `${progress.pct}%` }]} />
-            </View>
+            {/* App version + build — pulls from expo-constants so this
+                matches whatever is installed on the device. Useful
+                reference when users report bugs ("v0.95.11 build 116"). */}
+            <Text style={s.homeFooterVersion}>
+              {(() => {
+                const v = Constants?.expoConfig?.version || '—';
+                const iosBuild = Constants?.expoConfig?.ios?.buildNumber;
+                const androidCode = Constants?.expoConfig?.android?.versionCode;
+                const build = Platform.OS === 'ios' ? iosBuild : androidCode;
+                return `v${v}${build ? ` · build ${build}` : ''}`;
+              })()}
+            </Text>
           </View>
 
-          {/* View full week + View full plan — side by side */}
-          <View style={s.viewBtnRow}>
-            <TouchableOpacity
-              style={s.viewBtnHalf}
-              onPress={() => navigation.navigate('WeekView', { week: currentWeek, planId: activePlan.id })}
-              activeOpacity={0.85}
-            >
-              <Text style={s.viewBtnText}>View full week</Text>
-              <Text style={s.viewBtnArrow}>{'\u203A'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={s.viewBtnHalf}
-              onPress={() => navigation.navigate('PlanOverview', { planId: activePlan.id })}
-              activeOpacity={0.85}
-            >
-              <Text style={s.viewBtnText}>View full plan</Text>
-              <Text style={s.viewBtnArrow}>{'\u203A'}</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Manage plan — bottom of screen */}
-          {activePlan && (
-            <View style={s.planActions}>
-              <TouchableOpacity
-                style={s.planActionBtn}
-                onPress={() => {
-                  const p = plans[selectedPlanIdx];
-                  const g = p ? goals.find(gl => gl.id === p.goalId) : null;
-                  if (p) handlePlanLongPress(p, g);
-                }}
-              >
-                <Text style={s.planActionText}>{'\u2022\u2022\u2022'} Manage plan</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <View style={{ height: 40 }} />
+          <View style={{ height: 24 }} />
           </>)}
         </ScrollView>
+
+        {/* Floating "Moving…" banner — anchored at the bottom of the
+            screen so it's always visible while the user scrolls to a
+            drop target. Was previously at the top and disappeared above
+            the fold during the drag. */}
+        {movingActivity && (
+          <View style={s.moveBannerFloating}>
+            <MaterialCommunityIcons name="cursor-move" size={16} color="#fff" />
+            <Text style={s.moveBannerText} numberOfLines={1}>
+              Moving: {movingActivity.activity.title}
+            </Text>
+            {/* Cancel is now a filled pill with high contrast against the
+                pink banner. Bigger tap target, clear visual weight, not
+                hidden in the banner text. */}
+            <TouchableOpacity
+              onPress={() => setMovingActivity(null)}
+              style={s.moveBannerCancelBtn}
+              hitSlop={HIT}
+              activeOpacity={0.8}
+            >
+              <Text style={s.moveBannerCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Floating drag ghost — renders while a row is being dragged
+            via the composed Pan gesture. The Animated.View reads from
+            dragPos (updated in the gesture's onChange) so the card
+            follows the user's finger in real time. pointerEvents:'none'
+            so the ghost never steals the touch from the underlying row
+            that might be the drop target. */}
+        {dragActivity && (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              s.dragGhost,
+              {
+                transform: [
+                  { translateX: dragPos.x },
+                  { translateY: dragPos.y },
+                ],
+              },
+            ]}
+          >
+            <Text style={s.dragGhostTitle} numberOfLines={1}>{dragActivity.title || 'Session'}</Text>
+            {(dragActivity.distanceKm || dragActivity.durationMins) && (
+              <Text style={s.dragGhostMeta} numberOfLines={1}>
+                {dragActivity.distanceKm ? formatDistance(dragActivity.distanceKm) : ''}
+                {dragActivity.distanceKm && dragActivity.durationMins ? ' \u00B7 ' : ''}
+                {dragActivity.durationMins ? `${dragActivity.durationMins} min` : ''}
+              </Text>
+            )}
+          </Animated.View>
+        )}
 
         {/* Activity action bar — shown on long-press */}
         {actionActivity && !movingActivity && (
@@ -1638,7 +2052,7 @@ const s = StyleSheet.create({
   // New plan button
   newPlanBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
-    marginLeft: 20, marginBottom: 6,
+    marginLeft: 20, marginBottom: 24,
     paddingVertical: 7, paddingHorizontal: 14,
     borderRadius: 20, borderWidth: 1,
     borderColor: colors.border,
@@ -1646,13 +2060,8 @@ const s = StyleSheet.create({
   },
   newPlanBtnPlus: { fontSize: 16, fontWeight: '400', color: colors.primary },
   newPlanBtnText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
-  planLimitHint: {
-    marginLeft: 20, marginBottom: 24,
-    fontSize: 11, fontWeight: '400', fontFamily: FF.regular,
-    color: colors.textFaint,
-  },
-  planLimitHintWarning: { color: colors.primary },
-  planLimitHintBlocked: { color: '#ef4444', fontWeight: '500' },
+  // (planLimitHint styles removed April 2026 — quota confirmation now
+  //  lives as an Alert at the moment of creation, not an always-on hint.)
 
   // Plan tabs
   planTabsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 10 },
@@ -1661,21 +2070,65 @@ const s = StyleSheet.create({
   planDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
   planDotActive: { backgroundColor: colors.primary, width: 16, borderRadius: 3 },
   planDotsHint: { fontSize: 10, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginLeft: 4 },
-  planTabs: { marginBottom: 12, maxHeight: 80 },
-  planTabsContent: { paddingHorizontal: 16, gap: 8 },
+  // maxHeight was 80 which clipped the active card once we added the goal
+  // line + action pills. Uncapping — the scroll view will fit its content.
+  // Bumped to marginHorizontal: 20 on each card (see planTab below) so
+  // the plan card's right edge aligns with the coach card / other
+  // surfaces — the ••• button on the plan card and the › on the coach
+  // card now sit at the same visual x-position.
+  planTabs: { marginBottom: 12 },
+  planTabsContent: { paddingHorizontal: 20, gap: 8 },
+  // Single-plan wrapper — plain View (no horizontal scroll). Matches
+  // the coach card's horizontal margins so the card sits flush with
+  // other screen-edge cards. When multiple plans exist we use the
+  // ScrollView branch instead (see planTabsContent above).
+  planTabsSingle: { marginHorizontal: 20, marginBottom: 12 },
+  // Plan card — redesigned April 2026 from a pink-flood CTA to a calm
+  // context card. Rationale: this surface is plan METADATA + a nav
+  // target ("what am I training for, tap for detail, ••• to manage"),
+  // not a daily-action CTA like Today or Chat with Your Coach. Pink
+  // flood made it compete with those. Now dark-surface like the coach
+  // card, with a thin pink left-stripe as the active-plan accent.
   planTab: {
-    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12,
+    flexDirection: 'row', alignItems: 'center',
+    padding: 16, borderRadius: 16,
     backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
-    minWidth: 130,
+    gap: 12,
+    overflow: 'hidden',
   },
-  planTabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  planTabTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 2 },
-  planTabTitleActive: { color: '#fff' },
-  planTabMeta: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
-  planTabMetaActive: { color: 'rgba(255,255,255,0.7)' },
-  planActions: { paddingHorizontal: 20, marginTop: 8, alignItems: 'center' },
-  planActionBtn: { paddingVertical: 10, paddingHorizontal: 16 },
-  planActionText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.textFaint },
+  // Active state — no background change, just the pink accent stripe
+  // (see planTabAccent). Keeps this card the same weight as an inactive
+  // one so it doesn't shout.
+  planTabActive: {},
+  // Pink left-stripe on the active card. Absolutely positioned so it
+  // bleeds to the card edges regardless of padding.
+  planTabAccent: {
+    position: 'absolute', left: 0, top: 0, bottom: 0,
+    width: 3, backgroundColor: colors.primary,
+  },
+  planTabBody: { flex: 1, minWidth: 0 },
+  planTabTitle: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 3 },
+  // Active title no longer white-on-pink; just stays the default text
+  // colour with a touch more emphasis via fontSize above.
+  planTabTitleActive: { color: colors.text },
+  planTabMeta: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, lineHeight: 17 },
+  planTabMetaActive: { color: colors.textMid },
+  // Action cluster on the active plan card — just the ••• manage
+  // button now. Tapping the rest of the card navigates to PlanOverview,
+  // so no redundant chevron is needed. Filled circle with pink icon
+  // matches the calendar button in the week-strip header for visual
+  // consistency across the home screen's secondary actions.
+  planTabActions: {
+    flexDirection: 'row', alignItems: 'center',
+  },
+  planTabManageDots: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: 'rgba(232,69,139,0.12)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  // (planActions / planActionBtn / planActionText removed April 2026 —
+  //  the standalone "Manage plan" link at the bottom of the page was
+  //  replaced by the ••• button on the active plan card itself.)
 
   // Coach suggestions section
   suggestSection: { marginHorizontal: 20, marginBottom: 16 },
@@ -1844,19 +2297,116 @@ const s = StyleSheet.create({
     fontSize: 16, color: colors.textMid, lineHeight: 16,
   },
 
-  weekStrip: { backgroundColor: colors.surface, marginHorizontal: 16, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border },
+  // ── Pre-plan-start card ────────────────────────────────────────────────
+  // Shown in place of the Week 1/12 strip when the plan's Monday is still
+  // in the future. Compact: eyebrow · start-date headline · days-until
+  // supporting line · CTA. Shares marginHorizontal with the weekStrip so
+  // the transition feels seamless on the Monday the plan starts.
+  preStartCard: {
+    backgroundColor: colors.surface,
+    marginHorizontal: 16, marginBottom: 16,
+    borderRadius: 16, borderWidth: 1, borderColor: colors.border,
+    padding: 18,
+  },
+  preStartEyebrow: {
+    fontSize: 11, fontWeight: '700', fontFamily: FF.semibold,
+    color: colors.primary, letterSpacing: 2, marginBottom: 8,
+  },
+  preStartTitle: {
+    fontSize: 22, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.text, marginBottom: 6,
+  },
+  preStartSub: {
+    fontSize: 13, fontWeight: '400', fontFamily: FF.regular,
+    color: colors.textMuted, lineHeight: 19, marginBottom: 14,
+  },
+  preStartCta: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: colors.primary, borderRadius: 12,
+    paddingVertical: 12, paddingHorizontal: 16,
+  },
+  preStartCtaText: {
+    fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: '#fff',
+  },
+  // Calendar icon button in the top-right corner of the pre-start card.
+  // Matches the weekHeaderCalendarBtn treatment on the running-plan strip
+  // (pink tint + rounded square) so the two states read as consistent.
+  preStartCalendarBtn: {
+    position: 'absolute', top: 14, right: 14,
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: 'rgba(232,69,139,0.12)',
+    alignItems: 'center', justifyContent: 'center',
+    zIndex: 1,
+  },
+
+  weekStrip: {
+    backgroundColor: colors.surface,
+    marginHorizontal: 16, marginBottom: 16,
+    borderRadius: 16, borderWidth: 1, borderColor: colors.border,
+    padding: 16,
+  },
+  // Top row of the week strip — title CENTERED, calendar icon on the
+  // right. Uses space-between with a spacer on the left matching the
+  // calendar button's 32pt width so the title is visually centred
+  // across the card. Standard iOS navigation-bar pattern (spacer ·
+  // title · action).
+  weekHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  weekHeaderSpacer: { width: 32 },
+  weekHeaderCalendarBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: 'rgba(232,69,139,0.12)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  // Container row for the day grid with its flanking chevrons — the
+  // convention used by Google Calendar / Apple Calendar. Chevrons sit
+  // at the same y as the day numbers so they read as "move the grid
+  // left / right". Generous horizontal spacing so the Sun cell never
+  // feels like it's bumping up against the next-week chevron.
+  dayRowWithNav: {
+    flexDirection: 'row', alignItems: 'center',
+    marginTop: 8,
+    gap: 12,
+  },
+  // Bigger tap target around each side chevron (36pt = Apple HIG
+  // minimum 44 minus a bit for the card edge) plus internal padding so
+  // the chevron has air on both sides.
+  weekNavSideBtn: {
+    width: 36, height: 36,
+    alignItems: 'center', justifyContent: 'center',
+  },
   weekNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  weekNavCenter: { alignItems: 'center', gap: 4 },
+  // (weekNavCenter unused — structure moved to weekHeader + dayRowWithNav.)
   goTodayBtn: {
+    // alignSelf:'center' shrinks the button to its content instead of
+    // stretching to fill the card width. Before the week-strip rewrite
+    // this was inside a wrapper with alignItems:'center' — now it's a
+    // direct child, so it has to set alignSelf itself.
+    alignSelf: 'center',
     backgroundColor: 'rgba(232,69,139,0.12)', borderRadius: 10,
-    paddingHorizontal: 10, paddingVertical: 3,
+    paddingHorizontal: 12, paddingVertical: 4,
+    marginTop: 6,
     borderWidth: 1, borderColor: 'rgba(232,69,139,0.25)',
   },
   goTodayText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary },
   weekNavArrow: { fontSize: 28, color: colors.text, fontWeight: '300', paddingHorizontal: 8 },
   weekNavDisabled: { color: colors.textFaint },
   weekLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
-  monthLabel: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 2 },
+  // Link row for the week header — label + pink-tint arrow badge, matched
+  // to the coach card and active plan card so taps-to-navigate all feel
+  // like the same affordance across the page.
+  // "Week 1/12 ›" tap row — label + chevron hugged together as a single
+  // disclosure-style link. No separate pink-tinted badge; following the
+  // mobile convention where the chevron is part of the title line, not
+  // a button.
+  weekLabelInnerRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+
+  // (weekStripCornerBtn removed — the calendar icon is no longer
+  //  absolutely-positioned in the corner. It now sits inline on the
+  //  weekHeader row, aligned with the Week title. See weekHeaderCalendarBtn.)
+  monthLabel: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 2, textAlign: 'center' },
   calendarBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     marginTop: 12, paddingVertical: 8, borderRadius: 10,
@@ -1864,6 +2414,66 @@ const s = StyleSheet.create({
   },
   calendarBtnText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
   calendarBtnArrow: { fontSize: 18, color: colors.primary, fontWeight: '300' },
+
+  // ── Home footer ────────────────────────────────────────────────────
+  // "Send feedback" link + Etapa wordmark + version, sits at the bottom
+  // of the scroll so the screen doesn't trail off into empty space.
+  homeFooter: {
+    marginTop: 32, marginBottom: 16, paddingHorizontal: 20,
+    alignItems: 'center', gap: 14,
+  },
+  homeFooterLink: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 6, paddingHorizontal: 12,
+  },
+  homeFooterLinkText: {
+    fontSize: 13, fontWeight: '500', fontFamily: FF.medium,
+    color: colors.textMuted,
+  },
+  homeFooterBrandRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    opacity: 0.55,
+  },
+  homeFooterLogo: { width: 22, height: 22, borderRadius: 5 },
+  homeFooterBrand: {
+    fontSize: 14, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.textMid, letterSpacing: 0.3,
+  },
+  // Version + build — now includes the build number so support can
+  // reference the specific shipped artifact, not just the release
+  // tree's app.json value. Still matches what Settings shows.
+  homeFooterVersion: {
+    fontSize: 10, fontWeight: '400', fontFamily: FF.regular,
+    color: colors.textFaint, letterSpacing: 0.3,
+  },
+
+  // Hint line under the week list telling users about the long-press
+  // gesture. Placed once, low-contrast, so it's discoverable without
+  // being naggy chrome.
+  weekListHint: {
+    marginTop: 10, paddingHorizontal: 4,
+    fontSize: 11, fontWeight: '400', fontFamily: FF.regular,
+    color: colors.textFaint, fontStyle: 'italic', textAlign: 'center',
+  },
+  // Session row in move mode — the dragged card just dims slightly so
+  // it's clear which one was picked up. The floating ghost card follows
+  // the finger and carries the "this is being moved" signal, so the
+  // source doesn't need a pink border, scale, padding, or shadow — all
+  // of which were stacking with the row drop-highlight and reading as
+  // a second "big pink box" next to the hovered row.
+  weekListSessionMoving: {
+    opacity: 0.35,
+  },
+  // Drop-target highlight — applied ONLY to the row the finger is
+  // currently hovering over (live, not all rows). Stronger tint +
+  // border than before because now it's a single focused indicator
+  // rather than 7 competing ones. Reads as "this is where it'll land
+  // if you release now".
+  weekListRowDropTarget: {
+    backgroundColor: 'rgba(232,69,139,0.18)',
+    borderWidth: 1.5, borderColor: colors.primary,
+    borderRadius: 12,
+  },
 
   // ── Inline week list (the fix for "what's happening this week at a glance") ──
   weekList: {
@@ -1876,9 +2486,41 @@ const s = StyleSheet.create({
     paddingVertical: 10, paddingHorizontal: 10,
     borderRadius: 10, gap: 12,
   },
+  // Container for a session day that may hold MULTIPLE activities. The
+  // day abbreviation sits in a left column and each session stacks in
+  // the right column. Using a plain View (not a row-Touchable) so each
+  // session gets its own tap/long-press handlers inside.
+  weekListDayBlock: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    paddingVertical: 10, paddingHorizontal: 10,
+    borderRadius: 10, gap: 12,
+  },
+  weekListDayTop: {
+    // When stacked against multiple sessions the day abbrev should align
+    // with the first session's tag, not the centre of the whole block.
+    paddingTop: 4,
+  },
+  weekListSessions: { flex: 1, gap: 10 },
+  weekListSession: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+  },
+  // Subsequent sessions in the same day get a thin divider above so the
+  // user can visually separate "morning ride" from "evening strength".
+  weekListSessionStacked: {
+    borderTopWidth: 0.5, borderTopColor: colors.border,
+    paddingTop: 10,
+  },
+  weekListSessionBody: { flex: 1, gap: 2 },
   weekListRowToday: {
     backgroundColor: 'rgba(232,69,139,0.08)',
     borderWidth: 1, borderColor: 'rgba(232,69,139,0.18)',
+  },
+  // Selected-day highlight — lighter than today so the two can coexist.
+  // Applied when the user taps a day in the week-strip above; replaces
+  // the old "selected day panel" block which duplicated this info.
+  weekListRowSelected: {
+    backgroundColor: 'rgba(232,69,139,0.05)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.28)',
   },
   weekListDay: {
     fontSize: 12, fontWeight: '600', fontFamily: FF.semibold,
@@ -1905,6 +2547,12 @@ const s = StyleSheet.create({
     color: colors.text,
   },
   weekListTitleToday: { color: colors.text },
+  // Completed activity — strike-through + muted so the row clearly reads
+  // as "done" at a glance. Pairs with the filled pink circle on the right.
+  weekListTitleDone: {
+    color: colors.textMuted,
+    textDecorationLine: 'line-through',
+  },
   weekListMeta: {
     fontSize: 12, fontWeight: '400', fontFamily: FF.regular,
     color: colors.textFaint,
@@ -1925,8 +2573,28 @@ const s = StyleSheet.create({
     fontSize: 9, fontWeight: '700', fontFamily: FF.semibold,
     color: '#fff', letterSpacing: 0.8,
   },
-  dayRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  dayCell: { alignItems: 'center', minWidth: 40, gap: 3, borderRadius: 10, paddingVertical: 4, paddingHorizontal: 2 },
+  // Circular done/undone toggle on the right of each session row.
+  // Small by design — it's a secondary affordance on a dense list, not a
+  // CTA. Originally 26pt but the filled-state pink-with-✓ looked like a
+  // shouting button at that size; 22pt with a lighter tick reads more
+  // like a checkbox and sits more quietly in the row.
+  weekListDoneCircle: {
+    width: 22, height: 22, borderRadius: 11,
+    borderWidth: 1.5, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  weekListDoneCircleDone: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  weekListDoneTick: { color: '#fff', fontSize: 11, fontWeight: '700', lineHeight: 14 },
+  dayRow: { flexDirection: 'row' },
+  // Each cell takes 1/7 of the row's width (flex:1) instead of having a
+  // fixed minWidth — the old minWidth:40 × 7 = 280pt was wider than the
+  // space left between the prev/next chevrons, so cells overflowed and
+  // Sun crashed into the `›` next-week chevron.
+  dayCell: { flex: 1, alignItems: 'center', gap: 3, borderRadius: 10, paddingVertical: 4, paddingHorizontal: 2 },
   dayCellSelected: { backgroundColor: colors.primary },
   dayCellDropTarget: { borderWidth: 1, borderColor: 'rgba(232,69,139,0.4)', borderStyle: 'dashed' },
   dayLabelText: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
@@ -1970,6 +2638,34 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: 14,
     overflow: 'hidden', marginBottom: 8, borderWidth: 1, borderColor: colors.border,
   },
+  // Tomorrow preview — sits directly below the Today hero. Compact,
+  // low-contrast so Today is still the hero. Tap → ActivityDetail.
+  tomorrowSection: {
+    marginHorizontal: 20, marginTop: -4, marginBottom: 16,
+  },
+  tomorrowLabel: {
+    fontSize: 10, fontWeight: '700', fontFamily: FF.semibold,
+    color: colors.textFaint, letterSpacing: 0.8,
+    textTransform: 'uppercase', marginBottom: 6, marginLeft: 2,
+  },
+  tomorrowCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.surface, borderRadius: 12,
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderWidth: 1, borderColor: colors.border,
+    marginBottom: 6,
+  },
+  tomorrowCardBody: { flex: 1, gap: 4 },
+  tomorrowTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  tomorrowMeta: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
+  tomorrowRestWrap: {
+    marginHorizontal: 20, marginTop: -4, marginBottom: 16,
+    alignItems: 'center',
+  },
+  tomorrowRestText: {
+    fontSize: 12, fontWeight: '500', fontFamily: FF.medium,
+    color: colors.textFaint, letterSpacing: 0.3,
+  },
   todayAccent: { width: 4, alignSelf: 'stretch' },
   todayBody: { flex: 1, padding: 14 },
   todayTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -1987,50 +2683,18 @@ const s = StyleSheet.create({
   weekProgressTrack: { height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden' },
   weekProgressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 3 },
 
-  // View buttons — side by side
-  viewBtnRow: { flexDirection: 'row', gap: 10, marginHorizontal: 20, marginBottom: 16 },
-  viewBtnHalf: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: colors.surface, borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  viewBtnText: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
-  viewBtnArrow: { fontSize: 20, color: colors.primary, fontWeight: '300' },
+  // (View full week / View full plan button pair removed April 2026 —
+  //  tap the plan card for PlanOverview, tap the Week N/N label for
+  //  WeekView. Styles deleted to keep the sheet clean.)
 
-  // Coach chat card — prominent
-  coachCard: {
-    marginHorizontal: 20, marginBottom: 20, borderRadius: 16,
-    backgroundColor: colors.surface, borderWidth: 1.5, borderColor: 'rgba(232,69,139,0.3)',
-    padding: 16, shadowColor: '#E8458B', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1, shadowRadius: 12, elevation: 4,
-  },
-  coachCardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  coachAvatar: {
-    width: 44, height: 44, borderRadius: 22,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  coachAvatarText: { fontSize: 14, fontWeight: '700', color: '#fff', fontFamily: FF.semibold },
-  coachCardTextWrap: { flex: 1 },
-  coachCardName: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
-  coachCardHint: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary, marginTop: 1 },
-  coachCardArrowWrap: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: 'rgba(232,69,139,0.12)', alignItems: 'center', justifyContent: 'center',
-  },
-  coachCardArrow: { fontSize: 20, color: colors.primary, fontWeight: '600' },
-  coachCardSub: {
-    fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted,
-    marginTop: 10, lineHeight: 17,
-  },
+  // Coach chat card margins — the card visuals now live in the shared
+  // <CoachChatCard /> component (src/components/CoachChatCard.js) so
+  // Home / Week view / Activity detail all read as the same element.
+  // The wrapper only supplies screen-local spacing.
+  coachCardWrap: { marginHorizontal: 20, marginBottom: 20 },
 
-  // Goal card
-  goalCard: {
-    backgroundColor: colors.surface, marginHorizontal: 20, borderRadius: 16, padding: 18, marginBottom: 16,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  goalLabel: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 },
-  goalTitle: { fontSize: 17, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
-  goalMeta: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
+  // (Goal card styles removed April 2026 — goal info now lives on the
+  //  active plan tab. See planTabGoal / planTabGoalActive above.)
 
   // Locked plan (payment pending)
   lockedWrap: { paddingHorizontal: 20, marginTop: 8 },
@@ -2089,12 +2753,43 @@ const s = StyleSheet.create({
   actionBarBtnDelete: { borderColor: 'rgba(239,68,68,0.25)' },
   actionBarBtnText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
 
-  // Moving mode
-  moveBanner: {
+  // Moving mode — floating banner anchored to the bottom of the screen
+  // so it stays in view while the user scrolls through the week list
+  // looking for a drop target. Absolute-positioned sibling of the
+  // ScrollView at the bottom, above the safe-area inset.
+  moveBannerFloating: {
+    position: 'absolute',
+    left: 12, right: 12, bottom: 16,
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginHorizontal: 16, marginBottom: 12, paddingHorizontal: 14, paddingVertical: 10,
-    backgroundColor: colors.primary, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: colors.primary, borderRadius: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3, shadowRadius: 16, elevation: 12,
   },
-  moveBannerText: { flex: 1, fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: '#fff' },
-  moveBannerCancel: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: 'rgba(255,255,255,0.7)' },
+  moveBannerText: { flex: 1, fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: '#fff' },
+  // Filled white-on-pink pill — much more visible than the old faint
+  // text Cancel that users couldn't see / tap reliably on the mid-drag banner.
+  moveBannerCancelBtn: {
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  moveBannerCancelText: { fontSize: 13, fontWeight: '700', fontFamily: FF.semibold, color: '#fff' },
+  // Ghost card that follows the user's finger while dragging — picks
+  // up the session they long-pressed and renders a shadowed copy at
+  // the cursor position. The cursor-follow transform is applied via
+  // an Animated.View in JSX (see renderDragGhost).
+  dragGhost: {
+    position: 'absolute',
+    left: 0, top: 0,
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5, borderColor: colors.primary,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35, shadowRadius: 18, elevation: 16,
+    minWidth: 180, maxWidth: 280,
+  },
+  dragGhostTitle: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  dragGhostMeta: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 2 },
 });

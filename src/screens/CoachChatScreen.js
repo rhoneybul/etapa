@@ -14,10 +14,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, fontFamily } from '../theme';
 import useScreenGuard from '../hooks/useScreenGuard';
 import { getPlans, getGoals, getWeekActivities, getPlanConfig, savePlan, getUserPrefs, getActivityDate } from '../services/storageService';
-import { coachChat } from '../services/llmPlanService';
+import {
+  coachChat,
+  startCoachChatJob,
+  pollCoachChatJob,
+  cancelCoachChatJob,
+  openCoachChatStream,
+} from '../services/llmPlanService';
 import { api } from '../services/api';
 import { getCoach } from '../data/coaches';
 import { getCurrentUser } from '../services/authService';
+import { setFocusedScreen } from '../services/notificationService';
 import { syncStravaActivities, buildStravaContextForAI, weekComparisonSummary } from '../services/stravaSyncService';
 import { isStravaConnected } from '../services/stravaService';
 import analytics from '../services/analyticsService';
@@ -113,6 +120,11 @@ export default function CoachChatScreen({ navigation, route }) {
   const userMsgCountRef = useRef(0);
   // Latest coach id, kept in a ref so the unmount cleanup can read it.
   const coachIdRef = useRef(null);
+  // Map of in-flight jobId -> { closeStream, pollInterval, timeout }. Lets
+  // the unmount cleanup tear down streams + polls without cancelling the
+  // server-side job (Claude keeps running; the push notification will land
+  // when it's done). Also lets `handleClearChat` cancel in-flight jobs.
+  const activeJobsRef = useRef(new Map());
 
   // Load plan, goal, chat history, and user name
   useEffect(() => {
@@ -174,12 +186,27 @@ export default function CoachChatScreen({ navigation, route }) {
     })();
   }, [planId, weekNum]);
 
-  // Save chat whenever messages change — local + server
+  // Save chat whenever messages change — local + server.
+  //
+  // Filters out any still-pending assistant bubbles before saving to EITHER
+  // local storage or the server. Two reasons:
+  //   1. Server: the server will append the real reply to chat_sessions
+  //      when runCoachChatJob completes — if we saved our placeholder now,
+  //      it'd look like the coach never replied after a reload.
+  //   2. Local: same story, but worse — if we stored the pending bubble in
+  //      AsyncStorage and the user navigates away, on return our
+  //      local-vs-server reconcile would see equal lengths (pending
+  //      placeholder in local, real reply on server) and keep the stale
+  //      local version, losing the completed reply.
+  //
+  // Settled messages are always safe to mirror to both stores.
   useEffect(() => {
     if (plan && messages.length > 0) {
-      AsyncStorage.setItem(chatKey(plan.id, weekNum), JSON.stringify(messages));
-      // Fire-and-forget sync to server
-      api.chatSessions.save(plan.id, weekNum, messages).catch(() => {});
+      const settled = messages.filter(m => !m.pending);
+      AsyncStorage.setItem(chatKey(plan.id, weekNum), JSON.stringify(settled)).catch(() => {});
+      if (settled.length > 0) {
+        api.chatSessions.save(plan.id, weekNum, settled).catch(() => {});
+      }
     }
   }, [messages, plan, weekNum]);
 
@@ -254,9 +281,15 @@ export default function CoachChatScreen({ navigation, route }) {
         scope: weekNum ? 'week' : 'plan',
       });
     }
+    // Optimistic user msg goes in immediately; the pending assistant bubble
+    // is appended further down so we can tag it with its jobId at that point.
     setMessages(updated);
     setInput('');
     setSending(true);
+
+    // Helper: the pending bubble block below assumes `messages` starts from
+    // the already-updated array — since React state updates are batched, we
+    // append via functional setState to avoid ordering races.
 
     // Build context
     const now = new Date();
@@ -347,75 +380,195 @@ export default function CoachChatScreen({ navigation, route }) {
     // Send only role + content for API
     const apiMessages = updated.map(m => ({ role: m.role, content: m.content }));
 
-    try {
-      const result = await coachChat(apiMessages, context);
+    // ── Async flow ───────────────────────────────────────────────────────
+    // POST → 202 + jobId. Client-side we add a "pending" assistant bubble
+    // right away so the user sees acknowledgement. The bubble's content
+    // streams in via SSE, with a parallel polling loop as fallback. When
+    // the job completes the bubble is marked done and persisted.
+    //
+    // If the user leaves the screen before completion, the server still
+    // finishes the Claude call and writes the reply to chat_sessions; a
+    // push notification fires so they know it's ready. On next mount the
+    // completed reply loads from server with the rest of the history.
 
-      // Rate limit reached — server returned 429. Two possible causes:
-      //   - Weekly coach-message limit (25/week default)
-      //   - Daily Claude cost cap (spend-based)
-      // Both surface as a friendly "limit reached" message with a dedicated
-      // analytics event so we can see how often it happens.
-      if (result.rateLimited) {
-        setLastFailedMsg(null);
-        analytics.track('chat_rate_limited', {
-          coachId: planConfig?.coachId || null,
-          kind: result.rateLimitKind || 'cost_cap',
-          used: result.rateLimitUsed ?? null,
-          limit: result.rateLimitMax ?? null,
-          spentUsd: result.spentUsd ?? null,
-          capUsd: result.capUsd ?? null,
-          scope: weekNum ? 'week' : 'plan',
-        });
-        const msg = result.rateLimitKind === 'coach_msgs_per_week'
-          ? `You've sent ${result.rateLimitUsed ?? '?'} of ${result.rateLimitMax ?? '25'} coach messages this week. The count resets as individual messages age out — come back in a day or two and you'll have some back.`
-          : "You've reached today's coach limit. It resets in 24 hours — thanks for chatting so much. Come back tomorrow.";
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: msg,
-          ts: Date.now(),
-          rateLimited: true,
-        }]);
-        // Update limits display to reflect the block
-        refreshLimits();
+    const pendingKey = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const pendingBubble = {
+      role: 'assistant',
+      content: '',
+      ts: Date.now(),
+      pending: true,
+      pendingKey,
+      jobId: null, // filled when server returns 202
+    };
+    setMessages(prev => [...prev, pendingBubble]);
+
+    // 1) Start the job. Errors + blocks come back synchronously here.
+    const startRes = await startCoachChatJob(apiMessages, context);
+
+    // Rate limit (same analytics + copy as the old sync path)
+    if (startRes.rateLimited) {
+      setLastFailedMsg(null);
+      analytics.track('chat_rate_limited', {
+        coachId: planConfig?.coachId || null,
+        kind: startRes.rateLimitKind || 'cost_cap',
+        used: startRes.rateLimitUsed ?? null,
+        limit: startRes.rateLimitMax ?? null,
+        spentUsd: startRes.spentUsd ?? null,
+        capUsd: startRes.capUsd ?? null,
+        scope: weekNum ? 'week' : 'plan',
+      });
+      const msg = startRes.rateLimitKind === 'coach_msgs_per_week'
+        ? `You've sent ${startRes.rateLimitUsed ?? '?'} of ${startRes.rateLimitMax ?? '25'} coach messages this week. The count resets as individual messages age out — come back in a day or two and you'll have some back.`
+        : "You've reached today's coach limit. It resets in 24 hours — thanks for chatting so much. Come back tomorrow.";
+      setMessages(prev => prev.map(m => m.pendingKey === pendingKey
+        ? { ...m, pending: false, content: msg, rateLimited: true }
+        : m));
+      refreshLimits();
+      setSending(false);
+      return;
+    }
+
+    // Topic-guard block — server returned 200 with blocked:true. No job was
+    // started, so no streaming / polling needed.
+    if (startRes.blocked) {
+      setMessages(prev => prev.map(m => m.pendingKey === pendingKey
+        ? { ...m, pending: false, content: startRes.reply, blocked: true, blockedMessage: startRes.blockedMessage || null }
+        : m));
+      setSending(false);
+      return;
+    }
+
+    // Hard network / server error before we even got a jobId.
+    if (startRes.error || !startRes.jobId) {
+      setLastFailedMsg(userMsg.content);
+      setMessages(prev => prev.map(m => m.pendingKey === pendingKey
+        ? { ...m, pending: false, content: startRes.error || 'Sorry, something went wrong.', failed: true }
+        : m));
+      setSending(false);
+      return;
+    }
+
+    const jobId = startRes.jobId;
+    // Stamp jobId onto the bubble so we can resume / cancel later.
+    setMessages(prev => prev.map(m => m.pendingKey === pendingKey
+      ? { ...m, jobId } : m));
+
+    // Shared terminal handler — called from SSE done/error OR from poll
+    // fallback, whichever wins the race.
+    let terminated = false;
+    const handleTerminal = ({ ok, reply, updatedActivities, error }) => {
+      if (terminated) return;
+      terminated = true;
+
+      const resources = activeJobsRef.current.get(jobId);
+      if (resources) {
+        try { resources.closeStream?.(); } catch {}
+        if (resources.pollInterval) clearInterval(resources.pollInterval);
+        if (resources.timeout) clearTimeout(resources.timeout);
+        activeJobsRef.current.delete(jobId);
+      }
+
+      if (!ok) {
+        setLastFailedMsg(userMsg.content);
+        setMessages(prev => prev.map(m => m.pendingKey === pendingKey
+          ? { ...m, pending: false, content: error || 'Sorry, something went wrong.', failed: true }
+          : m));
         setSending(false);
         return;
       }
 
-      const coachMsg = {
-        role: 'assistant',
-        content: result.reply,
-        ts: Date.now(),
-        blocked: result.blocked || false,
-        blockedMessage: result.blockedMessage || null,
-      };
-      setLastFailedMsg(null);
       setMessages(prev => {
-        const newMsgs = [...prev, coachMsg];
-        // If the coach returned plan modifications, store them
-        if (result.updatedActivities && result.updatedActivities.length > 0) {
-          setPendingUpdate({ activities: result.updatedActivities, msgIndex: newMsgs.length - 1 });
-          // Track the suggestion. Compare to chat_plan_update_applied to compute
-          // the user's suggestion-accept rate — a strong signal of coach quality.
+        const newMsgs = prev.map(m => m.pendingKey === pendingKey
+          ? {
+              ...m, pending: false,
+              content: reply || m.content || '',
+              blocked: false,
+              hasUpdate: !!(updatedActivities && updatedActivities.length),
+            }
+          : m);
+        if (updatedActivities && updatedActivities.length > 0) {
+          const idx = newMsgs.findIndex(m => m.pendingKey === pendingKey);
+          setPendingUpdate({ activities: updatedActivities, msgIndex: idx >= 0 ? idx : newMsgs.length - 1 });
           analytics.events.chatPlanSuggestionReceived({
             coachId: planConfig?.coachId || null,
-            activityCount: result.updatedActivities.length,
+            activityCount: updatedActivities.length,
             scope: weekNum ? 'week' : 'plan',
           });
         }
         return newMsgs;
       });
-      // Record the moment the coach reply landed — used by the unmount
-      // handler to decide whether the user bailed "shortly after a response".
-      lastCoachResponseAtRef.current = Date.now();
-      // Refresh the weekly-usage indicator so the counter updates immediately.
-      refreshLimits();
-    } catch {
-      setLastFailedMsg(userMsg.content);
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong.', ts: Date.now(), failed: true }]);
-    }
 
-    setSending(false);
+      lastCoachResponseAtRef.current = Date.now();
+      setLastFailedMsg(null);
+      refreshLimits();
+      setSending(false);
+    };
+
+    // 2) Open SSE stream — live token deltas into the pending bubble.
+    const closeStream = await openCoachChatStream(jobId, {
+      onDelta: ({ text }) => {
+        setMessages(prev => prev.map(m => m.pendingKey === pendingKey
+          ? { ...m, content: text || m.content }
+          : m));
+      },
+      onDone: ({ reply, updatedActivities }) => {
+        handleTerminal({ ok: true, reply, updatedActivities });
+      },
+      onError: ({ error }) => {
+        // Don't immediately give up — let the polling fallback confirm.
+        // A stream error is often transient (mobile tower handoff etc.).
+        // The poll below will resolve the job one way or the other.
+        console.warn('[coach-chat] SSE error, falling back to poll:', error);
+      },
+    });
+
+    // 3) Parallel polling fallback. Runs every 2s, covers cases where SSE
+    // never connected (server restart between start + stream, proxy strips
+    // SSE, etc.). Cheap — small DB read until terminal.
+    const pollInterval = setInterval(async () => {
+      const state = await pollCoachChatJob(jobId);
+      if (state.status === 'completed') {
+        handleTerminal({ ok: true, reply: state.reply, updatedActivities: state.updatedActivities });
+      } else if (state.status === 'failed' || state.status === 'cancelled') {
+        handleTerminal({ ok: false, error: state.error || 'Message failed' });
+      } else if (state.reply && !terminated) {
+        // Partial reply from server — keep the UI in sync even if the SSE
+        // delta events aren't arriving for whatever reason.
+        setMessages(prev => prev.map(m => m.pendingKey === pendingKey
+          ? { ...m, content: state.reply }
+          : m));
+      }
+    }, 2000);
+
+    // 4) Hard 90s client-side cap — server's 60s Claude abort + 30s buffer.
+    // If something is truly stuck we fail here so the user isn't waiting.
+    const timeout = setTimeout(() => {
+      handleTerminal({ ok: false, error: 'Message timed out — tap retry to try again.' });
+    }, 90000);
+
+    activeJobsRef.current.set(jobId, { closeStream, pollInterval, timeout });
   };
+
+  // ── Clean up in-flight streams / intervals on unmount ────────────────────
+  // Does NOT cancel server-side jobs — they keep running and the user gets
+  // a push notification when the reply lands. Only the client-side spinners
+  // and listeners are released here.
+  useEffect(() => () => {
+    for (const [, resources] of activeJobsRef.current) {
+      try { resources.closeStream?.(); } catch {}
+      if (resources.pollInterval) clearInterval(resources.pollInterval);
+      if (resources.timeout) clearTimeout(resources.timeout);
+    }
+    activeJobsRef.current.clear();
+  }, []);
+
+  // ── Mark ourselves as focused so incoming coach_reply pushes are dropped
+  //    while the user is staring at the chat. Unmount clears it so other
+  //    screens don't accidentally inherit the silencing.
+  useEffect(() => {
+    setFocusedScreen('CoachChat');
+    return () => setFocusedScreen(null);
+  }, []);
 
   /** Report a wrongly blocked message — sends to support/Linear */
   const handleReportBlock = async (blockedMessage) => {
@@ -443,6 +596,17 @@ export default function CoachChatScreen({ navigation, route }) {
   };
 
   const handleClearChat = async () => {
+    // Cancel any in-flight jobs so Claude stops cooking replies we're about
+    // to throw away — and so the push notification doesn't fire after the
+    // user clears the chat.
+    for (const [jobId, resources] of activeJobsRef.current) {
+      try { resources.closeStream?.(); } catch {}
+      if (resources.pollInterval) clearInterval(resources.pollInterval);
+      if (resources.timeout) clearTimeout(resources.timeout);
+      cancelCoachChatJob(jobId).catch(() => {});
+    }
+    activeJobsRef.current.clear();
+
     if (plan) {
       await AsyncStorage.removeItem(chatKey(plan.id, weekNum));
       // Sync deletion to server
@@ -450,6 +614,7 @@ export default function CoachChatScreen({ navigation, route }) {
     }
     setMessages([]);
     setPendingUpdate(null);
+    setSending(false);
   };
 
   const handleApplyUpdate = async () => {
@@ -579,8 +744,13 @@ export default function CoachChatScreen({ navigation, route }) {
 
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : (StatusBar.currentHeight ?? 0)}
+          // iOS: "padding" keeps the input above the keyboard.
+          // Android: leave undefined and rely on the Activity's native
+          // `adjustResize` (Expo default). Using "height" here shrinks the
+          // KAV and clips the message list — that's what caused the
+          // "chat goes invisible when the keyboard opens" bug on Android.
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
           {/* Messages */}
           <ScrollView
@@ -639,6 +809,7 @@ export default function CoachChatScreen({ navigation, route }) {
                   activeOpacity={0.85}
                   delayLongPress={400}
                   onLongPress={() => {
+                    if (msg.pending || !msg.content) return;
                     Clipboard.setStringAsync(msg.content);
                     Alert.alert('Copied', 'Message copied to clipboard');
                   }}
@@ -647,14 +818,20 @@ export default function CoachChatScreen({ navigation, route }) {
                   {msg.role === 'assistant' && (
                     <Text style={s.bubbleLabel}>{getCoach(planConfig?.coachId)?.name || 'Coach'}</Text>
                   )}
-                  {msg.role === 'assistant'
-                    ? renderMarkdown(msg.content, [s.bubbleText], (wk) => {
-                        if (plan && wk >= 1 && wk <= plan.weeks) {
-                          navigation.navigate('WeekView', { week: wk, planId: plan.id });
-                        }
-                      })
-                    : <Text style={[s.bubbleText, s.bubbleTextUser]}>{msg.content}</Text>
-                  }
+                  {msg.role === 'assistant' ? (
+                    // Pending + no text yet: thinking spinner.
+                    // Pending + streaming text: show the partial reply.
+                    // Done: markdown-render the final reply.
+                    msg.pending && !msg.content ? (
+                      <ActivityIndicator size="small" color={colors.primary} style={{ alignSelf: 'flex-start', marginTop: 4 }} />
+                    ) : renderMarkdown(msg.content, [s.bubbleText], (wk) => {
+                      if (plan && wk >= 1 && wk <= plan.weeks) {
+                        navigation.navigate('WeekView', { week: wk, planId: plan.id });
+                      }
+                    })
+                  ) : (
+                    <Text style={[s.bubbleText, s.bubbleTextUser]}>{msg.content}</Text>
+                  )}
                 </TouchableOpacity>
                 {msg.blocked && (
                   <TouchableOpacity
@@ -672,13 +849,8 @@ export default function CoachChatScreen({ navigation, route }) {
                 )}
               </View>
             ))}
-
-            {sending && (
-              <View style={[s.bubble, s.bubbleCoach]}>
-                <Text style={s.bubbleLabel}>{getCoach(planConfig?.coachId)?.name || 'Coach'}</Text>
-                <ActivityIndicator size="small" color={colors.primary} style={{ alignSelf: 'flex-start', marginTop: 4 }} />
-              </View>
-            )}
+            {/* No separate "sending" indicator — the pending bubble above
+                already owns the spinner + streaming text state. */}
 
             {/* Plan update action bar */}
             {pendingUpdate && !sending && (

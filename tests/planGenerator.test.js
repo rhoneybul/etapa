@@ -706,6 +706,16 @@ const SCENARIOS = [
   { name: 'BEGINNER TARGET: 25 km, 8 weeks (short programme)',
     goal: { id: 'bt7', goalType: 'beginner', cyclingType: 'road', targetDistance: 25, planName: 'Get Into Cycling' },
     config: { id: 'cbt7', daysPerWeek: 3, weeks: 8, trainingTypes: ['outdoor'], availableDays: ['tuesday', 'thursday', 'saturday'], fitnessLevel: 'beginner', startDate: '2026-04-06', longRideDay: 'saturday' } },
+
+  // Regression scenario — reported by Rob on 2026-04-24 via plan gen
+  // a3647959-3a49-433d-8e72-196d1679540f. Sat+Tue only, 25 km target, 12w.
+  // Claude produced long rides of 26/28/29 km in weeks 9/10/11 before the
+  // 25 km graduation, which defeats the point of the graduation ride and
+  // overloads a first-time cyclist. The beginner-ceiling assertion in the
+  // validator now catches this.
+  { name: 'BEGINNER TARGET: 25 km, 12w, 2 days/week (Sat+Tue) — graduation ceiling',
+    goal: { id: 'bt8', goalType: 'beginner', cyclingType: 'road', targetDistance: 25, planName: 'Get into Cycling — Build a cycling habit' },
+    config: { id: 'cbt8', daysPerWeek: 2, weeks: 12, trainingTypes: ['outdoor'], sessionCounts: { outdoor: 2 }, availableDays: ['tuesday', 'saturday'], dayAssignments: { tuesday: 'outdoor', saturday: 'outdoor' }, fitnessLevel: 'beginner', startDate: '2026-04-27', longRideDay: 'saturday', coachId: 'clara' } },
 ];
 
 // ── Edit/mutation test scenarios ─────────────────────────────────────────────
@@ -1345,6 +1355,28 @@ function validate(plan, scenario) {
         `Beginner-with-target (${targetDist}km): no graduation ride close to target found in the last two weeks. ` +
         `Longest in weeks ${plan.weeks - 1}–${plan.weeks} is ${Math.round(longestInFinale)}km. ` +
         `A beginner programme must culminate in a ride at (or within 15% of) the chosen target.`
+      );
+    }
+
+    // ── Beginner ceiling: no pre-graduation ride at or above target ────────
+    // For beginner plans the graduation ride (final week) must be the FIRST
+    // time the athlete hits the target distance — it's the emotional payoff.
+    // Allow a small rounding tolerance (target - 1 km) so a 24 km ride against
+    // a 25 km target doesn't fail, but anything equal to or above the target
+    // before week N is a bug. Reported from production 2026-04-24 where a
+    // 12w/25km plan produced 26/28/29 km rides in weeks 9/10/11.
+    const preGradRides = acts.filter(a => a.type === 'ride' && a.week < plan.weeks);
+    const preGradOvershoots = preGradRides.filter(a => (a.distanceKm || 0) >= targetDist);
+    if (preGradOvershoots.length > 0) {
+      const detail = preGradOvershoots
+        .slice(0, 3)
+        .map(a => `week ${a.week} "${a.title}" ${a.distanceKm}km`)
+        .join(', ');
+      errors.push(
+        `Beginner-with-target (${targetDist}km): ${preGradOvershoots.length} pre-graduation ride(s) ` +
+        `at or above the target distance — ${detail}${preGradOvershoots.length > 3 ? ', …' : ''}. ` +
+        `The graduation ride in week ${plan.weeks} must be the first and only time the athlete ` +
+        `hits ${targetDist} km; overshoot before then defeats the point of a beginner plan.`
       );
     }
   } else if (goal.goalType === 'distance' && config.fitnessLevel === 'beginner') {

@@ -6,13 +6,17 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert,
   TextInput, KeyboardAvoidingView, Platform, StatusBar, ActivityIndicator,
+  Animated,
 } from 'react-native';
+import { Gesture, GestureDetector, ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, useBottomInset } from '../theme';
 import { getPlans, getGoals, getActivityDate, getPlanConfig, savePlan, getWeekActivities, getUserPrefs } from '../services/storageService';
 import { coachChat } from '../services/llmPlanService';
 import { getSessionColor, getSessionLabel, getMetricLabel, getActivityIcon, CROSS_TRAINING_COLOR, getCrossTrainingLabel } from '../utils/sessionLabels';
 import { getCoach } from '../data/coaches';
+import CoachChatCard from '../components/CoachChatCard';
+import { useUnits } from '../utils/units';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import analytics from '../services/analyticsService';
 
@@ -23,6 +27,7 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const CYCLING_LABELS = { road: 'Road', gravel: 'Gravel', mtb: 'MTB', ebike: 'E-Bike', mixed: 'Mixed' };
 
 export default function CalendarScreen({ navigation, route }) {
+  const { formatDistance } = useUnits();
   const pendingChanges = route.params?.pendingChanges || null;
   // Use the real device bottom inset so sticky bars on this screen never
   // sit underneath the Android gesture bar / 3-button nav.
@@ -43,6 +48,44 @@ export default function CalendarScreen({ navigation, route }) {
   const [reviewSending, setReviewSending] = useState(false);
   const [showReviewChat, setShowReviewChat] = useState(false);
   const reviewScrollRef = useRef(null);
+
+  // ── Drag-and-drop state ────────────────────────────────────────────────
+  // Same pattern as HomeScreen: long-press activates Pan, ghost follows the
+  // finger, and each day cell is a measured drop zone. We hit-test on both
+  // X and Y because the calendar is a 2D grid. Single-month only — drops
+  // outside the current month fall through as "no target" and cancel.
+  const [dragActivity, setDragActivity] = useState(null);
+  const dragPos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const dropZonesRef = useRef({}); // dateKey → { x, y, width, height }
+  const [hoveredDateKey, setHoveredDateKey] = useState(null);
+  const hoveredDateKeyRef = useRef(null);
+  // After a drag, the activity card's onPress still fires — suppress it so
+  // a release doesn't open the action bar as if the user tapped.
+  const justDraggedRef = useRef(false);
+  // Brief highlight on the target cell after a successful move so the user
+  // sees where the activity landed (especially useful when the move crosses
+  // months or lands on a pre-plan-start day that would otherwise look like
+  // a no-op from the home screen).
+  const [justMovedKey, setJustMovedKey] = useState(null);
+
+  const registerDropZone = (dateKey, ref) => {
+    if (!ref || !ref.measureInWindow) return;
+    ref.measureInWindow((x, y, w, h) => {
+      dropZonesRef.current[dateKey] = { x, y, width: w, height: h };
+    });
+  };
+
+  const findDropTargetAtXY = (pageX, pageY) => {
+    for (const [dateKey, zone] of Object.entries(dropZonesRef.current)) {
+      if (
+        pageX >= zone.x && pageX <= zone.x + zone.width &&
+        pageY >= zone.y && pageY <= zone.y + zone.height
+      ) {
+        return dateKey;
+      }
+    }
+    return null;
+  };
 
   // Sync reviewMode when pendingChanges arrives via navigation (screen already mounted)
   useEffect(() => {
@@ -67,6 +110,14 @@ export default function CalendarScreen({ navigation, route }) {
   }, []);
 
   useEffect(() => { load(); analytics.events.calendarViewed(MONTHS[viewDate.getMonth()]); }, [load]);
+
+  // When the month changes the grid cells get reused with new dayKeys,
+  // so the old measurements in dropZonesRef point at wrong (dateKey →
+  // zone) pairs. Clear them — the ref callbacks on each cell will
+  // repopulate the map as React attaches refs after the re-render.
+  useEffect(() => {
+    dropZonesRef.current = {};
+  }, [viewDate]);
   useEffect(() => {
     const unsub = navigation.addListener('focus', load);
     return unsub;
@@ -253,10 +304,19 @@ export default function CalendarScreen({ navigation, route }) {
     load();
   }, [actionActivity, load]);
 
-  // Tap a day cell while moving — place the activity on that day
-  const handlePlaceActivity = useCallback(async (targetDate) => {
-    if (!movingActivity) return;
-    const { activity, planId, planStartDate } = movingActivity;
+  // Place an activity on a calendar date. Works for both the tap-to-move
+  // flow (uses movingActivity state) and the drag-and-drop flow (passes
+  // the { activity, planId, planStartDate } as `override`).
+  //
+  // Important: if the target is before plan.startDate, we simply allow
+  // negative/zero week values. We do NOT regenerate the rest of the plan
+  // or shift other activities — the user explicitly wants a single-
+  // activity move that saves credits. They can always ask the coach to
+  // reshape the plan afterwards.
+  const handlePlaceActivity = useCallback(async (targetDate, override) => {
+    const moving = override || movingActivity;
+    if (!moving) return;
+    const { activity, planId, planStartDate } = moving;
 
     // Calculate target week + dayOfWeek from the calendar date
     const datePart = String(planStartDate).split('T')[0];
@@ -269,10 +329,11 @@ export default function CalendarScreen({ navigation, route }) {
 
     const target = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 12, 0, 0);
     const diffDays = Math.round((target - monday) / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) { setMovingActivity(null); return; }
 
+    // Allow negative diffDays for pre-plan-start moves. Use floor + mod-7
+    // correction so dayOfWeek is always 0..6 even for negative values.
     const newWeek = Math.floor(diffDays / 7) + 1;
-    const newDayOfWeek = diffDays % 7;
+    const newDayOfWeek = ((diffDays % 7) + 7) % 7;
 
     // Same position — cancel
     if (newWeek === activity.week && newDayOfWeek === activity.dayOfWeek) {
@@ -285,12 +346,46 @@ export default function CalendarScreen({ navigation, route }) {
     const plan = allPlans.find(p => p.id === planId);
     if (!plan) { setMovingActivity(null); return; }
 
-    // Check plan bounds
-    if (newWeek < 1 || newWeek > (plan.weeks || 52)) {
+    // Upper bound only — allow moves before plan start (week can be <= 0).
+    if (newWeek > (plan.weeks || 52)) {
       Alert.alert('Out of range', 'That day is outside this plan.');
       setMovingActivity(null);
       return;
     }
+
+    // Optimistic update so the move is visible immediately, no delay
+    // waiting on savePlan + load().
+    setPlans((prev) => prev.map((p) => {
+      if (p.id !== planId) return p;
+      return {
+        ...p,
+        activities: (p.activities || []).map(a =>
+          a.id === activity.id ? { ...a, week: newWeek, dayOfWeek: newDayOfWeek } : a
+        ),
+      };
+    }));
+
+    // Surface the move to the user: jump the calendar to the target
+    // month (if different), select the target date, and flash the cell
+    // briefly so they can see exactly where the activity landed. Without
+    // this, moves to other months — especially pre-plan-start — can
+    // feel like "nothing happened" because the source day just empties.
+    //
+    // NOTE: derive year/month from viewDate INSIDE the callback, don't
+    // close over the `year`/`month` locals computed later in the render
+    // body — those are in the temporal dead zone when useCallback runs
+    // on the first render and referencing them here throws
+    // "Cannot access 'year' before initialization".
+    const currentYear = viewDate.getFullYear();
+    const currentMonth = viewDate.getMonth();
+    const targetKey = `${target.getFullYear()}-${target.getMonth()}-${target.getDate()}`;
+    const targetMonthChanged = target.getFullYear() !== currentYear || target.getMonth() !== currentMonth;
+    if (targetMonthChanged) {
+      setViewDate(new Date(target.getFullYear(), target.getMonth(), 1));
+    }
+    setSelectedDate(target);
+    setJustMovedKey(targetKey);
+    setTimeout(() => setJustMovedKey((k) => (k === targetKey ? null : k)), 1400);
 
     const act = plan.activities.find(a => a.id === activity.id);
     if (act) {
@@ -300,7 +395,60 @@ export default function CalendarScreen({ navigation, route }) {
     }
     setMovingActivity(null);
     load();
-  }, [movingActivity, load]);
+  }, [movingActivity, load, viewDate]);
+
+  // Build the composed drag gesture for an activity card. Matches
+  // HomeScreen's pattern: long-press 350ms activates Pan, which then
+  // drives the ghost and hit-tests on every frame. On release, we look
+  // up the hovered day cell and fire handlePlaceActivity with the full
+  // moving payload (we don't rely on state having settled by the time
+  // onEnd runs).
+  const makeDragGesture = (activity, planId, planStartDate) => {
+    let didActivate = false;
+    const payload = { activity, planId, planStartDate };
+    return Gesture.Pan()
+      .activateAfterLongPress(350)
+      .runOnJS(true)
+      .onStart((e) => {
+        didActivate = true;
+        setDragActivity(activity);
+        setMovingActivity(payload);
+        dragPos.setValue({ x: e.absoluteX - 140, y: e.absoluteY - 24 });
+      })
+      .onChange((e) => {
+        dragPos.setValue({ x: e.absoluteX - 140, y: e.absoluteY - 24 });
+        const target = findDropTargetAtXY(e.absoluteX, e.absoluteY);
+        if (target !== hoveredDateKeyRef.current) {
+          hoveredDateKeyRef.current = target;
+          setHoveredDateKey(target);
+        }
+      })
+      .onEnd(async (e) => {
+        const targetKey = findDropTargetAtXY(e.absoluteX, e.absoluteY);
+        setDragActivity(null);
+        setHoveredDateKey(null);
+        hoveredDateKeyRef.current = null;
+        justDraggedRef.current = true;
+        setTimeout(() => { justDraggedRef.current = false; }, 300);
+        if (targetKey) {
+          const [ty, tm, td] = targetKey.split('-').map(Number);
+          await handlePlaceActivity(new Date(ty, tm, td), payload);
+        } else {
+          // Dropped outside any cell (e.g. off-month) — just cancel.
+          setMovingActivity(null);
+        }
+      })
+      .onFinalize(() => {
+        if (didActivate) {
+          setDragActivity(null);
+          setHoveredDateKey(null);
+          hoveredDateKeyRef.current = null;
+          justDraggedRef.current = true;
+          setTimeout(() => { justDraggedRef.current = false; }, 300);
+        }
+        didActivate = false;
+      });
+  };
 
   // When entering review mode, jump to the first affected month
   useEffect(() => {
@@ -534,6 +682,20 @@ export default function CalendarScreen({ navigation, route }) {
           </View>
         )}
 
+        {/* Drag-and-drop tip card — persistent so users know they can
+            move sessions directly. Only hidden in review/moving modes
+            (where their own banner takes over). It also mentions moving
+            to a day BEFORE the plan starts, since that's a common ask
+            the user can't discover any other way. */}
+        {!reviewMode && !movingActivity && plans.length > 0 && (
+          <View style={s.dragTip}>
+            <MaterialCommunityIcons name="gesture-tap-hold" size={16} color={colors.primary} />
+            <Text style={s.dragTipText} numberOfLines={2}>
+              Press and hold any session to drag it to another day — including days before your plan starts.
+            </Text>
+          </View>
+        )}
+
         {/* Moving activity banner */}
         {movingActivity && (
           <View style={s.moveBanner}>
@@ -563,17 +725,26 @@ export default function CalendarScreen({ navigation, route }) {
               {week.map((day, di) => {
                 const items = getDayCellItems(day);
                 const hasGoal = day && !!goalDateMap[getKey(day)];
+                const dayKey = day ? getKey(day) : null;
+                const isDragHover = dragActivity && dayKey && hoveredDateKey === dayKey;
+                const isJustMoved = dayKey && justMovedKey === dayKey;
                 return (
                   <TouchableOpacity
-                    key={di}
+                    // Key includes year/month so cells remount on month
+                    // navigation — this retriggers the ref callback and
+                    // repopulates dropZonesRef with the current dayKeys.
+                    key={`${year}-${month}-${wi}-${di}`}
+                    ref={(r) => { if (day) registerDropZone(dayKey, r); }}
                     style={[
                       s.dayCell,
                       hasGoal && s.dayCellGoal,
                       isToday(day) && s.dayCellToday,
                       isSelected(day) && s.dayCellSelected,
                       reviewMode && day && affectedDateKeys.has(getKey(day)) && !isSelected(day) && s.dayCellChanged,
-                      movingActivity && day && !isMoveSource(day) && s.dayCellDropTarget,
+                      movingActivity && day && !isMoveSource(day) && !dragActivity && s.dayCellDropTarget,
                       isMoveSource(day) && s.dayCellMoveSource,
+                      isDragHover && s.dayCellDragHover,
+                      isJustMoved && s.dayCellJustMoved,
                     ]}
                     onPress={() => {
                       if (!day) return;
@@ -633,8 +804,24 @@ export default function CalendarScreen({ navigation, route }) {
           ))}
         </View>
 
-        {/* Selected day activities */}
-        <ScrollView style={s.activityList}>
+        {/* Selected day activities.
+            Using the gesture-handler-aware ScrollView (GHScrollView) so
+            the long-press-then-pan drag on an activity card activates
+            reliably — a plain RN ScrollView grabs touches too eagerly
+            during the 350ms hold and steals the gesture before Pan
+            fires. Also disabling scroll while a drag is in flight so
+            the list doesn't try to scroll under the finger as the
+            ghost card moves.
+            showsVerticalScrollIndicator={false} because the iOS
+            Simulator renders a permanent scrollbar when driven by a
+            mouse — on real devices it only flashes during scroll, but
+            turning it off entirely avoids the simulator artefact and
+            looks cleaner regardless. */}
+        <GHScrollView
+          style={s.activityList}
+          scrollEnabled={!dragActivity}
+          showsVerticalScrollIndicator={false}
+        >
           {selectedDate && (
             <View style={s.selectedHeader}>
               <Text style={s.selectedLabel}>
@@ -675,83 +862,118 @@ export default function CalendarScreen({ navigation, route }) {
               </View>
             </View>
           ))}
-          {selectedActivities.map(activity => (
-            <TouchableOpacity
-              key={activity.id}
-              style={[s.actCard, activity.type === 'strength' && s.actCardStrength, activity.completed && s.actCardDone, actionActivity?.activity?.id === activity.id && s.actCardActive]}
-              onPress={() => {
-                if (actionActivity?.activity?.id === activity.id) {
-                  // Already selected — navigate to activity detail
-                  navigation.navigate('ActivityDetail', { activityId: activity.id });
-                } else {
-                  setActionActivity({ activity, planId: activity._planId });
-                }
-              }}
-              activeOpacity={0.75}
-            >
-              <View style={[s.actAccent, { backgroundColor: ACTIVITY_BLUE }]} />
-              <View style={s.actBody}>
-                <View style={s.actTop}>
-                  <View style={[s.typeShape, activity.type === 'strength' ? s.typeShapeSquare : s.typeShapeCircle, { backgroundColor: ACTIVITY_BLUE }]} />
-                  <View style={[s.actTypeBadge, { backgroundColor: ACTIVITY_BLUE + '18' }]}>
-                    <Text style={[s.actTypeText, { color: ACTIVITY_BLUE }]}>{getSessionLabel(activity)}</Text>
+          {selectedActivities.map(activity => {
+            const plan = plans.find(p => p.id === activity._planId);
+            const planStartDate = plan?.startDate;
+            const dragGesture = planStartDate
+              ? makeDragGesture(activity, activity._planId, planStartDate)
+              : null;
+            const card = (
+              <TouchableOpacity
+                key={activity.id}
+                style={[s.actCard, activity.type === 'strength' && s.actCardStrength, activity.completed && s.actCardDone, actionActivity?.activity?.id === activity.id && s.actCardActive]}
+                onPress={() => {
+                  if (justDraggedRef.current) return;
+                  if (actionActivity?.activity?.id === activity.id) {
+                    // Already selected — navigate to activity detail
+                    navigation.navigate('ActivityDetail', { activityId: activity.id });
+                  } else {
+                    setActionActivity({ activity, planId: activity._planId });
+                  }
+                }}
+                activeOpacity={0.75}
+              >
+                <View style={[s.actAccent, { backgroundColor: ACTIVITY_BLUE }]} />
+                <View style={s.actBody}>
+                  <View style={s.actTop}>
+                    <View style={[s.typeShape, activity.type === 'strength' ? s.typeShapeSquare : s.typeShapeCircle, { backgroundColor: ACTIVITY_BLUE }]} />
+                    <View style={[s.actTypeBadge, { backgroundColor: ACTIVITY_BLUE + '18' }]}>
+                      <Text style={[s.actTypeText, { color: ACTIVITY_BLUE }]}>{getSessionLabel(activity)}</Text>
+                    </View>
+                    <View style={s.actTextWrap}>
+                      <Text style={[s.actTitle, activity.completed && s.actTitleDone]}>{activity.title}</Text>
+                      <Text style={s.actMeta}>
+                        {activity.distanceKm ? formatDistance(activity.distanceKm) : ''}
+                        {activity.distanceKm && activity.durationMins ? ' \u00B7 ' : ''}
+                        {activity.durationMins ? `${activity.durationMins} min` : ''}
+                        {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
+                      </Text>
+                    </View>
+                    {activity.completed ? (
+                      <View style={s.checkDone}><Text style={s.checkMark}>{'\u2713'}</Text></View>
+                    ) : (
+                      <MaterialCommunityIcons name="drag-horizontal-variant" size={18} color={colors.textFaint} />
+                    )}
                   </View>
-                  <View style={s.actTextWrap}>
-                    <Text style={[s.actTitle, activity.completed && s.actTitleDone]}>{activity.title}</Text>
-                    <Text style={s.actMeta}>
-                      {activity.distanceKm ? `${activity.distanceKm} km` : ''}
-                      {activity.distanceKm && activity.durationMins ? ' \u00B7 ' : ''}
-                      {activity.durationMins ? `${activity.durationMins} min` : ''}
-                      {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
-                    </Text>
-                  </View>
-                  {activity.completed ? (
-                    <View style={s.checkDone}><Text style={s.checkMark}>{'\u2713'}</Text></View>
-                  ) : (
-                    <MaterialCommunityIcons name="dots-vertical" size={18} color={colors.textFaint} />
-                  )}
                 </View>
+              </TouchableOpacity>
+            );
+            return dragGesture ? (
+              <GestureDetector key={activity.id} gesture={dragGesture}>
+                {card}
+              </GestureDetector>
+            ) : card;
+          })}
+          {/* Activity action bar — lives INSIDE the GHScrollView so it
+              scrolls with the activity list + coach card as one panel
+              below the calendar grid. Previously it was fixed at the
+              bottom as a sibling of the ScrollView, which meant it
+              covered the last activity row when a day was selected and
+              forced the user to scroll the short, cramped list above it.
+              Now the selection → action bar → coach card reads as one
+              cohesive sheet that scrolls together. */}
+          {actionActivity && !movingActivity && (
+            <View style={s.actionBar}>
+              <TouchableOpacity
+                style={s.actionBarTitleRow}
+                onPress={() => {
+                  const id = actionActivity.activity.id;
+                  setActionActivity(null);
+                  navigation.navigate('ActivityDetail', { activityId: id });
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={s.actionBarTitle} numberOfLines={1}>{actionActivity.activity.title}</Text>
+                <Text style={s.actionBarTitleChevron}>{'\u203A'}</Text>
+              </TouchableOpacity>
+              <View style={s.actionBarBtns}>
+                <TouchableOpacity style={s.actionBarBtn} onPress={handleActionMove} activeOpacity={0.7}>
+                  <MaterialCommunityIcons name="calendar-arrow-right" size={20} color={colors.text} />
+                  <Text style={s.actionBarBtnText}>Move</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.actionBarBtn, s.actionBarBtnDelete]} onPress={handleActionDelete} activeOpacity={0.7}>
+                  <MaterialCommunityIcons name="delete-outline" size={20} color="#EF4444" />
+                  <Text style={[s.actionBarBtnText, { color: '#EF4444' }]}>Delete</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.actionBarBtn} onPress={() => setActionActivity(null)} activeOpacity={0.7}>
+                  <MaterialCommunityIcons name="close" size={20} color={colors.textMuted} />
+                  <Text style={[s.actionBarBtnText, { color: colors.textMuted }]}>Cancel</Text>
+                </TouchableOpacity>
               </View>
-            </TouchableOpacity>
-          ))}
-          {/* Spacer so the last activity clears the sticky coach bar + any
-              Android gesture inset. Uses the hook to adjust per-device. */}
-          <View style={{ height: 80 + bottomInset }} />
-        </ScrollView>
-
-        {/* Activity action bar — shown when an activity is tapped. Uses the
-            device-reported bottom inset so the buttons always sit above the
-            Android system nav. */}
-        {actionActivity && !movingActivity && (
-          <View style={[s.actionBar, { paddingBottom: bottomInset }]}>
-            <TouchableOpacity
-              style={s.actionBarTitleRow}
-              onPress={() => {
-                const id = actionActivity.activity.id;
-                setActionActivity(null);
-                navigation.navigate('ActivityDetail', { activityId: id });
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={s.actionBarTitle} numberOfLines={1}>{actionActivity.activity.title}</Text>
-              <Text style={s.actionBarTitleChevron}>{'\u203A'}</Text>
-            </TouchableOpacity>
-            <View style={s.actionBarBtns}>
-              <TouchableOpacity style={s.actionBarBtn} onPress={handleActionMove} activeOpacity={0.7}>
-                <MaterialCommunityIcons name="calendar-arrow-right" size={20} color={colors.text} />
-                <Text style={s.actionBarBtnText}>Move</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.actionBarBtn, s.actionBarBtnDelete]} onPress={handleActionDelete} activeOpacity={0.7}>
-                <MaterialCommunityIcons name="delete-outline" size={20} color="#EF4444" />
-                <Text style={[s.actionBarBtnText, { color: '#EF4444' }]}>Delete</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.actionBarBtn} onPress={() => setActionActivity(null)} activeOpacity={0.7}>
-                <MaterialCommunityIcons name="close" size={20} color={colors.textMuted} />
-                <Text style={[s.actionBarBtnText, { color: colors.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
             </View>
-          </View>
-        )}
+          )}
+
+          {/* Coach chat card — also inside the scroll view so it stays
+              part of the same scrollable panel. Only in non-review mode;
+              review mode uses its own bottom sheet below. */}
+          {!reviewMode && visiblePlans.length > 0 && (() => {
+            const firstPlan = visiblePlans[0];
+            const cfg = firstPlan.configId ? planConfigs[firstPlan.configId] : null;
+            return (
+              <View style={s.coachCardWrap}>
+                <CoachChatCard
+                  coach={getCoach(cfg?.coachId)}
+                  onPress={() => navigation.navigate('CoachChat', { planId: firstPlan.id })}
+                  subtitleOverride="Move sessions, adjust the plan, or ask anything about your training."
+                />
+              </View>
+            );
+          })()}
+
+          {/* Bottom spacer clears the Android gesture bar so the last
+              card has breathing room. */}
+          <View style={{ height: 24 + bottomInset }} />
+        </GHScrollView>
 
         {/* Review mode bottom panel */}
         {reviewMode && changeDiff && (
@@ -819,24 +1041,37 @@ export default function CalendarScreen({ navigation, route }) {
           </KeyboardAvoidingView>
         )}
 
-        {/* Coach chat bottom bar — device-reported inset so it always clears
-            the Android gesture bar on every screen size. */}
-        {!reviewMode && visiblePlans.length > 0 && (
-          <View style={[s.coachBar, { paddingBottom: bottomInset }]}>
-            <TouchableOpacity
-              style={s.coachBtn}
-              onPress={() => navigation.navigate('CoachChat', { planId: visiblePlans[0].id })}
-              activeOpacity={0.7}
-            >
-              <View style={[s.coachDot, { backgroundColor: colors.primary }]} />
-              <View style={s.coachBtnTextWrap}>
-                <Text style={s.coachBtnLabel}>Ask your coach</Text>
-                <Text style={s.coachBtnHint}>Move sessions, adjust the plan, or get advice</Text>
-              </View>
-              <Text style={s.coachBtnArrow}>{'\u203A'}</Text>
-            </TouchableOpacity>
-          </View>
+        {/* Floating drag ghost — follows the finger during a drag and
+            renders a shadowed copy of the activity so the user can see
+            exactly what they're moving while the original card stays put. */}
+        {dragActivity && (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              s.dragGhost,
+              {
+                transform: [
+                  { translateX: dragPos.x },
+                  { translateY: dragPos.y },
+                ],
+              },
+            ]}
+          >
+            <Text style={s.dragGhostTitle} numberOfLines={1}>{dragActivity.title || 'Session'}</Text>
+            {(dragActivity.distanceKm || dragActivity.durationMins) && (
+              <Text style={s.dragGhostMeta} numberOfLines={1}>
+                {dragActivity.distanceKm ? formatDistance(dragActivity.distanceKm) : ''}
+                {dragActivity.distanceKm && dragActivity.durationMins ? ' \u00B7 ' : ''}
+                {dragActivity.durationMins ? `${dragActivity.durationMins} min` : ''}
+              </Text>
+            )}
+          </Animated.View>
         )}
+
+        {/* The coach chat card that used to live here has moved INSIDE
+            the GHScrollView above so it scrolls with the activity list
+            and action bar as one cohesive panel below the calendar grid.
+            See the coachCardWrap block just before the scroll spacer. */}
       </SafeAreaView>
     </View>
   );
@@ -935,7 +1170,15 @@ const s = StyleSheet.create({
   checkDone: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#22C55E', alignItems: 'center', justifyContent: 'center' },
   checkMark: { fontSize: 12, color: '#fff', fontWeight: '700' },
 
-  // Coach chat bottom bar
+  // Wrapper around the shared CoachChatCard when it lives INSIDE the
+  // GHScrollView. No border / no surface background — those were needed
+  // when it was a fixed bottom bar, but in-scroll we want it to feel
+  // like a card floating on the screen background, consistent with
+  // HomeScreen's coachCardWrap treatment.
+  coachCardWrap: { paddingHorizontal: 16, paddingTop: 8 },
+
+  // (Legacy coachBar style kept for reference — no longer used in JSX
+  // after the action-bar + coach-card moved into the GHScrollView.)
   coachBar: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: Platform.OS === 'android' ? 34 : 12, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
   coachBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -1016,6 +1259,59 @@ const s = StyleSheet.create({
   moveBannerCancel: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: 'rgba(255,255,255,0.7)' },
   dayCellDropTarget: { borderWidth: 1, borderColor: 'rgba(232,69,139,0.3)', borderStyle: 'dashed' },
   dayCellMoveSource: { backgroundColor: 'rgba(232,69,139,0.2)', borderColor: colors.primary, borderWidth: 1.5, borderStyle: 'solid' },
+  // Only the hovered cell during a drag lights up — cleaner than flagging
+  // every cell as a potential target.
+  dayCellDragHover: {
+    backgroundColor: 'rgba(232,69,139,0.22)',
+    borderWidth: 1.5, borderColor: colors.primary,
+  },
+
+  // Brief flash on the cell where an activity just landed. Without this,
+  // moves to another month (especially pre-plan-start) can feel like
+  // "nothing happened" because the source day just empties.
+  dayCellJustMoved: {
+    backgroundColor: 'rgba(232,69,139,0.32)',
+    borderWidth: 1.5, borderColor: colors.primary,
+  },
+
+  // Persistent tip above the calendar grid so users discover drag-to-move
+  // without needing to tap a session first. Pink-tinted to match the
+  // accent colour and the drag highlights used elsewhere on the screen.
+  dragTip: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginHorizontal: 16, marginBottom: 10,
+    paddingHorizontal: 14, paddingVertical: 10,
+    backgroundColor: 'rgba(232,69,139,0.08)',
+    borderRadius: 12,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.22)',
+  },
+  dragTipText: {
+    flex: 1,
+    fontSize: 12, lineHeight: 16,
+    fontWeight: '500', fontFamily: FF.medium,
+    color: colors.textMid,
+  },
+
+  // Tiny helper text below the activity list so users know drag works.
+  dragHint: {
+    fontSize: 11, fontWeight: '400', fontFamily: FF.regular,
+    color: colors.textFaint, textAlign: 'center', marginTop: 6, marginBottom: 4,
+  },
+
+  // Ghost card that follows the finger while dragging — shadowed, with
+  // the pink border so it clearly looks like a floating clone.
+  dragGhost: {
+    position: 'absolute', left: 0, top: 0,
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5, borderColor: colors.primary,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35, shadowRadius: 18, elevation: 16,
+    minWidth: 180, maxWidth: 280,
+  },
+  dragGhostTitle: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  dragGhostMeta: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 2 },
 
   // Activity action bar
   actCardActive: { borderColor: colors.primary, borderWidth: 1.5 },

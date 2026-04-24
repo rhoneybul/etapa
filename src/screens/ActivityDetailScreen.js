@@ -11,9 +11,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
-import { getPlans, getGoals, markActivityComplete, updateActivity, savePlan } from '../services/storageService';
-import { editActivityWithAI } from '../services/llmPlanService';
+import { getPlans, getGoals, getPlanConfig, getUserPrefs, markActivityComplete, updateActivity, savePlan } from '../services/storageService';
+import { editActivityWithAI, explainActivity as explainActivityApi } from '../services/llmPlanService';
 import { getSessionColor, getSessionLabel, SESSION_COLORS, EFFORT_LABELS as EFFORT_GUIDE_LABELS } from '../utils/sessionLabels';
+import { formatRpe, formatHeartRate, formatPower, shouldShowPower } from '../utils/intensity';
+import { useUnits } from '../utils/units';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import CoachChatCard from '../components/CoachChatCard';
+import { getCoach } from '../data/coaches';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
@@ -75,10 +80,14 @@ function generateRideTips(activity) {
 }
 
 export default function ActivityDetailScreen({ navigation, route }) {
+  const { formatDistance, unit } = useUnits();
   const { activityId, initialEditing } = route.params;
   const [activity, setActivity] = useState(null);
   const [plan, setPlan] = useState(null);
   const [goal, setGoal] = useState(null);
+  // planConfig carries the user's chosen coach; needed so the CoachChatCard
+  // renders the correct avatar / name / colour on this screen too.
+  const [planConfig, setPlanConfig] = useState(null);
   // Allow callers (e.g. HomeScreen long-press → Edit) to open this screen
   // directly in edit mode so the user doesn't have to tap "Edit" again.
   const [isEditing, setIsEditing] = useState(!!initialEditing);
@@ -91,6 +100,16 @@ export default function ActivityDetailScreen({ navigation, route }) {
   const [chatStatus, setChatStatus] = useState('');
   const [chatMessages, setChatMessages] = useState([]); // { role: 'user'|'coach', text: string }
 
+  // User prefs drive the intensity-rendering strategy — users with maxHr
+  // get bpm instead of %, users with ftp get watts. Absent fields fall
+  // back to percentages. Loaded once on mount.
+  const [userPrefs, setUserPrefs] = useState(null);
+  // Lazy "Explain this session" state — for plans that pre-date the
+  // structured-session schema. When tapped, we call the server to
+  // synthesise a structure and cache it on the activity.
+  const [explaining, setExplaining] = useState(false);
+  const [explainError, setExplainError] = useState('');
+
   const scrollRef = useRef(null);
 
   const loadActivity = async () => {
@@ -102,6 +121,10 @@ export default function ActivityDetailScreen({ navigation, route }) {
         setPlan(p);
         setActivity(a);
         setGoal(goals.find(g => g.id === p.goalId) || null);
+        if (p.configId) {
+          const cfg = await getPlanConfig(p.configId);
+          if (cfg) setPlanConfig(cfg);
+        }
         analytics.events.activityViewed({ activityType: a.type, subType: a.subType, effort: a.effort, week: a.week, completed: !!a.completed });
         setEditValues({
           distanceKm: a.distanceKm?.toString() || '',
@@ -115,6 +138,30 @@ export default function ActivityDetailScreen({ navigation, route }) {
   };
 
   useEffect(() => { loadActivity(); }, [activityId]);
+  useEffect(() => { getUserPrefs().then(setUserPrefs).catch(() => {}); }, []);
+
+  // "Explain this session" handler — fills in the structure block for
+  // legacy activities by calling the server. Caches the result back onto
+  // the activity via updateActivity() so the next visit renders instantly.
+  const handleExplainSession = async () => {
+    if (!activity || explaining) return;
+    setExplaining(true);
+    setExplainError('');
+    try {
+      const structure = await explainActivityApi(activity, goal);
+      if (!structure) {
+        setExplainError('Couldn\'t generate a breakdown right now. Try again in a moment.');
+        return;
+      }
+      await updateActivity(activityId, { structure });
+      await loadActivity();
+    } catch (err) {
+      console.warn('explain-session failed:', err);
+      setExplainError('Something went wrong — try again.');
+    } finally {
+      setExplaining(false);
+    }
+  };
 
   const handleComplete = async () => {
     if (activity && !activity.completed) {
@@ -263,19 +310,34 @@ export default function ActivityDetailScreen({ navigation, route }) {
         </View>
 
         <ScrollView ref={scrollRef} style={s.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {/* Title card */}
+          {/* Title card — the completion toggle now lives here in the
+              header as a circular checkbox next to the title, matching
+              the pattern used in HomeScreen's week list. Previously the
+              "Mark as complete" action was a big pink button at the
+              bottom of the screen; users consistently missed it and
+              the inconsistency between list-row checkmark and detail-
+              screen big-button looked like two different concepts. */}
           <View style={s.titleCard}>
             <View style={[s.typeTag, { backgroundColor: effortColor + '20' }]}>
               <Text style={[s.typeTagText, { color: effortColor }]}>
                 {isStrength ? 'strength' : (activity.subType || 'ride')}
               </Text>
             </View>
-            <Text style={s.title}>{activity.title}</Text>
-            {activity.completed && (
-              <View style={s.completedBadge}>
-                <Text style={s.completedText}>{'\u2713'} Completed</Text>
-              </View>
-            )}
+            <View style={s.titleRow}>
+              <Text style={[s.title, activity.completed && s.titleDone]}>{activity.title}</Text>
+              <TouchableOpacity
+                onPress={handleComplete}
+                style={[s.completeCircle, activity.completed && s.completeCircleDone]}
+                hitSlop={HIT}
+                activeOpacity={0.7}
+                accessibilityLabel={activity.completed ? 'Mark as incomplete' : 'Mark as complete'}
+              >
+                {activity.completed ? <Text style={s.completeTick}>{'\u2713'}</Text> : null}
+              </TouchableOpacity>
+            </View>
+            <Text style={s.titleHint}>
+              {activity.completed ? 'Completed — tap the tick to undo' : 'Tap the circle to mark as complete'}
+            </Text>
           </View>
 
           {/* Metrics — editable */}
@@ -290,12 +352,12 @@ export default function ActivityDetailScreen({ navigation, route }) {
                       value={editValues.distanceKm}
                       onChangeText={v => setEditValues(prev => ({ ...prev, distanceKm: v }))}
                       keyboardType="numeric"
-                      placeholder="km"
+                      placeholder={unit}
                       placeholderTextColor={colors.textFaint}
                       returnKeyType="done"
                       onSubmitEditing={() => Keyboard.dismiss()}
                     />
-                    <Text style={s.metricUnit}>km</Text>
+                    <Text style={s.metricUnit}>{unit}</Text>
                   </View>
                   <View style={s.metric}>
                     <Text style={s.metricLabel}>DURATION</Text>
@@ -317,7 +379,7 @@ export default function ActivityDetailScreen({ navigation, route }) {
                   {activity.distanceKm != null && (
                     <View style={s.metric}>
                       <Text style={s.metricLabel}>DISTANCE</Text>
-                      <Text style={s.metricValue}>{activity.distanceKm} km</Text>
+                      <Text style={s.metricValue}>{formatDistance(activity.distanceKm)}</Text>
                     </View>
                   )}
                   {activity.durationMins != null && (
@@ -376,23 +438,63 @@ export default function ActivityDetailScreen({ navigation, route }) {
             </View>
           )}
 
-          {/* Day selector in edit mode */}
-          {isEditing && (
-            <View style={s.daySelectorCard}>
-              <Text style={s.daySelectorLabel}>DAY</Text>
-              <View style={s.daySelectorRow}>
-                {DAY_NAMES.map((name, i) => (
-                  <TouchableOpacity
-                    key={i}
-                    style={[s.dayPill, editValues.dayOfWeek === i && s.dayPillActive]}
-                    onPress={() => setEditValues(prev => ({ ...prev, dayOfWeek: i }))}
-                  >
-                    <Text style={[s.dayPillText, editValues.dayOfWeek === i && s.dayPillTextActive]}>{name}</Text>
-                  </TouchableOpacity>
-                ))}
+          {/* Day selector in edit mode.
+              Under each day pill we show what's already scheduled on that
+              day in the same week so the user can see "Tue is already a
+              ride" before moving this session onto it. The current
+              activity itself is excluded from the summary (otherwise every
+              day shows its own session). */}
+          {isEditing && (() => {
+            // Build a per-day-of-week summary for the current activity's week.
+            const scheduleByDay = Array.from({ length: 7 }, () => []);
+            (plan?.activities || []).forEach((a) => {
+              if (a.id === activity.id) return; // hide self
+              if ((a.week ?? 1) !== (activity.week ?? 1)) return;
+              scheduleByDay[a.dayOfWeek ?? 0].push(a);
+            });
+            const summarise = (acts) => {
+              if (!acts.length) return null;
+              const primary = acts[0];
+              if (acts.length === 1) {
+                if (primary.type === 'strength') return 'Strength';
+                if (primary.distanceKm) return formatDistance(primary.distanceKm);
+                if (primary.durationMins) return `${primary.durationMins} min`;
+                return 'Session';
+              }
+              return `${acts.length} sessions`;
+            };
+            return (
+              <View style={s.daySelectorCard}>
+                <Text style={s.daySelectorLabel}>DAY</Text>
+                <View style={s.daySelectorRow}>
+                  {DAY_NAMES.map((name, i) => {
+                    const busy = scheduleByDay[i];
+                    const summary = summarise(busy);
+                    const isSelected = editValues.dayOfWeek === i;
+                    return (
+                      <TouchableOpacity
+                        key={i}
+                        style={[s.dayPillCol, isSelected && s.dayPillColActive]}
+                        onPress={() => setEditValues(prev => ({ ...prev, dayOfWeek: i }))}
+                      >
+                        <Text style={[s.dayPillText, isSelected && s.dayPillTextActive]}>{name}</Text>
+                        <Text
+                          style={[
+                            s.dayPillSummary,
+                            isSelected && s.dayPillSummaryActive,
+                            !summary && s.dayPillSummaryRest,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {summary || 'Rest'}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
-            </View>
-          )}
+            );
+          })()}
 
           {/* Cascade notice */}
           {isEditing && (
@@ -414,6 +516,22 @@ export default function ActivityDetailScreen({ navigation, route }) {
             <Text style={s.descTitle}>What to do</Text>
             <Text style={s.descBody}>{activity.description}</Text>
           </View>
+
+          {/* Session breakdown — only for rides where intensity actually
+              matters (intervals / tempo / hard / max). For easy endurance
+              rides the "What to do" card above is enough context, and
+              rendering a "session breakdown" with recovery-level RPE adds
+              noise without information. */}
+          {isRide && !isEditing && (() => {
+            const needsBreakdown = activity.subType === 'intervals'
+              || activity.subType === 'tempo'
+              || activity.effort === 'hard'
+              || activity.effort === 'max';
+            if (!needsBreakdown) return null;
+            return activity.structure
+              ? renderStructurePanel(activity.structure, userPrefs)
+              : renderExplainCta({ onPress: handleExplainSession, loading: explaining, error: explainError });
+          })()}
 
           {/* Tips — rides only */}
           {isRide && !isEditing && (
@@ -489,44 +607,18 @@ export default function ActivityDetailScreen({ navigation, route }) {
           <View style={{ height: 80 }} />
         </ScrollView>
 
-        {/* AI chat bar — always visible */}
+        {/* Coach chat entry-point — same CoachChatCard component used on
+            Home and Week view, so the "ask your coach" action looks the
+            same wherever it appears. Previously this screen had a small
+            chat input bar inline, which diverged from the card pattern
+            and made the coach entry feel like a different feature here. */}
         {!isEditing && (
-          <View style={s.chatBar}>
-            {chatStatus ? (
-              <View style={s.chatStatusRow}>
-                {chatLoading && <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 8 }} />}
-                <Text style={s.chatStatusText}>{chatStatus}</Text>
-              </View>
-            ) : null}
-            <View style={s.chatInputRow}>
-              <TextInput
-                style={s.chatInput}
-                value={chatText}
-                onChangeText={setChatText}
-                placeholder="Ask your coach anything..."
-                placeholderTextColor={colors.textFaint}
-                editable={!chatLoading}
-                returnKeyType="send"
-                onSubmitEditing={handleChatSend}
-                multiline={false}
-              />
-              <TouchableOpacity
-                style={[s.chatSendBtn, (!chatText.trim() || chatLoading) && s.chatSendBtnDisabled]}
-                onPress={handleChatSend}
-                disabled={!chatText.trim() || chatLoading}
-              >
-                <Text style={s.chatSendText}>{'\u2191'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* Bottom action — mark complete */}
-        {!activity.completed && isEditing && (
-          <View style={s.bottomBar}>
-            <TouchableOpacity style={s.completeBtn} onPress={handleComplete} activeOpacity={0.85}>
-              <Text style={s.completeBtnText}>Mark as complete</Text>
-            </TouchableOpacity>
+          <View style={s.coachCardBar}>
+            <CoachChatCard
+              coach={getCoach(planConfig?.coachId)}
+              onPress={() => navigation.navigate('CoachChat', { planId: plan?.id, weekNum: activity.week })}
+              subtitleOverride={`Ask about this ${isStrength ? 'strength session' : 'ride'} or tweak it with your coach`}
+            />
           </View>
         )}
         </KeyboardAvoidingView>
@@ -536,6 +628,208 @@ export default function ActivityDetailScreen({ navigation, route }) {
 }
 
 const HIT = { top: 12, bottom: 12, left: 12, right: 12 };
+
+// ── Session breakdown renderer ────────────────────────────────────────────
+// Takes a structure object ({warmup, main, cooldown}) and renders the three
+// stages with the triple-intensity view (RPE + HR + power) for the main
+// set. Kept outside the component so it can be reused from other detail
+// surfaces later (e.g. week-preview summary) without duplication.
+function renderStructurePanel(structure, userPrefs) {
+  if (!structure) return null;
+  const { warmup, main, cooldown } = structure;
+  const intensity = main?.intensity;
+  const rpeLine = formatRpe(intensity);
+  const hrLine = formatHeartRate(intensity, userPrefs);
+  const powerLine = shouldShowPower(intensity, userPrefs) ? formatPower(intensity, userPrefs) : null;
+
+  // Main set label — build a natural-sounding summary from the numeric
+  // fields so users see "4 × 4 min hard, 3 min easy between" rather than
+  // a raw key-value dump. Falls back to a generic label when shape is
+  // unexpected (won't happen with server-validated structures, but belt
+  // and braces for manually edited plans).
+  let mainLabel = 'Main set';
+  if (main?.type === 'intervals' && main.reps && main.workMins) {
+    mainLabel = `${main.reps} × ${main.workMins} min`;
+    if (main.restMins) mainLabel += `, ${main.restMins} min easy between`;
+  } else if (main?.type === 'tempo' && main.blockMins) {
+    mainLabel = `${main.blockMins} min sustained tempo`;
+  } else if (main?.type === 'steady' && main.blockMins) {
+    mainLabel = `${main.blockMins} min steady`;
+  }
+
+  return (
+    <View style={structureStyles.panel}>
+      <Text style={structureStyles.panelTitle}>How to do this session</Text>
+
+      {warmup && (
+        <View style={structureStyles.stage}>
+          <View style={structureStyles.stageHead}>
+            <MaterialCommunityIcons name="play-speed" size={14} color={colors.textMuted} />
+            <Text style={structureStyles.stageLabel}>Warm up · {warmup.durationMins || '?'} min</Text>
+          </View>
+          {warmup.description ? <Text style={structureStyles.stageBody}>{warmup.description}</Text> : null}
+        </View>
+      )}
+
+      {main && (
+        <View style={[structureStyles.stage, structureStyles.stageMain]}>
+          <View style={structureStyles.stageHead}>
+            <MaterialCommunityIcons name="fire" size={14} color={colors.primary} />
+            <Text style={[structureStyles.stageLabel, structureStyles.stageLabelMain]}>{mainLabel}</Text>
+          </View>
+          {main.description ? <Text style={structureStyles.stageBody}>{main.description}</Text> : null}
+
+          {/* Triple-intensity block — RPE always, HR and power conditional */}
+          {(rpeLine || hrLine || powerLine) && (
+            <View style={structureStyles.intensityBlock}>
+              {rpeLine && (
+                <View style={structureStyles.intensityRow}>
+                  <Text style={structureStyles.intensityKey}>Feel</Text>
+                  <Text style={structureStyles.intensityVal}>{rpeLine}</Text>
+                </View>
+              )}
+              {hrLine && (
+                <View style={structureStyles.intensityRow}>
+                  <Text style={structureStyles.intensityKey}>Heart rate</Text>
+                  <Text style={structureStyles.intensityVal}>{hrLine}</Text>
+                </View>
+              )}
+              {powerLine && (
+                <View style={structureStyles.intensityRow}>
+                  <Text style={structureStyles.intensityKey}>Power</Text>
+                  <Text style={structureStyles.intensityVal}>{powerLine}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Only show the "set your own numbers" nudge when we're rendering
+              % ranges AND the user hasn't told us their max HR / FTP. Once
+              they've entered them we silently swap to actual numbers. */}
+          {!userPrefs?.maxHr && !userPrefs?.ftp && (hrLine || powerLine) && (
+            <Text style={structureStyles.prefsNudge}>
+              Add your max heart rate or FTP in Settings to see bpm and watt targets instead of percentages.
+            </Text>
+          )}
+        </View>
+      )}
+
+      {cooldown && (
+        <View style={structureStyles.stage}>
+          <View style={structureStyles.stageHead}>
+            <MaterialCommunityIcons name="snowflake" size={14} color={colors.textMuted} />
+            <Text style={structureStyles.stageLabel}>Cool down · {cooldown.durationMins || '?'} min</Text>
+          </View>
+          {cooldown.description ? <Text style={structureStyles.stageBody}>{cooldown.description}</Text> : null}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Legacy-plan escape hatch: structure-free activity shows a button that
+// triggers the server to synthesise one. First tap costs a Claude call and
+// is cached back on the activity for instant subsequent loads.
+function renderExplainCta({ onPress, loading, error }) {
+  return (
+    <View style={structureStyles.explainCard}>
+      <Text style={structureStyles.explainTitle}>Want a proper breakdown?</Text>
+      <Text style={structureStyles.explainBody}>
+        Get warm-up, main set, and cool-down laid out in plain English — with heart rate and effort targets you can actually use.
+      </Text>
+      {error ? <Text style={structureStyles.explainError}>{error}</Text> : null}
+      <TouchableOpacity
+        style={[structureStyles.explainBtn, loading && structureStyles.explainBtnDisabled]}
+        onPress={onPress}
+        disabled={loading}
+        activeOpacity={0.85}
+      >
+        {loading
+          ? <ActivityIndicator size="small" color="#fff" />
+          : <Text style={structureStyles.explainBtnText}>Explain this session</Text>}
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// Styles isolated from the main sheet so the breakdown panel can be
+// dropped into other screens later without dragging the rest of the
+// ActivityDetail stylesheet along.
+const structureStyles = StyleSheet.create({
+  panel: {
+    backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 12,
+    borderRadius: 16, padding: 18,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  panelTitle: {
+    fontSize: 14, fontWeight: '600', fontFamily: fontFamily.semibold,
+    color: colors.text, marginBottom: 12,
+  },
+
+  stage: { paddingVertical: 8 },
+  stageMain: {
+    backgroundColor: 'rgba(232,69,139,0.06)', borderRadius: 12,
+    paddingHorizontal: 12, paddingVertical: 12, marginVertical: 2,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.18)',
+  },
+  stageHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  stageLabel: {
+    fontSize: 13, fontWeight: '600', fontFamily: fontFamily.semibold,
+    color: colors.text,
+  },
+  stageLabelMain: { color: colors.primary },
+  stageBody: {
+    fontSize: 13, fontWeight: '400', fontFamily: fontFamily.regular,
+    color: colors.textMid, lineHeight: 19, marginTop: 2,
+  },
+
+  intensityBlock: {
+    marginTop: 10, paddingTop: 10,
+    borderTopWidth: 1, borderTopColor: 'rgba(232,69,139,0.14)',
+    gap: 6,
+  },
+  intensityRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  intensityKey: {
+    width: 84, fontSize: 11, fontWeight: '600', fontFamily: fontFamily.semibold,
+    color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, paddingTop: 2,
+  },
+  intensityVal: {
+    flex: 1, fontSize: 13, fontWeight: '400', fontFamily: fontFamily.regular,
+    color: colors.text, lineHeight: 18,
+  },
+
+  prefsNudge: {
+    marginTop: 10, fontSize: 11, fontWeight: '400', fontFamily: fontFamily.regular,
+    color: colors.textFaint, fontStyle: 'italic', lineHeight: 15,
+  },
+
+  // Explain CTA — shown on legacy activities without structure. Pink-tinted
+  // to match the rest of the accent treatment on this screen.
+  explainCard: {
+    backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 12,
+    borderRadius: 16, padding: 18,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.25)',
+  },
+  explainTitle: {
+    fontSize: 14, fontWeight: '600', fontFamily: fontFamily.semibold,
+    color: colors.text, marginBottom: 6,
+  },
+  explainBody: {
+    fontSize: 13, fontWeight: '400', fontFamily: fontFamily.regular,
+    color: colors.textMid, lineHeight: 19, marginBottom: 12,
+  },
+  explainError: {
+    fontSize: 12, fontFamily: fontFamily.medium, color: '#EF4444', marginBottom: 8,
+  },
+  explainBtn: {
+    backgroundColor: colors.primary, borderRadius: 12,
+    paddingVertical: 12, alignItems: 'center',
+  },
+  explainBtnDisabled: { opacity: 0.7 },
+  explainBtnText: {
+    fontSize: 14, fontWeight: '600', fontFamily: fontFamily.semibold, color: '#fff',
+  },
+});
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
@@ -555,9 +849,27 @@ const s = StyleSheet.create({
   },
   typeTag: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, marginBottom: 10 },
   typeTagText: { fontSize: 12, fontWeight: '600', fontFamily: FF.semibold, textTransform: 'uppercase', letterSpacing: 0.5 },
-  title: { fontSize: 22, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
-  completedBadge: { marginTop: 10, backgroundColor: 'rgba(232,69,139,0.12)', alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  completedText: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: '#E8458B' },
+  // Title row — the completion toggle sits to the right of the title,
+  // mirroring the week-list in HomeScreen (and ActivityDetail's old
+  // "Mark as complete" button at the bottom, which users often missed).
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  title: { flex: 1, fontSize: 22, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  titleDone: { color: colors.textMuted, textDecorationLine: 'line-through' },
+  titleHint: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 8 },
+  // Circular checkbox toggle — visually identical to the week-list
+  // version in HomeScreen so the "mark complete" idiom stays one
+  // consistent shape across the app.
+  completeCircle: {
+    width: 28, height: 28, borderRadius: 14,
+    borderWidth: 1.5, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  completeCircleDone: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  completeTick: { color: '#fff', fontSize: 14, fontWeight: '700', lineHeight: 18 },
 
   metricsCard: {
     flexDirection: 'row', backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 12,
@@ -568,8 +880,14 @@ const s = StyleSheet.create({
   metricValue: { fontSize: 18, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
   metricInput: {
     fontSize: 18, fontWeight: '500', fontFamily: FF.medium, color: colors.text,
-    textAlign: 'center', borderBottomWidth: 1, borderBottomColor: colors.primary,
-    paddingVertical: 2, minWidth: 40,
+    textAlign: 'center',
+    // Stretch to fill the parent column so the pink focus underline spans
+    // the whole metric cell, not just a tiny segment under the typed
+    // number. Parent `metric` has alignItems:'center' which otherwise
+    // shrinks the input to its content width — override that here.
+    alignSelf: 'stretch',
+    borderBottomWidth: 1.5, borderBottomColor: colors.primary,
+    paddingVertical: 4, paddingHorizontal: 8,
   },
   metricUnit: { fontSize: 10, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 2, textAlign: 'center' },
 
@@ -583,6 +901,22 @@ const s = StyleSheet.create({
   dayPillActive: { backgroundColor: colors.primary },
   dayPillText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
   dayPillTextActive: { color: '#fff' },
+  // Column variant of the day pill — stacks the day letters on top of a
+  // small summary line ("8 km", "Rest", "2 sessions") so the user knows
+  // what's already scheduled on each day before choosing to move here.
+  dayPillCol: {
+    flex: 1, minWidth: 38,
+    paddingHorizontal: 4, paddingVertical: 6,
+    borderRadius: 8, backgroundColor: colors.surfaceLight,
+    alignItems: 'center', marginHorizontal: 2,
+  },
+  dayPillColActive: { backgroundColor: colors.primary },
+  dayPillSummary: {
+    fontSize: 9, fontWeight: '500', fontFamily: FF.medium,
+    color: colors.textMid, marginTop: 2, letterSpacing: 0.2,
+  },
+  dayPillSummaryActive: { color: 'rgba(255,255,255,0.85)' },
+  dayPillSummaryRest: { color: colors.textFaint, fontStyle: 'italic' },
 
   cascadeNotice: { marginHorizontal: 20, marginBottom: 12 },
   cascadeText: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, fontStyle: 'italic' },
@@ -647,6 +981,13 @@ const s = StyleSheet.create({
   chatBubbleTextUser: { color: '#fff' },
   chatBubbleTextCoach: { color: colors.textMid },
 
+  // Wrapper for the CoachChatCard at the bottom of this screen. Matches
+  // HomeScreen's coachCardWrap spacing so the card is laid out the same
+  // way on every screen it appears on.
+  coachCardBar: {
+    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12 + BOTTOM_INSET,
+    backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border,
+  },
   chatBar: { paddingHorizontal: 16, paddingVertical: 10, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
   chatStatusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   chatStatusText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },

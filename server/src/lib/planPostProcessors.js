@@ -19,6 +19,7 @@
  */
 
 const { normaliseActivities } = require('./rideSpeedRules');
+const { enforceSessionStructure } = require('./sessionStructure');
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -478,6 +479,11 @@ function runAll(acts, goal, config) {
     ['beginnerIntensity',   enforceBeginnerIntensityCap],
     ['targetDistance',      enforceTargetDistance],
     ['taper',               enforceTaper],
+    // Must run AFTER beginnerIntensity + taper (those stages can strip
+    // hard efforts, which changes whether an activity needs a structure
+    // block). Runs last so it sees the final effort/subType for each
+    // activity and only fills gaps rather than regenerating on every pass.
+    ['sessionStructure',    enforceSessionStructure],
   ];
 
   for (const [name, fn] of stages) {
@@ -502,5 +508,6 @@ module.exports = {
   enforceCrossTrainingDays,
   enforceTargetDistance,
   enforceDayAssignments,
+  enforceSessionStructure,
   isBeginnerPathway,
 };

@@ -107,6 +107,12 @@ export default function GoalSetupScreen({ navigation, route }) {
         setRaceResult(result);
         if (result.distanceKm) setTargetDistance(String(result.distanceKm));
         if (result.elevationM) setTargetElevation(String(result.elevationM));
+        // Auto-fill target date from the lookup if we have one and
+        // the user hasn't picked a date yet. Fully editable via the
+        // date picker below.
+        if (result.eventDate && !targetDate) {
+          setTargetDate(result.eventDate);
+        }
       } else {
         setRaceResult({ found: false });
       }

@@ -143,6 +143,14 @@ export async function getPlanConfig(id) {
 export async function savePlan(plan) {
   await ensureMigrated();
   let plans = (await getJSON(KEYS.PLANS)) || [];
+  // Always bump updatedAt on write. Several screens (notably HomeScreen's
+  // load() cache check) short-circuit reloads when the plan-level hash
+  // hasn't changed. Any mutation that flows through this function — a
+  // completion toggle, an activity edit, a day move — is by definition a
+  // "plan changed" event, so bumping updatedAt here is the right semantic
+  // and means those cache checks stay honest without every callsite
+  // having to remember to pass force:true.
+  plan.updatedAt = new Date().toISOString();
   const idx = plans.findIndex(p => p.id === plan.id);
   if (idx >= 0) {
     plans[idx] = plan;

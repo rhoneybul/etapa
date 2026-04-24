@@ -37,6 +37,14 @@ export default function SettingsScreen({ navigation }) {
   const [togglingNotif, setTogglingNotif] = useState(false);
   const [userPrefs, setUserPrefsState] = useState({ units: 'km', displayName: '' });
   const [editingName, setEditingName] = useState(false);
+  // Optional training-intensity fields. When set, interval breakdowns on
+  // ActivityDetail render actual bpm / watts instead of % ranges. Blank
+  // means "I don't have this" and the UI falls back to % — never gates
+  // anything.
+  const [editingMaxHr, setEditingMaxHr] = useState(false);
+  const [maxHrInput, setMaxHrInput] = useState('');
+  const [editingFtp, setEditingFtp] = useState(false);
+  const [ftpInput, setFtpInput] = useState('');
   const [comingSoonConfig, setComingSoonConfig] = useState(null);
   const [stravaEnabled, setStravaEnabled] = useState(true); // default to enabled
 
@@ -61,7 +69,12 @@ export default function SettingsScreen({ navigation }) {
     getPrices().catch(() => {});
     api.notifications.unreadCount().then(d => setUnreadCount(d?.count || 0)).catch(() => {});
     api.preferences.get().then(setPreferences).catch(() => {});
-    getUserPrefs().then(p => { setUserPrefsState(p); setNameInput(p.displayName || ''); }).catch(() => {});
+    getUserPrefs().then(p => {
+      setUserPrefsState(p);
+      setNameInput(p.displayName || '');
+      setMaxHrInput(p.maxHr != null ? String(p.maxHr) : '');
+      setFtpInput(p.ftp != null ? String(p.ftp) : '');
+    }).catch(() => {});
     Notifications.getPermissionsAsync().then(({ status }) => setNotifPermission(status)).catch(() => {});
     getCurrentUser().then(setAuthUser).catch(() => {});
     api.appConfig.get().then(cfg => {
@@ -385,6 +398,97 @@ export default function SettingsScreen({ navigation }) {
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* Training intensity fields — optional. When set, interval
+              sessions on ActivityDetail show real numbers instead of
+              percentages. Absent values are fine; the UI just shows %
+              ranges and RPE, which beginners can still follow. */}
+          <View style={s.divider} />
+          <View style={s.row}>
+            <View style={s.rowLeft}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.rowTitle}>Max heart rate</Text>
+                {editingMaxHr ? (
+                  <TextInput
+                    style={s.nameInput}
+                    value={maxHrInput}
+                    onChangeText={setMaxHrInput}
+                    placeholder="e.g. 185"
+                    placeholderTextColor={colors.textFaint}
+                    autoFocus
+                    keyboardType="number-pad"
+                    returnKeyType="done"
+                    onSubmitEditing={async () => {
+                      const n = parseInt(maxHrInput, 10);
+                      const val = Number.isFinite(n) && n > 100 && n < 230 ? n : null;
+                      const updated = await setUserPrefs({ maxHr: val });
+                      setUserPrefsState(updated);
+                      setEditingMaxHr(false);
+                    }}
+                    onBlur={async () => {
+                      const n = parseInt(maxHrInput, 10);
+                      const val = Number.isFinite(n) && n > 100 && n < 230 ? n : null;
+                      const updated = await setUserPrefs({ maxHr: val });
+                      setUserPrefsState(updated);
+                      setEditingMaxHr(false);
+                    }}
+                  />
+                ) : (
+                  <Text style={s.rowSub}>
+                    {userPrefs.maxHr ? `${userPrefs.maxHr} bpm` : 'Optional — unlocks bpm targets on interval sessions'}
+                  </Text>
+                )}
+              </View>
+            </View>
+            {!editingMaxHr && (
+              <TouchableOpacity onPress={() => { setMaxHrInput(userPrefs.maxHr != null ? String(userPrefs.maxHr) : ''); setEditingMaxHr(true); }}>
+                <Text style={s.editText}>{userPrefs.maxHr ? 'Edit' : 'Add'}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={s.divider} />
+          <View style={s.row}>
+            <View style={s.rowLeft}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.rowTitle}>FTP (power)</Text>
+                {editingFtp ? (
+                  <TextInput
+                    style={s.nameInput}
+                    value={ftpInput}
+                    onChangeText={setFtpInput}
+                    placeholder="e.g. 220"
+                    placeholderTextColor={colors.textFaint}
+                    autoFocus
+                    keyboardType="number-pad"
+                    returnKeyType="done"
+                    onSubmitEditing={async () => {
+                      const n = parseInt(ftpInput, 10);
+                      const val = Number.isFinite(n) && n > 50 && n < 600 ? n : null;
+                      const updated = await setUserPrefs({ ftp: val });
+                      setUserPrefsState(updated);
+                      setEditingFtp(false);
+                    }}
+                    onBlur={async () => {
+                      const n = parseInt(ftpInput, 10);
+                      const val = Number.isFinite(n) && n > 50 && n < 600 ? n : null;
+                      const updated = await setUserPrefs({ ftp: val });
+                      setUserPrefsState(updated);
+                      setEditingFtp(false);
+                    }}
+                  />
+                ) : (
+                  <Text style={s.rowSub}>
+                    {userPrefs.ftp ? `${userPrefs.ftp} W` : 'Optional — unlocks watt targets on interval sessions'}
+                  </Text>
+                )}
+              </View>
+            </View>
+            {!editingFtp && (
+              <TouchableOpacity onPress={() => { setFtpInput(userPrefs.ftp != null ? String(userPrefs.ftp) : ''); setEditingFtp(true); }}>
+                <Text style={s.editText}>{userPrefs.ftp ? 'Edit' : 'Add'}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Strava */}
@@ -644,8 +748,14 @@ export default function SettingsScreen({ navigation }) {
                 value={preferences?.push_notifications !== 'disabled'}
                 onValueChange={handleTogglePushNotifications}
                 disabled={togglingNotif}
-                trackColor={{ false: colors.border, true: colors.primaryDark }}
-                thumbColor={preferences?.push_notifications !== 'disabled' ? colors.primary : colors.textMid}
+                // Brand pink track, plain white thumb — default iOS
+                // green was bleeding through the previous thumbColor
+                // (iOS ignores thumbColor when the switch is ON, so we
+                // set the track to full-brand-pink and let the thumb
+                // stay its system white). Matches the rest of the
+                // pink-accent UI on this screen.
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#FFFFFF"
                 ios_backgroundColor={colors.border}
               />
             )}

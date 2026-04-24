@@ -17,6 +17,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { syncStravaActivities, getStravaActivitiesForWeek, getStravaActivitiesForDate } from '../services/stravaSyncService';
 import { isStravaConnected } from '../services/stravaService';
 import StravaLogo from '../components/StravaLogo';
+import CoachChatCard from '../components/CoachChatCard';
+import { getCoach } from '../data/coaches';
+import { useUnits } from '../utils/units';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
@@ -24,6 +27,7 @@ const ACTIVITY_BLUE = '#A0A8B4';
 const DAY_LABELS_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 export default function WeekViewScreen({ navigation, route }) {
+  const { formatDistance } = useUnits();
   const initialWeek = route.params?.week || 1;
   const planId = route.params?.planId || null;
   const openOrgRideDay = route.params?.openOrgRide ?? null;
@@ -392,7 +396,7 @@ export default function WeekViewScreen({ navigation, route }) {
                             <View style={s.activityTitleWrap}>
                               <Text style={[s.activityTitle, activity.completed && s.activityTitleDone]}>{activity.title}</Text>
                               <Text style={s.activityMeta}>
-                                {activity.type === 'ride' && activity.distanceKm ? `${activity.distanceKm} km \u00B7 ` : ''}
+                                {activity.type === 'ride' && activity.distanceKm ? `${formatDistance(activity.distanceKm)} \u00B7 ` : ''}
                                 {activity.durationMins ? `~${activity.durationMins} min` : ''}
                                 {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
                               </Text>
@@ -511,20 +515,15 @@ export default function WeekViewScreen({ navigation, route }) {
           <View style={{ height: 80 }} />
         </ScrollView>
 
-        {/* Bottom bar */}
+        {/* Bottom bar — same CoachChatCard as Home/Activity for consistency.
+            The `subtitleOverride` keeps the week-specific copy so the user
+            still knows the chat will be scoped to this week's plan. */}
         <View style={s.editBar}>
-          <TouchableOpacity
-            style={s.coachBtn}
+          <CoachChatCard
+            coach={getCoach(planConfig?.coachId)}
             onPress={() => navigation.navigate('CoachChat', { planId: plan.id, weekNum: week })}
-            activeOpacity={0.7}
-          >
-            <View style={[s.coachDot, { backgroundColor: colors.primary }]} />
-            <View style={s.coachBtnTextWrap}>
-              <Text style={s.coachBtnLabel}>Ask coach about week {week}</Text>
-              <Text style={s.coachBtnHint}>Get advice or ask your coach to change this week</Text>
-            </View>
-            <Text style={s.coachBtnArrow}>{'\u203A'}</Text>
-          </TouchableOpacity>
+            subtitleOverride={`Get advice or ask your coach to change week ${week}`}
+          />
         </View>
 
         {/* Organised ride modal */}

@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Etapa — What's new</title>
+
+<!-- Hidden page: not indexed, not linked from nav/sitemap. Shareable by direct URL only.
+     Mirrors testing-guide.html's robots/referrer posture so this page stays internal. -->
+<meta name="robots" content="noindex, nofollow, noarchive" />
+<meta name="referrer" content="no-referrer" />
+
+<!-- Open Graph for Slack / iMessage / email link previews -->
+<meta property="og:title" content="Etapa — What's new" />
+<meta property="og:description" content="Fresh features, quiet fixes, and the odd proper improvement — in plain English." />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="/icon-72.png" />
+
+<link rel="icon" href="/icon-72.png" />
+
+<!-- ============================================================
+     Design tokens — lifted verbatim from testing-guide.html so the
+     two pages read as part of the same internal product universe.
+     Any token you change in one should be changed in the other.
+     ============================================================ -->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg:              #000000;
+  --bg-deep:         #000000;
+  --bg-raised:       #0a0a0a;
+  --surface:         #111113;
+  --surface-hover:   #1a1a1e;
+  --surface-pressed: #0d0d10;
+
+  --border:          #1a1a1a;
+  --border-strong:   #222226;
+  --border-faint:    #111113;
+
+  --fg:              #FFFFFF;
+  --fg-2:            #A0A0A8;
+  --fg-3:            #606068;
+  --fg-4:            #35353D;
+
+  --accent:          #E8458B;
+  --accent-hover:    #F472B6;
+  --accent-pressed:  #C4306E;
+  --accent-soft:     rgba(232, 69, 139, 0.08);
+  --accent-softer:   rgba(232, 69, 139, 0.14);
+  --accent-border:   rgba(232, 69, 139, 0.32);
+
+  --font-sans: 'Poppins', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --w-light:    300;
+  --w-regular:  400;
+  --w-medium:   500;
+  --w-semibold: 600;
+
+  --fs-display: 56px;
+  --fs-h1:      40px;
+  --fs-h2:      32px;
+  --fs-h3:      24px;
+  --fs-h4:      20px;
+  --fs-body:    16px;
+  --fs-small:   14px;
+  --fs-caption: 12px;
+  --fs-label:   11px;
+
+  --lh-tight:   1.1;
+  --lh-snug:    1.25;
+  --lh-body:    1.55;
+  --lh-loose:   1.7;
+
+  --tracking-tight:  -0.02em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.08em;
+
+  --r-sm:   12px;
+  --r-md:   16px;
+  --r-lg:   20px;
+  --r-xl:   28px;
+  --r-pill: 100px;
+
+  --ease-out:     cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast:     120ms;
+  --dur-base:     200ms;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-weight: var(--w-light);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-sans);
+  font-weight: var(--w-semibold);
+  color: var(--fg);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--lh-tight);
+  margin: 0;
+  text-wrap: balance;
+}
+p { margin: 0; color: var(--fg-2); font-weight: var(--w-light); line-height: var(--lh-body); text-wrap: pretty; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hover); }
+*, *::before, *::after { box-sizing: border-box; }
+</style>
+
+<!-- ============================================================
+     Page-specific styles. Kept scoped to this file so tweaks don't
+     bleed into testing-guide.html. Where a pattern shows up on both
+     pages (hero, section head, etc.) the class names match testing-
+     guide so the visual vocabulary stays consistent.
+     ============================================================ -->
+<style>
+  html, body { margin: 0; padding: 0; }
+  .page { max-width: 960px; margin: 0 auto; padding: 64px 48px 96px; }
+
+  /* ───────── Hero ─────────
+     Same treatment as the testing guide — mountain photograph behind a
+     dark gradient, eyebrow chip, big headline, lede. Different copy,
+     different meta strip: here we list the latest update date, not
+     platform info. */
+  .hero {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.85) 60%, var(--bg-raised) 100%),
+      url('/testing-guide-assets/bg-mountain.jpg') center/cover no-repeat;
+    padding: 56px 48px 48px;
+    margin-bottom: 72px;
+  }
+  .hero .eyebrow { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
+  .hero .eyebrow img { width: 28px; height: 28px; border-radius: 8px; }
+  .hero .eyebrow .mark {
+    font-size: var(--fs-label); font-weight: var(--w-semibold);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg);
+  }
+  .hero .eyebrow .divider { color: var(--fg-3); }
+  .hero .eyebrow .tag {
+    font-size: var(--fs-label); font-weight: var(--w-medium);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--accent);
+  }
+  .hero h1 {
+    font-size: clamp(40px, 6vw, 64px);
+    line-height: 1.05;
+    margin-bottom: 20px;
+    max-width: 18ch;
+  }
+  .hero .lede {
+    font-size: 20px; line-height: 1.55;
+    color: var(--fg-2); max-width: 56ch;
+    font-weight: var(--w-light);
+  }
+  .hero .meta {
+    display: flex; flex-wrap: wrap; gap: 32px;
+    margin-top: 40px; padding-top: 28px;
+    border-top: 1px solid var(--border-strong);
+  }
+  .hero .meta dt {
+    font-size: var(--fs-label); font-weight: var(--w-medium);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase;
+    color: var(--fg-3); margin-bottom: 6px;
+  }
+  .hero .meta dd { margin: 0; font-size: var(--fs-small); color: var(--fg); font-weight: var(--w-light); }
+  .hero .meta dd.accent { color: var(--accent); }
+
+  /* ───────── Release sections ─────────
+     Each entry is one big block — date header, release headline, feature
+     cards, then smaller prose sections. Generous margin between entries
+     so older releases read as their own moment, not a continuous wall of
+     bullets. */
+  section.release { margin-bottom: 96px; }
+  section.release:last-of-type { margin-bottom: 0; }
+
+  .release-head {
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .release-date {
+    font-size: var(--fs-label); font-weight: var(--w-semibold);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 16px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .release-date .dot {
+    width: 6px; height: 6px; border-radius: 100px;
+    background: var(--accent);
+  }
+  .release-headline {
+    font-size: clamp(28px, 4vw, 40px);
+    line-height: 1.1;
+    max-width: 22ch;
+  }
+
+  /* ───────── Feature card — screenshot + copy ─────────
+     Two-column card for the top changes. Screenshot on one side, copy on
+     the other. Alternating sides per card via :nth-child(even). On mobile
+     everything stacks. Image goes in a phone-shaped frame so the content
+     reads as "app screenshot" not "arbitrary image". */
+  .feature {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 40px;
+    margin-bottom: 24px;
+  }
+  .feature:nth-child(even of .feature) {
+    /* Visual rhythm — every other feature card flips the screenshot to
+       the right side. Makes the page feel designed rather than a list. */
+    direction: rtl;
+  }
+  .feature:nth-child(even of .feature) > * { direction: ltr; }
+
+  .feature-copy .eyebrow {
+    font-size: var(--fs-label); font-weight: var(--w-semibold);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
+  .feature-copy h3 {
+    font-size: 26px;
+    margin-bottom: 14px;
+    letter-spacing: var(--tracking-tight);
+  }
+  .feature-copy p {
+    font-size: 15.5px;
+    line-height: 1.6;
+    color: var(--fg-2);
+    max-width: 44ch;
+  }
+  .feature-copy p + p { margin-top: 12px; }
+
+  /* Phone frame wrapping the screenshot. Mirrors the testing guide's
+     .phone-wrap but scaled up — feature cards get a bigger shot since
+     it's the hero of each row. */
+  .feature-shot {
+    position: relative;
+    justify-self: center;
+    width: 100%;
+    max-width: 320px;
+    aspect-ratio: 9 / 19.5;
+    border-radius: 36px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-deep);
+    overflow: hidden;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,255,255,0.02) inset;
+  }
+  .feature-shot img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  /* Placeholder state — shown when the src isn't set yet. Helps Rob see
+     exactly which shot goes where before real screenshots are dropped
+     in. Styled to still feel intentional so the page looks finished
+     even without images. */
+  .feature-shot[data-placeholder="1"] {
+    display: grid; place-items: center;
+    background:
+      linear-gradient(135deg, rgba(232,69,139,0.10) 0%, rgba(232,69,139,0) 60%),
+      var(--bg-deep);
+  }
+  .feature-shot[data-placeholder="1"]::before {
+    content: attr(data-caption);
+    font-size: 13px; color: var(--fg-2); font-weight: var(--w-medium);
+    padding: 20px; text-align: center; line-height: 1.5;
+    max-width: 24ch;
+  }
+  .feature-shot[data-placeholder="1"]::after {
+    content: 'SCREENSHOT · DROP IN';
+    position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+    font-size: 10px; letter-spacing: var(--tracking-wide);
+    color: var(--accent); font-weight: var(--w-semibold);
+    background: var(--accent-soft); padding: 5px 10px; border-radius: 100px;
+    border: 1px solid var(--accent-border);
+  }
+
+  /* ───────── Sub-section block (Plans / Little touches / Bugs) ─────────
+     Smaller than a release headline, bigger than a prose paragraph.
+     Pink accent on the small label, keeps each block visually distinct
+     without using full h2s (which would compete with the release
+     headline above). */
+  .subsection { margin-top: 40px; }
+  .subsection-label {
+    font-size: var(--fs-label); font-weight: var(--w-semibold);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .subsection-label .dot {
+    width: 6px; height: 6px; border-radius: 100px;
+    background: var(--accent);
+  }
+  .subsection h4 {
+    font-size: 22px;
+    margin-bottom: 10px;
+    letter-spacing: var(--tracking-tight);
+  }
+  .subsection > p {
+    font-size: 15.5px;
+    line-height: 1.6;
+    max-width: 64ch;
+    margin-bottom: 18px;
+  }
+
+  /* Two-column bullet grid — used for "little touches". Wraps to one
+     column on narrow screens. */
+  ul.touches {
+    list-style: none; margin: 18px 0 0; padding: 0;
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 10px 32px;
+  }
+  ul.touches li {
+    font-size: 14.5px; color: var(--fg-2); line-height: 1.55;
+    padding: 6px 0 6px 18px; position: relative;
+  }
+  ul.touches li::before {
+    content: ''; position: absolute;
+    left: 2px; top: 12px;
+    width: 5px; height: 5px; border-radius: 100px;
+    background: var(--accent);
+  }
+  ul.touches li strong {
+    display: block;
+    color: var(--fg); font-weight: var(--w-medium);
+    font-size: 14.5px; margin-bottom: 2px;
+  }
+
+  /* Bugs squashed — deliberately low-prominence. Terse one-liners, no
+     emphasis, muted colour. "Look, we fixed things" without making them
+     the feature. */
+  .bugs {
+    margin-top: 8px;
+    padding: 18px 22px;
+    border-radius: var(--r-md);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+  }
+  .bugs-label {
+    font-size: var(--fs-label); font-weight: var(--w-semibold);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase;
+    color: var(--fg-3);
+    margin-bottom: 10px;
+  }
+  .bugs ul {
+    list-style: none; margin: 0; padding: 0;
+    display: grid; gap: 2px;
+  }
+  .bugs ul li {
+    font-size: 13.5px; color: var(--fg-2); line-height: 1.6;
+    padding: 4px 0 4px 18px; position: relative;
+  }
+  .bugs ul li::before {
+    content: '—';
+    position: absolute; left: 0; top: 4px;
+    color: var(--fg-3);
+  }
+
+  /* ───────── Footer ───────── */
+  footer.foot {
+    margin-top: 96px;
+    padding-top: 40px;
+    border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 24px; flex-wrap: wrap;
+  }
+  footer.foot .thanks {
+    font-size: 15px; color: var(--fg-2);
+    max-width: 48ch; line-height: 1.55;
+  }
+  footer.foot .thanks strong { color: var(--fg); font-weight: var(--w-medium); }
+  footer.foot .sig {
+    font-size: var(--fs-small);
+    color: var(--fg-3);
+    text-align: right;
+  }
+
+  /* ───────── Responsive ───────── */
+  @media (max-width: 760px) {
+    .page { padding: 40px 24px 72px; }
+    .hero { padding: 40px 28px 32px; margin-bottom: 56px; }
+    .feature { padding: 28px; gap: 32px; grid-template-columns: 1fr; }
+    .feature:nth-child(even of .feature) { direction: ltr; }
+    .feature-shot { max-width: 260px; }
+    ul.touches { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+
+<body>
+<main class="page">
+
+  <!-- ============================================================
+       HERO
+       ============================================================ -->
+  <header class="hero">
+    <div class="eyebrow">
+      <img src="/icon-72.png" alt="Etapa" />
+      <span class="mark">Etapa</span>
+      <span class="divider">·</span>
+      <span class="tag">What's new</span>
+    </div>
+    <h1>What's new in Etapa</h1>
+    <p class="lede">Fresh features, quiet fixes, and the odd proper improvement — in plain English. No changelog jargon, no "v1.2.2 (build 116)" — just what we've shipped and what you'll notice.</p>
+    <dl class="meta">
+      <div>
+        <dt>Latest update</dt>
+        <dd class="accent">24 April 2026</dd>
+      </div>
+      <div>
+        <dt>Available on</dt>
+        <dd>iPhone &amp; Android</dd>
+      </div>
+      <div>
+        <dt>Updates roll out</dt>
+        <dd>Automatically — no reinstall needed</dd>
+      </div>
+    </dl>
+  </header>
+
+  <!-- ============================================================
+       RELEASE · 24 April 2026
+       The big one — new home screen, new plan picker, structured session
+       breakdowns. Add newer entries ABOVE this block; add older entries
+       BELOW. Keep the markup pattern identical so the release rhythm
+       reads consistently down the page.
+       ============================================================ -->
+  <section class="release">
+    <div class="release-head">
+      <div class="release-date"><span class="dot"></span>24 April 2026</div>
+      <h2 class="release-headline">A smarter home screen, clearer sessions, better plans.</h2>
+    </div>
+
+    <!-- ───── Feature 1: New home screen ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">Home screen</div>
+        <h3>Answers "what am I doing today?" the moment you open the app</h3>
+        <p>Your today's session is now the first thing you see — with the ride name, distance, duration, effort, and a one-tap "View details" button. Tomorrow's session sits right beneath it so you can plan your evening.</p>
+        <p>Below that, the week strip shows every day at a glance with session-type tags (Endurance, Intervals, Long Ride…). Your coach chat lives at the top of the screen so you're never more than a tap away from a question.</p>
+      </div>
+      <div class="feature-shot"
+           data-placeholder="1"
+           data-caption="Home screen — Today hero, Tomorrow preview, week strip with session tags, coach card at the top.">
+        <!-- Drop a real screenshot here once captured:
+             <img src="/whats-new-assets/screens/home-screen.png" alt="Etapa home screen showing today's session and the week ahead" />
+             — and remove the data-placeholder attribute to hide the placeholder state. -->
+      </div>
+    </div>
+
+    <!-- ───── Feature 2: Session breakdown ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">Hard sessions</div>
+        <h3>Know exactly what to do — in plain English, heart rate, or watts</h3>
+        <p>"4×4 minutes hard" used to leave a lot of room for guessing. Now every interval or tempo session comes with a proper breakdown: warm-up, main set, cool-down — and the target effort is shown three ways.</p>
+        <p>Feel it by breathing and legs if you ride by perceived effort. Hit a heart-rate zone if you wear a strap. Match a watt range if you have a power meter. We render whichever you've set — and you always get a plain-English sensory cue so beginners aren't left out.</p>
+      </div>
+      <div class="feature-shot"
+           data-placeholder="1"
+           data-caption="Activity detail — hard interval session showing the 'How to do this session' panel with warm-up, main set, and cool-down plus triple-intensity targets.">
+        <!-- <img src="/whats-new-assets/screens/session-breakdown.png" alt="Structured interval breakdown with RPE, heart rate, and power targets" /> -->
+      </div>
+    </div>
+
+    <!-- ───── Feature 3: Guided plan picker ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">Pick the right plan</div>
+        <h3>A plan built for where you actually are — in under a minute</h3>
+        <p>Three quick questions: what are you training for, how long is your current longest ride, and when's your event? That's it. No FTP test, no jargon, no "beginner / intermediate / advanced" guesswork.</p>
+        <p>Your actual longest ride becomes the anchor for Week 1, so your plan starts at a distance you can genuinely complete — and builds up from there.</p>
+      </div>
+      <div class="feature-shot"
+           data-placeholder="1"
+           data-caption="Plan picker intake — one of the three questions (&quot;What's your longest recent ride?&quot;) with distance input and the pink Continue CTA.">
+        <!-- <img src="/whats-new-assets/screens/plan-picker.png" alt="Guided plan picker asking for longest recent ride" /> -->
+      </div>
+    </div>
+
+    <!-- ───── Plans improvements (prose block) ───── -->
+    <div class="subsection">
+      <div class="subsection-label"><span class="dot"></span>Plans</div>
+      <h4>Plans that match your reality</h4>
+      <p>Beginner plans now properly build toward your target distance without exceeding it before graduation day — so the final ride feels like the milestone it should. We've also tightened progression and added a few guardrails so the AI produces more consistent, more achievable weeks.</p>
+      <ul class="touches">
+        <li><strong>Your longest ride is now the anchor</strong>Plans start where you are, not at a generic benchmark.</li>
+        <li><strong>Beginner target-distance ceiling</strong>No training ride exceeds your target until graduation.</li>
+        <li><strong>Warm-up + cool-down built in</strong>Every hard session comes with a structured breakdown.</li>
+        <li><strong>Max HR and FTP support</strong>Add yours in Settings to see real bpm / watts on sessions.</li>
+      </ul>
+    </div>
+
+    <!-- ───── Little touches ───── -->
+    <div class="subsection">
+      <div class="subsection-label"><span class="dot"></span>Little touches</div>
+      <ul class="touches">
+        <li><strong>Drag to reschedule</strong>Press-and-hold any session on Home or Calendar to drag it to another day.</li>
+        <li><strong>Move sessions before your plan starts</strong>Moved an activity to a day before Week 1? We'll honour it without re-generating everything.</li>
+        <li><strong>Coach chat, now async</strong>Send a message and leave — you'll get a push when your coach replies.</li>
+        <li><strong>Km or miles, honestly</strong>Switch units in Settings and every distance across the app follows.</li>
+        <li><strong>Session-type tags on the weekly list</strong>Endurance, Intervals, Long Ride — see your week at a glance.</li>
+        <li><strong>Un-check a completed session</strong>Tapped it by mistake? Tap again to undo.</li>
+        <li><strong>Pre-plan-start home screen</strong>A clear "Plan starts Mon 27 April · 3 days" card before Week 1 kicks off.</li>
+        <li><strong>Calendar quick-access on Home</strong>The small calendar icon takes you to the full monthly view.</li>
+      </ul>
+    </div>
+
+    <!-- ───── Bugs squashed ───── -->
+    <div class="bugs">
+      <div class="bugs-label">Bugs squashed</div>
+      <ul>
+        <li>Android keyboard no longer hides the coach chat input.</li>
+        <li>Coach replies no longer get lost if you leave the screen mid-request.</li>
+        <li>Race lookup keeps the correct distance when you change the event.</li>
+        <li>The Delete Plan crash (black screen) is fixed — now shows a proper loading overlay.</li>
+        <li>Plan Overview chart uses distinct colours for endurance vs tempo.</li>
+        <li>Generate Plan no longer crashes on the longest-ride step.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Older releases live here. Duplicate the <section class="release">
+       block above, change the date, rewrite the headline, keep or drop
+       feature cards as needed. Older entries can be shorter — they're
+       for reference rather than promotion.
+
+       EXAMPLE SKELETON (paste below the 24 April block when adding
+       the next round):
+
+       <section class="release">
+         <div class="release-head">
+           <div class="release-date"><span class="dot"></span>DD MONTH YYYY</div>
+           <h2 class="release-headline">One-line spirit of the release.</h2>
+         </div>
+
+         <div class="feature"> … </div>
+
+         <div class="subsection"> … </div>
+
+         <div class="bugs"> … </div>
+       </section>
+       ============================================================ -->
+
+  <!-- ============================================================
+       FOOTER
+       ============================================================ -->
+  <footer class="foot">
+    <div class="thanks">
+      <strong>Thanks for riding with us.</strong><br />
+      If you hit anything weird or you'd love to see something different, hit the Send feedback link in the app — it goes straight to us.
+    </div>
+    <div class="sig">Etapa · Start riding. We'll handle the rest.</div>
+  </footer>
+
+</main>
+</body>
+</html>

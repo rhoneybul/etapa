@@ -18,6 +18,7 @@ const { checkAndBlockIfOverCap } = require('../lib/claudeCostCap');
 const rateLimits = require('../lib/rateLimits');
 const { normaliseActivities } = require('../lib/rideSpeedRules');
 const planPostProcessors = require('../lib/planPostProcessors');
+const { buildStructureFor, isValidStructure, shouldHaveStructure } = require('../lib/sessionStructure');
 const planGenLogger = require('../lib/planGenLogger');
 const crypto = require('crypto');
 
@@ -54,6 +55,22 @@ function cleanOldJobs() {
   }
 }
 setInterval(cleanOldJobs, 60000);
+
+// ── In-memory job store for async coach chat messages ───────────────────────
+// Used by the new async coach chat flow: client POSTs → server returns jobId
+// immediately → Claude call runs in the background → client polls (or listens
+// on SSE). The DB table `coach_chat_jobs` is the source of truth, the Map is
+// a fast-path for in-flight polls so we don't hammer Supabase every 2s. A
+// reaper in coachChatReaper.js catches orphans if the server restarts before
+// the in-flight job writes its terminal status.
+const coachChatJobs = new Map();
+const COACH_CHAT_JOB_TTL = 10 * 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, job] of coachChatJobs) {
+    if (now - job.createdAt > COACH_CHAT_JOB_TTL) coachChatJobs.delete(id);
+  }
+}, 60000);
 
 // ── Coach personas (server-side mirror of client coaches.js) ──────────────
 const COACHES = {
@@ -408,6 +425,162 @@ router.post('/edit-activity', async (req, res) => {
   } catch (err) {
     console.error('AI activity edit error:', err);
     res.status(500).json({ error: 'Failed to edit activity', detail: err.message });
+  }
+});
+
+// ── Explain session — produces a structured breakdown for a single activity.
+// Used by the Activity Detail screen when the user taps "Explain this session"
+// on a plan that pre-dates the structured-plan schema. Lazy backfill: only
+// runs when the user actually wants the detail. The result is intended to be
+// cached back onto the activity by the client (via the plans upsert).
+router.post('/explain-activity', async (req, res) => {
+  if (await checkAndBlockIfOverCap(req, res, { feature: 'explain_activity' })) return;
+
+  const apiKey = getAnthropicKey();
+  if (!apiKey) return res.status(503).json({ error: 'AI not configured.' });
+
+  const { activity, goal } = req.body || {};
+  if (!activity || typeof activity !== 'object') {
+    return res.status(400).json({ error: 'Missing activity' });
+  }
+
+  // Sanity gate — don't burn tokens explaining a recovery spin. For easy /
+  // endurance sessions the title and description are already enough; return
+  // an explicit null so the client can render a "no breakdown needed" state.
+  if (!shouldHaveStructure(activity)) {
+    return res.json({ structure: null, reason: 'easy_session_no_structure_needed' });
+  }
+
+  // If the activity already has a valid structure, echo it back — saves a
+  // Claude call if the client is out of date or rehydrated an old cache.
+  if (isValidStructure(activity.structure)) {
+    return res.json({ structure: activity.structure, cached: true });
+  }
+
+  const actSummary = JSON.stringify({
+    subType: activity.subType,
+    title: activity.title,
+    description: activity.description,
+    notes: activity.notes,
+    durationMins: activity.durationMins,
+    distanceKm: activity.distanceKm,
+    effort: activity.effort,
+  }, null, 2);
+
+  const prompt = `The athlete has asked for a more specific breakdown of this existing session.
+Produce ONLY a "structure" JSON object — warmup + main + cooldown, with main.intensity populated in all three reference frames (perceived effort, heart rate %, power %).
+Do NOT modify any other field of the activity. Do NOT invent new sessions.
+
+Current session:
+${actSummary}
+
+Context:
+- Goal: ${goal?.goalType || 'improve'}${goal?.eventName ? ' (' + goal.eventName + ')' : ''}
+- Target distance: ${goal?.targetDistance ? goal.targetDistance + ' km' : 'none'}
+- Target date: ${goal?.targetDate || 'none'}
+
+Required shape (return ONLY this JSON object, no commentary):
+{
+  "warmup":   { "durationMins": 10, "description": "...", "effort": "easy" },
+  "main": {
+    "type": "intervals" | "tempo" | "steady",
+    "reps": 4,            // intervals only
+    "workMins": 4,        // intervals only
+    "restMins": 3,        // intervals only
+    "blockMins": 20,      // tempo / steady only
+    "description": "plain-English coaching cue, 1–2 sentences",
+    "intensity": {
+      "rpe": 8,
+      "rpeCue": "concrete sensory cue — breathing / talking / legs",
+      "hrZone": 4,
+      "hrPctOfMaxLow": 85, "hrPctOfMaxHigh": 92,
+      "powerZone": 4,
+      "powerPctOfFtpLow": 91, "powerPctOfFtpHigh": 105
+    }
+  },
+  "cooldown": { "durationMins": 10, "description": "...", "effort": "easy" }
+}
+
+Intensity reference table — pick the band that matches this session:
+- Recovery:  RPE 2 · HR 50–60% · Power 40–55% FTP
+- Easy/Z2:   RPE 3 · HR 60–70% · Power 55–75% FTP
+- Tempo/Z3:  RPE 6 · HR 75–85% · Power 76–90% FTP
+- Threshold: RPE 7 · HR 84–92% · Power 91–105% FTP
+- VO2max:    RPE 9 · HR 92–100% · Power 106–120% FTP
+- Anaerobic: RPE 10 · HR 95–100% · Power 121–150% FTP
+
+Warmup + main total work + cooldown should roughly equal ${activity.durationMins || 60} min. Return ONLY the JSON object, no text before or after.`;
+
+  try {
+    const _claudeModel = 'claude-haiku-4-5-20251001'; // cheap enough for on-demand use
+    const _claudeStartedAt = Date.now();
+
+    const response = await _fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: _claudeModel,
+        max_tokens: 1024,
+        system: cachedSystem(COACH_SYSTEM_PROMPT),
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error('Anthropic API error (explain-activity):', response.status, errBody);
+      logClaudeUsage({
+        userId: req.user?.id, feature: 'explain_activity', model: _claudeModel,
+        data: {}, response, durationMs: Date.now() - _claudeStartedAt,
+        status: 'api_error', metadata: { activityId: activity?.id, http: response.status },
+      });
+      // Fall back to the deterministic default so the user still gets a
+      // useful breakdown even if Claude is down.
+      const fallback = buildStructureFor(activity);
+      if (fallback) return res.json({ structure: fallback, fallback: true });
+      return res.status(502).json({ error: 'AI service error' });
+    }
+
+    const data = await response.json();
+    logClaudeUsage({
+      userId: req.user?.id, feature: 'explain_activity', model: _claudeModel,
+      data, response, durationMs: Date.now() - _claudeStartedAt,
+      metadata: { activityId: activity?.id },
+    });
+
+    const text = data?.content?.[0]?.text || '';
+    // Be forgiving with parsing — the model sometimes wraps JSON in prose.
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      const fallback = buildStructureFor(activity);
+      return res.json({ structure: fallback, fallback: true });
+    }
+
+    let structure;
+    try {
+      structure = JSON.parse(jsonMatch[0]);
+    } catch {
+      const fallback = buildStructureFor(activity);
+      return res.json({ structure: fallback, fallback: true });
+    }
+
+    // Guard the output — if it's not shaped correctly, synthesise a default
+    // rather than returning something the client can't render.
+    if (!isValidStructure(structure)) {
+      const fallback = buildStructureFor(activity);
+      return res.json({ structure: fallback, fallback: true });
+    }
+
+    res.json({ structure });
+  } catch (err) {
+    console.error('AI explain-activity error:', err);
+    const fallback = buildStructureFor(activity);
+    if (fallback) return res.json({ structure: fallback, fallback: true });
+    res.status(500).json({ error: 'Failed to explain activity', detail: err.message });
   }
 });
 
@@ -833,6 +1006,7 @@ ${longRideDay ? `2. **Long ride day**: the week's LONGEST ride by duration MUST 
 ${hasTargetDate ? `3. **Final week taper**: total volume in week ${weeks} MUST be ≤ 50% of the peak week's volume. NO activities with effort='hard' or effort='max' in the final 2 weeks.` : `3. **Final week**: no hard intervals in the last week — leave the rider fresh.`}
 ${goal.targetDistance ? `4. **Target distance**: at least one ride in weeks ${Math.max(1, weeks - 3)}–${Math.max(1, weeks - 1)} MUST reach ≥ 85% of ${goal.targetDistance} km (i.e. ≥ ${Math.round(goal.targetDistance * 0.85)} km).` : ''}
 ${isBeginnerPlan ? `5. **Beginner intensity cap**: NO activities with subType='intervals' or effort='hard'/'max'. Beginners build fitness on volume. The only subTypes allowed are: endurance, recovery. Tempo only with effort='easy' or 'moderate'.` : ''}
+${isBeginnerPlan && goal.targetDistance ? `5a. **Beginner target-distance ceiling**: No training ride in weeks 1 through ${Math.max(1, weeks - 1)} may have distanceKm ≥ ${goal.targetDistance}. The only ride at or near ${goal.targetDistance} km is the graduation ride in week ${weeks}. Peak training ride (week ${Math.max(1, weeks - 1)}) ceiling is ~${Math.round(goal.targetDistance * 0.85)} km. Overshooting this before graduation defeats the point of the plan and overloads a new rider.` : ''}
 ${crossTrainingDayNames.length > 0 ? `6. **Cross-training days** (${crossTrainingDayNames.join(', ')}): NO ride activities on these days. The athlete already has non-cycling work planned there — do not double up.` : ''}
 ${hasDayAssignments ? `7. **Day-by-day session type** — the athlete has explicitly chosen what goes on each day. EVERY WEEK must follow this mapping:
 ${dayAssignmentLines}
@@ -918,7 +1092,7 @@ ${hasTargetDate ? `
 - Increase weekly volume by no more than 6–8% per phase.
 - **Week-to-week volume limit:** total cycling km in week N+1 must be no more than 30% higher than week N. A spike of 40%+ is a failure. If the desired peak is far from the start, spread the build across more weeks rather than jumping.
 ${weeks >= 6 ? `- **Deload is MANDATORY** for a ${weeks}-week plan. Put a deload week on week ${weeks >= 12 ? '4 and week 8' : weeks >= 8 ? '4' : '3'} where weekly volume drops by 25–40% vs. the prior week, efforts are easy/recovery only, and there are no intervals. Without a deload the plan is invalid.` : '- If the plan is long enough to warrant one (≥6 weeks), include a deload week with ~30% reduced volume.'}
-- Long ride should start at ~${Math.round(benchmark.maxComfortableDistKm * 0.5)} km and build to ${goal.targetDistance ? '~' + Math.round(goal.targetDistance * 0.85) + '–' + goal.targetDistance + ' km' : '~' + benchmark.maxComfortableDistKm + ' km'} by the peak phase.
+- Long ride should start at ~${Math.round(benchmark.maxComfortableDistKm * 0.5)} km and build to ${goal.targetDistance ? (goal.goalType === 'beginner' ? '~' + Math.round(goal.targetDistance * 0.85) + ' km in the peak training week (beginner plans: the target distance itself is reserved for the final graduation ride — do NOT exceed it before then)' : '~' + Math.round(goal.targetDistance * 0.85) + '–' + goal.targetDistance + ' km by the peak phase') : '~' + benchmark.maxComfortableDistKm + ' km'} by the peak phase.
 - NEVER set a ride more than 20% longer than the previous week's longest.
 - All distances must be achievable at ~${benchmark.avgSpeedKmh} km/h average speed.
 ${goal.targetDistance ? `
@@ -967,13 +1141,15 @@ ${(() => {
   const threeQ = Math.round(start + (taperLong - start) * 0.75);
   return `**Target distance**: ${td} km by the final week. The whole plan builds toward this. Do NOT cap the long ride below ~${taperLong} km — the athlete chose this distance deliberately and the plan has to train them for it safely.
 
+**CEILING — beginner plans only (CRITICAL):** The graduation ride in the final week MUST be the FIRST and ONLY time the athlete rides the target distance. No training ride (weeks 1 through ${Math.max(1, weeksN - 1)}) may equal or exceed ${td} km. The peak training ride in week ${Math.max(1, weeksN - 1)} is ~${taperLong} km — that is the ceiling for any non-graduation ride. For a new cyclist, hitting the target on graduation day is the emotional and physical point of the whole plan; riding further beforehand undermines it and overloads the athlete. If a ride in weeks 1–${Math.max(1, weeksN - 1)} has distanceKm ≥ ${td}, the plan is broken — reduce it.
+
 Progression milestones (long ride, weekend day):
 - Week 1:              ~${start} km — gentle opener, "just get on the bike"
 - Week ${pct(0.25)}:   ~${quarter} km
 - Week ${pct(0.5)}:    ~${half} km
 - Week ${pct(0.75)}:   ~${threeQ} km
-- Week ${Math.max(1, weeksN - 1)}: ~${taperLong} km — longest training ride, 1–2 weeks before graduation
-- Week ${weeksN}:      **${td} km graduation ride** — the whole plan exists for this ride. Title it accordingly ("${td} km Graduation", "Century Day", etc.) and write the notes like a letter from their coach on the morning of their biggest ride to date.
+- Week ${Math.max(1, weeksN - 1)}: ~${taperLong} km — longest training ride, ceiling before graduation
+- Week ${weeksN}:      **${td} km graduation ride** — the whole plan exists for this ride. First and only time the athlete rides ${td} km. Title it accordingly ("${td} km Graduation", "Century Day", etc.) and write the notes like a letter from their coach on the morning of their biggest ride to date.
 
 Weekly volume should grow roughly in line with the long ride. At peak, total weekly km ≈ 1.3–1.6× the long ride.`;
 })()}
@@ -1027,6 +1203,48 @@ Field rules:
 - For taper weeks, add "(Taper)" to the title
 - For deload weeks, add "(Deload)" to the title
 
+### Session structure — MANDATORY for hard / structured sessions
+A "4×4 min hard" title on its own leaves the rider guessing what "hard" actually means. For every ride with subType "intervals" or "tempo", OR any ride with effort "hard" or "max", you MUST include a "structure" object that breaks the session into warm-up / main set / cool-down and gives the main-set intensity in THREE reference frames (perceived effort, heart rate, power) so riders with different tools can all follow it.
+
+Structure shape (required on every hard/structured ride, OMIT on easy/recovery/endurance/long rides):
+{
+  "warmup":   { "durationMins": 10, "description": "Easy spin, gradual build", "effort": "easy" },
+  "main": {
+    "type": "intervals" | "tempo" | "steady",
+    "reps": 4,               // intervals only
+    "workMins": 4,           // intervals only
+    "restMins": 3,           // intervals only
+    "blockMins": 20,         // tempo / steady only
+    "description": "Hold the target for all 4 reps — if the last one drops off, the target was too high",
+    "intensity": {
+      "rpe": 8,                                            // perceived effort 1–10
+      "rpeCue": "Hard, short breaths, one-word answers",   // plain-English sensory cue
+      "hrZone": 4,                                         // 1–5
+      "hrPctOfMaxLow": 85, "hrPctOfMaxHigh": 92,           // % of max HR range
+      "powerZone": 4,                                      // 1–7
+      "powerPctOfFtpLow": 91, "powerPctOfFtpHigh": 105     // % of FTP range
+    }
+  },
+  "cooldown": { "durationMins": 10, "description": "Easy spin, let HR drift down", "effort": "easy" }
+}
+
+Intensity reference table — use these standard ranges (Coggan / Friel):
+- Recovery:  RPE 2 · HR 50–60% of max · Power 40–55% FTP
+- Easy/Z2:   RPE 3 · HR 60–70% of max · Power 55–75% FTP
+- Tempo/Z3:  RPE 6 · HR 75–85% of max · Power 76–90% FTP
+- Threshold: RPE 7 · HR 84–92% of max · Power 91–105% FTP (sustainable ~20 min)
+- VO2max:    RPE 9 · HR 92–100% of max · Power 106–120% FTP (3–8 min efforts)
+- Anaerobic: RPE 10 · HR 95–100% of max · Power 121–150% FTP (30–90 sec efforts)
+
+RPE cues should be concrete sensory descriptions the user can actually feel — "heavy breathing, one-word answers", "legs burning but sustainable", "conversational, can sing" — not repeated jargon.
+
+Example hard ride WITH structure (advanced / intermediate plan):
+{"week":5,"dayOfWeek":3,"type":"ride","subType":"intervals","title":"VO2max Intervals — 5×3","description":"Warm up 15 min, then 5 × 3 min very hard with 3 min easy between. Cool down.","notes":"Peak phase — this is the hardest session of the week. Don't chase the target if you're tired, cut reps instead.","durationMins":75,"distanceKm":27,"effort":"hard","structure":{"warmup":{"durationMins":15,"description":"Easy spin building to the lower edge of tempo. Add 2–3 × 30s openers in the last 5 min so the first hard rep doesn't shock the legs.","effort":"easy"},"main":{"type":"intervals","reps":5,"workMins":3,"restMins":3,"description":"5 × 3 min at VO2max effort. Each rep should feel sustainable for exactly 3 min and no more — if rep 5 is noticeably slower than rep 1, you started too hard.","intensity":{"rpe":9,"rpeCue":"Very hard — heavy breathing, can't talk, legs burning. Just holding it.","hrZone":5,"hrPctOfMaxLow":92,"hrPctOfMaxHigh":100,"powerZone":5,"powerPctOfFtpLow":106,"powerPctOfFtpHigh":120}},"cooldown":{"durationMins":15,"description":"Easy spin. HR should drift back under 120 by the end.","effort":"easy"}}}
+
+Beginner plans: do NOT include a structure block. Beginners have no hard/intervals/tempo sessions and the structured breakdown would contradict the plain-English tone. Post-processing will drop any intensity info if it slips through.
+
+If you omit a structure block on a hard session, post-processing will synthesise one from a default template. You'll get a better, more specific result by writing it yourself — the defaults are generic.
+
 IMPORTANT: Do NOT include recurring rides in your output — they are automatically added. Only generate planned training sessions and strength sessions. The available days listed above are the days you should schedule sessions on, EXCLUDING days that have a recurring ride (since those are auto-injected).
 
 ## Final self-check — DO THIS BEFORE RETURNING
@@ -1041,7 +1259,9 @@ ${weeks >= 6 ? `${sessionCounts.strength ? '5.' : '4.'} Is there at least one cl
 ${sessionCounts.strength ? (weeks >= 6 ? '6.' : '5.') : (weeks >= 6 ? '5.' : '4.')}. Are week-over-week volume jumps all ≤30%? No week more than ${goal.targetDistance ? Math.round(goal.targetDistance * 1.6) : Math.round(benchmark.maxComfortableDistKm * 2.2)} km total.
 ${(Object.keys(crossTrainingDays || {}).length > 0 || crossTrainingDaysFull) ? `Next: for every high-impact cross-training day in the inputs, is the day after NOT a hard/interval cycling session? If it is, swap it to easy/recovery.` : ''}
 ${goal.targetDistance ? `Next: does the peak-phase longest ride reach at least ${Math.round(goal.targetDistance * 0.8)} km, and does the FINAL week include a ride at or very close to the ${goal.targetDistance} km target? If the longest training ride in the plan is less than ${Math.round(goal.targetDistance * 0.7)} km, the athlete will NOT be prepared for the event and the plan is broken. Rebuild the long-ride progression to actually reach the target.` : ''}
-${goal.goalType === 'beginner' && goal.targetDistance ? `Next: open the final week of the plan. Is there a ride titled to celebrate the ${goal.targetDistance} km target (e.g. "${goal.targetDistance} km Graduation", "Century Day")? Is its distanceKm close to ${goal.targetDistance}? If not, fix it — this ride is the single most important ride in the whole plan.` : ''}
+${goal.goalType === 'beginner' && goal.targetDistance ? `Next: open the final week of the plan. Is there a ride titled to celebrate the ${goal.targetDistance} km target (e.g. "${goal.targetDistance} km Graduation", "Century Day")? Is its distanceKm close to ${goal.targetDistance}? If not, fix it — this ride is the single most important ride in the whole plan.
+Next (beginner ceiling): scan EVERY ride in weeks 1 through ${Math.max(1, weeks - 1)}. Does any of them have distanceKm ≥ ${goal.targetDistance}? If yes, that's a critical error — the graduation ride must be the FIRST time the athlete hits ${goal.targetDistance} km. Reduce any pre-graduation ride at or above the target down to the ~${Math.round(goal.targetDistance * 0.85)} km peak ceiling (or lower for earlier weeks), and shorten durationMins proportionally so the implied speed stays realistic.` : ''}
+${!isBeginnerPlan ? `Next (structure check): every ride with subType="intervals" OR subType="tempo" OR effort="hard" OR effort="max" MUST have a "structure" object with warmup + main + cooldown + main.intensity populated (rpe, rpeCue, hrZone, hrPctOfMaxLow, hrPctOfMaxHigh, powerZone, powerPctOfFtpLow, powerPctOfFtpHigh). A bare "4×4 hard" title without a structure block leaves the rider guessing — don't do that. If you find hard rides without structure, add it before returning.` : ''}
 
 Return ONLY the JSON array, no other text.`;
 }
@@ -1397,7 +1617,10 @@ router.post('/race-lookup', async (req, res) => {
   }
 
   try {
+    const todayIso = new Date().toISOString().slice(0, 10);
     const prompt = `Look up the cycling race/event "${raceName}" and provide its key details.
+
+Today's date is ${todayIso}.
 
 Return a JSON object with this EXACT structure:
 {
@@ -1405,13 +1628,14 @@ Return a JSON object with this EXACT structure:
   "name": "Official race name",
   "distanceKm": 130,
   "elevationM": 2500,
+  "eventDate": "2026-05-10",
   "description": "Brief 1-sentence description of the event",
   "location": "City, Country",
   "terrain": "road/gravel/mtb/mixed"
 }
 
 If you cannot identify the specific event or it doesn't exist, return:
-{"found": false, "name": "${raceName}", "distanceKm": null, "elevationM": null, "description": null, "location": null, "terrain": null}
+{"found": false, "name": "${raceName}", "distanceKm": null, "elevationM": null, "eventDate": null, "description": null, "location": null, "terrain": null}
 
 Rules:
 - Be accurate — only provide distance/elevation if you're confident in the data
@@ -1419,6 +1643,7 @@ Rules:
 - elevationM should be total elevation gain in metres
 - For events with multiple distances (e.g. short/medium/long), use the main/flagship distance
 - terrain: "road", "gravel", "mtb", or "mixed"
+- eventDate: the NEXT upcoming occurrence of this annual race in ISO 8601 format (YYYY-MM-DD). If the event has already happened this year, use next year's date. If you don't know the exact date but know the month, pick the first Saturday of that month. If you truly don't know, return null.
 
 Return ONLY the JSON object, no other text.`;
 
@@ -1798,6 +2023,739 @@ Only include the plan_update block when you are actually making changes. For que
     console.error('Coach chat error:', err);
     res.status(500).json({ error: 'Failed to get coach response', detail: err.message });
   }
+});
+
+// ── Async coach chat ─────────────────────────────────────────────────────────
+// Mirrors the async plan-generation pattern so the client can fire a chat
+// message and immediately go do something else. The server owns the Claude
+// call end-to-end; the client gets a jobId back and either polls or listens
+// on SSE. On completion, a push notification fires (handled below).
+//
+// Flow:
+//   POST /api/ai/coach-chat-async   → 202 { jobId }
+//   GET  /api/ai/coach-chat-job/:id → { status, reply, updatedActivities, ... }
+//   GET  /api/ai/coach-chat-stream/:id → SSE "delta" + "done" + "error" events
+//   DELETE /api/ai/coach-chat-job/:id → cancel in-flight job
+
+// Shared helper so the sync and async paths build the same system prompt.
+// Extracted 1:1 from the body of POST /coach-chat above — any drift between
+// the two is a bug waiting to happen. If you change the prompt here, verify
+// the sync handler still produces the same output.
+function buildCoachSystemPrompt(context = {}) {
+  const coachId = context?.coachId || null;
+  let systemPrompt = COACH_SYSTEM_PROMPT;
+  systemPrompt += getCoachPromptBlock(coachId);
+  systemPrompt += '\n\n';
+  const athleteName = context?.athleteName || null;
+  systemPrompt += `You are having a conversation with your athlete${athleteName ? `, ${athleteName}` : ''}. Be specific in your advice. `;
+  if (athleteName) systemPrompt += `Address them by their first name (${athleteName.split(' ')[0]}) naturally in conversation. `;
+  systemPrompt += 'Keep responses concise (2-4 paragraphs max). Use plain language. ';
+  systemPrompt += 'You can use **bold** for emphasis but avoid other markdown.\n';
+  systemPrompt += 'IMPORTANT: Base your answers ONLY on the plan data provided below. Do not guess or invent session details.\n\n';
+
+  systemPrompt += `## Plan modification capability
+When the athlete asks you to change, restructure, fix, or improve their plan (or a specific week), you can MODIFY the plan directly.
+
+If the conversation leads to a plan change, include a JSON block at the END of your response (after your conversational text) in this exact format:
+
+\`\`\`plan_update
+[array of updated/new activity objects]
+\`\`\`
+
+Each activity object must have these fields:
+{"id":"existing-id-or-null","week":1,"dayOfWeek":0,"type":"ride","subType":"endurance","title":"Endurance Ride","description":"Zone 2 steady...","notes":"Base phase","durationMins":45,"distanceKm":18,"effort":"easy"}
+
+Rules for plan updates:
+- dayOfWeek: 0=Monday ... 6=Sunday
+- type: "ride" or "strength"
+- subType: "endurance", "tempo", "intervals", "recovery", "indoor", or null for strength
+- effort: "easy", "moderate", "hard", "recovery", or "max"
+- For existing sessions, preserve the original "id" field
+- For new sessions, set "id" to null
+- Include ALL activities for the affected weeks (not just changed ones) so the full week can be replaced
+- If restructuring the whole plan, include ALL activities for ALL weeks
+- Strength sessions must NOT have distanceKm (use null)
+- All distances must be realistic for the rider's speed/level
+- Follow progressive overload: never increase long ride by more than 10-15% week to week
+
+Only include the plan_update block when you are actually making changes. For questions, advice, or general chat, just respond normally without any JSON block.\n\n`;
+
+  if (context.plan) {
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    systemPrompt += `## Current plan context\n`;
+    systemPrompt += `- Today's date: ${todayStr} (${dayNames[today.getDay()]})\n`;
+    systemPrompt += `- Plan: ${context.plan.name || 'Training plan'}\n`;
+    systemPrompt += `- Total weeks: ${context.plan.weeks}\n`;
+    systemPrompt += `- Start date: ${context.plan.startDate}\n`;
+    systemPrompt += `- Day number mapping: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6\n`;
+    if (context.plan.currentWeek) {
+      systemPrompt += `- Current week: ${context.plan.currentWeek} of ${context.plan.weeks}\n`;
+      if (context.plan.startDate) {
+        const sp = context.plan.startDate.split('T')[0].split('-');
+        const planStart = new Date(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]));
+        const weekStart = new Date(planStart);
+        weekStart.setDate(weekStart.getDate() + (context.plan.currentWeek - 1) * 7);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        const planEnd = new Date(planStart);
+        planEnd.setDate(planEnd.getDate() + (context.plan.weeks * 7) - 1);
+        systemPrompt += `- Current week dates: ${weekStart.toISOString().split('T')[0]} (Mon) to ${weekEnd.toISOString().split('T')[0]} (Sun)\n`;
+        systemPrompt += `- Plan end date: ${planEnd.toISOString().split('T')[0]}\n`;
+      }
+    }
+    systemPrompt += `- IMPORTANT: When discussing or modifying activities, be precise about dates. Today is ${todayStr}. Activities before today are in the past and should not be changed. Any adjustments apply to today or future dates only.\n`;
+  }
+  if (context.goal) {
+    systemPrompt += `\n## Athlete's goal\n`;
+    systemPrompt += `- Goal type: ${context.goal.goalType || 'improve'}\n`;
+    if (context.goal.eventName) systemPrompt += `- Event: ${context.goal.eventName}\n`;
+    if (context.goal.targetDistance) systemPrompt += `- Target event distance: ${context.goal.targetDistance} km — this is the distance the athlete needs to be ready for\n`;
+    if (context.goal.targetElevation) systemPrompt += `- Target elevation: ${context.goal.targetElevation} m\n`;
+    if (context.goal.targetTime) systemPrompt += `- Target finish time: ${context.goal.targetTime} hours\n`;
+    if (context.goal.targetDate) {
+      systemPrompt += `- Event date: ${context.goal.targetDate}\n`;
+      const tp = context.goal.targetDate.split('T')[0].split('-');
+      const targetDate = new Date(Number(tp[0]), Number(tp[1]) - 1, Number(tp[2]));
+      const daysUntilEvent = Math.ceil((targetDate - new Date()) / (1000 * 60 * 60 * 24));
+      const weeksUntilEvent = Math.floor(daysUntilEvent / 7);
+      if (daysUntilEvent > 0) {
+        systemPrompt += `- Days until event: ${daysUntilEvent} (${weeksUntilEvent} weeks and ${daysUntilEvent % 7} days)\n`;
+      } else if (daysUntilEvent === 0) {
+        systemPrompt += `- EVENT IS TODAY\n`;
+      } else {
+        systemPrompt += `- Event was ${Math.abs(daysUntilEvent)} days ago\n`;
+      }
+    }
+    if (context.goal.cyclingType) systemPrompt += `- Cycling type: ${context.goal.cyclingType}\n`;
+  }
+  if (context.fitnessLevel) {
+    const bm = RIDER_BENCHMARKS[context.fitnessLevel];
+    systemPrompt += `- Fitness level: ${context.fitnessLevel}${bm ? ` (${bm.description})` : ''}\n`;
+  }
+  if (context.weekSummaries && context.weekSummaries.length > 0) {
+    systemPrompt += `\n## Full plan breakdown (week-by-week)\n`;
+    for (const ws of context.weekSummaries) {
+      systemPrompt += `Week ${ws.week}: ${ws.rideCount} rides (${ws.totalKm} km total, longest ${ws.longestRideKm} km), ${ws.strengthCount} strength, ${ws.totalMins} min total`;
+      if (ws.sessions) systemPrompt += ` — ${ws.sessions.join(', ')}`;
+      systemPrompt += '\n';
+    }
+  }
+  if (context.weekNum) systemPrompt += `\nThe athlete is asking about Week ${context.weekNum} specifically.\n`;
+  if (context.allActivities && context.allActivities.length > 0) {
+    systemPrompt += `\n## All plan activities (with IDs — use these when modifying)\n`;
+    systemPrompt += JSON.stringify(context.allActivities, null, 2) + '\n';
+  }
+  return systemPrompt;
+}
+
+// Split Claude's raw reply into (visible reply, parsed plan_update).
+function parseCoachReply(rawReply) {
+  const planUpdateMatch = rawReply.match(/```plan_update\s*\n([\s\S]*?)\n```/);
+  let updatedActivities = null;
+  if (planUpdateMatch) {
+    try {
+      const parsed = JSON.parse(planUpdateMatch[1]);
+      if (Array.isArray(parsed)) updatedActivities = parsed;
+    } catch (e) {
+      console.warn('Failed to parse plan_update JSON:', e.message);
+    }
+  }
+  const reply = rawReply.replace(/```plan_update\s*\n[\s\S]*?\n```/, '').trim();
+  return { reply, updatedActivities };
+}
+
+// Hard cap on the Claude call server-side. Client is instructed to give up
+// polling at this + buffer; reaper catches anything still 'running' after 3m.
+const COACH_CHAT_TIMEOUT_MS = 60 * 1000;
+
+/**
+ * Kick off an async coach chat job.
+ *
+ * Writes a `pending` row to coach_chat_jobs, inserts the in-memory job, then
+ * immediately fires runCoachChatJob in the background. Returns the jobId so
+ * the caller can respond 202 to the client.
+ *
+ * Preconditions (the caller MUST check these BEFORE calling):
+ *   - rate limit (weekly coach msg cap)
+ *   - cost cap
+ *   - topic guard
+ * We deliberately don't re-check them in here — the job should only exist if
+ * the user was allowed to send the message, and keeping the checks at the
+ * route boundary makes them easy to reason about (and test).
+ */
+async function startCoachChatJob({ userId, messages, context, coachId = null }) {
+  const jobId = `cj_${crypto.randomBytes(8).toString('hex')}`;
+  const now = Date.now();
+
+  const job = {
+    id: jobId,
+    userId,
+    status: 'pending',
+    messages,
+    context,
+    coachId,
+    reply: '',
+    updatedActivities: null,
+    blocked: false,
+    blockedMessage: null,
+    error: null,
+    createdAt: now,
+    startedAt: null,
+    completedAt: null,
+    // SSE subscribers registered by GET /coach-chat-stream/:jobId. We push
+    // delta events to each of them as Claude streams tokens back.
+    subscribers: new Set(),
+  };
+  coachChatJobs.set(jobId, job);
+
+  // Fire-and-forget DB write so the client gets the jobId fast. Even if this
+  // insert fails, the in-memory job is enough for the polling + SSE path to
+  // work for the short window the job is in flight. The reaper cleans any
+  // orphans once they go stale, so no data leaks even in the worst case.
+  supabase.from('coach_chat_jobs').insert({
+    job_id: jobId,
+    user_id: userId,
+    plan_id: context?.plan?.id || null,
+    week_num: context?.weekNum || null,
+    status: 'pending',
+    messages,
+    context,
+    coach_id: coachId,
+  }).then(({ error }) => {
+    if (error) console.warn(`[coach-chat] initial insert failed for ${jobId}:`, error.message);
+  });
+
+  // Kick off the Claude call. We don't await — the caller has already
+  // responded 202 to the client by this point.
+  runCoachChatJob(jobId).catch(err => {
+    console.error(`[coach-chat] Job ${jobId} crashed outside try/catch:`, err);
+    const j = coachChatJobs.get(jobId);
+    if (j && j.status !== 'completed' && j.status !== 'failed') {
+      j.status = 'failed';
+      j.error = err?.message || 'unknown error';
+      j.completedAt = Date.now();
+    }
+    persistCoachChatJob(jobId).catch(() => {});
+  });
+
+  return jobId;
+}
+
+/**
+ * Persist the current in-memory state of a coach chat job to Postgres.
+ * Called on terminal transitions (completed / failed / cancelled). Does NOT
+ * fire on every streaming delta — that would be too much write volume.
+ */
+async function persistCoachChatJob(jobId) {
+  const job = coachChatJobs.get(jobId);
+  if (!job) return;
+
+  const update = {
+    status: job.status,
+    reply: job.reply || null,
+    updated_activities: job.updatedActivities || null,
+    blocked: job.blocked || false,
+    blocked_message: job.blockedMessage || null,
+    error: job.error || null,
+    model: job.model || null,
+    started_at: job.startedAt ? new Date(job.startedAt).toISOString() : null,
+    completed_at: job.completedAt ? new Date(job.completedAt).toISOString() : null,
+    duration_ms: job.startedAt && job.completedAt ? job.completedAt - job.startedAt : null,
+  };
+
+  try {
+    await supabase.from('coach_chat_jobs').update(update).eq('job_id', jobId);
+  } catch (err) {
+    console.warn(`[coach-chat] persist failed for ${jobId}:`, err?.message);
+  }
+}
+
+/**
+ * Run the Claude call for a coach chat job.
+ *
+ * Uses streaming so we can push token-level deltas to SSE subscribers as
+ * they arrive. The full assembled text is stored on the job and persisted
+ * on completion. A non-streaming fallback would be simpler but we'd lose
+ * the ChatGPT-style reveal in the UI, which is one of the main reasons
+ * for doing this work at all.
+ *
+ * Wrapped in an AbortController with a 60s hard cap; on timeout we fail
+ * the job and notify SSE subscribers.
+ */
+async function runCoachChatJob(jobId) {
+  const job = coachChatJobs.get(jobId);
+  if (!job || job.status === 'cancelled') return;
+
+  const apiKey = getAnthropicKey();
+  if (!apiKey) {
+    job.status = 'failed';
+    job.error = 'AI not configured.';
+    job.completedAt = Date.now();
+    emitCoachChatEvent(job, 'error', { error: job.error });
+    await persistCoachChatJob(jobId);
+    return;
+  }
+
+  job.status = 'running';
+  job.startedAt = Date.now();
+
+  const _claudeModel = 'claude-sonnet-4-20250514';
+  job.model = _claudeModel;
+
+  const systemPrompt = buildCoachSystemPrompt(job.context || {});
+  const apiMessages = job.messages.map(m => ({
+    role: m.role === 'user' ? 'user' : 'assistant',
+    content: m.content,
+  }));
+
+  const abortCtrl = new AbortController();
+  const abortTimer = setTimeout(() => abortCtrl.abort(), COACH_CHAT_TIMEOUT_MS);
+
+  try {
+    const response = await _fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: _claudeModel,
+        max_tokens: 8192,
+        system: cachedSystem(systemPrompt),
+        messages: apiMessages,
+        stream: true,
+      }),
+      signal: abortCtrl.signal,
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => '');
+      console.error(`[coach-chat] Claude API ${response.status} for ${jobId}:`, errBody);
+      logClaudeUsage({
+        userId: job.userId, feature: 'coach_chat', model: _claudeModel,
+        data: {}, response, durationMs: Date.now() - job.startedAt,
+        status: 'api_error',
+        metadata: { coachId: job.coachId, turnCount: apiMessages?.length, http: response.status, async: true },
+      });
+      job.status = 'failed';
+      job.error = `AI service error (${response.status})`;
+      job.completedAt = Date.now();
+      emitCoachChatEvent(job, 'error', { error: job.error });
+      return;
+    }
+
+    // ── Stream parsing ──────────────────────────────────────────────────
+    // Anthropic streams Server-Sent Events: lines of "event: <name>" then
+    // "data: <json>" then a blank line. We care about `content_block_delta`
+    // for text tokens. On completion the stream ends; we then parse the
+    // accumulated reply for a plan_update block and notify subscribers.
+    const body = response.body;
+    if (!body) {
+      job.status = 'failed';
+      job.error = 'No response body from Claude.';
+      job.completedAt = Date.now();
+      emitCoachChatEvent(job, 'error', { error: job.error });
+      return;
+    }
+
+    // Node's fetch returns a Web ReadableStream; we read it as UTF-8 text.
+    const reader = body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let fullText = '';
+    let usage = null;
+
+    while (true) {
+      if (job.status === 'cancelled') {
+        try { reader.cancel(); } catch {}
+        break;
+      }
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE frames are separated by \n\n. Process complete frames, leave
+      // any partial frame in the buffer for the next chunk.
+      let sepIdx;
+      while ((sepIdx = buffer.indexOf('\n\n')) !== -1) {
+        const frame = buffer.slice(0, sepIdx);
+        buffer = buffer.slice(sepIdx + 2);
+        // Each frame is one or more "field: value" lines. We only need `data:`.
+        const dataLine = frame.split('\n').find(l => l.startsWith('data:'));
+        if (!dataLine) continue;
+        const jsonStr = dataLine.slice(5).trim();
+        if (!jsonStr || jsonStr === '[DONE]') continue;
+        let evt;
+        try { evt = JSON.parse(jsonStr); } catch { continue; }
+
+        if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
+          const delta = evt.delta.text || '';
+          if (!delta) continue;
+          fullText += delta;
+
+          // Filter out the plan_update block from the visible stream — once
+          // we see the opening fence, stop streaming text to subscribers
+          // until the closing fence. Client never sees the JSON garbage.
+          const visible = stripPlanUpdateFromStream(fullText);
+          job.reply = visible;
+          emitCoachChatEvent(job, 'delta', { text: visible });
+        } else if (evt.type === 'message_delta' && evt.usage) {
+          usage = evt.usage;
+        } else if (evt.type === 'message_stop') {
+          // final frame — loop will exit on next read
+        }
+      }
+    }
+
+    clearTimeout(abortTimer);
+
+    // Final parse for plan_update + clean reply
+    const { reply, updatedActivities } = parseCoachReply(fullText);
+    job.reply = reply;
+    job.updatedActivities = updatedActivities;
+    job.status = 'completed';
+    job.completedAt = Date.now();
+
+    // Log token usage — match the sync path's shape so the admin dashboard
+    // aggregates both. async: true tells us which code path produced it.
+    try {
+      const syntheticResponse = { ok: true, status: 200 };
+      logClaudeUsage({
+        userId: job.userId, feature: 'coach_chat', model: _claudeModel,
+        data: { usage },
+        response: syntheticResponse,
+        durationMs: Date.now() - job.startedAt,
+        metadata: {
+          coachId: job.coachId,
+          turnCount: apiMessages?.length,
+          scope: job.context?.weekNum ? 'week' : 'plan',
+          async: true,
+          streamed: true,
+        },
+      });
+    } catch (e) {
+      console.warn('[coach-chat] logClaudeUsage failed:', e?.message);
+    }
+
+    // Log the message for rate-limiting. Only on success, mirrors the sync
+    // path so failed sends don't count against the weekly quota.
+    const latestUserMsg = [...job.messages].reverse().find(m => m.role === 'user');
+    if (job.userId && latestUserMsg) {
+      try {
+        await rateLimits.logCoachMessage(
+          job.userId,
+          job.context?.sessionId || null,
+          job.context?.weekNum || null
+        );
+      } catch (e) {
+        console.warn('[coach-chat] logCoachMessage failed:', e?.message);
+      }
+    }
+
+    // Tell SSE subscribers we're done, with the final payload. Polling
+    // clients will get the same data on their next tick.
+    emitCoachChatEvent(job, 'done', {
+      reply,
+      updatedActivities,
+    });
+
+    // ── Persist the reply into chat_sessions ─────────────────────────────
+    // Critical: this means the history shows the completed reply even if
+    // the user navigated away mid-request and only comes back hours later.
+    // The client still maintains its own local mirror via AsyncStorage;
+    // the two reconcile on next mount via the usual "server wins if newer"
+    // load in CoachChatScreen.
+    try {
+      const planId = job.context?.plan?.id || null;
+      const weekNum = job.context?.weekNum || null;
+      if (planId && job.userId) {
+        const sessionId = `${planId}_w${weekNum || 0}`;
+        const assistantMsg = {
+          role: 'assistant',
+          content: reply,
+          ts: Date.now(),
+          ...(updatedActivities && updatedActivities.length ? { hasUpdate: true } : {}),
+        };
+        // Append to the stored messages array. If no row exists yet we
+        // create one from the job's messages + the assistant reply.
+        const { data: existing } = await supabase
+          .from('chat_sessions')
+          .select('messages')
+          .eq('id', sessionId)
+          .eq('user_id', job.userId)
+          .maybeSingle();
+        const prior = Array.isArray(existing?.messages) ? existing.messages : job.messages;
+        const merged = [...prior, assistantMsg];
+        await supabase
+          .from('chat_sessions')
+          .upsert({
+            id: sessionId,
+            user_id: job.userId,
+            plan_id: planId,
+            week_num: weekNum,
+            messages: merged,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'id' });
+      }
+    } catch (e) {
+      console.warn('[coach-chat] chat_sessions append failed:', e?.message);
+    }
+
+    // ── Push notification — but only if the user probably isn't looking at
+    // the chat right now. We can't know for certain server-side, so we
+    // always send; the client's foreground handler drops the banner if
+    // CoachChatScreen is focused. The notification is still written to the
+    // notifications table either way, which is fine for the history feed.
+    try {
+      const preview = reply.length > 80 ? reply.slice(0, 77) + '…' : reply;
+      await sendPushToUser(job.userId, {
+        title: (getCoachById(job.coachId)?.name || 'Your coach') + ' replied',
+        body: preview,
+        type: 'coach_reply',
+        data: {
+          planId: job.context?.plan?.id || null,
+          weekNum: job.context?.weekNum || null,
+          jobId,
+        },
+      });
+    } catch (e) {
+      console.warn('[coach-chat] push failed:', e?.message);
+    }
+
+    await persistCoachChatJob(jobId);
+  } catch (err) {
+    clearTimeout(abortTimer);
+    const isAbort = err?.name === 'AbortError' || /aborted/i.test(err?.message || '');
+    job.status = 'failed';
+    job.error = isAbort
+      ? `Message timed out after ${Math.round(COACH_CHAT_TIMEOUT_MS / 1000)}s — tap retry to try again.`
+      : (err?.message || 'Coach call failed');
+    job.completedAt = Date.now();
+
+    console.error(`[coach-chat] Job ${jobId} failed:`, err?.message);
+    emitCoachChatEvent(job, 'error', { error: job.error, timeout: isAbort });
+
+    logClaudeUsage({
+      userId: job.userId, feature: 'coach_chat', model: _claudeModel,
+      data: {}, response: { ok: false, status: isAbort ? 408 : 500 },
+      durationMs: job.startedAt ? Date.now() - job.startedAt : null,
+      status: isAbort ? 'timeout' : 'error',
+      metadata: { coachId: job.coachId, async: true, streamed: true },
+    });
+
+    await persistCoachChatJob(jobId);
+  }
+}
+
+// Helper — resolve the server's view of a coach by id. Used for push titles.
+// Reads from the COACHES map defined at the top of this file.
+function getCoachById(coachId) {
+  if (!coachId) return null;
+  return COACHES[coachId] || null;
+}
+
+/**
+ * Filter out a (possibly partial) plan_update block from the streaming text.
+ * While the model is still emitting the JSON, we hide everything from the
+ * opening fence onward so the UI doesn't flash `` ```plan_update `` mid-reply.
+ */
+function stripPlanUpdateFromStream(fullText) {
+  const fenceIdx = fullText.indexOf('```plan_update');
+  if (fenceIdx === -1) return fullText;
+  // Once we've seen a closing fence after the opening one, strip the whole
+  // block. If we only see the opening fence, truncate at it (the closing
+  // will arrive in subsequent deltas).
+  const closeIdx = fullText.indexOf('```', fenceIdx + '```plan_update'.length);
+  if (closeIdx === -1) return fullText.slice(0, fenceIdx).trimEnd();
+  return (fullText.slice(0, fenceIdx) + fullText.slice(closeIdx + 3)).trim();
+}
+
+// Push an event to all SSE subscribers of a job. No-op if none are listening.
+function emitCoachChatEvent(job, eventName, payload) {
+  if (!job || !job.subscribers || job.subscribers.size === 0) return;
+  const line = `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
+  for (const res of job.subscribers) {
+    try {
+      res.write(line);
+      // Some platforms (compression middleware, proxies) hold writes in a
+      // buffer. `res.flush` is present on compression-wrapped responses
+      // and pushes the bytes out immediately — no-op otherwise.
+      if (typeof res.flush === 'function') res.flush();
+    } catch {}
+  }
+  // Terminal events close the stream on the server side so clients don't
+  // have to guess when to disconnect.
+  if (eventName === 'done' || eventName === 'error') {
+    for (const res of job.subscribers) {
+      try { res.end(); } catch {}
+    }
+    job.subscribers.clear();
+  }
+}
+
+// ── POST /api/ai/coach-chat-async ─────────────────────────────────────────
+router.post('/coach-chat-async', async (req, res) => {
+  // Same gating as the sync endpoint — run it BEFORE kicking off the job.
+  if (await rateLimits.checkAndBlockCoachMessage(req, res)) return;
+  if (await checkAndBlockIfOverCap(req, res, { feature: 'coach_chat' })) return;
+
+  const apiKey = getAnthropicKey();
+  if (!apiKey) return res.status(503).json({ error: 'AI not configured.' });
+
+  const { messages, context } = req.body;
+  if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: 'Missing messages array.' });
+  }
+
+  try {
+    // Topic guard — same as sync endpoint. If blocked, return immediately
+    // without starting a job so the blocked reply is synchronous.
+    const latestUserMsg = [...messages].reverse().find(m => m.role === 'user');
+    if (latestUserMsg) {
+      const guard = await checkTopicGuard(apiKey, latestUserMsg.content, req.user?.id);
+      if (!guard.allowed) {
+        return res.json({
+          blocked: true,
+          reply: "Sorry, I can only help with questions about your training plan, cycling, nutrition, gear, and fitness. If you think this was a mistake, let us know and we'll look into it.",
+          blockedMessage: latestUserMsg.content,
+        });
+      }
+    }
+
+    const jobId = await startCoachChatJob({
+      userId: req.user?.id,
+      messages,
+      context,
+      coachId: context?.coachId || null,
+    });
+    // 202 Accepted — "we've received it, work is in progress".
+    res.status(202).json({ jobId });
+  } catch (err) {
+    console.error('coach-chat-async failed:', err);
+    res.status(500).json({ error: 'Failed to start coach job', detail: err.message });
+  }
+});
+
+// ── GET /api/ai/coach-chat-job/:jobId — poll status ───────────────────────
+router.get('/coach-chat-job/:jobId', async (req, res) => {
+  const job = coachChatJobs.get(req.params.jobId);
+  if (job) {
+    if (job.userId && req.user?.id && job.userId !== req.user.id) {
+      return res.status(403).json({ error: 'Not your job' });
+    }
+    return res.json({
+      jobId: job.id,
+      status: job.status,
+      reply: job.reply || '',
+      updatedActivities: job.updatedActivities || null,
+      blocked: job.blocked || false,
+      blockedMessage: job.blockedMessage || null,
+      error: job.error || null,
+    });
+  }
+
+  // Miss — fall back to DB (server restart, job older than TTL).
+  try {
+    const { data: row } = await supabase
+      .from('coach_chat_jobs')
+      .select('job_id, user_id, status, reply, updated_activities, blocked, blocked_message, error')
+      .eq('job_id', req.params.jobId)
+      .limit(1)
+      .maybeSingle();
+    if (!row) return res.status(404).json({ error: 'Job not found' });
+    if (row.user_id && req.user?.id && row.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Not your job' });
+    }
+    // Rows stuck at pending/running post-restart are effectively dead — the
+    // reaper will tidy them but we don't want the client spinning forever.
+    if (row.status === 'pending' || row.status === 'running') {
+      return res.json({
+        jobId: req.params.jobId,
+        status: 'failed',
+        reply: '',
+        updatedActivities: null,
+        blocked: false,
+        error: 'Server restarted while this message was being processed. Please try again.',
+      });
+    }
+    return res.json({
+      jobId: req.params.jobId,
+      status: row.status,
+      reply: row.reply || '',
+      updatedActivities: row.updated_activities || null,
+      blocked: !!row.blocked,
+      blockedMessage: row.blocked_message || null,
+      error: row.error || null,
+    });
+  } catch (err) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+});
+
+// ── GET /api/ai/coach-chat-stream/:jobId — SSE token stream ───────────────
+// Client opens this as an EventSource to get live deltas. Events:
+//   delta: { text: string }            — full visible text so far
+//   done:  { reply, updatedActivities } — terminal, stream ends
+//   error: { error: string }            — terminal, stream ends
+//
+// If the job already completed before the subscription (race with a fast
+// Claude response), we emit the terminal event immediately.
+router.get('/coach-chat-stream/:jobId', (req, res) => {
+  const job = coachChatJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (job.userId && req.user?.id && job.userId !== req.user.id) {
+    return res.status(403).json({ error: 'Not your job' });
+  }
+
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no', // nginx: don't buffer
+  });
+  res.flushHeaders?.();
+
+  // Catch-up: if there's already text (late subscription), send it immediately.
+  if (job.reply) {
+    res.write(`event: delta\ndata: ${JSON.stringify({ text: job.reply })}\n\n`);
+  }
+
+  // Terminal state already reached? Emit and close.
+  if (job.status === 'completed') {
+    res.write(`event: done\ndata: ${JSON.stringify({ reply: job.reply, updatedActivities: job.updatedActivities })}\n\n`);
+    return res.end();
+  }
+  if (job.status === 'failed' || job.status === 'cancelled') {
+    res.write(`event: error\ndata: ${JSON.stringify({ error: job.error || 'Job failed' })}\n\n`);
+    return res.end();
+  }
+
+  // Subscribe to future events.
+  job.subscribers.add(res);
+  req.on('close', () => {
+    if (job.subscribers) job.subscribers.delete(res);
+  });
+});
+
+// ── DELETE /api/ai/coach-chat-job/:jobId — cancel ──────────────────────────
+router.delete('/coach-chat-job/:jobId', async (req, res) => {
+  const job = coachChatJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (job.userId && req.user?.id && job.userId !== req.user.id) {
+    return res.status(403).json({ error: 'Not your job' });
+  }
+  if (job.status === 'completed' || job.status === 'failed') {
+    return res.json({ success: true, alreadyTerminal: true });
+  }
+  job.status = 'cancelled';
+  job.error = 'Cancelled';
+  job.completedAt = Date.now();
+  emitCoachChatEvent(job, 'error', { error: 'Cancelled', cancelled: true });
+  await persistCoachChatJob(job.id);
+  res.json({ success: true });
 });
 
 // ── Async plan generation ────────────────────────────────────────────────────
@@ -2796,6 +3754,7 @@ module.exports.getPlanJob = (jobId) => planJobs.get(jobId) || null;
 // Exposed for the plan-gen reaper so it can sync in-memory jobs with any
 // rows it flips in the DB. Tests should not mutate this directly.
 module.exports._planJobs = planJobs;
+module.exports._coachChatJobs = coachChatJobs;
 // Test-only exports — prompt builders are pure functions so we can unit
 // test them without touching Claude or the DB.
 module.exports._testing = { buildPlanPrompt, buildRetryPrompt, getFewShotExemplar };
