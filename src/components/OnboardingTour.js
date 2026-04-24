@@ -367,13 +367,14 @@ export default function OnboardingTour({ visible, onComplete }) {
   return (
     <Modal visible={visible} transparent animationType="none" statusBarTranslucent>
       <View style={s.overlay}>
-        {/* Skip button — only shown on non-final steps; on the final step
-            "Get started" is the only reasonable next action */}
-        {!isLast && (
-          <TouchableOpacity style={s.skipBtn} onPress={handleSkip} activeOpacity={0.7}>
-            <Text style={s.skipText}>Skip</Text>
-          </TouchableOpacity>
-        )}
+        {/* Skip button — always available, including the final step.
+            Users who reach the last step and decide they're done can hit
+            Skip to dismiss without the "Get started" confirmation. Picks
+            made in earlier steps are preserved (handlePickCoach /
+            handlePickUnits wrote them as the user tapped). */}
+        <TouchableOpacity style={s.skipBtn} onPress={handleSkip} activeOpacity={0.7}>
+          <Text style={s.skipText}>Skip</Text>
+        </TouchableOpacity>
 
         <Animated.View style={[
           s.contentWrap,
@@ -409,9 +410,12 @@ export default function OnboardingTour({ visible, onComplete }) {
             ))}
           </View>
 
-          {/* Action buttons */}
+          {/* Action buttons — Back is available from step 1 onwards
+              (including the final "Get started" step, so users can
+              reverse out of the last screen). First step hides Back
+              because there's nothing to go back to. */}
           <View style={s.btnRow}>
-            {!isFirst && !isLast && (
+            {!isFirst && (
               <TouchableOpacity
                 style={s.backBtn}
                 onPress={() => animateTransition(() => setStep(st => st - 1))}

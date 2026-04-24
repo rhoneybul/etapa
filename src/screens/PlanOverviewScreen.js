@@ -94,19 +94,21 @@ function getWeekFlags(weekVolumes, phases, plan) {
 }
 
 // Ride type colors for stacked bars.
-// Restricted to the brand pinks + slate-blues (user feedback: the prior
-// green / teal / amber / orange palette felt off-brand). Intensity is
-// encoded by hue temperature within a narrower range — blues for easier
-// / recovery / indoor, pinks for the harder endurance / tempo / intervals
-// work. Brand primary (#E8458B) is reserved for the current-week border.
+// Saturated pinks + slate-blues. Previous palette (soft pastels) was
+// too faint against the app's dark background — users reported the
+// bars "not showing" at all. Each color is picked to pop: endurance
+// uses the brand primary pink, intervals a deep raspberry, and so on.
+// Brand primary (#E8458B) is reserved for the endurance fill — the
+// current-week BORDER uses the same hue but is visually distinct
+// because it's 1.5px stroke rather than fill.
 const RIDE_TYPE_COLORS = {
-  recovery:   '#9FB4D9',      // light blue — easiest, cool
-  endurance:  '#ED93B1',      // soft pink — aerobic base
-  tempo:      '#D4537E',      // mid pink — moderate intensity
-  intervals:  '#993556',      // deep pink — high intensity
-  indoor:     '#6B8CC7',      // slate blue — distinct from outdoor rides
-  strength:   '#4B5A80',      // deep slate — different modality
-  other:      '#94A3B8',
+  recovery:   '#85B7EB',      // mid blue — easiest, cool
+  endurance:  '#F472B6',      // bright magenta-pink — aerobic base (pops on dark)
+  tempo:      '#D85A30',      // coral — moderate intensity
+  intervals:  '#993556',      // deep raspberry — high intensity
+  indoor:     '#378ADD',      // vivid blue — distinct indoor
+  strength:   '#7F77DD',      // purple — different modality
+  other:      '#85B7EB',      // fall back to recovery blue so nothing ever goes grey
 };
 
 const RIDE_TYPE_LABELS = {
@@ -125,10 +127,29 @@ function getWeekVolume(plan, weekNum) {
   const rideCount = acts.filter(a => a.type === 'ride').length;
   const strengthCount = acts.filter(a => a.type === 'strength').length;
 
-  // Break down km by ride subType for stacked bars
+  // Break down km by session category for stacked bars.
+  //
+  // Cross-training (run / swim / hike / row / etc.) has type set to
+  // the CT key and usually no subType. The old logic
+  // (`a.subType || 'other'`) routed every CT activity into the
+  // 'other' bucket, which renders as muted slate-grey — looked
+  // almost black against the dark chart background, and users
+  // (rightly) flagged it as a broken colour.
+  //
+  // New bucketing:
+  //   - strength    → 'strength'
+  //   - ride        → subType (endurance / tempo / intervals / etc.)
+  //                   or 'endurance' if no subType given
+  //   - any other   → 'endurance' (swims, runs, walks, hikes — they're
+  //                   all aerobic base work; distance contributes to
+  //                   the weekly volume in the same way a steady ride
+  //                   would, so colouring them as endurance is honest)
   const byType = {};
   acts.forEach(a => {
-    const key = a.type === 'strength' ? 'strength' : (a.subType || 'other');
+    let key;
+    if (a.type === 'strength') key = 'strength';
+    else if (a.type === 'ride') key = a.subType || 'endurance';
+    else key = 'endurance';
     const km = a.distanceKm || 0;
     if (!byType[key]) byType[key] = 0;
     byType[key] += km;
@@ -301,7 +322,11 @@ export default function PlanOverviewScreen({ navigation, route }) {
                             />
                           );
                         }) : (
-                          <View style={{ width: '100%', height: totalH, backgroundColor: '#64748B', borderRadius: 3 }} />
+                          // Empty-week fallback (no rides, only strength
+                          // or rest). Brighter pink than the track so
+                          // the bar still reads as data rather than as
+                          // empty chart space.
+                          <View style={{ width: '100%', height: totalH, backgroundColor: 'rgba(244,114,182,0.55)', borderRadius: 3 }} />
                         )}
                       </View>
                       {/* Strava actual km label */}
@@ -333,7 +358,13 @@ export default function PlanOverviewScreen({ navigation, route }) {
                   );
                 })}
               </View>
-              {/* Dynamic legend based on ride types present */}
+              {/* Dynamic legend — session types are solid dots (they
+                  represent fills inside the bar). The "This week"
+                  entry is a ring, not a dot, because the current-week
+                  treatment on the chart is a pink BORDER around the
+                  bar, not a coloured fill. Using a ring for the
+                  legend icon matches the actual visual and stops
+                  users reading "Current" as yet another ride type. */}
               <View style={s.chartLegend}>
                 {(() => {
                   const typesUsed = new Set();
@@ -347,8 +378,8 @@ export default function PlanOverviewScreen({ navigation, route }) {
                   ));
                 })()}
                 <View style={s.legendItem}>
-                  <View style={[s.legendDot, { backgroundColor: '#E8458B' }]} />
-                  <Text style={s.legendText}>Current</Text>
+                  <View style={s.legendRing} />
+                  <Text style={s.legendText}>This week</Text>
                 </View>
                 {stravaActivities.length > 0 && (
                   <View style={s.legendItem}>
@@ -584,7 +615,14 @@ const s = StyleSheet.create({
   chartTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 12 },
   chartArea: { flexDirection: 'row', alignItems: 'flex-end', height: 125, gap: 2 },
   chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
-  chartBarStack: { width: '80%', borderRadius: 3, minHeight: 4, overflow: 'hidden' },
+  // Subtle background fill so users can see "0%" vs "100%" even when
+  // the bar's own colour is very tall. Barely-there slate so it reads
+  // as a track, not as data. Min-height 6 ensures even a 0-km week
+  // still shows a sliver to keep the axis anchored.
+  chartBarStack: {
+    width: '80%', borderRadius: 3, minHeight: 6, overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
   chartBarStackCurrent: { borderWidth: 1.5, borderColor: '#E8458B' },
   chartBarLabel: { fontSize: 9, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, marginBottom: 2 },
   chartDateRow: { flexDirection: 'row', marginTop: 6, gap: 2 },
@@ -594,6 +632,10 @@ const s = StyleSheet.create({
   chartLegend: { flexDirection: 'row', gap: 16, marginTop: 10 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
+  // Hollow pink ring — mirrors the current-week bar's border treatment
+  // so the legend reads as "this visual = this week" rather than as a
+  // ride-type category. Hair-width border to keep it compact at 10px.
+  legendRing: { width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: '#E8458B' },
   legendText: { fontSize: 10, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
   stravaBarLabel: {
     fontSize: 8, fontWeight: '600', fontFamily: FF.semibold, color: '#FC4C02', marginTop: 1,

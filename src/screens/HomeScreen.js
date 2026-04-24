@@ -29,6 +29,7 @@ import { t } from '../services/strings';
 import ComingSoon from '../components/ComingSoon';
 import StravaLogo from '../components/StravaLogo';
 import CoachChatCard from '../components/CoachChatCard';
+import LoadingSplash from '../components/LoadingSplash';
 import { useUnits } from '../utils/units';
 import { triggerMaintenanceMode } from '../../App';
 import { syncPlansToServer } from '../services/storageService';
@@ -114,6 +115,12 @@ export default function HomeScreen({ navigation, route }) {
   const [starterPriceLabel, setStarterPriceLabel] = useState(null); // fetched from server
   const [subscribed, setSubscribed] = useState(true); // assumed true until checked
   const [previewDaysLeft, setPreviewDaysLeft] = useState(null); // null = subscribed / no limit
+  // Days left in the user's PAID free trial (distinct from previewDaysLeft,
+  // which is the pre-purchase preview window). null = not trialing. Derived
+  // from subscription.status === 'trialing' + currentPeriodEnd at load time.
+  // Surfaces as a banner at the top of Home so users know the 7-day clock
+  // is running and when it flips to a paid charge.
+  const [trialDaysLeft, setTrialDaysLeft] = useState(null);
   const [trialConfig, setTrialConfig] = useState({ days: 7, bannerMessage: 'Subscribe to unlock full training access' });
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [comingSoonConfig, setComingSoonConfig] = useState(null);
@@ -134,6 +141,17 @@ export default function HomeScreen({ navigation, route }) {
   const mainScrollRef = useRef(null);
   const weekListYRef = useRef(0);
   const dayRowYRef = useRef(new Map());
+  // Live refs to each rendered day-row View so handleDayPress can
+  // measureInWindow at click time (not cached). onLayout caching was
+  // unreliable because it measures Y relative to the row's PARENT (not
+  // the ScrollView content) — missing one or more wrapper offsets — and
+  // goes stale after the user scrolls. Fresh screen-space measurements
+  // plus the tracked scroll offset give an exact target every time.
+  const dayRowRefs = useRef(new Map());
+  // Current scroll offset, updated on every scroll event. Used to
+  // translate the row's screen-space Y (from measureInWindow) back into
+  // a scrollTo-compatible content-space Y.
+  const lastScrollYRef = useRef(0);
   const [movingActivity, setMovingActivity] = useState(null); // { activity } when hold-to-move
   const [actionActivity, setActionActivity] = useState(null); // { activity } when action bar shown
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -335,6 +353,59 @@ export default function HomeScreen({ navigation, route }) {
     if (!isMounted.current) return;
     setSubPlan(subStatus?.plan || null);
 
+    // Debug log — one-line summary of what the server is actually
+    // returning for this user's subscription. Useful for diagnosing
+    // "my trial banner isn't showing" reports: flip on `LOG_SUB_DEBUG`
+    // (or just read the dev console) to see active/status/plan/end.
+    if (__DEV__) {
+      console.log('[home] subscription status', {
+        active: subStatus?.active,
+        status: subStatus?.status,
+        plan: subStatus?.plan,
+        currentPeriodEnd: subStatus?.currentPeriodEnd,
+        source: subStatus?.source,
+      });
+    }
+
+    // Time-limited entitlement detection — surface a top-of-screen
+    // banner whenever the user is on a paid plan that will LAPSE on a
+    // known date. Two cases we care about:
+    //   1. Free trial (status === 'trialing'): 7-day trial on a
+    //      monthly / annual / lifetime purchase.
+    //   2. Starter plan: one-time £14.99 purchase that grants 3 months
+    //      of access. Its `currentPeriodEnd` is the 3-month cutoff.
+    //
+    // Perpetual subs (monthly / annual / lifetime past their trial) do
+    // NOT show this banner — they renew silently and a countdown would
+    // be noise. We rely on plan === 'starter' rather than checking a
+    // separate "starter trial" flag because starter is the only
+    // plan-flavour we expose that's both active AND time-limited.
+    //
+    // Fallback: if the subscription is starter-active but
+    // `currentPeriodEnd` is missing (server payload incomplete or
+    // RevenueCat hiccup), we STILL surface the banner — we just use a
+    // sentinel of 0 so the UI knows to show a generic "Starter plan
+    // active" line without a specific day count. Previously missing
+    // currentPeriodEnd silently hid the banner, which is the bug Rob
+    // just reported ("I can't see it").
+    const isTimeLimitedEntitlement = subStatus?.active && (
+      subStatus.status === 'trialing' || subStatus.plan === 'starter'
+    );
+    if (isTimeLimitedEntitlement) {
+      if (subStatus.currentPeriodEnd) {
+        const msLeft = new Date(subStatus.currentPeriodEnd).getTime() - Date.now();
+        setTrialDaysLeft(msLeft > 0 ? Math.ceil(msLeft / (1000 * 60 * 60 * 24)) : null);
+      } else {
+        // Active + time-limited but no cutoff date. Show the banner
+        // with 0 as a signal: the render branch below treats
+        // `trialDaysLeft === 0` as "show the static label without
+        // a day count" rather than "last day".
+        setTrialDaysLeft(0);
+      }
+    } else {
+      setTrialDaysLeft(null);
+    }
+
     // Fetch live prices (non-blocking) — only update state if still mounted
     getPrices().then(prices => {
       if (isMounted.current && prices?.starter) setStarterPriceLabel(prices.starter.formatted);
@@ -346,8 +417,15 @@ export default function HomeScreen({ navigation, route }) {
     setPlans(p);
     setGoals(g);
 
-    // Show onboarding tour for first-time users (no plans and hasn't seen it)
-    if (p.length === 0 && !initialLoadDone.current) {
+    // Show onboarding tour on the user's first Home visit, regardless of
+    // whether they already have plans. The "done" flag is per-USER (see
+    // isOnboardingDone — it reads from server preferences, not just
+    // AsyncStorage) so re-installs / new devices don't re-trigger the
+    // tour for an account that's already seen it, and brand-new accounts
+    // on an old device DO see it even if a previous account on that
+    // device completed it. Gated on `!initialLoadDone.current` so it
+    // fires once per session, not on every focus.
+    if (!initialLoadDone.current) {
       const obDone = await isOnboardingDone();
       if (!obDone && isMounted.current) setShowOnboarding(true);
     }
@@ -594,33 +672,12 @@ export default function HomeScreen({ navigation, route }) {
   // the icon appear to breathe without moving out of alignment. The static
   // base layer keeps the position locked so nothing ever jumps.
   if (loading) {
-    // Platform-match: iOS gets splash.png (portrait 1284×2778), Android gets
-    // splash-android.png (1440×3120). Using Platform.select keeps the two
-    // code paths symmetric with app.json's splash config.
-    const splashImg = Platform.OS === 'android'
-      ? require('../../assets/splash-android.png')
-      : require('../../assets/splash.png');
-    return (
-      <View style={[s.container, { backgroundColor: '#000000' }]}>
-        {/* Base layer — never moves. Holds the exact splash pixels the OS
-            just rendered so nothing jumps in the hand-off. */}
-        <Image
-          source={splashImg}
-          style={StyleSheet.absoluteFill}
-          resizeMode="contain"
-        />
-        {/* Throb layer — same image, animated scale only. Pulses 1.00 → 1.05
-            → 1.00 on a 2-second cycle. Scaling around the layer's centre
-            keeps the icon (which is near centre in the source image) pulsing
-            in place. `pulseAnim` is driven by the existing animation loop
-            further up in this file so no extra setup is needed here. */}
-        <Animated.Image
-          source={splashImg}
-          style={[StyleSheet.absoluteFill, { transform: [{ scale: pulseAnim }] }]}
-          resizeMode="contain"
-        />
-      </View>
-    );
+    // Shared LoadingSplash component — same render path as the
+    // post-delete state below, guaranteeing both screens are
+    // pixel-identical (the whole "it doesn't look the same" class of
+    // bug goes away at compile time). No label on cold-start because
+    // the user knows what they just did.
+    return <LoadingSplash />;
   }
 
   // ── Delete-in-progress overlay ────────────────────────────────────────────
@@ -631,16 +688,12 @@ export default function HomeScreen({ navigation, route }) {
   // component renders against an inconsistent world.
   if (deleting) {
     return (
-      <View style={s.container}>
-        <SafeAreaView style={[s.safe, s.loadingWrap]}>
-          <View style={s.deletingCard}>
-            <Animated.View style={[s.loadingLogoWrap, { transform: [{ scale: pulseAnim }], marginBottom: 12 }]}>
-              <Image source={require('../../assets/icon.png')} style={s.loadingLogoSmall} />
-            </Animated.View>
-            <Text style={s.deletingText}>Deleting plan…</Text>
-          </View>
-        </SafeAreaView>
-      </View>
+      // Same LoadingSplash as cold-start, just with a label — exactly
+      // the user's ask: "confirm it's the same screen and component
+      // for loading + loading after deleting plan". Both paths now
+      // render the identical component, so any future tweak to the
+      // splash treatment updates both at once.
+      <LoadingSplash label="Deleting plan…" />
     );
   }
 
@@ -834,21 +887,37 @@ export default function HomeScreen({ navigation, route }) {
     // Toggle: tap same day again to deselect
     setSelectedDayIdx(prev => {
       const next = prev === dayIdx ? null : dayIdx;
-      // Only scroll when selecting a day (not when deselecting) — otherwise
-      // tapping again would snap you somewhere unexpected. The small
-      // -80 offset keeps a bit of context visible above the target row
-      // (like the "tap a session" hint + preceding day) rather than
-      // pinning the row flush to the top of the viewport.
+      // Only scroll when SELECTING a day (not when deselecting) —
+      // otherwise tapping again would snap you somewhere unexpected.
+      //
+      // Scroll math: we want the week strip AND the target day row both
+      // visible, with the strip pinned near the top of the viewport and
+      // the selected row sitting just below the day-list divider. We
+      // measure both the row and the ScrollView in screen space at
+      // click time (NOT from cached onLayout values — those were broken
+      // because they measured Y relative to the row's immediate parent
+      // instead of the ScrollView content, missing one or more wrapper
+      // offsets). Translating the row's current on-screen Y back into
+      // content-space Y = currentScrollY + (rowPageY - scrollViewPageY).
       if (next !== null && mainScrollRef.current) {
-        const weekListY = weekListYRef.current || 0;
-        const rowY = dayRowYRef.current.get(dayIdx) || 0;
-        const target = Math.max(0, weekListY + rowY - 80);
-        // requestAnimationFrame lets the selected-state re-render land
-        // first, which matters on iOS where scroll-before-paint can
-        // feel jumpy.
-        requestAnimationFrame(() => {
-          mainScrollRef.current?.scrollTo({ y: target, animated: true });
-        });
+        const rowRef = dayRowRefs.current.get(dayIdx);
+        if (rowRef?.measureInWindow && mainScrollRef.current?.measureInWindow) {
+          requestAnimationFrame(() => {
+            mainScrollRef.current?.measureInWindow((svX, svY, svW, svH) => {
+              rowRef.measureInWindow((rX, rY, rW, rH) => {
+                // ~200pt of headroom keeps the week strip (date chips +
+                // bike-km indicators) comfortably visible above the
+                // selected row, matching the "full This Week card"
+                // layout Rob approved in the mockup.
+                const HEADROOM = 200;
+                const yInViewport = rY - svY;
+                const currentScroll = lastScrollYRef.current || 0;
+                const target = Math.max(0, currentScroll + yInViewport - HEADROOM);
+                mainScrollRef.current?.scrollTo({ y: target, animated: true });
+              });
+            });
+          });
+        }
       }
       return next;
     });
@@ -1021,6 +1090,8 @@ export default function HomeScreen({ navigation, route }) {
           ref={mainScrollRef}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 40 + BOTTOM_INSET }}
+          onScroll={(e) => { lastScrollYRef.current = e.nativeEvent.contentOffset.y; }}
+          scrollEventThrottle={16}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} colors={[colors.primary]} />}
         >
           {/* Header */}
@@ -1047,13 +1118,51 @@ export default function HomeScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
 
-          {/* Subscribe banner — shown when user has a plan but no active subscription */}
-          {!subscribed && plans.length > 0 && (
+          {/* Top-of-home banner — four variants, all rendered through
+              the same TouchableOpacity so the visual slot is stable:
+                1. PAID TRIAL — subscribed via `trialing` status with
+                   clock still running.
+                2. STARTER PLAN — subscribed, one-time 3-month purchase.
+                3. PRE-PURCHASE PREVIEW — not yet subscribed, inside
+                   the remote-configurable preview window.
+                4. SUBSCRIBE NUDGE — has a plan but no sub and (likely)
+                   no preview left either.
+              Shown whenever the user is NOT on a perpetual auto-
+              renewing sub. The only case we skip: active monthly /
+              annual / lifetime where `trialDaysLeft` is null and
+              `subscribed === true`. That block is intentionally
+              silent — those users don't need a nag.
+              Logging: dev-only console line so "why isn't my banner
+              showing" reports can be answered from the log output
+              instead of guessing. */}
+          {(() => {
+            const isPerpetualActiveSub =
+              subscribed && trialDaysLeft === null &&
+              (subPlan === 'monthly' || subPlan === 'annual' || subPlan === 'lifetime');
+            const shouldShowBanner = plans.length > 0 && !isPerpetualActiveSub;
+            if (__DEV__) {
+              console.log('[home] banner decision', {
+                plansCount: plans.length,
+                subscribed,
+                subPlan,
+                trialDaysLeft,
+                previewDaysLeft,
+                isPerpetualActiveSub,
+                shouldShowBanner,
+              });
+            }
+            return shouldShowBanner;
+          })() && (
             <TouchableOpacity
               style={s.subscribeBanner}
               onPress={() => {
-                // Send beginner ("Get into Cycling") users straight to the starter plan
-                // instead of the full monthly/annual/lifetime picker.
+                if (trialDaysLeft !== null) {
+                  // Trialing user — send to Settings to manage, not paywall.
+                  navigation.navigate('Settings');
+                  return;
+                }
+                // Not-yet-subscribed — send to paywall, with beginners
+                // routed straight to the starter plan picker.
                 const hasBeginnerPlan = plans.some(pl => pl.name?.startsWith('Get into Cycling'))
                   || goals.some(gl => gl.goalType === 'beginner');
                 navigation.navigate('Paywall', {
@@ -1066,13 +1175,41 @@ export default function HomeScreen({ navigation, route }) {
             >
               <View style={s.subscribeBannerLeft}>
                 <Text style={s.subscribeBannerTitle}>
-                  {previewDaysLeft !== null && previewDaysLeft <= 1
-                    ? 'Last day of preview'
-                    : previewDaysLeft !== null
-                      ? `${previewDaysLeft} days of preview left`
-                      : 'Subscribe to start training'}
+                  {(() => {
+                    // Priority: trial/starter countdown > preview >
+                    // generic subscribe nudge. Every branch returns
+                    // a string so the <Text> is never empty (an
+                    // empty Text can render as a 0-height element
+                    // that looks like the banner has "disappeared"
+                    // — hence the fallback at the end).
+                    if (trialDaysLeft !== null) {
+                      const onStarter = subPlan === 'starter';
+                      if (trialDaysLeft === 0) {
+                        return onStarter ? 'Starter plan active' : 'Free trial active';
+                      }
+                      const lastDay = trialDaysLeft <= 1;
+                      if (onStarter) {
+                        return lastDay ? 'Starter plan · last day' : `Starter plan · ${trialDaysLeft} days left`;
+                      }
+                      return lastDay ? 'Free trial · last day' : `Free trial · ${trialDaysLeft} days left`;
+                    }
+                    if (previewDaysLeft !== null) {
+                      return previewDaysLeft <= 1 ? 'Last day of preview' : `${previewDaysLeft} days of preview left`;
+                    }
+                    if (!subscribed) return 'Subscribe to start training';
+                    // Fallback — shouldn't normally hit this branch given
+                    // the render gate above, but belt-and-braces so we
+                    // never ship a zero-height banner.
+                    return 'Tap to manage your subscription';
+                  })()}
                 </Text>
-                <Text style={s.subscribeBannerSub}>{trialConfig.bannerMessage}</Text>
+                <Text style={s.subscribeBannerSub}>
+                  {trialDaysLeft !== null
+                    ? (subPlan === 'starter'
+                        ? 'Tap to upgrade to monthly, annual, or lifetime'
+                        : 'Tap to manage your subscription')
+                    : trialConfig.bannerMessage}
+                </Text>
               </View>
               <Text style={s.subscribeBannerArrow}>{'\u203A'}</Text>
             </TouchableOpacity>
@@ -1729,7 +1866,11 @@ export default function HomeScreen({ navigation, route }) {
                   return (
                     <TouchableOpacity
                       key={`wl-${i}`}
-                      ref={(r) => registerDropZone(i, r)}
+                      ref={(r) => {
+                        registerDropZone(i, r);
+                        if (r) dayRowRefs.current.set(i, r);
+                        else dayRowRefs.current.delete(i);
+                      }}
                       onLayout={(e) => { dayRowYRef.current.set(i, e.nativeEvent.layout.y); }}
                       style={[
                         s.weekListRow,
@@ -2100,23 +2241,8 @@ const HIT = { top: 8, bottom: 8, left: 8, right: 8 };
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, maxWidth: 500, width: '100%', alignSelf: 'center' },
-  loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingLogoWrap: {
-    width: 80, height: 80, borderRadius: 22, overflow: 'hidden',
-    shadowColor: '#E8458B', shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25, shadowRadius: 20, elevation: 8,
-    borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
-  },
-  loadingLogo: { width: 80, height: 80 },
-  loadingLogoSmall: { width: 44, height: 44 },
-  // Card used by the delete-in-progress overlay so the spinner reads as
-  // explicit, bounded progress rather than "the whole screen is loading".
-  deletingCard: {
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
-    borderRadius: 16, paddingVertical: 22, paddingHorizontal: 30,
-  },
-  deletingText: { fontSize: 13, fontFamily: FF.semibold, fontWeight: '500', color: colors.text },
+  // Loading + delete-overlay styles were removed when both states moved
+  // to the shared LoadingSplash component — see src/components/LoadingSplash.js.
   safe:      { flex: 1 },
 
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },

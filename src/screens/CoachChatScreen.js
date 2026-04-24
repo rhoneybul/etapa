@@ -7,8 +7,10 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
   TextInput, KeyboardAvoidingView, Platform, StatusBar, ActivityIndicator, Alert,
+  Animated, Image,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, fontFamily } from '../theme';
@@ -94,6 +96,20 @@ export default function CoachChatScreen({ navigation, route }) {
   const _screenGuard = useScreenGuard('CoachChatScreen', navigation);
   const planId = route.params?.planId;
   const weekNum = route.params?.weekNum || null; // null = full plan scope
+  // Set when the user opens this screen from a notification tap — the
+  // `ts` of the specific assistant message that triggered the push. We
+  // scroll to that message and briefly highlight it so the user lands
+  // on the right reply when they have multiple unread. Consumed once,
+  // then cleared so a re-focus doesn't re-scroll.
+  const scrollToTs = route.params?.scrollToTs || null;
+  // Map of msg.ts → Y position within the ScrollView, captured via
+  // onLayout. Populated as each bubble mounts; used by the scroll-to-
+  // message effect below.
+  const messageYs = useRef(new Map());
+  // Animated value driving the "highlight pulse" on the target message
+  // bubble. 0 = no highlight, 1 = full pink ring fading to 0 over ~2s.
+  const highlightTs = useRef(null);
+  const [highlightedTs, setHighlightedTs] = useState(null);
   const [plan, setPlan] = useState(null);
   const [goal, setGoal] = useState(null);
   const [planConfig, setPlanConfig] = useState(null);
@@ -122,6 +138,22 @@ export default function CoachChatScreen({ navigation, route }) {
   // Weekly coach-message limit: { used, limit, remaining, unlimited }
   const [limits, setLimits] = useState(null);
   const scrollRef = useRef(null);
+  // Throbbing pink Etapa icon shown during initial chat-history
+  // hydration. Uses the same 1.0 → 1.12 → 1.0 rhythm the CoachChatCard
+  // refreshing state uses so the two loading moments feel like the
+  // same thing. Only runs while loadingChat is true.
+  const loadingPulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!loadingChat) return;
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(loadingPulse, { toValue: 1.12, duration: 700, useNativeDriver: true }),
+        Animated.timing(loadingPulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [loadingChat, loadingPulse]);
 
   // ── Telemetry refs ─────────────────────────────────────────────────────────
   // Opened-at timestamp — used to compute session duration on close.
@@ -190,15 +222,51 @@ export default function CoachChatScreen({ navigation, route }) {
           const match = sessions?.find(s => s.planId === p.id && s.weekNum === wn);
           const serverMessages = match?.messages || [];
 
-          if (serverMessages.length > localMessages.length) {
-            // Server has new messages (check-ins added server-side) — use server
-            setMessages(serverMessages);
-            await AsyncStorage.setItem(chatKey(p.id, weekNum), JSON.stringify(serverMessages));
+          // Merge strategy: compare ASSISTANT message counts, not total
+          // length. Assistant messages only come from the server worker
+          // (runCoachChatJob writing to chat_sessions), so they're the
+          // authoritative "real chat happened" signal. Using total
+          // length was wrong: a corrupted server row with only user
+          // messages could match local's length exactly, fall through
+          // to "use local", and leave the user staring at only their
+          // own messages with no coach replies ever showing.
+          const countAssistant = (arr) => arr.filter(m => m?.role === 'assistant').length;
+          const serverAssistants = countAssistant(serverMessages);
+          const localAssistants = countAssistant(localMessages);
+
+          let chosen = null;
+          if (serverAssistants > localAssistants) {
+            chosen = serverMessages;
+          } else if (localAssistants > serverAssistants) {
+            chosen = localMessages;
+          } else if (serverMessages.length > localMessages.length) {
+            chosen = serverMessages;
           } else if (localMessages.length > 0) {
-            setMessages(localMessages);
+            chosen = localMessages;
           } else if (serverMessages.length > 0) {
-            setMessages(serverMessages);
-            await AsyncStorage.setItem(chatKey(p.id, weekNum), JSON.stringify(serverMessages));
+            chosen = serverMessages;
+          }
+
+          if (chosen) {
+            setMessages(chosen);
+            if (chosen === serverMessages) {
+              await AsyncStorage.setItem(chatKey(p.id, weekNum), JSON.stringify(chosen));
+            }
+            // Re-hydrate the Apply/Dismiss UI from the last persisted
+            // coach recommendation. Previously the server only stored
+            // `hasUpdate: true` on the message — not the activities
+            // themselves — so re-opening the chat showed the coach's
+            // "I'll shift Saturday to Sunday" text without any way to
+            // apply or dismiss it. The server now persists the full
+            // updatedActivities array on the assistant message, so we
+            // can restore the pending-update pane here.
+            const lastAssistantWithUpdate = [...chosen].reverse().find(
+              m => m.role === 'assistant' && Array.isArray(m.updatedActivities) && m.updatedActivities.length > 0
+            );
+            if (lastAssistantWithUpdate) {
+              const msgIndex = chosen.lastIndexOf(lastAssistantWithUpdate);
+              setPendingUpdate({ activities: lastAssistantWithUpdate.updatedActivities, msgIndex });
+            }
           }
         } catch {
           // Server unreachable — fall back to local
@@ -212,6 +280,39 @@ export default function CoachChatScreen({ navigation, route }) {
       setLoadingChat(false);
     })();
   }, [planId, weekNum]);
+
+  // Scroll-to-message on notification tap. Fires once after the chat
+  // has hydrated AND layout onLayouts have populated messageYs.
+  // Tolerance: the server's messageTs is Date.now() at the push send,
+  // while the stored message's ts is Date.now() at write time — a few
+  // milliseconds apart. We find the closest ts within 5 seconds.
+  useEffect(() => {
+    if (loadingChat || !scrollToTs || !messages.length) return;
+    if (highlightTs.current === scrollToTs) return; // already handled
+    highlightTs.current = scrollToTs;
+    // Defer one frame so all bubble onLayouts have fired.
+    const timer = setTimeout(() => {
+      // Find nearest-ts message (tolerance 5000ms to handle server/
+      // client clock skew between push-send and message-persist).
+      let bestTs = null;
+      let bestDelta = Infinity;
+      for (const m of messages) {
+        if (!m.ts) continue;
+        const d = Math.abs(m.ts - scrollToTs);
+        if (d < bestDelta) { bestDelta = d; bestTs = m.ts; }
+      }
+      if (bestTs === null || bestDelta > 5000) return;
+      const y = messageYs.current.get(bestTs);
+      if (y == null) return;
+      // Scroll with ~100pt of headroom above so the target isn't
+      // jammed against the header.
+      scrollRef.current?.scrollTo({ y: Math.max(0, y - 100), animated: true });
+      // Brief highlight so the user knows which bubble they landed on.
+      setHighlightedTs(bestTs);
+      setTimeout(() => setHighlightedTs(null), 2000);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [loadingChat, scrollToTs, messages]);
 
   // Save chat whenever messages change — local + server.
   //
@@ -389,7 +490,16 @@ export default function CoachChatScreen({ navigation, route }) {
 
     const context = {
       athleteName: userName || null,
-      plan: { name: plan.name, weeks: plan.weeks, startDate: plan.startDate, currentWeek },
+      // plan.id is needed on the server so push notifications can
+      // carry a planId in their data payload — the App-level response
+      // handler routes `coach_reply` pushes to CoachChat using
+      // data.planId. Without id here, the server serialised null, the
+      // handler fell through to the Notifications screen, and the
+      // user's tap didn't open the conversation. weekNum is included
+      // at the top level (not inside plan) so the server sees it at
+      // job.context.weekNum where runCoachChatJob expects it.
+      plan: { id: plan.id, name: plan.name, weeks: plan.weeks, startDate: plan.startDate, currentWeek },
+      weekNum: weekNum || null,
       calendarMapping: week1Days,
       goal: goal ? {
         goalType: goal.goalType,
@@ -819,10 +929,24 @@ export default function CoachChatScreen({ navigation, route }) {
                 effect finishes hydrating from AsyncStorage + the server
                 session list. Replaces what was previously a flash of
                 the empty state (suggestion chips) before real messages
-                popped in, which felt like the chat had been wiped. */}
+                popped in, which felt like the chat had been wiped.
+                Uses the throbbing pink app-icon (same rhythm the Home
+                splash + CoachChatCard refresh use) so the loading
+                reads as "Etapa" rather than generic iOS. */}
             {loadingChat && (
               <View style={s.loadingState}>
-                <ActivityIndicator size="small" color={colors.primary} />
+                <View style={s.loadingIconWrap}>
+                  {/* Faint pink outline — matches LoadingSplash exactly
+                      (same 1.5× halo, 22% corner radius, 1px at 0.35
+                      alpha). Replaces the old solid-pink filled box
+                      which read as a heavy "error state" block. */}
+                  <Animated.View style={[s.loadingHalo, { transform: [{ scale: loadingPulse }] }]} />
+                  <Animated.Image
+                    source={require('../../assets/icon.png')}
+                    style={[s.loadingIcon, { transform: [{ scale: loadingPulse }] }]}
+                    resizeMode="contain"
+                  />
+                </View>
                 <Text style={s.loadingStateText}>Loading your chat…</Text>
               </View>
             )}
@@ -869,14 +993,48 @@ export default function CoachChatScreen({ navigation, route }) {
             )}
 
             {messages.map((msg, i) => (
-              <View key={i}>
+              <View
+                key={i}
+                onLayout={(e) => {
+                  // Track each bubble's Y offset so scroll-to-message
+                  // (notification tap) can jump to a specific reply by
+                  // its timestamp. Keyed by msg.ts which the server
+                  // stamps on every persisted message.
+                  if (msg.ts) messageYs.current.set(msg.ts, e.nativeEvent.layout.y);
+                }}
+                style={highlightedTs === msg.ts ? s.bubbleHighlight : null}
+              >
                 <TouchableOpacity
                   activeOpacity={0.85}
                   delayLongPress={400}
                   onLongPress={() => {
                     if (msg.pending || !msg.content) return;
-                    Clipboard.setStringAsync(msg.content);
-                    Alert.alert('Copied', 'Message copied to clipboard');
+                    // Long-press action sheet. User messages get a
+                    // Resend option in addition to Copy — useful when
+                    // the previous exchange went off the rails and
+                    // they want to try the same question again, or
+                    // tweak wording slightly. Resend simply re-loads
+                    // the message into the input box (NOT fire-and-
+                    // forget) so the user can edit before sending.
+                    // Coach messages get Copy only, matching the
+                    // prior behaviour.
+                    const isUser = msg.role === 'user';
+                    const buttons = [
+                      { text: 'Copy', onPress: () => {
+                        Clipboard.setStringAsync(msg.content);
+                      }},
+                      ...(isUser ? [{
+                        text: 'Resend',
+                        onPress: () => setInput(msg.content),
+                      }] : []),
+                      { text: 'Cancel', style: 'cancel' },
+                    ];
+                    Alert.alert(
+                      isUser ? 'Your message' : 'Coach message',
+                      msg.content.length > 120 ? msg.content.slice(0, 120) + '…' : msg.content,
+                      buttons,
+                      { cancelable: true }
+                    );
                   }}
                   style={[s.bubble, msg.role === 'user' ? s.bubbleUser : s.bubbleCoach]}
                 >
@@ -910,6 +1068,24 @@ export default function CoachChatScreen({ navigation, route }) {
                 {msg.failed && i === messages.length - 1 && lastFailedMsg && (
                   <TouchableOpacity style={s.retryBtn} onPress={handleRetry} activeOpacity={0.7}>
                     <Text style={s.retryText}>Tap to retry</Text>
+                  </TouchableOpacity>
+                )}
+                {/* Visible resend affordance — shown under every settled
+                    user message so the action is discoverable without
+                    long-press. Matches the MaterialCommunityIcons set
+                    used elsewhere in the app (consistent iconography
+                    per Rob's note). Loads the message text into the
+                    input so the user can tweak before firing; doesn't
+                    auto-send. */}
+                {msg.role === 'user' && !msg.pending && msg.content && (
+                  <TouchableOpacity
+                    style={s.resendRow}
+                    onPress={() => setInput(msg.content)}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <MaterialCommunityIcons name="refresh" size={13} color={colors.textMuted} />
+                    <Text style={s.resendText}>Resend</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -1030,13 +1206,33 @@ const s = StyleSheet.create({
   messageContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 },
 
   // Empty state
-  // First-open loading state — spinner + tiny caption so users know the
-  // screen is hydrating rather than broken. Matches emptyState's layout
-  // so the swap from loading → empty/messages stays in the same slot.
+  // First-open loading state — big throbbing Etapa icon + caption,
+  // matching the Home splash treatment so the brand moment carries
+  // through every loading state in the app. Wrap is a chunky pink
+  // rounded-square (the app-icon frame) so the silhouette matches
+  // the iOS app icon users see on their home screen.
   loadingState: {
     alignItems: 'center', justifyContent: 'center',
-    paddingTop: 80, paddingHorizontal: 20, gap: 12,
+    paddingTop: 120, paddingHorizontal: 20, gap: 20,
   },
+  // Halo-wrapped icon — matches the shared LoadingSplash styling
+  // exactly (72pt icon, 108pt halo = 72 × 1.5, 24pt corner radius =
+  // 108 × 0.22, 1px pink border at 35% alpha). Previously this block
+  // was a solid filled pink square which read as heavy / error-ish;
+  // the faint outline version feels like a loading state, not an
+  // alert.
+  loadingIconWrap: {
+    width: 108, height: 108,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  loadingHalo: {
+    position: 'absolute',
+    width: 108, height: 108,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(232,69,139,0.35)',
+  },
+  loadingIcon: { width: 72, height: 72 },
   loadingStateText: {
     fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint,
     letterSpacing: 0.2,
@@ -1148,4 +1344,33 @@ const s = StyleSheet.create({
   retryText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: '#EF4444' },
   reportBtn: { alignSelf: 'flex-start', marginTop: 6, marginLeft: 4, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: 'rgba(232,69,139,0.08)', borderRadius: 8 },
   reportText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+  // Flash highlight applied to the message a notification tap landed
+  // on. Pink-tinted background + 1px border in brand pink, ~2s decay
+  // back to normal (handled by clearing `highlightedTs` in the effect).
+  // Wraps the entire message container including the bubble and its
+  // trailing affordances (resend row, report button, etc).
+  bubbleHighlight: {
+    backgroundColor: 'rgba(232,69,139,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(232,69,139,0.35)',
+    borderRadius: 14,
+    marginHorizontal: -4,
+    marginVertical: 2,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+
+  // Resend affordance — small, right-aligned under each user message
+  // so it reads as a subtle tool, not a primary CTA. Muted grey so it
+  // doesn't compete with the message itself.
+  resendRow: {
+    alignSelf: 'flex-end',
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    marginTop: 4, marginRight: 4, marginBottom: 4,
+    paddingVertical: 3, paddingHorizontal: 6,
+  },
+  resendText: {
+    fontSize: 11, fontFamily: FF.medium, fontWeight: '500',
+    color: colors.textMuted, letterSpacing: 0.2,
+  },
 });

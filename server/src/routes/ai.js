@@ -1897,7 +1897,24 @@ Examples of valid cross-training entries:
 - Physio: {"id":null,"week":2,"dayOfWeek":0,"type":"physio","subType":null,"title":"Mobility session","durationMins":30,"distanceKm":null,"effort":"recovery"}
 - Run: {"id":null,"week":5,"dayOfWeek":3,"type":"run","subType":null,"title":"Easy run","durationMins":40,"distanceKm":6,"effort":"easy"}
 
-Only include the plan_update block when you are actually making changes. For questions, advice, or general chat, just respond normally without any JSON block.\n\n`;
+Only include the plan_update block when you are actually making changes. For questions, advice, or general chat, just respond normally without any JSON block.
+
+## CRITICAL — Commitment language must match action
+
+This is the single most important rule in this entire prompt. Read it twice.
+
+You MUST NOT use first-person commitment language ("I'll change...", "I've shifted...", "I'm moving...", "Let me update...", "Done — I've...") UNLESS you are ALSO emitting a plan_update block in the SAME response that actually performs that change.
+
+The client UI shows the athlete an Apply/Dismiss panel ONLY when a plan_update block is present. If you say "I'll shift your Saturday ride to Sunday" without emitting the block, the athlete sees a promise that never gets applied — they think you changed their plan, their plan is unchanged, and they lose trust in the coach. This is the worst UX outcome we ship.
+
+Rules:
+- If you are MAKING a change → emit a plan_update block AND you may use commitment language.
+- If you are RECOMMENDING a change but want the athlete to confirm first → do NOT commit. Use suggestion language: "Would you like me to move Saturday to Sunday?", "I could shift this if you want", "One option would be...". Do NOT emit a plan_update block.
+- If you are JUST DISCUSSING or explaining → obviously no block, no commitment language.
+
+Never, ever write "I'll" / "I've" / "I'm" + a verb of change ("shift", "move", "swap", "change", "update", "adjust", "reschedule", "modify", "replace") without also producing the structured plan_update JSON that performs it. If you catch yourself drafting such a sentence, either (a) add the plan_update block, or (b) rewrite the sentence as a question / suggestion.
+
+\n\n`;
 
     if (context) {
       if (context.plan) {
@@ -2140,7 +2157,24 @@ Examples of valid cross-training entries:
 - Physio: {"id":null,"week":2,"dayOfWeek":0,"type":"physio","subType":null,"title":"Mobility session","durationMins":30,"distanceKm":null,"effort":"recovery"}
 - Run: {"id":null,"week":5,"dayOfWeek":3,"type":"run","subType":null,"title":"Easy run","durationMins":40,"distanceKm":6,"effort":"easy"}
 
-Only include the plan_update block when you are actually making changes. For questions, advice, or general chat, just respond normally without any JSON block.\n\n`;
+Only include the plan_update block when you are actually making changes. For questions, advice, or general chat, just respond normally without any JSON block.
+
+## CRITICAL — Commitment language must match action
+
+This is the single most important rule in this entire prompt. Read it twice.
+
+You MUST NOT use first-person commitment language ("I'll change...", "I've shifted...", "I'm moving...", "Let me update...", "Done — I've...") UNLESS you are ALSO emitting a plan_update block in the SAME response that actually performs that change.
+
+The client UI shows the athlete an Apply/Dismiss panel ONLY when a plan_update block is present. If you say "I'll shift your Saturday ride to Sunday" without emitting the block, the athlete sees a promise that never gets applied — they think you changed their plan, their plan is unchanged, and they lose trust in the coach. This is the worst UX outcome we ship.
+
+Rules:
+- If you are MAKING a change → emit a plan_update block AND you may use commitment language.
+- If you are RECOMMENDING a change but want the athlete to confirm first → do NOT commit. Use suggestion language: "Would you like me to move Saturday to Sunday?", "I could shift this if you want", "One option would be...". Do NOT emit a plan_update block.
+- If you are JUST DISCUSSING or explaining → obviously no block, no commitment language.
+
+Never, ever write "I'll" / "I've" / "I'm" + a verb of change ("shift", "move", "swap", "change", "update", "adjust", "reschedule", "modify", "replace") without also producing the structured plan_update JSON that performs it. If you catch yourself drafting such a sentence, either (a) add the plan_update block, or (b) rewrite the sentence as a question / suggestion.
+
+\n\n`;
 
   if (context.plan) {
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -2626,18 +2660,37 @@ async function runCoachChatJob(jobId) {
           role: 'assistant',
           content: reply,
           ts: Date.now(),
-          ...(updatedActivities && updatedActivities.length ? { hasUpdate: true } : {}),
+          // Persist the full updatedActivities array on the message, not
+          // just a hasUpdate flag. Without this, reloading the chat after
+          // a restart loses the Apply/Dismiss UI — the flag says "there
+          // was a change" but the client has no activities to apply. See
+          // CoachChatScreen's load() path: it now re-hydrates a
+          // pendingUpdate from the LAST assistant message that still has
+          // updatedActivities attached.
+          ...(updatedActivities && updatedActivities.length
+            ? { hasUpdate: true, updatedActivities }
+            : {}),
         };
-        // Append to the stored messages array. If no row exists yet we
-        // create one from the job's messages + the assistant reply.
+        // Baseline for the merged messages array. MUST be job.messages
+        // (not existing.messages from the stored row) because job.messages
+        // is the client's view at send time — it contains the user message
+        // that triggered this job. Using existing.messages silently dropped
+        // the new user message whenever a prior exchange had already been
+        // persisted (the "user2 missing from history" bug Rob reported).
+        // We still read the row as a safety fallback in case job.messages
+        // is somehow empty — a legacy malformed job shouldn't nuke a good
+        // row.
         const { data: existing } = await supabase
           .from('chat_sessions')
           .select('messages')
           .eq('id', sessionId)
           .eq('user_id', job.userId)
           .maybeSingle();
-        const prior = Array.isArray(existing?.messages) ? existing.messages : job.messages;
-        const merged = [...prior, assistantMsg];
+        const fallback = Array.isArray(existing?.messages) ? existing.messages : [];
+        const baseline = Array.isArray(job.messages) && job.messages.length > 0
+          ? job.messages
+          : fallback;
+        const merged = [...baseline, assistantMsg];
         await supabase
           .from('chat_sessions')
           .upsert({
@@ -2658,6 +2711,14 @@ async function runCoachChatJob(jobId) {
     // always send; the client's foreground handler drops the banner if
     // CoachChatScreen is focused. The notification is still written to the
     // notifications table either way, which is fine for the history feed.
+    //
+    // We attach `coachId` and `messageTs` to the payload so the client's
+    // notifications list can:
+    //   - render the coach's avatar (initials + brand colour) on the
+    //     notification row instead of a generic "N" circle
+    //   - scroll the opened CoachChat directly to this specific message
+    //     via a `scrollToTs` route param — useful when the user has
+    //     multiple unread replies and taps an older one from the list
     try {
       const preview = reply.length > 80 ? reply.slice(0, 77) + '…' : reply;
       await sendPushToUser(job.userId, {
@@ -2668,6 +2729,10 @@ async function runCoachChatJob(jobId) {
           planId: job.context?.plan?.id || null,
           weekNum: job.context?.weekNum || null,
           jobId,
+          coachId: job.coachId || null,
+          // Matches the assistantMsg.ts we wrote to chat_sessions above
+          // — small window of drift is fine for scroll-targeting.
+          messageTs: Date.now(),
         },
       });
     } catch (e) {

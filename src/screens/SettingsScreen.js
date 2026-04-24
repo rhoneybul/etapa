@@ -3,7 +3,7 @@
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Switch, Linking, TextInput, Platform,
+  View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Switch, Linking, TextInput, Platform, Animated,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as StoreReview from 'expo-store-review';
@@ -22,6 +22,119 @@ import StravaLogo from '../components/StravaLogo';
 import { api } from '../services/api';
 
 const FF = fontFamily;
+
+// Shared opacity pulse for skeleton rows. Keeps every skeleton on the
+// screen animating in sync (all brighten and dim together) instead of
+// a distracting multi-phase flicker when each row mounts at a different
+// tick. Returns a single Animated.Value that all skeleton blocks can
+// use as their opacity.
+function useSkeletonPulse() {
+  const pulse = useRef(new Animated.Value(0.5)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.5, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+  return pulse;
+}
+
+// Row-shaped skeleton. Matches the height of a real `s.row` (title 15pt +
+// sub 12pt + 16pt padding top & bottom) so swapping a skeleton for a real
+// row causes zero vertical shift. `titleWidth` / `subWidth` fake the
+// content widths. `trailing` optionally reserves space on the right for
+// a badge or chevron so those don't pop in either.
+function SkeletonRow({ pulse, titleWidth = 120, subWidth = 200, trailing = null }) {
+  return (
+    <View style={sk.row}>
+      <View style={{ flex: 1 }}>
+        <Animated.View style={[sk.lineTitle, { width: titleWidth, opacity: pulse }]} />
+        <Animated.View style={[sk.lineSub, { width: subWidth, opacity: pulse }]} />
+      </View>
+      {trailing === 'badge' && (
+        <Animated.View style={[sk.trailBadge, { opacity: pulse }]} />
+      )}
+      {trailing === 'chevron' && (
+        <Animated.View style={[sk.trailChevron, { opacity: pulse }]} />
+      )}
+    </View>
+  );
+}
+
+const sk = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
+  lineTitle: { height: 15, borderRadius: 4, backgroundColor: 'rgba(232,69,139,0.14)' },
+  lineSub:   { height: 11, borderRadius: 4, backgroundColor: 'rgba(232,69,139,0.08)', marginTop: 6 },
+  trailBadge: { width: 62, height: 22, borderRadius: 11, backgroundColor: 'rgba(232,69,139,0.1)' },
+  trailChevron: { width: 8, height: 14, borderRadius: 2, backgroundColor: 'rgba(232,69,139,0.08)' },
+  label:    { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: 'rgba(232,69,139,0.25)', letterSpacing: 0.6, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 },
+  card:     { backgroundColor: '#161418', marginHorizontal: 16, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(232,69,139,0.06)' },
+  divider:  { height: 1, backgroundColor: 'rgba(255,255,255,0.04)', marginHorizontal: 16 },
+  scrollPad: { paddingBottom: 40 },
+});
+
+// Whole-screen skeleton — shown instead of the real content until every
+// layout-relevant async call has settled. Reuses the section labels +
+// card structure of the real screen so the eventual cross-fade is
+// spatially continuous (sections don't slide on arrival). Every row is
+// a SkeletonRow sharing the same pulse driver, so the whole screen
+// breathes in sync as one unit.
+function SettingsSkeleton({ pulse }) {
+  return (
+    <View style={sk.scrollPad} pointerEvents="none">
+      <Text style={sk.label}>PROFILE</Text>
+      <View style={sk.card}>
+        <SkeletonRow pulse={pulse} titleWidth={46} subWidth={180} />
+        <View style={sk.divider} />
+        <SkeletonRow pulse={pulse} titleWidth={110} subWidth={80} />
+        <View style={sk.divider} />
+        <SkeletonRow pulse={pulse} titleWidth={100} subWidth={70} trailing="chevron" />
+        <View style={sk.divider} />
+        <SkeletonRow pulse={pulse} titleWidth={110} subWidth={90} trailing="chevron" />
+        <View style={sk.divider} />
+        <SkeletonRow pulse={pulse} titleWidth={80} subWidth={160} trailing="chevron" />
+        <View style={sk.divider} />
+        <SkeletonRow pulse={pulse} titleWidth={90} subWidth={180} trailing="chevron" />
+      </View>
+
+      <Text style={sk.label}>CONNECTIONS</Text>
+      <View style={sk.card}>
+        <SkeletonRow pulse={pulse} titleWidth={60} subWidth={170} trailing="badge" />
+      </View>
+
+      <Text style={sk.label}>COACHING</Text>
+      <View style={sk.card}>
+        <SkeletonRow pulse={pulse} titleWidth={110} subWidth={190} trailing="chevron" />
+      </View>
+
+      <Text style={sk.label}>SUBSCRIPTION</Text>
+      <View style={sk.card}>
+        <SkeletonRow pulse={pulse} titleWidth={110} subWidth={180} trailing="chevron" />
+      </View>
+
+      <Text style={sk.label}>MESSAGES</Text>
+      <View style={sk.card}>
+        <SkeletonRow pulse={pulse} titleWidth={90} subWidth={210} trailing="chevron" />
+      </View>
+
+      <Text style={sk.label}>NOTIFICATIONS</Text>
+      <View style={sk.card}>
+        <SkeletonRow pulse={pulse} titleWidth={130} subWidth={150} trailing="badge" />
+      </View>
+
+      <Text style={sk.label}>SUPPORT &amp; LEGAL</Text>
+      <View style={sk.card}>
+        <SkeletonRow pulse={pulse} titleWidth={80} subWidth={140} trailing="chevron" />
+        <View style={sk.divider} />
+        <SkeletonRow pulse={pulse} titleWidth={100} subWidth={160} trailing="chevron" />
+      </View>
+    </View>
+  );
+}
 
 export default function SettingsScreen({ navigation }) {
   const [stravaOk, setStravaOk] = useState(false);
@@ -63,13 +176,42 @@ export default function SettingsScreen({ navigation }) {
   const [nameInput, setNameInput] = useState('');
   const [hasBeginnerPlan, setHasBeginnerPlan] = useState(false);
   const [authUser, setAuthUser] = useState(null);
+  // "Finished loading" flags — tracked separately from the data itself
+  // because `null` is ambiguous (could mean "not fetched yet" OR, for
+  // subscription, "fetched + inactive"). Settled by `.finally()` so the
+  // render path can cleanly distinguish. Once all the slow async calls
+  // that actually move the layout are done, `allLoaded` flips true and
+  // the real screen cross-fades in over the skeleton.
+  const [authUserLoaded, setAuthUserLoaded] = useState(false);
+  const [subscriptionLoaded, setSubscriptionLoaded] = useState(false);
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [appConfigLoaded, setAppConfigLoaded] = useState(false);
+  const allLoaded = authUserLoaded && subscriptionLoaded && preferencesLoaded && appConfigLoaded;
+  // Shared pulse driver — every skeleton block brightens/dims in sync
+  // instead of flickering out-of-phase as each row mounts.
+  const skeletonPulse = useSkeletonPulse();
+  // Cross-fade from the skeleton to the real content. Opacity 0 → 1 as
+  // soon as `allLoaded` flips, so the user sees a soft wash-in rather
+  // than a hard swap.
+  const contentOpacity = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (allLoaded) {
+      Animated.timing(contentOpacity, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+    }
+  }, [allLoaded, contentOpacity]);
 
   useEffect(() => {
     checkStrava();
-    getSubscriptionStatus().then(setSubscription).catch(() => {});
+    getSubscriptionStatus()
+      .then(setSubscription)
+      .catch(() => {})
+      .finally(() => setSubscriptionLoaded(true));
     getPrices().catch(() => {});
     api.notifications.unreadCount().then(d => setUnreadCount(d?.count || 0)).catch(() => {});
-    api.preferences.get().then(setPreferences).catch(() => {});
+    api.preferences.get()
+      .then(setPreferences)
+      .catch(() => {})
+      .finally(() => setPreferencesLoaded(true));
     getUserPrefs().then(p => {
       setUserPrefsState(p);
       setNameInput(p.displayName || '');
@@ -77,11 +219,17 @@ export default function SettingsScreen({ navigation }) {
       setFtpInput(p.ftp != null ? String(p.ftp) : '');
     }).catch(() => {});
     Notifications.getPermissionsAsync().then(({ status }) => setNotifPermission(status)).catch(() => {});
-    getCurrentUser().then(setAuthUser).catch(() => {});
-    api.appConfig.get().then(cfg => {
-      if (cfg?.coming_soon) setComingSoonConfig(cfg.coming_soon);
-      if (cfg?.strava_enabled !== undefined) setStravaEnabled(!!cfg.strava_enabled);
-    }).catch(() => {});
+    getCurrentUser()
+      .then(setAuthUser)
+      .catch(() => {})
+      .finally(() => setAuthUserLoaded(true));
+    api.appConfig.get()
+      .then(cfg => {
+        if (cfg?.coming_soon) setComingSoonConfig(cfg.coming_soon);
+        if (cfg?.strava_enabled !== undefined) setStravaEnabled(!!cfg.strava_enabled);
+      })
+      .catch(() => {})
+      .finally(() => setAppConfigLoaded(true));
     // Check if user has a beginner (Get into Cycling) plan — if so, upgrade should show starter only
     getPlans().then(plans => {
       const hasBeginner = plans.some(p => p.name && p.name.startsWith('Get into Cycling'));
@@ -307,6 +455,23 @@ export default function SettingsScreen({ navigation }) {
           <View style={{ width: 32 }} />
         </View>
 
+        {/*
+          Whole-screen skeleton while any of the slow async calls are
+          still pending. Shown instead of the real ScrollView so the user
+          never sees a half-populated screen (with displayName + units
+          filled in but email, sign-in method, and subscription still
+          missing). Once `allLoaded` flips true the real content cross-
+          fades in via `contentOpacity`.
+        */}
+        {!allLoaded && (
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <SettingsSkeleton pulse={skeletonPulse} />
+            </ScrollView>
+          </View>
+        )}
+
+        <Animated.View style={{ flex: 1, opacity: contentOpacity }} pointerEvents={allLoaded ? 'auto' : 'none'}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         {/* Profile */}
         <Text style={s.sectionLabel}>PROFILE</Text>
@@ -550,7 +715,24 @@ export default function SettingsScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* Subscription */}
+        {/* Subscription — the biggest layout-shift offender on this screen.
+            Before load, we don't know which of four variants will render
+            (starter / lifetime / monthly|annual / inactive) so we can't
+            reserve the EXACT shape. Instead we reserve a conservative
+            "section label + one card + badge" skeleton that matches the
+            shortest variant (inactive), which is the closest thing to a
+            lowest-common-denominator shape. Variants that render more
+            cards below will still grow downward, but the starting offset
+            for everything above is preserved and the Messages section
+            below no longer pops up out of nowhere. */}
+        {!subscriptionLoaded && (
+          <>
+            <Text style={s.sectionLabel}>SUBSCRIPTION</Text>
+            <View style={s.card}>
+              <SkeletonRow pulse={skeletonPulse} titleWidth={110} subWidth={180} trailing="chevron" />
+            </View>
+          </>
+        )}
         {subscription?.active && subscription.plan === 'starter' && (
           <>
             <Text style={s.sectionLabel}>SUBSCRIPTION</Text>
@@ -972,6 +1154,7 @@ export default function SettingsScreen({ navigation }) {
           })()}
         </Text>
         </ScrollView>
+        </Animated.View>
       </SafeAreaView>
       <UpgradePrompt
         visible={showUpgrade}

@@ -1197,7 +1197,13 @@ const s = StyleSheet.create({
   // when it was a fixed bottom bar, but in-scroll we want it to feel
   // like a card floating on the screen background, consistent with
   // HomeScreen's coachCardWrap treatment.
-  coachCardWrap: { paddingHorizontal: 16, paddingTop: 8 },
+  // No horizontal padding here — the parent GHScrollView (activityList
+  // style) already applies paddingHorizontal: 16, and activity cards
+  // sit at that width. Adding more padding here made the coach card
+  // ~32pt narrower than the activity card stacked above it; the user
+  // flagged the width mismatch. Keep just the top gap so there's a
+  // small break between the last activity card and the coach card.
+  coachCardWrap: { paddingTop: 8 },
 
   // (Legacy coachBar style kept for reference — no longer used in JSX
   // after the action-bar + coach-card moved into the GHScrollView.)

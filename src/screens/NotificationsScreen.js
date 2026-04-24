@@ -10,15 +10,35 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { api } from '../services/api';
+import { getCoach } from '../data/coaches';
 
 const FF = fontFamily;
 
+// Per-type label + whether the row should render a coach avatar.
+// `coachAvatar: true` tells the item to look up the coach via
+// notification.data.coachId and show their initials in their brand
+// colour (matches CoachChatCard styling) instead of the generic grey
+// "N" circle.
 const TYPE_CONFIG = {
-  admin_reply:    { icon: null, label: 'Team Response' },
-  support_reply:  { icon: null, label: 'Support' },
-  coach_checkin:  { icon: null, label: 'Coach Check-in' },
-  system:         { icon: null, label: 'Notification' },
+  admin_reply:    { label: 'Team response' },
+  support_reply:  { label: 'Support' },
+  coach_reply:    { label: 'Message', coachAvatar: true },
+  coach_checkin:  { label: 'Coach check-in', coachAvatar: true },
+  plan_ready:     { label: 'Plan ready' },
+  system:         { label: 'Notification' },
 };
+
+// Fallback when we can't look up the coach from data.coachId (legacy
+// notifications created before we added coachId to the push payload).
+// We try to parse initials from the notification title e.g. "Clara
+// Moreno replied" → "CM". Returns null if nothing parseable found.
+function initialsFromTitle(title) {
+  if (!title) return null;
+  const stripped = String(title).replace(/\s+(replied|said|checked in).*/i, '').trim();
+  const parts = stripped.split(/\s+/).filter(Boolean).slice(0, 2);
+  if (parts.length === 0) return null;
+  return parts.map(p => p.charAt(0).toUpperCase()).join('');
+}
 
 function timeAgo(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -34,6 +54,20 @@ function timeAgo(dateStr) {
 
 function NotificationItem({ item, onPress }) {
   const config = TYPE_CONFIG[item.type] || TYPE_CONFIG.system;
+  const data = item.data || {};
+
+  // Resolve the avatar content + colour. For coach notifications we
+  // prefer a proper coach lookup (gives us avatarInitials + brand
+  // avatarColor). If the notification is legacy and missing coachId,
+  // fall back to parsing initials from the title ("Clara Moreno
+  // replied" → "CM"). Everything else gets a neutral grey first-letter
+  // of the type label (matches the pre-change behaviour).
+  const coach = config.coachAvatar && data.coachId ? getCoach(data.coachId) : null;
+  const initials = coach?.avatarInitials
+    || (config.coachAvatar ? initialsFromTitle(item.title) : null)
+    || config.label.charAt(0);
+  const iconBg = coach?.avatarColor || colors.border;
+  const iconFg = coach ? '#FFFFFF' : colors.textMuted;
 
   return (
     <TouchableOpacity
@@ -41,8 +75,10 @@ function NotificationItem({ item, onPress }) {
       onPress={() => onPress(item)}
       activeOpacity={0.7}
     >
-      <View style={s.notifIcon}>
-        <Text style={s.notifIconText}>{config.label.charAt(0)}</Text>
+      <View style={[s.notifIcon, { backgroundColor: iconBg }]}>
+        <Text style={[s.notifIconText, { color: iconFg, fontWeight: coach ? '600' : '400', fontSize: coach ? 13 : 18 }]}>
+          {initials}
+        </Text>
       </View>
       <View style={s.notifContent}>
         <View style={s.notifHeader}>
@@ -91,12 +127,39 @@ export default function NotificationsScreen({ navigation }) {
       );
     }
 
-    // Navigate to the appropriate screen based on notification type
+    // Navigate to the appropriate screen based on notification type.
+    // Previously this handler only covered support_reply / admin_reply /
+    // coach_checkin. Coach replies and plan-ready notifications (the
+    // two most common types the server emits) fell through silently —
+    // tapping them did literally nothing. Now every server-emitted
+    // type has a route:
+    //   coach_reply / coach_checkin → CoachChat (scoped to week if set)
+    //   plan_ready                  → PlanOverview for the finished plan
+    //   support_reply / admin_reply → SupportChat thread
+    //   anything else               → stay on this screen
     const data = notif.data || {};
     if ((notif.type === 'support_reply' || notif.type === 'admin_reply') && data.feedbackId) {
       navigation.navigate('SupportChat', { feedbackId: data.feedbackId, isNew: false });
-    } else if (notif.type === 'coach_checkin' && data.planId) {
-      navigation.navigate('CoachChat', { planId: data.planId });
+      return;
+    }
+    if ((notif.type === 'coach_reply' || notif.type === 'coach_checkin') && data.planId) {
+      navigation.navigate('CoachChat', {
+        planId: data.planId,
+        // weekNum is only populated for week-scoped chats. When null we
+        // open the full-plan conversation, which is the correct default
+        // for push replies on non-week-scoped threads.
+        weekNum: data.weekNum || null,
+        // scrollToTs tells CoachChat to scroll to the specific message
+        // that triggered this notification (matched by assistantMsg.ts)
+        // and briefly highlight it. Only set for coach_reply; check-ins
+        // don't carry a message ts.
+        scrollToTs: data.messageTs || null,
+      });
+      return;
+    }
+    if (notif.type === 'plan_ready' && data.planId) {
+      navigation.navigate('PlanOverview', { planId: data.planId });
+      return;
     }
   };
 

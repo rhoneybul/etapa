@@ -15,8 +15,8 @@
  *                       "ask about this week" is more context-specific.
  */
 
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Image } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fontFamily } from '../theme';
 
@@ -29,6 +29,25 @@ export default function CoachChatCard({ coach, onPress, subtitleOverride, unread
   const subtitle = subtitleOverride || 'Get advice, tweak your plan, ask anything about your training';
   const hasUnread = unreadCount > 0;
 
+  // Throbbing pulse — same 1.0 → 1.08 → 1.0 rhythm the HomeScreen splash
+  // uses so the loading feels "Etapa" rather than generic iOS. Only runs
+  // while refreshing so we don't burn battery idle.
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!refreshing) {
+      pulseAnim.setValue(1);
+      return;
+    }
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.12, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [refreshing, pulseAnim]);
+
   return (
     <TouchableOpacity
       style={[s.coachCard, style]}
@@ -36,9 +55,13 @@ export default function CoachChatCard({ coach, onPress, subtitleOverride, unread
       activeOpacity={0.8}
     >
       <View style={s.coachCardTop}>
-        <View style={[s.coachAvatar, { backgroundColor: coachColor }]}>
+        <View style={[s.coachAvatar, { backgroundColor: refreshing ? colors.primary : coachColor }]}>
           {refreshing ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <Animated.Image
+              source={require('../../assets/icon.png')}
+              style={[s.coachAvatarIcon, { transform: [{ scale: pulseAnim }] }]}
+              resizeMode="contain"
+            />
           ) : (
             <Text style={s.coachAvatarText}>{coachInitials}</Text>
           )}
@@ -110,6 +133,11 @@ const s = StyleSheet.create({
     lineHeight: 14, letterSpacing: 0.2,
   },
   coachAvatarText: { fontSize: 14, fontWeight: '700', color: '#fff', fontFamily: FF.semibold },
+  // Throbbing Etapa icon shown inside the avatar while refreshing.
+  // Square-ish so the pulse animation scales the artwork evenly; tint
+  // stays the app icon's native colour so it reads as "the brand" rather
+  // than a generic spinner.
+  coachAvatarIcon: { width: 32, height: 32 },
   coachCardTextWrap: { flex: 1 },
   coachCardName: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
   coachCardHint: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary, marginTop: 1 },

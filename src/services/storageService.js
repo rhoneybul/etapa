@@ -533,15 +533,43 @@ export async function setUserPrefs(prefs) {
 }
 
 // ── Onboarding state ────────────────────────────────────────────────────────
+//
+// The "have you seen the onboarding tour" flag is per-USER, not per-device.
+// That means: if you finish the tour on your phone, then log into the same
+// account on your tablet or reinstall the app, the tour does NOT play again.
+// Conversely, a brand-new account sees the tour on its first log-in even if
+// a previous account on this same device had already completed it.
+//
+// Implementation: server is the source of truth (`preferences.onboarding_done`).
+// The local AsyncStorage copy is a read-through cache so we skip the network
+// call on subsequent boots where we've already confirmed "done". The cache
+// is cleared in clearUserData() on logout so a new account's session starts
+// fresh.
 
 export async function isOnboardingDone() {
-  const val = await AsyncStorage.getItem(KEYS.ONBOARDING_DONE);
-  return val === 'true';
+  // Fast path — local cache says done, trust it.
+  const local = await AsyncStorage.getItem(KEYS.ONBOARDING_DONE);
+  if (local === 'true') return true;
+  // Ask the server. This is the per-user source of truth so a user who
+  // finished onboarding on one device doesn't see it again on another.
+  try {
+    const prefs = await api.preferences.get();
+    if (prefs?.onboarding_done) {
+      // Cache locally so next boot takes the fast path above.
+      await AsyncStorage.setItem(KEYS.ONBOARDING_DONE, 'true');
+      return true;
+    }
+  } catch {
+    // Offline / server error — fall through to "not done" so the user
+    // still gets the tour. Better to show it twice than to swallow it on
+    // a first-time user with a flaky connection.
+  }
+  return false;
 }
 
 export async function setOnboardingDone() {
   await AsyncStorage.setItem(KEYS.ONBOARDING_DONE, 'true');
-  // Also persist to server preferences (fire-and-forget)
+  // Persist to server so the flag follows the user across devices.
   api.preferences.update({ onboarding_done: true }).catch(() => {});
 }
 

@@ -254,12 +254,14 @@ export default function PlanPickerScreen({ navigation, route }) {
   const [longestRide, setLongestRide] = useState(null);
   const [customKm, setCustomKm]     = useState('');
   const [showCustomKm, setShowCustomKm] = useState(false);
-  // Cycling type captured on its own dedicated Step 2. Defaults to Mixed
-  // so users who skip the flow still land on a sensible value. Used to
-  // live on GoalSetup Step 1 and BeginnerProgram bike-type; consolidating
-  // it into the intake means every downstream pathway inherits a
-  // consistent value rather than re-asking or hardcoding "mixed".
-  const [cyclingType, setCyclingType] = useState('mixed');
+  // Cycling type captured on its own dedicated Step 2. Starts null so no
+  // option is pre-highlighted — we tried pre-selecting "Road" (the most
+  // common pick) but the highlight made the screen read as "already
+  // answered", pushing users past the question without considering it.
+  // Nothing downstream requires a non-null value mid-flow; pathways that
+  // need a default fall back to `cyclingType || 'mixed'` at the point of
+  // use (see `effectiveCyclingType` in renderReview and completeAndRoute).
+  const [cyclingType, setCyclingType] = useState(null);
   // Real ISO date string (yyyy-mm-dd) when the user picks from the
   // DatePicker; null when they tap "Not sure yet". Either value advances.
   const [eventDate, setEventDate] = useState('');
@@ -771,12 +773,17 @@ export default function PlanPickerScreen({ navigation, route }) {
     const baseLine = userKm > 0
       ? `You've already got a ${userKm} km base`
       : "You're already riding";
+    // "The Improver" — plan name surfaced both in the pitch (as a bold
+    // brand mention) and on the stat block's unit label (e.g. "12 WEEK
+    // IMPROVER"). Keeps the storage-level plan name unchanged ("Keep
+    // improving" in the creation paths) so this is purely a display
+    // rename on the recommendation preview.
     return {
-      planName: 'Keep Improving',
+      planName: 'The Improver',
       title: "You're set up beautifully.",
-      pitch: `${baseLine} — we're putting you on **Keep Improving**, our ${lengthClause}plan that meets you where you are and keeps building.`,
+      pitch: `${baseLine} — we're putting you on **The Improver**, ${hasFixedLength ? `our ${lenKey}-week plan` : 'our open-ended plan'} that meets you where you are and keeps building.`,
       why: 'A sustainable mix of endurance, quality, and recovery. No burnout. No guesswork.',
-      targetLine: hasFixedLength ? `${lenKey} weeks` : 'Ongoing — no fixed end',
+      targetLine: hasFixedLength ? `${lenKey}-week improver` : 'Ongoing — no fixed end',
     };
   };
 
@@ -1166,11 +1173,7 @@ export default function PlanPickerScreen({ navigation, route }) {
               full markdown parser for one style. */}
           <Text style={s.recPitch}>{renderEmphasised(pitch.pitch)}</Text>
 
-          {pitch.targetLine && (
-            <View style={s.recTargetChip}>
-              <Text style={s.recTargetText}>{pitch.targetLine}</Text>
-            </View>
-          )}
+          {pitch.targetLine && renderTargetBlock(pitch.targetLine)}
 
           <Text style={s.recWhy}>{pitch.why}</Text>
         </View>
@@ -1220,6 +1223,69 @@ function renderEmphasised(src) {
     }
     return <Text key={i}>{p}</Text>;
   });
+}
+
+// Turn `pitch.targetLine` into one or two stat "tiles" — big number, small
+// uppercase unit underneath, left-accent-bar in brand pink. Replaces the
+// old flat pink pill which read as "another tag", not a milestone. We
+// parse the known targetLine shapes (we control every source in
+// getRecommendationPitch()) and fall back to a single text tile for
+// anything else (e.g. "Ongoing — no fixed end"). Keeping the parser
+// here, not in the pitch fn, means copy authors can still write plain
+// strings without thinking about UI structure.
+function parseTargetLine(src) {
+  if (!src) return null;
+  const s = String(src).trim();
+  // "Target: 50 km in 12 weeks" — beginner case, two stats
+  const twoStat = s.match(/^Target:\s*(\d+)\s*km\s+in\s+(\d+)\s+weeks?$/i);
+  if (twoStat) {
+    return [
+      { num: twoStat[1], unit: 'km goal' },
+      { num: twoStat[2], unit: 'week build' },
+    ];
+  }
+  // "Target: 50 km" — event without a fixed-length training block
+  const kmOnly = s.match(/^Target:\s*(\d+)\s*km$/i);
+  if (kmOnly) return [{ num: kmOnly[1], unit: 'km goal' }];
+  // "12-week improver" — quick plan with brand-name unit label. This is
+  // the shape used by The Improver pathway so the card's unit line reads
+  // "WEEK IMPROVER" (plan-specific) instead of a generic "WEEK PLAN".
+  // Keep this case BEFORE the generic `\d+ weeks?` fallback below.
+  const weeksNamed = s.match(/^(\d+)-week\s+(.+)$/i);
+  if (weeksNamed) {
+    return [{ num: weeksNamed[1], unit: `week ${weeksNamed[2].toLowerCase()}` }];
+  }
+  // "8 weeks" / "12 weeks" — generic fallback for anything we didn't
+  // label with a plan name. Unit stays "week plan".
+  const weeksOnly = s.match(/^(\d+)\s+weeks?$/i);
+  if (weeksOnly) return [{ num: weeksOnly[1], unit: 'week plan' }];
+  return null; // caller falls back to text-only tile
+}
+
+function renderTargetBlock(targetLine) {
+  const parsed = parseTargetLine(targetLine);
+  // Fallback — "Ongoing — no fixed end" or anything else we didn't anticipate.
+  if (!parsed) {
+    return (
+      <View style={s.targetBlock}>
+        <View style={s.targetAccent} />
+        <Text style={s.targetTextFallback}>{targetLine}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={s.targetBlock}>
+      <View style={s.targetAccent} />
+      <View style={s.targetStatsRow}>
+        {parsed.map((stat, i) => (
+          <View key={i} style={[s.targetStat, i > 0 && s.targetStatDivider]}>
+            <Text style={s.targetStatNum}>{stat.num}</Text>
+            <Text style={s.targetStatUnit}>{stat.unit}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
 }
 
 
@@ -1341,17 +1407,71 @@ const s = StyleSheet.create({
     fontSize: 15, fontFamily: FF.regular, color: colors.text,
     lineHeight: 22, marginBottom: 12,
   },
-  // Distinct chip for the concrete target ("Target: 50 km in 12 weeks") —
-  // raised out of the pitch paragraph so it's the first thing the eye
-  // catches. Works as a visual anchor on the screen.
-  recTargetChip: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.primary,
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 100, marginBottom: 12,
+  // Target stat block — replaces the old "flat pink pill" treatment with
+  // a dedicated stat tile that gives the concrete numbers (goal km, plan
+  // weeks) the visual weight they deserve. Big number + tiny uppercase
+  // unit = milestone, not tag. Left accent bar in brand pink ties it to
+  // the card's pink border without the tile itself being loud.
+  targetBlock: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: 'rgba(232,69,139,0.09)',
+    borderRadius: 12,
+    marginBottom: 14,
+    overflow: 'hidden',
+    alignSelf: 'stretch',
   },
-  recTargetText: {
-    fontSize: 13, color: '#fff', fontFamily: FF.semibold, fontWeight: '600',
+  targetAccent: {
+    width: 3,
+    backgroundColor: colors.primary,
+  },
+  targetStatsRow: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  targetStat: {
+    flex: 1,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  // Vertical divider between the two stats when both are shown. Low-
+  // contrast white so it reads as a subtle separator, not a hard rule.
+  targetStatDivider: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: 'rgba(255,255,255,0.12)',
+    paddingLeft: 14,
+    marginLeft: 14,
+  },
+  targetStatNum: {
+    fontSize: 32,
+    fontFamily: FF.semibold,
+    fontWeight: '700',
+    color: colors.text,
+    lineHeight: 34,
+    letterSpacing: -0.5,
+  },
+  targetStatUnit: {
+    fontSize: 10,
+    fontFamily: FF.semibold,
+    fontWeight: '600',
+    color: colors.textMid,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
+  // Fallback when we can't parse the targetLine into a number (e.g.
+  // "Ongoing — no fixed end"). Just the text, centred in the tile, so
+  // the visual frame is consistent whichever plan the user lands on.
+  targetTextFallback: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: FF.semibold,
+    fontWeight: '600',
+    color: colors.text,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     letterSpacing: 0.2,
   },
   recWhy: {
