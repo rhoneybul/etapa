@@ -511,6 +511,34 @@ a:hover { color: var(--accent-hover); }
       </div>
     </div>
 
+    <!-- ───── Feature 5: Review before you build ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">Plan picker</div>
+        <h3>Review every answer before the plan is built</h3>
+        <p>After the plan picker's questions you get a summary screen: what you're training for, the kind of cycling you do, your event details, your longest ride, and how long you want to train. Tap any row to change just that one answer — no scrolling back through the flow, no starting over.</p>
+        <p>Going back from any later screen now returns you to the previous step instead of dumping you on Home. If you notice a mistyped race distance three screens later, one tap gets you back to fix it.</p>
+      </div>
+      <div class="feature-shot"
+           data-placeholder="1"
+           data-caption="Plan picker review step — one tap-to-edit row per answer, with a pink Confirm button at the bottom.">
+      </div>
+    </div>
+
+    <!-- ───── Feature 6: Smarter coach ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">Coach chat</div>
+        <h3>Your coach reads the whole conversation, not just your last line</h3>
+        <p>If your coach asked "recreational swim or something specific?" and you replied "Recreational swim", the old guardrail sometimes flagged that as off-topic. The coach now reads the last few turns of context before deciding, so short answers to its own questions stop getting blocked.</p>
+        <p>It can also schedule non-cycling sessions — swim, run, physio, mobility, stretching, yoga, and 20+ more — and each one shows with a proper activity icon on your week.</p>
+      </div>
+      <div class="feature-shot"
+           data-placeholder="1"
+           data-caption="Coach chat — a swim session slotted into the week with its swim icon, plus a physio session with the hand-heart glyph.">
+      </div>
+    </div>
+
     <!-- ───── Plans improvements (prose block) ───── -->
     <div class="subsection">
       <div class="subsection-label"><span class="dot"></span>Plans</div>
@@ -538,6 +566,18 @@ a:hover { color: var(--accent-hover); }
         <li><strong>Pre-plan-start home screen</strong>A clear "Plan starts Mon 27 April · 3 days" card before Week 1 kicks off.</li>
         <li><strong>Calendar quick-access on Home</strong>The small calendar icon takes you to the full monthly view.</li>
         <li><strong>Your coach follows you through</strong>The coach you pick in onboarding is pre-selected when you create a plan — no re-picking.</li>
+        <li><strong>Cycling type is its own question</strong>Road / gravel / MTB / e-bike / mixed got its own step in the plan picker instead of being an afterthought at the bottom of question one.</li>
+        <li><strong>Tap feedback on every intake option</strong>Small spinner on the card you just tapped so the transition never feels dead.</li>
+        <li><strong>Race lookup calls out the date</strong>When we find your race, we say whether we filled in the date too — not just distance and elevation.</li>
+        <li><strong>Duration options respect your event date</strong>16-week plan greys out when your race is 6 weeks away. The "Recommended" flag moves to the longest plan that actually fits.</li>
+        <li><strong>Event path stops asking twice</strong>If you filled in race details in the plan picker, we don't ask you again on the next screen.</li>
+        <li><strong>Calendar session actions on the card</strong>Tap any session and Open / Move / Delete appear right inside it. The drag hint moved onto each card too.</li>
+        <li><strong>Pink "1" on the coach card</strong>When your coach has replied, a small badge appears on their avatar on Home. Clears the moment you open the chat.</li>
+        <li><strong>Cleaner selected day on Home</strong>Just the pink circle now — no heavy rectangle behind the whole day column.</li>
+        <li><strong>Plan overview palette refresh</strong>Bar chart uses brand pinks and slate blues now. Peak-week flag went from alarming red to a warmer pink.</li>
+        <li><strong>Loading spinner when you complete a session</strong>No more "did that tap even register?" moments.</li>
+        <li><strong>Ask coach card unified</strong>The coach entry-point on Plan Overview now uses the same card style as Home.</li>
+        <li><strong>Test push button in Settings</strong>New row in Settings → Notifications to verify pushes are actually reaching your device.</li>
       </ul>
     </div>
 
@@ -546,11 +586,16 @@ a:hover { color: var(--accent-hover); }
       <div class="bugs-label">Bugs squashed</div>
       <ul>
         <li>Android keyboard no longer hides the coach chat input.</li>
-        <li>Coach replies no longer get lost if you leave the screen mid-request.</li>
+        <li>Coach replies no longer vanish on return — a server/client race was overwriting the completed reply with an empty one. Fixed on both sides.</li>
         <li>Race lookup keeps the correct distance when you change the event.</li>
         <li>The Delete Plan crash (black screen) is fixed — now shows a proper loading overlay.</li>
         <li>Plan Overview chart uses distinct colours for endurance vs tempo.</li>
         <li>Generate Plan no longer crashes on the longest-ride step.</li>
+        <li>Plans with a Peak phase no longer flag three weeks in a row as "Peak week" — only the actual highest-volume week gets the label.</li>
+        <li>Back from plan config returns to your previous step instead of dropping you on Home.</li>
+        <li>Bottom buttons no longer get clipped by the Android 3-button nav bar on Welcome / plan picker / onboarding screens.</li>
+        <li>The "tap a session" hint moved under the divider so it clearly refers to the day list, not the week strip above it.</li>
+        <li>Coach no longer answers its own questions with a boilerplate refusal — context of the prior turn is now included in the on-topic check.</li>
       </ul>
     </div>
   </section>

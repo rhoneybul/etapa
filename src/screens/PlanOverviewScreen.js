@@ -15,6 +15,8 @@ import { getCrossTrainingLabel } from '../utils/sessionLabels';
 import { syncStravaActivities, getStravaActivitiesForWeek } from '../services/stravaSyncService';
 import { isStravaConnected } from '../services/stravaService';
 import analytics from '../services/analyticsService';
+import CoachChatCard from '../components/CoachChatCard';
+import { getCoach } from '../data/coaches';
 
 const DAY_LABELS = [
   { key: 'monday', short: 'MON' }, { key: 'tuesday', short: 'TUE' },
@@ -41,13 +43,17 @@ function getPlanPhases(totalWeeks) {
   return phases.filter(p => p.start <= p.end);
 }
 
-// Week flag colours and labels
+// Week flag colours and labels.
+// Palette kept to brand pinks + slate-blues — no reds/ambers (feedback
+// was that the red "Peak week" chip looked alarming and didn't match
+// the rest of the app). Peak now uses a warm pink so it still reads as
+// "this is an important week" without a stop-sign connotation.
 const WEEK_FLAGS = {
-  recovery: { label: 'Recovery', color: '#64748B', bg: 'rgba(100,116,139,0.12)' },
-  peak:     { label: 'Peak week', color: '#EF4444', bg: 'rgba(239,68,68,0.12)' },
+  recovery: { label: 'Recovery', color: '#6B8CC7', bg: 'rgba(107,140,199,0.14)' },
+  peak:     { label: 'Peak week', color: '#E8458B', bg: 'rgba(232,69,139,0.14)' },
   longest:  { label: 'Longest ride', color: '#E8458B', bg: 'rgba(232,69,139,0.12)' },
   taper:    { label: 'Taper', color: '#E8458B', bg: 'rgba(232,69,139,0.12)' },
-  test:     { label: 'Test week', color: '#6366F1', bg: 'rgba(99,102,241,0.12)' },
+  test:     { label: 'Test week', color: '#6B8CC7', bg: 'rgba(107,140,199,0.14)' },
 };
 
 function getWeekFlags(weekVolumes, phases, plan) {
@@ -67,6 +73,12 @@ function getWeekFlags(weekVolumes, phases, plan) {
     });
   }
 
+  // Only ONE week gets the "peak week" label — the single highest-volume
+  // week across the whole plan. Previously every non-deload week inside
+  // the Peak phase was flagged, which meant a 12-week plan showed three
+  // peak weeks back-to-back — confusing and dilutes the signal. The
+  // peak phase itself is still visible via the training-phases section
+  // lower on the screen; the week-flag is the "this one, right here" cue.
   weekVolumes.forEach((v, i) => {
     const weekNum = i + 1;
     const isDeload = weekNum % 4 === 0;
@@ -74,24 +86,26 @@ function getWeekFlags(weekVolumes, phases, plan) {
 
     if (isDeload) flags[i].push('recovery');
     if (phase?.name === 'Taper') flags[i].push('taper');
-    if (phase?.name === 'Peak' && i === maxKmWeek) flags[i].push('peak');
-    else if (phase?.name === 'Peak' && !isDeload) flags[i].push('peak');
+    if (phase?.name === 'Peak' && i === maxKmWeek && !isDeload) flags[i].push('peak');
     if (i === longestRideWeek && longestRideKm > 0) flags[i].push('longest');
   });
 
   return flags;
 }
 
-// Ride type colors for stacked bars
-// Effort-zone palette: cool -> warm as intensity rises, so the chart is
-// readable at a glance. Brand pink is reserved for the current-week border.
+// Ride type colors for stacked bars.
+// Restricted to the brand pinks + slate-blues (user feedback: the prior
+// green / teal / amber / orange palette felt off-brand). Intensity is
+// encoded by hue temperature within a narrower range — blues for easier
+// / recovery / indoor, pinks for the harder endurance / tempo / intervals
+// work. Brand primary (#E8458B) is reserved for the current-week border.
 const RIDE_TYPE_COLORS = {
-  recovery:   '#5EBFB0',      // teal — easiest, cool
-  endurance:  '#4CAF7A',      // green — aerobic base
-  tempo:      '#E8A33D',      // amber — moderate intensity
-  intervals:  '#E86C3D',      // orange — high intensity
-  indoor:     '#6B8CC7',      // blue-slate — distinct from outdoor rides
-  strength:   '#8B6FBF',      // purple — different modality
+  recovery:   '#9FB4D9',      // light blue — easiest, cool
+  endurance:  '#ED93B1',      // soft pink — aerobic base
+  tempo:      '#D4537E',      // mid pink — moderate intensity
+  intervals:  '#993556',      // deep pink — high intensity
+  indoor:     '#6B8CC7',      // slate blue — distinct from outdoor rides
+  strength:   '#4B5A80',      // deep slate — different modality
   other:      '#94A3B8',
 };
 
@@ -532,20 +546,17 @@ export default function PlanOverviewScreen({ navigation, route }) {
             <View style={{ height: 100 }} />
           </ScrollView>
 
-          {/* Bottom bar */}
-          <View style={s.editBar}>
-            <TouchableOpacity
-              style={s.coachBtn}
+          {/* Bottom bar — uses the shared CoachChatCard component so the
+              entry-point here matches the Home screen's promoted card
+              exactly (same avatar, chevron, layout, border treatment).
+              Previously this was a custom pink-dot pill that looked
+              inconsistent with Home / Week view. */}
+          <View style={s.coachBarWrap}>
+            <CoachChatCard
+              coach={getCoach(planConfig?.coachId)}
               onPress={() => navigation.navigate('CoachChat', { planId: plan.id })}
-              activeOpacity={0.7}
-            >
-              <View style={[s.coachDot, { backgroundColor: colors.primary }]} />
-              <View style={s.coachBtnTextWrap}>
-                <Text style={s.coachBtnLabel}>Ask coach about your plan</Text>
-                <Text style={s.coachBtnHint}>Get advice or ask your coach to restructure your plan</Text>
-              </View>
-              <Text style={s.coachBtnArrow}>{'\u203A'}</Text>
-            </TouchableOpacity>
+              subtitleOverride="Ask about your plan, rework weeks, or get advice on training structure."
+            />
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -614,17 +625,10 @@ const s = StyleSheet.create({
   weekMeta: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 1 },
   weekArrow: { fontSize: 20, color: colors.textFaint, fontWeight: '300' },
 
-  editBar: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
-  coachBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14,
-    backgroundColor: colors.bg, borderWidth: 1.5, borderColor: colors.border,
-  },
-  coachDot: { width: 10, height: 10, borderRadius: 5 },
-  coachBtnTextWrap: { flex: 1 },
-  coachBtnLabel: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
-  coachBtnHint: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 1 },
-  coachBtnArrow: { fontSize: 22, color: colors.textFaint, fontWeight: '300' },
+  // Wrapper around the bottom CoachChatCard. Kept minimal — the card
+  // component owns its own border/shadow; we just give it horizontal
+  // gutter + breathing room from the screen edge.
+  coachBarWrap: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12 },
 
   // ── Recurring rides ────────────────────────────────────────────────────
   recurringSection: { marginHorizontal: 16, marginTop: 12, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.border },

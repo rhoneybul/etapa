@@ -18,7 +18,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated, Dimensions,
-  Modal, ScrollView,
+  Modal, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { colors, fontFamily } from '../theme';
 import { getCoaches, DEFAULT_COACH_ID } from '../data/coaches';
@@ -107,7 +107,7 @@ function TodayCard() {
  *   - shows a small sample quote from the picked coach so they know what
  *     they're getting tone-wise
  */
-function CoachPickerCard({ selectedId, onSelect }) {
+function CoachPickerCard({ selectedId, pendingId, onSelect }) {
   const coaches = getCoaches();
   const selected = coaches.find(c => c.id === selectedId) || coaches[0];
   return (
@@ -118,18 +118,30 @@ function CoachPickerCard({ selectedId, onSelect }) {
       <View style={cs.coachGrid}>
         {coaches.map((c) => {
           const picked = c.id === selectedId;
+          // pendingId fires for ~300ms while we write the pref to
+          // AsyncStorage — shows a tiny spinner on the tapped chip so
+          // the tap doesn't feel dead before the highlight settles.
+          const saving = c.id === pendingId;
           return (
             <TouchableOpacity
               key={c.id}
-              style={[cs.coachChip, picked && cs.coachChipPicked]}
+              style={[cs.coachChip, (picked || saving) && cs.coachChipPicked]}
               onPress={() => onSelect(c.id)}
               activeOpacity={0.85}
+              disabled={pendingId !== null && pendingId !== c.id}
             >
               <View style={[cs.coachAvatar, { backgroundColor: c.avatarColor }]}>
                 <Text style={cs.coachAvatarText}>{c.avatarInitials}</Text>
               </View>
               <Text style={[cs.coachName, picked && cs.coachNamePicked]} numberOfLines={1}>{c.name}</Text>
               <Text style={cs.coachTag} numberOfLines={2}>{c.tagline}</Text>
+              {saving && (
+                <ActivityIndicator
+                  size="small"
+                  color={colors.primary}
+                  style={cs.coachSpinner}
+                />
+              )}
             </TouchableOpacity>
           );
         })}
@@ -204,27 +216,35 @@ function SessionBreakdownCard() {
  * Get Started CTA lives in the main tour chrome (the "nextBtn" with
  * isLast styling) — this card just houses the toggle.
  */
-function UnitsCard({ units, onSelect }) {
+function UnitsCard({ units, pending, onSelect }) {
+  const renderBtn = (key, label, sub) => {
+    const picked = units === key;
+    const saving = pending === key;
+    return (
+      <TouchableOpacity
+        style={[cs.unitsBtn, (picked || saving) && cs.unitsBtnPicked]}
+        onPress={() => onSelect(key)}
+        activeOpacity={0.85}
+        disabled={pending !== null && pending !== key}
+      >
+        <Text style={[cs.unitsBtnText, picked && cs.unitsBtnTextPicked]}>{label}</Text>
+        <Text style={[cs.unitsBtnSub, picked && cs.unitsBtnSubPicked]}>{sub}</Text>
+        {saving && (
+          <ActivityIndicator
+            size="small"
+            color={colors.primary}
+            style={{ position: 'absolute', top: 8, right: 8 }}
+          />
+        )}
+      </TouchableOpacity>
+    );
+  };
   return (
     <View style={cs.card}>
       <Text style={cs.cardLabel}>DISTANCE UNITS</Text>
       <View style={cs.unitsRow}>
-        <TouchableOpacity
-          style={[cs.unitsBtn, units === 'km' && cs.unitsBtnPicked]}
-          onPress={() => onSelect('km')}
-          activeOpacity={0.85}
-        >
-          <Text style={[cs.unitsBtnText, units === 'km' && cs.unitsBtnTextPicked]}>Kilometres</Text>
-          <Text style={[cs.unitsBtnSub, units === 'km' && cs.unitsBtnSubPicked]}>km</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[cs.unitsBtn, units === 'miles' && cs.unitsBtnPicked]}
-          onPress={() => onSelect('miles')}
-          activeOpacity={0.85}
-        >
-          <Text style={[cs.unitsBtnText, units === 'miles' && cs.unitsBtnTextPicked]}>Miles</Text>
-          <Text style={[cs.unitsBtnSub, units === 'miles' && cs.unitsBtnSubPicked]}>mi</Text>
-        </TouchableOpacity>
+        {renderBtn('km', 'Kilometres', 'km')}
+        {renderBtn('miles', 'Miles', 'mi')}
       </View>
     </View>
   );
@@ -234,13 +254,13 @@ function UnitsCard({ units, onSelect }) {
  * Dispatcher — picks the right renderer for the current step's card. The
  * coach + units cards need handlers, the other cards are stateless.
  */
-function DummyCardRenderer({ dummyCard, selectedCoachId, onPickCoach, units, onPickUnits }) {
+function DummyCardRenderer({ dummyCard, selectedCoachId, pendingCoachId, onPickCoach, units, pendingUnits, onPickUnits }) {
   if (!dummyCard) return null;
   switch (dummyCard.type) {
     case 'today':              return <TodayCard />;
-    case 'coachPicker':        return <CoachPickerCard selectedId={selectedCoachId} onSelect={onPickCoach} />;
+    case 'coachPicker':        return <CoachPickerCard selectedId={selectedCoachId} pendingId={pendingCoachId} onSelect={onPickCoach} />;
     case 'sessionBreakdown':   return <SessionBreakdownCard />;
-    case 'units':              return <UnitsCard units={units} onSelect={onPickUnits} />;
+    case 'units':              return <UnitsCard units={units} pending={pendingUnits} onSelect={onPickUnits} />;
     default:                    return null;
   }
 }
@@ -251,6 +271,12 @@ export default function OnboardingTour({ visible, onComplete }) {
   const [step, setStep] = useState(0);
   const [selectedCoachId, setSelectedCoachId] = useState(DEFAULT_COACH_ID);
   const [units, setUnits] = useState('km');
+  // Transient "saving" state for coach + units picks. Set the moment the
+  // user taps, cleared after the async prefs write settles. Drives a
+  // small spinner on the tapped chip so the tap doesn't feel dead while
+  // AsyncStorage flushes.
+  const [pendingCoachId, setPendingCoachId] = useState(null);
+  const [pendingUnits, setPendingUnits] = useState(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
@@ -292,9 +318,17 @@ export default function OnboardingTour({ visible, onComplete }) {
   // to AsyncStorage synchronously enough that by the time the user
   // completes the tour, the first plan config can read userPrefs.coachId
   // as its default.
+  //
+  // Visual feedback: set pendingCoachId while the storage write is in
+  // flight so the tapped chip shows a spinner instead of feeling dead.
+  // On slower phones the AsyncStorage write can be ~200ms and the user
+  // registers no response otherwise.
   const handlePickCoach = (coachId) => {
     setSelectedCoachId(coachId);
-    setUserPrefs({ coachId }).catch(() => {});
+    setPendingCoachId(coachId);
+    setUserPrefs({ coachId })
+      .catch(() => {})
+      .finally(() => setPendingCoachId(null));
   };
 
   // Same pattern for units — persisted immediately so the rest of the
@@ -302,7 +336,10 @@ export default function OnboardingTour({ visible, onComplete }) {
   // picks up the choice from first render.
   const handlePickUnits = (nextUnits) => {
     setUnits(nextUnits);
-    setUserPrefs({ units: nextUnits }).catch(() => {});
+    setPendingUnits(nextUnits);
+    setUserPrefs({ units: nextUnits })
+      .catch(() => {})
+      .finally(() => setPendingUnits(null));
   };
 
   const handleNext = () => {
@@ -355,8 +392,10 @@ export default function OnboardingTour({ visible, onComplete }) {
                 <DummyCardRenderer
                   dummyCard={current.dummyCard}
                   selectedCoachId={selectedCoachId}
+                  pendingCoachId={pendingCoachId}
                   onPickCoach={handlePickCoach}
                   units={units}
+                  pendingUnits={pendingUnits}
                   onPickUnits={handlePickUnits}
                 />
               </View>
@@ -575,6 +614,11 @@ const cs = StyleSheet.create({
   coachTag: {
     fontSize: 10, fontFamily: FF.regular,
     color: colors.textMuted, textAlign: 'center', lineHeight: 13,
+  },
+  // Positioned absolutely so it overlays the chip without bumping the
+  // other text content around when it appears/disappears.
+  coachSpinner: {
+    position: 'absolute', top: 6, right: 6,
   },
   quoteBox: {
     padding: 12, borderRadius: 10,

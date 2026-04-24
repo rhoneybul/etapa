@@ -35,6 +35,7 @@ export default function SettingsScreen({ navigation }) {
   const [preferences, setPreferences] = useState(null);
   const [notifPermission, setNotifPermission] = useState(null); // 'granted' | 'denied' | 'undetermined'
   const [togglingNotif, setTogglingNotif] = useState(false);
+  const [sendingTestPush, setSendingTestPush] = useState(false);
   const [userPrefs, setUserPrefsState] = useState({ units: 'km', displayName: '' });
   const [editingName, setEditingName] = useState(false);
   // Optional training-intensity fields. When set, interval breakdowns on
@@ -800,6 +801,53 @@ export default function SettingsScreen({ navigation }) {
                 <Text style={s.rowTitle}>Coach Check-ins</Text>
                 <Text style={s.rowSub}>
                   {preferences?.coach_checkin === 'none' ? 'Off' : preferences?.coach_checkin === 'after_session' ? 'Daily' : 'Weekly'}
+                </Text>
+              </View>
+            </View>
+            <Text style={s.chevron}>{'\u203A'}</Text>
+          </TouchableOpacity>
+
+          {/* Test push row — user-initiated diagnostic. Tap fires a
+              server-side push at their own device so they can verify
+              notifications arrive. The response tells us whether it
+              was sent (active token present) or silently dropped
+              (no active token on the server). Result alerted inline. */}
+          <View style={s.divider} />
+          <TouchableOpacity
+            style={s.row}
+            disabled={sendingTestPush}
+            onPress={async () => {
+              try {
+                setSendingTestPush(true);
+                const res = await api.notifications.testPush();
+                if (res?.sent) {
+                  Alert.alert(
+                    'Test push sent',
+                    `Sent to ${res.activeTokens || 0} device${res.activeTokens === 1 ? '' : 's'}. If you don't see a banner in the next few seconds, check your device's Focus/DnD settings.`,
+                  );
+                } else if (!res?.activeTokens) {
+                  Alert.alert(
+                    'No push token',
+                    "We haven't been able to register a push token for this device. Try toggling Push Notifications off and on above.",
+                  );
+                } else {
+                  Alert.alert(
+                    'Push attempt failed',
+                    'The server tried to send a push but Expo returned an error. Check the server logs, or try re-registering your token by toggling Push Notifications.',
+                  );
+                }
+              } catch (err) {
+                Alert.alert('Test push failed', err?.message || 'Network error');
+              } finally {
+                setSendingTestPush(false);
+              }
+            }}
+          >
+            <View style={s.rowLeft}>
+              <View>
+                <Text style={s.rowTitle}>Send test notification</Text>
+                <Text style={s.rowSub}>
+                  {sendingTestPush ? 'Sending…' : 'Verify pushes are reaching your device'}
                 </Text>
               </View>
             </View>

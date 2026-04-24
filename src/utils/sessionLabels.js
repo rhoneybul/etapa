@@ -130,6 +130,12 @@ export function getMetricLabel(activity) {
 // ── Activity type icons (MaterialCommunityIcons names) ──────────────────────
 // Returns the icon name to use for a given activity or cross-training key.
 // All icons come from @expo/vector-icons MaterialCommunityIcons.
+//
+// When adding a new key: pick an existing MCI glyph name (don't invent).
+// Common aliases (e.g. `rehab` → physio, `stretch` → stretching) are
+// included so the coach's free-form plan_update blocks can use any of
+// several sensible spellings and still hit a proper icon. Unknown keys
+// fall through to 'lightning-bolt' via the `other` default.
 const CT_ICONS = {
   run:            'run',
   trail_run:      'run',
@@ -139,7 +145,7 @@ const CT_ICONS = {
   weight_training:'dumbbell',
   crossfit:       'dumbbell',
   yoga:           'yoga',
-  pilates:        'yoga',
+  pilates:        'human',
   rowing:         'rowing',
   kayak:          'kayak',
   surf:           'surfing',
@@ -155,6 +161,18 @@ const CT_ICONS = {
   skateboard:     'skateboarding',
   elliptical:     'bike-stationary',
   stair_stepper:  'stairs',
+  // ── Recovery / rehab (new additions) ──────────────────────────────
+  // Coach frequently schedules these; previously they fell through to
+  // the generic lightning-bolt. Now they have dedicated glyphs from
+  // the already-imported MaterialCommunityIcons set.
+  physio:         'hand-heart',       // manual therapy / clinical care
+  rehab:          'hand-heart',       // alias — same icon
+  mobility:       'human-handsup',    // full range-of-motion work
+  stretching:     'arm-flex-outline', // stretching / extension work
+  stretch:        'arm-flex-outline', // alias — singular form
+  foam_rolling:   'arm-flex-outline', // rolling maps to the same bucket
+  meditation:     'meditation',       // breathwork / mindfulness
+  breathwork:     'meditation',       // alias
   other:          'lightning-bolt',
 };
 
@@ -189,7 +207,13 @@ const CT_LABELS = {
   surf: 'Surf', ski: 'Ski', snowboard: 'Snowboard', rock_climb: 'Climb',
   soccer: 'Soccer', tennis: 'Tennis', padel: 'Padel', golf: 'Golf',
   martial_arts: 'Martial Arts', dance: 'Dance', skateboard: 'Skate',
-  elliptical: 'Elliptical', stair_stepper: 'Stairs', other: 'Other',
+  elliptical: 'Elliptical', stair_stepper: 'Stairs',
+  // Recovery / rehab additions — matching the new CT_ICONS entries.
+  physio: 'Physio', rehab: 'Rehab',
+  mobility: 'Mobility', stretching: 'Stretching', stretch: 'Stretching',
+  foam_rolling: 'Foam rolling',
+  meditation: 'Meditation', breathwork: 'Breathwork',
+  other: 'Other',
 };
 
 export function getCrossTrainingLabel(key) {

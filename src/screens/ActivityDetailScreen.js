@@ -108,6 +108,12 @@ export default function ActivityDetailScreen({ navigation, route }) {
   // structured-session schema. When tapped, we call the server to
   // synthesise a structure and cache it on the activity.
   const [explaining, setExplaining] = useState(false);
+  // Tracks the completion-toggle round-trip (AsyncStorage write + server
+  // sync + re-fetch activity). Drives the spinner inside the complete
+  // circle so the tap doesn't feel dead while the save is in flight —
+  // users reported the tap "taking a while to register". Also blocks
+  // re-entry so double-taps don't fire two toggles.
+  const [savingCompletion, setSavingCompletion] = useState(false);
   const [explainError, setExplainError] = useState('');
 
   const scrollRef = useRef(null);
@@ -164,13 +170,19 @@ export default function ActivityDetailScreen({ navigation, route }) {
   };
 
   const handleComplete = async () => {
+    if (savingCompletion) return; // Block double-taps while the save is in flight.
     if (activity && !activity.completed) {
       analytics.events.activityCompleted({ activityType: activity.type, subType: activity.subType, effort: activity.effort, week: activity.week, distanceKm: activity.distanceKm, durationMins: activity.durationMins });
     } else if (activity) {
       analytics.events.activityUncompleted({ activityType: activity.type, week: activity.week });
     }
-    await markActivityComplete(activityId);
-    await loadActivity();
+    setSavingCompletion(true);
+    try {
+      await markActivityComplete(activityId);
+      await loadActivity();
+    } finally {
+      setSavingCompletion(false);
+    }
   };
 
   const handleSaveEdits = async () => {
@@ -330,13 +342,23 @@ export default function ActivityDetailScreen({ navigation, route }) {
                 style={[s.completeCircle, activity.completed && s.completeCircleDone]}
                 hitSlop={HIT}
                 activeOpacity={0.7}
+                disabled={savingCompletion}
                 accessibilityLabel={activity.completed ? 'Mark as incomplete' : 'Mark as complete'}
               >
-                {activity.completed ? <Text style={s.completeTick}>{'\u2713'}</Text> : null}
+                {/* While saving, show a small spinner inside the circle
+                    so the tap feels responsive. Tick colour matches the
+                    done state so the swap reads as one element. */}
+                {savingCompletion ? (
+                  <ActivityIndicator size="small" color={activity.completed ? '#fff' : colors.primary} />
+                ) : activity.completed ? (
+                  <Text style={s.completeTick}>{'\u2713'}</Text>
+                ) : null}
               </TouchableOpacity>
             </View>
             <Text style={s.titleHint}>
-              {activity.completed ? 'Completed — tap the tick to undo' : 'Tap the circle to mark as complete'}
+              {savingCompletion
+                ? 'Saving…'
+                : activity.completed ? 'Completed — tap the tick to undo' : 'Tap the circle to mark as complete'}
             </Text>
           </View>
 

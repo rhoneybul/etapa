@@ -884,7 +884,7 @@ export async function cancelCoachChatJob(jobId) {
  * should fall back to polling. The polling path is always set up in
  * parallel so a failed SSE subscription doesn't strand the message.
  */
-export async function openCoachChatStream(jobId, { onDelta, onDone, onError } = {}) {
+export async function openCoachChatStream(jobId, { onDelta, onDone, onError, onPlanUpdateStart } = {}) {
   const serverUrl = getServerUrl();
   if (!serverUrl || !jobId) return () => {};
   let RNEventSource;
@@ -903,6 +903,14 @@ export async function openCoachChatStream(jobId, { onDelta, onDone, onError } = 
 
     es.addEventListener('delta', (ev) => {
       try { onDelta?.(JSON.parse(ev.data)); } catch {}
+    });
+    // Fires once as soon as the server detects the opening plan_update
+    // fence mid-stream. Lets the UI show a "Preparing changes…" placeholder
+    // the moment the coach starts generating the JSON block, rather than
+    // waiting for the whole stream to finish and then rendering the
+    // Apply/Dismiss panel.
+    es.addEventListener('plan_update_started', (ev) => {
+      try { onPlanUpdateStart?.(ev?.data ? JSON.parse(ev.data) : {}); } catch { onPlanUpdateStart?.({}); }
     });
     es.addEventListener('done', (ev) => {
       try { onDone?.(JSON.parse(ev.data)); } catch { onDone?.({ reply: '' }); }

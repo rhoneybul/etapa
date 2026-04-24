@@ -21,8 +21,20 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PUT /api/chat-sessions/:planId/:weekNum — upsert a chat session
-// weekNum = 0 means full plan scope (null in DB)
+// PUT /api/chat-sessions/:planId/:weekNum — upsert a chat session.
+//
+// weekNum = 0 means full plan scope (null in DB).
+//
+// **Monotonic message count**: this endpoint refuses to shrink the
+// messages array. Background: runCoachChatJob writes the completed
+// coach reply directly to chat_sessions when it finishes. If the
+// client's own mid-stream save arrives AFTER the worker's append (and
+// the client didn't include the pending reply in its PUT), a naive
+// upsert would overwrite the reply — producing the "I see my message
+// but no coach response" bug. Refusing to shrink stops that class of
+// race at the storage boundary. Client-side also guards against it
+// (CoachChatScreen skips PUTs while a reply is pending), but defence
+// in depth: worth having here.
 router.put('/:planId/:weekNum', async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -31,6 +43,23 @@ router.put('/:planId/:weekNum', async (req, res, next) => {
     const messages = req.body.messages || [];
 
     const id = `${planId}_w${weekNum || 0}`;
+
+    // Fetch existing row (if any) so we can compare lengths. Missing
+    // row is fine — treat as empty and proceed with upsert.
+    const { data: existing } = await supabase
+      .from('chat_sessions')
+      .select('messages')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    const existingLen = Array.isArray(existing?.messages) ? existing.messages.length : 0;
+    if (messages.length < existingLen) {
+      // Client tried to write a shorter list than what we already have.
+      // Keep the existing row untouched and tell the client we skipped
+      // the write — it'll get the full list on its next list() call.
+      return res.json({ ok: true, skipped: 'would-shrink', existingLen, incomingLen: messages.length });
+    }
 
     const { error } = await supabase
       .from('chat_sessions')

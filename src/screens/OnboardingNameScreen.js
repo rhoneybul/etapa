@@ -18,7 +18,7 @@ import {
   KeyboardAvoidingView, Platform, ScrollView, Image, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontFamily } from '../theme';
+import { colors, fontFamily, useBottomInset } from '../theme';
 import { setUserPrefs } from '../services/storageService';
 import { getCurrentUser } from '../services/authService';
 import analytics from '../services/analyticsService';
@@ -119,6 +119,12 @@ export default function OnboardingNameScreen({ navigation }) {
     }
   };
 
+  // Respect Android's 3-button nav / gesture pill so the Continue CTA
+  // at the bottom of the ScrollView doesn't end up clipped. iOS with
+  // no home-indicator reports 0 and we fall back to the 40pt scroll
+  // padding that was already there.
+  const bottomPad = useBottomInset(16);
+
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <KeyboardAvoidingView
@@ -126,7 +132,7 @@ export default function OnboardingNameScreen({ navigation }) {
         style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={s.scrollWrap}
+          contentContainerStyle={[s.scrollWrap, { paddingBottom: Math.max(40, bottomPad) }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >

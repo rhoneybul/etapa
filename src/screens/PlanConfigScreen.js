@@ -656,7 +656,22 @@ export default function PlanConfigScreen({ navigation, route }) {
   };
 
   const handleBack = () => {
-    if (step <= 1) { navigation.goBack(); return; }
+    if (step <= 1) {
+      // Every upstream intake screen (PlanPicker, GoalSetup,
+      // BeginnerProgram, PlanSelection) navigates here via
+      // navigation.replace, so the navigation stack by the time we land
+      // on PlanConfig is typically just [Home, PlanConfig] — a raw
+      // goBack() drops the user on Home and loses every answer they
+      // just gave. Instead, if we have the intake in hand, route them
+      // back to the PlanPicker review step so they can tweak any
+      // answer. PlanPicker accepts `resumeIntake` and rehydrates.
+      if (intake) {
+        navigation.replace('PlanPicker', { resumeIntake: intake });
+        return;
+      }
+      navigation.goBack();
+      return;
+    }
     // Mirror the forward-skip when prefillWeeks fixed the weeks step.
     if (step === 7 && prefillWeeks && planWeeks) { setStep(5); return; }
     setStep(step - 1);

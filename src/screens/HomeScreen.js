@@ -124,6 +124,16 @@ export default function HomeScreen({ navigation, route }) {
   const [deleting, setDeleting] = useState(false);
   const [stravaActivities, setStravaActivities] = useState([]);
   const [selectedDayIdx, setSelectedDayIdx] = useState(null); // tapped day in the week strip
+  // Scroll refs — tapping a day in the top week strip scrolls the outer
+  // ScrollView to that day's row in the inline week list below. Without
+  // this, the selection highlight moves but the actual session can be
+  // below the fold. weekListYRef holds the weekList container's Y offset
+  // inside the outer scroll; dayRowYRef is a Map of dayIdx → row Y
+  // offset INSIDE the weekList. Both are populated via onLayout and
+  // summed to compute the absolute scroll target.
+  const mainScrollRef = useRef(null);
+  const weekListYRef = useRef(0);
+  const dayRowYRef = useRef(new Map());
   const [movingActivity, setMovingActivity] = useState(null); // { activity } when hold-to-move
   const [actionActivity, setActionActivity] = useState(null); // { activity } when action bar shown
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -410,6 +420,23 @@ export default function HomeScreen({ navigation, route }) {
     const unsub = navigation.addListener('focus', refreshPlanLimits);
     return unsub;
   }, [navigation, refreshPlanLimits]);
+
+  // Unread coach-reply count, drives the "1" badge on the CoachChatCard.
+  // Refreshes on focus so returning from CoachChat (which marks replies
+  // as read) clears the badge. Silent-fail if offline — badge just
+  // stays at 0 until the next successful poll.
+  const [coachUnread, setCoachUnread] = useState(0);
+  const refreshCoachUnread = useCallback(async () => {
+    try {
+      const res = await api.notifications.unreadCount('coach_reply');
+      setCoachUnread(Number(res?.count) || 0);
+    } catch {}
+  }, []);
+  useEffect(() => { refreshCoachUnread(); }, [refreshCoachUnread]);
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', refreshCoachUnread);
+    return unsub;
+  }, [navigation, refreshCoachUnread]);
 
   // Deselect day when navigating to a different week
   useEffect(() => { setSelectedDayIdx(null); }, [currentWeek]);
@@ -780,7 +807,26 @@ export default function HomeScreen({ navigation, route }) {
       return;
     }
     // Toggle: tap same day again to deselect
-    setSelectedDayIdx(prev => prev === dayIdx ? null : dayIdx);
+    setSelectedDayIdx(prev => {
+      const next = prev === dayIdx ? null : dayIdx;
+      // Only scroll when selecting a day (not when deselecting) — otherwise
+      // tapping again would snap you somewhere unexpected. The small
+      // -80 offset keeps a bit of context visible above the target row
+      // (like the "tap a session" hint + preceding day) rather than
+      // pinning the row flush to the top of the viewport.
+      if (next !== null && mainScrollRef.current) {
+        const weekListY = weekListYRef.current || 0;
+        const rowY = dayRowYRef.current.get(dayIdx) || 0;
+        const target = Math.max(0, weekListY + rowY - 80);
+        // requestAnimationFrame lets the selected-state re-render land
+        // first, which matters on iOS where scroll-before-paint can
+        // feel jumpy.
+        requestAnimationFrame(() => {
+          mainScrollRef.current?.scrollTo({ y: target, animated: true });
+        });
+      }
+      return next;
+    });
   };
 
   // Long-press an activity — show move/delete options
@@ -947,6 +993,7 @@ export default function HomeScreen({ navigation, route }) {
     <View style={s.container}>
       <SafeAreaView style={s.safe}>
         <ScrollView
+          ref={mainScrollRef}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 40 + BOTTOM_INSET }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} colors={[colors.primary]} />}
@@ -1238,6 +1285,7 @@ export default function HomeScreen({ navigation, route }) {
             <CoachChatCard
               coach={getCoach(activePlanConfig?.coachId)}
               onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
+              unreadCount={coachUnread}
               style={s.coachCardWrap}
             />
           )}
@@ -1345,8 +1393,14 @@ export default function HomeScreen({ navigation, route }) {
               Compact card — just the tag + title + metrics — because
               Tomorrow is FYI, not the primary action. Tapping opens the
               activity detail; tapping through to the week list still
-              works below for anyone who wants to see the full context. */}
-          {planHasStarted && tomorrowActivities.length > 0 && (
+              works below for anyone who wants to see the full context.
+              Gate is symmetric with the Today hero: renders whenever
+              there's an activity for tomorrow, even pre-plan-start
+              (e.g. a session dragged onto tomorrow before Week 1
+              officially begins). Previously the planHasStarted AND
+              made Tomorrow disappear while Today was still visible —
+              inconsistent. */}
+          {tomorrowActivities.length > 0 && (
             <View style={s.tomorrowSection}>
               <Text style={s.tomorrowLabel}>TOMORROW</Text>
               {tomorrowActivities.map((activity) => (
@@ -1556,7 +1610,12 @@ export default function HomeScreen({ navigation, route }) {
                       const iconName = item.isCrossTraining
                         ? getActivityIcon(item.ctKey || 'other')
                         : getActivityIcon(item._activity);
-                      const iconColor = isSelected ? 'rgba(255,255,255,0.9)' : ACTIVITY_BLUE;
+                      // Selected column gets the brand pink — echoes the
+                      // pink circle around the day number. Previously was
+                      // white-on-pink-rectangle; now that the rectangle's
+                      // gone, pink on dark matches the selected day's
+                      // circle and keeps the column visually linked.
+                      const iconColor = isSelected ? colors.primary : ACTIVITY_BLUE;
                       const metricText = item.metric || '';
                       return (
                         <View key={idx} style={s.daySummaryCol}>
@@ -1587,20 +1646,28 @@ export default function HomeScreen({ navigation, route }) {
               </TouchableOpacity>
             </View>
 
-            {/* Gesture hint — sits above the inline list so it's the
-                FIRST thing users see in the week section. Was previously
-                at the bottom which made the gesture hard to discover.
-                Copy switches mid-move so the user is guided through. */}
-            <Text style={s.weekListHint}>
-              {movingActivity
-                ? 'Tap a day to drop the session there · long-press Cancel to bail'
-                : 'Tap a session to open · press and hold to move'}
-            </Text>
-
             {/* Inline week list — full session titles for every day so the
                 user sees the whole week at a glance without tapping through
-                to the calendar. Today highlighted in pink. */}
-            <View style={s.weekList}>
+                to the calendar. Today highlighted in pink.
+                onLayout captures this list's Y position inside the outer
+                ScrollView so tapping a day in the week strip above can
+                auto-scroll to the matching day row below. */}
+            <View
+              style={s.weekList}
+              onLayout={(e) => { weekListYRef.current = e.nativeEvent.layout.y; }}
+            >
+              {/* Gesture hint — moved INSIDE the weekList so it sits
+                  below the divider (the weekList's borderTop). Prior
+                  placement above the divider made it ambiguous whether
+                  "tap a session" referred to the week-strip chips at
+                  the top or the day rows below. Sitting under the
+                  divider makes the reference unambiguously the day
+                  rows. Copy still switches mid-move to guide the user. */}
+              <Text style={s.weekListHint}>
+                {movingActivity
+                  ? 'Tap a day to drop the session there · long-press Cancel to bail'
+                  : 'Tap a session to open · press and hold to move'}
+              </Text>
               {DAY_LABELS.map((dLabel, i) => {
                 const dayActs = activitiesByDay[i] || [];
                 const isTodayRow = viewingToday && i === todayIdx;
@@ -1637,6 +1704,7 @@ export default function HomeScreen({ navigation, route }) {
                     <TouchableOpacity
                       key={`wl-${i}`}
                       ref={(r) => registerDropZone(i, r)}
+                      onLayout={(e) => { dayRowYRef.current.set(i, e.nativeEvent.layout.y); }}
                       style={[
                         s.weekListRow,
                         isTodayRow && s.weekListRowToday,
@@ -1658,6 +1726,7 @@ export default function HomeScreen({ navigation, route }) {
                   <View
                     key={`wl-${i}`}
                     ref={(r) => registerDropZone(i, r)}
+                    onLayout={(e) => { dayRowYRef.current.set(i, e.nativeEvent.layout.y); }}
                     style={[
                       s.weekListDayBlock,
                       isTodayRow && s.weekListRowToday,
@@ -2463,11 +2532,15 @@ const s = StyleSheet.create({
     color: colors.textFaint, letterSpacing: 0.3,
   },
 
-  // Hint line under the week list telling users about the long-press
-  // gesture. Placed once, low-contrast, so it's discoverable without
-  // being naggy chrome.
+  // Hint line telling users about the long-press gesture. Lives
+  // INSIDE weekList (below its borderTop divider) so the "tap a
+  // session" reference unambiguously points at the day rows below it
+  // rather than the week-strip chips above the divider. Small bottom
+  // margin separates it from the first day row without feeling
+  // cramped; no top margin because the weekList's paddingTop handles
+  // the gap from the divider.
   weekListHint: {
-    marginTop: 10, paddingHorizontal: 4,
+    marginBottom: 8, paddingHorizontal: 4,
     fontSize: 11, fontWeight: '400', fontFamily: FF.regular,
     color: colors.textFaint, fontStyle: 'italic', textAlign: 'center',
   },
@@ -2611,14 +2684,26 @@ const s = StyleSheet.create({
   // space left between the prev/next chevrons, so cells overflowed and
   // Sun crashed into the `›` next-week chevron.
   dayCell: { flex: 1, alignItems: 'center', gap: 3, borderRadius: 10, paddingVertical: 4, paddingHorizontal: 2 },
-  dayCellSelected: { backgroundColor: colors.primary },
+  // Selected cell used to paint a solid pink rectangle behind the whole
+  // column (number + icons + metric), which felt heavy and fought with
+  // the overall dark theme. Selection is now conveyed ONLY by the pink
+  // circle around the day number — consistent with the "today" treatment
+  // and much lighter visually. The rectangle style is retained but
+  // emptied so the merge-in on line 1553 is a no-op.
+  dayCellSelected: {},
   dayCellDropTarget: { borderWidth: 1, borderColor: 'rgba(232,69,139,0.4)', borderStyle: 'dashed' },
   dayLabelText: { fontSize: 11, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
   dayLabelToday: { color: colors.primary },
-  dayLabelSelected: { color: 'rgba(255,255,255,0.8)' },
+  // No pink rectangle any more, so white-on-dark would be invisible.
+  // Tint the label pink to mirror the circle underneath it — matches
+  // the "today" treatment exactly.
+  dayLabelSelected: { color: colors.primary },
   dayCircle: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   dayCircleToday: { backgroundColor: colors.primary },
-  dayCircleSelected: { backgroundColor: 'rgba(255,255,255,0.2)' },
+  // Selected circle now mirrors today's: solid brand-pink fill rather
+  // than the old translucent white-on-pink trick (which only worked
+  // because the whole cell background was pink).
+  dayCircleSelected: { backgroundColor: colors.primary },
   dayNumber: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMid },
   dayNumberToday: { color: '#fff' },
   dayNumberSelected: { color: '#fff' },

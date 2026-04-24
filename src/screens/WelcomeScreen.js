@@ -16,7 +16,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, Image, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontFamily } from '../theme';
+import { colors, fontFamily, useBottomInset } from '../theme';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
@@ -33,10 +33,21 @@ export default function WelcomeScreen({ navigation, firstName }) {
   };
 
   const greeting = firstName ? `Hey ${firstName},` : 'Hey,';
+  // SafeAreaView has edges=['top'] so the bottom inset isn't applied
+  // automatically; Android's 3-button nav / gesture pill would otherwise
+  // clip the primary CTA. useBottomInset returns the real device inset
+  // (with a BOTTOM_INSET floor on Android) so the button always clears.
+  // Math.max(28, …) preserves the previous 28pt visual on older iPhones
+  // without a home indicator (where useBottomInset reports 0) — stops
+  // the button from jumping down compared to the pre-fix layout.
+  const bottomPad = Math.max(28, useBottomInset(12));
 
   return (
     <SafeAreaView style={s.container} edges={['top']}>
-      <ScrollView contentContainerStyle={s.scrollWrap} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[s.scrollWrap, { paddingBottom: bottomPad }]}
+        showsVerticalScrollIndicator={false}
+      >
 
         <View style={s.headerRow}>
           <Image source={require('../../assets/icon.png')} style={s.logo} />

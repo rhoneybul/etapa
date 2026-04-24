@@ -22,11 +22,12 @@ import { colors, fontFamily } from '../theme';
 
 const FF = fontFamily;
 
-export default function CoachChatCard({ coach, onPress, subtitleOverride, style }) {
+export default function CoachChatCard({ coach, onPress, subtitleOverride, unreadCount = 0, style }) {
   const coachName = coach?.name || 'Your coach';
   const coachColor = coach?.avatarColor || colors.primary;
   const coachInitials = coach?.avatarInitials || '?';
   const subtitle = subtitleOverride || 'Get advice, tweak your plan, ask anything about your training';
+  const hasUnread = unreadCount > 0;
 
   return (
     <TouchableOpacity
@@ -37,10 +38,24 @@ export default function CoachChatCard({ coach, onPress, subtitleOverride, style 
       <View style={s.coachCardTop}>
         <View style={[s.coachAvatar, { backgroundColor: coachColor }]}>
           <Text style={s.coachAvatarText}>{coachInitials}</Text>
+          {/* Pink unread badge anchored to the avatar — mirrors the
+              iOS app-icon convention. Shows "1" (or the actual count,
+              capped at 9+). Hidden when no unread replies. */}
+          {hasUnread && (
+            <View style={s.coachUnreadBadge}>
+              <Text style={s.coachUnreadBadgeText}>
+                {unreadCount > 9 ? '9+' : String(unreadCount)}
+              </Text>
+            </View>
+          )}
         </View>
         <View style={s.coachCardTextWrap}>
           <Text style={s.coachCardName}>{coachName}</Text>
-          <Text style={s.coachCardHint}>Chat with your coach</Text>
+          <Text style={s.coachCardHint}>
+            {hasUnread
+              ? `${unreadCount} new ${unreadCount === 1 ? 'reply' : 'replies'}`
+              : 'Chat with your coach'}
+          </Text>
         </View>
         <View style={s.coachCardArrowWrap}>
           <MaterialCommunityIcons name="chevron-right" size={20} color={colors.primary} />
@@ -67,6 +82,22 @@ const s = StyleSheet.create({
   coachAvatar: {
     width: 44, height: 44, borderRadius: 22,
     alignItems: 'center', justifyContent: 'center',
+    position: 'relative', // badge anchors to this
+  },
+  // Unread-reply badge — anchored to the avatar's top-right corner.
+  // Sits on top of whatever the avatar is showing (initials / photo)
+  // and uses a white ring so it stays legible against any avatar colour.
+  coachUnreadBadge: {
+    position: 'absolute', top: -4, right: -4,
+    minWidth: 18, height: 18, borderRadius: 9,
+    paddingHorizontal: 5,
+    backgroundColor: colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: colors.surface,
+  },
+  coachUnreadBadgeText: {
+    color: '#fff', fontSize: 10, fontWeight: '700', fontFamily: FF.semibold,
+    lineHeight: 14, letterSpacing: 0.2,
   },
   coachAvatarText: { fontSize: 14, fontWeight: '700', color: '#fff', fontFamily: FF.semibold },
   coachCardTextWrap: { flex: 1 },

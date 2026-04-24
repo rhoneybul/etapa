@@ -16,6 +16,21 @@ import analytics from '../services/analyticsService';
 const FF = fontFamily;
 const TOTAL_STEPS = 3;
 
+// Short, friendly ISO-date formatter used by the race-lookup summary
+// ("Sat 5 Jul 2025"). Keeps the meta line compact so it still fits
+// next to distance + elevation on a single row.
+function formatEventDate(iso) {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString('en-GB', {
+      weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+    });
+  } catch {
+    return iso;
+  }
+}
+
 const CYCLING_TYPES = [
   { key: 'road',   label: 'Road', description: 'Road cycling on tarmac' },
   { key: 'gravel', label: 'Gravel', description: 'Mixed surface and gravel riding' },
@@ -295,7 +310,7 @@ export default function GoalSetupScreen({ navigation, route }) {
                   {raceLooking ? (
                     <ActivityIndicator size="small" color={colors.primary} />
                   ) : (
-                    <Text style={s.lookupBtnText}>Look up distance & elevation</Text>
+                    <Text style={s.lookupBtnText}>Look up race details</Text>
                   )}
                 </TouchableOpacity>
               )}
@@ -308,6 +323,10 @@ export default function GoalSetupScreen({ navigation, route }) {
                     {[
                       raceResult.distanceKm ? `${raceResult.distanceKm} km` : null,
                       raceResult.elevationM ? `${raceResult.elevationM} m elevation` : null,
+                      // Surface the race date when the lookup returned one so
+                      // users can see we filled it in (not just distance +
+                      // elevation). Fully editable via the date picker below.
+                      raceResult.eventDate ? formatEventDate(raceResult.eventDate) : null,
                       raceResult.location,
                     ].filter(Boolean).join(' \u00B7 ')}
                   </Text>

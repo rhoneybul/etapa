@@ -682,19 +682,11 @@ export default function CalendarScreen({ navigation, route }) {
           </View>
         )}
 
-        {/* Drag-and-drop tip card — persistent so users know they can
-            move sessions directly. Only hidden in review/moving modes
-            (where their own banner takes over). It also mentions moving
-            to a day BEFORE the plan starts, since that's a common ask
-            the user can't discover any other way. */}
-        {!reviewMode && !movingActivity && plans.length > 0 && (
-          <View style={s.dragTip}>
-            <MaterialCommunityIcons name="gesture-tap-hold" size={16} color={colors.primary} />
-            <Text style={s.dragTipText} numberOfLines={2}>
-              Press and hold any session to drag it to another day — including days before your plan starts.
-            </Text>
-          </View>
-        )}
+        {/* Top drag-tip banner removed — the hint now lives ON each
+            unselected activity card (next to the drag handle) where
+            it's right next to the gesture target instead of floating
+            at the top of the screen. See the `actDragHint` render
+            below inside the activity map. */}
 
         {/* Moving activity banner */}
         {movingActivity && (
@@ -868,15 +860,33 @@ export default function CalendarScreen({ navigation, route }) {
             const dragGesture = planStartDate
               ? makeDragGesture(activity, activity._planId, planStartDate)
               : null;
+            // Per-card selection state. The card that's currently
+            // "open" shows its inline action strip (Open / Move /
+            // Delete); every OTHER card on the same day dims to
+            // give focus to the selection. Tapping a card that's
+            // already selected does NOT navigate — that used to
+            // double-duty with a chevron in the old action bar and
+            // was confusing. Open is now always an explicit button.
+            const isSelected = actionActivity?.activity?.id === activity.id;
+            const anyOtherSelected = !!actionActivity && !isSelected;
             const card = (
               <TouchableOpacity
                 key={activity.id}
-                style={[s.actCard, activity.type === 'strength' && s.actCardStrength, activity.completed && s.actCardDone, actionActivity?.activity?.id === activity.id && s.actCardActive]}
+                style={[
+                  s.actCard,
+                  activity.type === 'strength' && s.actCardStrength,
+                  activity.completed && s.actCardDone,
+                  isSelected && s.actCardActive,
+                  anyOtherSelected && s.actCardDimmed,
+                ]}
                 onPress={() => {
                   if (justDraggedRef.current) return;
-                  if (actionActivity?.activity?.id === activity.id) {
-                    // Already selected — navigate to activity detail
-                    navigation.navigate('ActivityDetail', { activityId: activity.id });
+                  if (isSelected) {
+                    // Tapping the open card collapses it — same as
+                    // tapping the ✕ in the top-right. Avoids the
+                    // "does tapping again navigate?" ambiguity from
+                    // the old two-tap model.
+                    setActionActivity(null);
                   } else {
                     setActionActivity({ activity, planId: activity._planId });
                   }
@@ -899,12 +909,62 @@ export default function CalendarScreen({ navigation, route }) {
                         {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
                       </Text>
                     </View>
+                    {/* Right-side affordance. Completed → check.
+                        Selected → ✕ to collapse (absorbs the old
+                        standalone Cancel button from the action
+                        bar). Otherwise → ≡ + "Hold to drag" hint,
+                        replacing the top banner. */}
                     {activity.completed ? (
                       <View style={s.checkDone}><Text style={s.checkMark}>{'\u2713'}</Text></View>
+                    ) : isSelected ? (
+                      <View style={s.actCloseBadge}>
+                        <MaterialCommunityIcons name="close" size={14} color={colors.textMuted} />
+                      </View>
                     ) : (
-                      <MaterialCommunityIcons name="drag-horizontal-variant" size={18} color={colors.textFaint} />
+                      <View style={s.actDragHint}>
+                        <MaterialCommunityIcons name="drag-horizontal-variant" size={16} color={colors.textFaint} />
+                        <Text style={s.actDragHintText}>Hold to drag</Text>
+                      </View>
                     )}
                   </View>
+
+                  {/* Inline action strip — lives inside the card so
+                      the selected activity and its actions read as
+                      one element instead of two. Mirrors what the
+                      separate action bar used to do; the Cancel
+                      button moved up to the ✕ in the header row. */}
+                  {isSelected && !movingActivity && (
+                    <View style={s.actStrip}>
+                      <TouchableOpacity
+                        style={[s.actStripBtn, s.actStripBtnOpen]}
+                        onPress={() => {
+                          const id = activity.id;
+                          setActionActivity(null);
+                          navigation.navigate('ActivityDetail', { activityId: id });
+                        }}
+                        activeOpacity={0.75}
+                      >
+                        <MaterialCommunityIcons name="arrow-right" size={16} color={colors.primary} />
+                        <Text style={[s.actStripBtnText, { color: colors.primary }]}>Open</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={s.actStripBtn}
+                        onPress={handleActionMove}
+                        activeOpacity={0.75}
+                      >
+                        <MaterialCommunityIcons name="calendar-arrow-right" size={16} color={colors.text} />
+                        <Text style={s.actStripBtnText}>Move</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[s.actStripBtn, s.actStripBtnDelete]}
+                        onPress={handleActionDelete}
+                        activeOpacity={0.75}
+                      >
+                        <MaterialCommunityIcons name="delete-outline" size={16} color="#EF4444" />
+                        <Text style={[s.actStripBtnText, { color: '#EF4444' }]}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               </TouchableOpacity>
             );
@@ -914,44 +974,6 @@ export default function CalendarScreen({ navigation, route }) {
               </GestureDetector>
             ) : card;
           })}
-          {/* Activity action bar — lives INSIDE the GHScrollView so it
-              scrolls with the activity list + coach card as one panel
-              below the calendar grid. Previously it was fixed at the
-              bottom as a sibling of the ScrollView, which meant it
-              covered the last activity row when a day was selected and
-              forced the user to scroll the short, cramped list above it.
-              Now the selection → action bar → coach card reads as one
-              cohesive sheet that scrolls together. */}
-          {actionActivity && !movingActivity && (
-            <View style={s.actionBar}>
-              <TouchableOpacity
-                style={s.actionBarTitleRow}
-                onPress={() => {
-                  const id = actionActivity.activity.id;
-                  setActionActivity(null);
-                  navigation.navigate('ActivityDetail', { activityId: id });
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={s.actionBarTitle} numberOfLines={1}>{actionActivity.activity.title}</Text>
-                <Text style={s.actionBarTitleChevron}>{'\u203A'}</Text>
-              </TouchableOpacity>
-              <View style={s.actionBarBtns}>
-                <TouchableOpacity style={s.actionBarBtn} onPress={handleActionMove} activeOpacity={0.7}>
-                  <MaterialCommunityIcons name="calendar-arrow-right" size={20} color={colors.text} />
-                  <Text style={s.actionBarBtnText}>Move</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[s.actionBarBtn, s.actionBarBtnDelete]} onPress={handleActionDelete} activeOpacity={0.7}>
-                  <MaterialCommunityIcons name="delete-outline" size={20} color="#EF4444" />
-                  <Text style={[s.actionBarBtnText, { color: '#EF4444' }]}>Delete</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={s.actionBarBtn} onPress={() => setActionActivity(null)} activeOpacity={0.7}>
-                  <MaterialCommunityIcons name="close" size={20} color={colors.textMuted} />
-                  <Text style={[s.actionBarBtnText, { color: colors.textMuted }]}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
 
           {/* Coach chat card — also inside the scroll view so it stays
               part of the same scrollable panel. Only in non-review mode;
@@ -1274,24 +1296,6 @@ const s = StyleSheet.create({
     borderWidth: 1.5, borderColor: colors.primary,
   },
 
-  // Persistent tip above the calendar grid so users discover drag-to-move
-  // without needing to tap a session first. Pink-tinted to match the
-  // accent colour and the drag highlights used elsewhere on the screen.
-  dragTip: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    marginHorizontal: 16, marginBottom: 10,
-    paddingHorizontal: 14, paddingVertical: 10,
-    backgroundColor: 'rgba(232,69,139,0.08)',
-    borderRadius: 12,
-    borderWidth: 1, borderColor: 'rgba(232,69,139,0.22)',
-  },
-  dragTipText: {
-    flex: 1,
-    fontSize: 12, lineHeight: 16,
-    fontWeight: '500', fontFamily: FF.medium,
-    color: colors.textMid,
-  },
-
   // Tiny helper text below the activity list so users know drag works.
   dragHint: {
     fontSize: 11, fontWeight: '400', fontFamily: FF.regular,
@@ -1313,20 +1317,47 @@ const s = StyleSheet.create({
   dragGhostTitle: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
   dragGhostMeta: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 2 },
 
-  // Activity action bar
-  actCardActive: { borderColor: colors.primary, borderWidth: 1.5 },
-  actionBar: {
-    paddingHorizontal: 16, paddingTop: 12, paddingBottom: Platform.OS === 'android' ? 34 : 12,
-    backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border,
+  // Activity card — selected / dimmed states.
+  // Selected: pink border, slightly warmer background. Dimmed: applied
+  // to every OTHER card on the same day when one is open, so the
+  // active selection has focus without having to hide siblings.
+  actCardActive: {
+    borderColor: colors.primary, borderWidth: 1.5,
+    backgroundColor: 'rgba(232,69,139,0.06)',
   },
-  actionBarTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, paddingVertical: 4 },
-  actionBarTitle: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, flex: 1 },
-  actionBarTitleChevron: { fontSize: 20, color: colors.primary, fontWeight: '300', marginLeft: 8 },
-  actionBarBtns: { flexDirection: 'row', gap: 10 },
-  actionBarBtn: {
-    flex: 1, alignItems: 'center', gap: 4, paddingVertical: 10, borderRadius: 12,
-    backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border,
+  actCardDimmed: { opacity: 0.45 },
+
+  // Right-side affordances on the activity card.
+  // actDragHint: muted ≡ + "Hold to drag" caption, replaces the top
+  // banner as the single place where the drag affordance lives.
+  // actCloseBadge: small circular ✕ shown in the same slot when the
+  // card is selected — absorbs the old standalone Cancel button.
+  actDragHint: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: 4 },
+  actDragHintText: { fontSize: 10, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, letterSpacing: 0.2 },
+  actCloseBadge: {
+    width: 24, height: 24, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  actionBarBtnDelete: { borderColor: 'rgba(239,68,68,0.25)' },
-  actionBarBtnText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
+
+  // Inline action strip that opens inside the selected activity card.
+  // Three equal-width buttons: Open (navigates to ActivityDetail),
+  // Move (starts the move flow), Delete (confirms + removes). Split
+  // from the card body by a faint divider so the strip feels attached
+  // to its parent rather than floating.
+  actStrip: {
+    flexDirection: 'row', gap: 6,
+    marginTop: 12, paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(232,69,139,0.25)',
+  },
+  actStripBtn: {
+    flex: 1,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    paddingVertical: 8, borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  actStripBtnOpen: { backgroundColor: 'rgba(232,69,139,0.14)' },
+  actStripBtnDelete: { backgroundColor: 'rgba(239,68,68,0.08)' },
+  actStripBtnText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
 });

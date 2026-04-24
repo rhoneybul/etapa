@@ -116,8 +116,9 @@ export const api = {
     registerToken: (data) => request('POST', '/api/notifications/register-token', data),
     list:          ()     => request('GET', '/api/notifications'),
     markRead:      (id)   => request('PATCH', `/api/notifications/${id}/read`),
-    markAllRead:   ()     => request('PATCH', '/api/notifications/read-all'),
-    unreadCount:   ()     => request('GET', '/api/notifications/unread-count'),
+    markAllRead:   (type) => request('PATCH', `/api/notifications/read-all${type ? `?type=${encodeURIComponent(type)}` : ''}`),
+    testPush:      ()     => request('POST', '/api/notifications/test'),
+    unreadCount:   (type) => request('GET', `/api/notifications/unread-count${type ? `?type=${encodeURIComponent(type)}` : ''}`),
   },
 
   preferences: {

@@ -101,6 +101,14 @@ export default function CoachChatScreen({ navigation, route }) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [pendingUpdate, setPendingUpdate] = useState(null); // { activities: [], msgIndex: number }
+  // True between the moment the server detects a plan_update fence in the
+  // stream and the moment the real Apply/Dismiss panel renders. Drives a
+  // small "Preparing changes…" placeholder under the reply so the user
+  // knows an action is coming — otherwise there's an awkward gap while
+  // the JSON streams + parses. Cleared in handleTerminal when we swap
+  // to the real pendingUpdate state (or when there's no plan_update
+  // after all).
+  const [preparingUpdate, setPreparingUpdate] = useState(false);
   const [applyingUpdate, setApplyingUpdate] = useState(false);
   const [lastFailedMsg, setLastFailedMsg] = useState(null); // last user message content that failed
   const [userName, setUserName] = useState(null);
@@ -129,6 +137,14 @@ export default function CoachChatScreen({ navigation, route }) {
   // Load plan, goal, chat history, and user name
   useEffect(() => {
     (async () => {
+      // Mark any unread coach_reply notifications as read — clears the
+      // badge on the Home CoachChatCard the moment the user lands on
+      // this screen. Silent-fail if offline; the next server-side sweep
+      // will reconcile when the client reconnects. Scoped to coach_reply
+      // so we don't accidentally dismiss a pending system notification
+      // (e.g. "Plan ready!") the user hasn't actually seen yet.
+      api.notifications.markAllRead('coach_reply').catch(() => {});
+
       // Fetch user name for personalised coaching — prefer local display name
       try {
         const [user, userPrefs] = await Promise.all([getCurrentUser(), getUserPrefs()]);
@@ -204,7 +220,22 @@ export default function CoachChatScreen({ navigation, route }) {
     if (plan && messages.length > 0) {
       const settled = messages.filter(m => !m.pending);
       AsyncStorage.setItem(chatKey(plan.id, weekNum), JSON.stringify(settled)).catch(() => {});
-      if (settled.length > 0) {
+      // ⚠️ Do NOT PUT to the server while an assistant reply is pending.
+      //
+      // Why: the server-side runCoachChatJob worker also writes to
+      // chat_sessions when the reply completes (server/src/routes/ai.js
+      // ~line 2471). If the client keeps PUTing its "settled = [user
+      // msg only]" view while the worker has already written the
+      // completed [user, assistant] pair, the PUT overwrites the
+      // worker's reply — and when the user comes back, they see their
+      // message but no coach response. This was the root cause of the
+      // "coach reply missing on return" bug reported in testing.
+      //
+      // Letting the worker own persistence while a reply is in flight
+      // is safe: the worker has the full message list in job.messages,
+      // so the user's message lands on the server either way.
+      const hasPending = messages.some(m => m.pending);
+      if (!hasPending && settled.length > 0) {
         api.chatSessions.save(plan.id, weekNum, settled).catch(() => {});
       }
     }
@@ -468,6 +499,12 @@ export default function CoachChatScreen({ navigation, route }) {
         activeJobsRef.current.delete(jobId);
       }
 
+      // Clear the "preparing changes" placeholder on every terminal
+      // (success OR error) — either the real Apply/Dismiss panel is
+      // about to render, or the stream failed and the placeholder
+      // shouldn't linger.
+      setPreparingUpdate(false);
+
       if (!ok) {
         setLastFailedMsg(userMsg.content);
         setMessages(prev => prev.map(m => m.pendingKey === pendingKey
@@ -510,6 +547,12 @@ export default function CoachChatScreen({ navigation, route }) {
         setMessages(prev => prev.map(m => m.pendingKey === pendingKey
           ? { ...m, content: text || m.content }
           : m));
+      },
+      onPlanUpdateStart: () => {
+        // Server detected the plan_update fence mid-stream. Show the
+        // placeholder immediately so the user sees "something is coming"
+        // before the JSON finishes parsing + onDone lands.
+        setPreparingUpdate(true);
       },
       onDone: ({ reply, updatedActivities }) => {
         handleTerminal({ ok: true, reply, updatedActivities });
@@ -852,6 +895,19 @@ export default function CoachChatScreen({ navigation, route }) {
             {/* No separate "sending" indicator — the pending bubble above
                 already owns the spinner + streaming text state. */}
 
+            {/* "Preparing changes…" placeholder — shows as soon as the
+                server detects a plan_update fence in the stream, before
+                the real Apply/Dismiss panel is ready. Hidden the moment
+                `pendingUpdate` renders (the real panel) or the stream
+                ends without a plan_update after all. Matches the
+                updateBar's outline so the swap feels continuous. */}
+            {preparingUpdate && !pendingUpdate && (
+              <View style={s.updateBarPreparing}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={s.updateBarPreparingText}>Preparing changes…</Text>
+              </View>
+            )}
+
             {/* Plan update action bar */}
             {pendingUpdate && !sending && (
               <View style={s.updateBar}>
@@ -990,6 +1046,17 @@ const s = StyleSheet.create({
     padding: 14, marginBottom: 8, marginTop: 4,
   },
   updateDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E8458B', marginBottom: 8 },
+  // Compact placeholder that sits between the coach's reply finishing
+  // and the real Apply/Dismiss panel rendering. Matches updateBar's
+  // pink outline so when the real panel takes over, the swap reads as
+  // "this filled in" rather than "something replaced something else".
+  updateBarPreparing: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: 'rgba(232,69,139,0.06)', borderRadius: 14,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
+    paddingHorizontal: 14, paddingVertical: 10, marginBottom: 8, marginTop: 4,
+  },
+  updateBarPreparingText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
   updateBarText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.text, marginBottom: 12, lineHeight: 18 },
   updateActions: { flexDirection: 'row', gap: 10 },
   updateApplyBtn: {
