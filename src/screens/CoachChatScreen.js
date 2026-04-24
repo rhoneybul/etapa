@@ -100,6 +100,12 @@ export default function CoachChatScreen({ navigation, route }) {
   const [messages, setMessages] = useState([]); // { role: 'user'|'assistant', content: string, ts: number }
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  // True while the mount effect is hydrating plan / goal / planConfig /
+  // chat history. Without it, users see an empty scroll area with a
+  // blinking cursor in the input for ~500ms–2s after opening the
+  // screen — a user flagged it as feeling broken. Set false in the
+  // mount effect's finally block so errors don't leave the spinner up.
+  const [loadingChat, setLoadingChat] = useState(true);
   const [pendingUpdate, setPendingUpdate] = useState(null); // { activities: [], msgIndex: number }
   // True between the moment the server detects a plan_update fence in the
   // stream and the moment the real Apply/Dismiss panel renders. Drives a
@@ -199,6 +205,11 @@ export default function CoachChatScreen({ navigation, route }) {
           if (localMessages.length > 0) setMessages(localMessages);
         }
       }
+      // Mount hydration complete — clear the loading overlay whether or
+      // not plan/sessions resolved cleanly. The empty state below will
+      // handle the "no messages yet" case; the overlay is only for the
+      // first ~second while local + server messages are being merged.
+      setLoadingChat(false);
     })();
   }, [planId, weekNum]);
 
@@ -804,7 +815,18 @@ export default function CoachChatScreen({ navigation, route }) {
             onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
             keyboardShouldPersistTaps="handled"
           >
-            {messages.length === 0 && (
+            {/* First-open loading overlay — shows until the mount
+                effect finishes hydrating from AsyncStorage + the server
+                session list. Replaces what was previously a flash of
+                the empty state (suggestion chips) before real messages
+                popped in, which felt like the chat had been wiped. */}
+            {loadingChat && (
+              <View style={s.loadingState}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={s.loadingStateText}>Loading your chat…</Text>
+              </View>
+            )}
+            {!loadingChat && messages.length === 0 && (
               <View style={s.emptyState}>
                 <View style={s.emptyIcon}>
                   <Text style={s.emptyIconText}>?</Text>
@@ -1008,6 +1030,17 @@ const s = StyleSheet.create({
   messageContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 },
 
   // Empty state
+  // First-open loading state — spinner + tiny caption so users know the
+  // screen is hydrating rather than broken. Matches emptyState's layout
+  // so the swap from loading → empty/messages stays in the same slot.
+  loadingState: {
+    alignItems: 'center', justifyContent: 'center',
+    paddingTop: 80, paddingHorizontal: 20, gap: 12,
+  },
+  loadingStateText: {
+    fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint,
+    letterSpacing: 0.2,
+  },
   emptyState: { alignItems: 'center', paddingTop: 40, paddingHorizontal: 20 },
   emptyIcon: {
     width: 48, height: 48, borderRadius: 24,

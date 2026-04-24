@@ -16,13 +16,13 @@
  */
 
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fontFamily } from '../theme';
 
 const FF = fontFamily;
 
-export default function CoachChatCard({ coach, onPress, subtitleOverride, unreadCount = 0, style }) {
+export default function CoachChatCard({ coach, onPress, subtitleOverride, unreadCount = 0, refreshing = false, style }) {
   const coachName = coach?.name || 'Your coach';
   const coachColor = coach?.avatarColor || colors.primary;
   const coachInitials = coach?.avatarInitials || '?';
@@ -37,11 +37,17 @@ export default function CoachChatCard({ coach, onPress, subtitleOverride, unread
     >
       <View style={s.coachCardTop}>
         <View style={[s.coachAvatar, { backgroundColor: coachColor }]}>
-          <Text style={s.coachAvatarText}>{coachInitials}</Text>
+          {refreshing ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={s.coachAvatarText}>{coachInitials}</Text>
+          )}
           {/* Pink unread badge anchored to the avatar — mirrors the
               iOS app-icon convention. Shows "1" (or the actual count,
-              capped at 9+). Hidden when no unread replies. */}
-          {hasUnread && (
+              capped at 9+). Hidden when no unread replies or while
+              the card is refreshing its coach (prevents the badge
+              from lingering over a "wrong" coach mid-swap). */}
+          {hasUnread && !refreshing && (
             <View style={s.coachUnreadBadge}>
               <Text style={s.coachUnreadBadgeText}>
                 {unreadCount > 9 ? '9+' : String(unreadCount)}
@@ -50,11 +56,15 @@ export default function CoachChatCard({ coach, onPress, subtitleOverride, unread
           )}
         </View>
         <View style={s.coachCardTextWrap}>
-          <Text style={s.coachCardName}>{coachName}</Text>
+          <Text style={s.coachCardName}>
+            {refreshing ? 'Updating…' : coachName}
+          </Text>
           <Text style={s.coachCardHint}>
-            {hasUnread
-              ? `${unreadCount} new ${unreadCount === 1 ? 'reply' : 'replies'}`
-              : 'Chat with your coach'}
+            {refreshing
+              ? 'Loading your coach'
+              : hasUnread
+                ? `${unreadCount} new ${unreadCount === 1 ? 'reply' : 'replies'}`
+                : 'Chat with your coach'}
           </Text>
         </View>
         <View style={s.coachCardArrowWrap}>

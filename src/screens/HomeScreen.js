@@ -407,6 +407,31 @@ export default function HomeScreen({ navigation, route }) {
     return unsub;
   }, [navigation, load]);
 
+  // Fresh planConfig on focus, INDEPENDENT of the load() plan-hash
+  // short-circuit. Background: changing the coach updates the
+  // plan_configs row but NOT the parent plan row — so plan.updatedAt
+  // is unchanged, load() bails via the cache check, and the Home
+  // coach card keeps showing the old coach. Fetching planConfig
+  // directly on focus side-steps the short-circuit. `refreshingConfig`
+  // drives a brief spinner on the CoachChatCard so the swap from old
+  // to new coach isn't a silent, confusing jump.
+  const [refreshingConfig, setRefreshingConfig] = useState(false);
+  const refreshActiveConfig = useCallback(async () => {
+    const p = plans?.[selectedPlanIdx];
+    if (!p?.configId) return;
+    setRefreshingConfig(true);
+    try {
+      const cfg = await getPlanConfig(p.configId);
+      if (isMounted.current && cfg) setActivePlanConfig(cfg);
+    } finally {
+      if (isMounted.current) setRefreshingConfig(false);
+    }
+  }, [plans, selectedPlanIdx]);
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', refreshActiveConfig);
+    return unsub;
+  }, [navigation, refreshActiveConfig]);
+
   // Fetch rate-limit usage so we can show the user how many plans they have
   // remaining today. Refresh on focus so it stays accurate.
   const refreshPlanLimits = useCallback(async () => {
@@ -1286,6 +1311,7 @@ export default function HomeScreen({ navigation, route }) {
               coach={getCoach(activePlanConfig?.coachId)}
               onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
               unreadCount={coachUnread}
+              refreshing={refreshingConfig}
               style={s.coachCardWrap}
             />
           )}
