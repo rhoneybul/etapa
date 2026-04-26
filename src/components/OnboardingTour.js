@@ -398,23 +398,39 @@ export default function OnboardingTour({ visible, onComplete }) {
       .finally(() => setPendingUnits(null));
   };
 
-  // Display name — keystroke-by-keystroke local state, debounced save
-  // via setUserPrefs. We deliberately persist on every change (not
-  // only on submit/blur) so a user who types and dismisses the tour
-  // doesn't lose what they wrote. The `savingName` spinner blinks
-  // briefly per write — fine for the cadence here.
+  // Display name — keystroke-by-keystroke local state. We do NOT save
+  // on every keystroke any more: the previous behaviour fired
+  // setUserPrefs (async, with an internal getUserPrefs read-through)
+  // on every character, which produced races where rapid typing could
+  // leave AsyncStorage holding a stale value. Now the canonical save
+  // happens in handleNext when the user actually submits — and we keep
+  // a ref to the latest typed value so handleNext doesn't have to
+  // worry about React state batching.
+  const displayNameRef = useRef('');
   const handleChangeName = (next) => {
     setDisplayName(next);
-    const trimmed = next.trim();
-    setSavingName(true);
-    setUserPrefs({ displayName: trimmed })
-      .catch(() => {})
-      .finally(() => setSavingName(false));
+    displayNameRef.current = next;
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (step >= STEPS.length - 1) {
-      // Final step — dismiss; units + coachId are already saved.
+      // Final step — persist the typed name BEFORE dismissing. Using
+      // the ref instead of state to dodge any "the state hasn't
+      // committed yet" weirdness if the user submits the same frame
+      // they finish typing.
+      const finalName = (displayNameRef.current || displayName).trim();
+      if (finalName.length > 0) {
+        setSavingName(true);
+        try {
+          await setUserPrefs({ displayName: finalName });
+        } catch {
+          // setUserPrefs already swallows network errors — we still
+          // want to advance even if the server sync silently failed,
+          // because the local AsyncStorage write succeeded.
+        } finally {
+          setSavingName(false);
+        }
+      }
       onComplete?.();
       return;
     }
@@ -569,6 +585,11 @@ const s = StyleSheet.create({
   },
   scrollContent: {
     alignItems: 'center',
+    // Give the title room to clear the status bar / notch / Skip button
+    // (Skip is positioned at top: 60). Without this, the title slammed
+    // up against the system clock and felt cramped on iPhones with
+    // notches. 96pt drops the title comfortably below the Skip row.
+    paddingTop: 96,
     paddingBottom: 16,
   },
   title: {

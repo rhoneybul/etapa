@@ -258,6 +258,112 @@ export default function HomeScreen({ navigation, route }) {
         didActivate = false;
       });
   };
+  // ── Rail drag-and-drop (the upcoming-day cards) ───────────────────────────
+  // The week-list rows below have their own dropZones (keyed by dayOfWeek
+  // within currentWeek). The rail spans days that may belong to TWO
+  // different plan weeks (when the rail starts mid-week), so it needs a
+  // separate dropzone map keyed by the date itself, with the (week,
+  // dayOfWeek) baked in.
+  const railDropZonesRef = useRef({}); // { dateKey: { x, y, width, height, week, dayOfWeek } }
+  const [hoveredRailKey, setHoveredRailKey] = useState(null);
+  const hoveredRailKeyRef = useRef(null);
+
+  const dateKeyOf = (date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+
+  const registerRailDropZone = (dateKey, week, dayOfWeek, ref) => {
+    if (!ref || !ref.measureInWindow) return;
+    ref.measureInWindow((x, y, w, h) => {
+      railDropZonesRef.current[dateKey] = { x, y, width: w, height: h, week, dayOfWeek };
+    });
+  };
+
+  const findRailDropTargetAtXY = (absX, absY) => {
+    for (const [key, zone] of Object.entries(railDropZonesRef.current)) {
+      if (absX >= zone.x && absX <= zone.x + zone.width &&
+          absY >= zone.y && absY <= zone.y + zone.height) {
+        return { key, week: zone.week, dayOfWeek: zone.dayOfWeek };
+      }
+    }
+    return null;
+  };
+
+  // Generalised place: takes explicit (week, dayOfWeek) pairs so we can
+  // move across weeks (e.g. drag from a Sunday card to next Monday's
+  // card when the rail spans the boundary).
+  const handleRailPlaceActivity = async (activity, sourceWeek, sourceDayOfWeek, targetWeek, targetDayOfWeek) => {
+    if (!activePlan) return;
+    if (sourceWeek === targetWeek && sourceDayOfWeek === targetDayOfWeek) return; // no-op
+    // Optimistic in-memory update so the card visually moves the moment
+    // the finger releases. Persist in the background.
+    setPlans((prev) => prev.map((p) => {
+      if (p.id !== activePlan.id) return p;
+      return {
+        ...p,
+        activities: (p.activities || []).map((a) =>
+          a.id === activity.id
+            ? { ...a, week: targetWeek, dayOfWeek: targetDayOfWeek }
+            : a
+        ),
+      };
+    }));
+    try {
+      const allPlans = await getPlans();
+      const plan = allPlans.find(p => p.id === activePlan.id);
+      if (plan) {
+        const act = plan.activities.find(a => a.id === activity.id);
+        if (act) {
+          act.week = targetWeek;
+          act.dayOfWeek = targetDayOfWeek;
+          await savePlan(plan);
+        }
+      }
+    } catch (e) {
+      console.warn('[home] rail place activity persist failed:', e?.message);
+    }
+  };
+
+  const makeRailDragGesture = (activity, sourceWeek, sourceDayOfWeek) => {
+    let didActivate = false;
+    return Gesture.Pan()
+      .activateAfterLongPress(350)
+      .runOnJS(true)
+      .onStart((e) => {
+        didActivate = true;
+        setDragActivity(activity);
+        dragPos.setValue({ x: e.absoluteX - 140, y: e.absoluteY - 24 });
+      })
+      .onChange((e) => {
+        dragPos.setValue({ x: e.absoluteX - 140, y: e.absoluteY - 24 });
+        const target = findRailDropTargetAtXY(e.absoluteX, e.absoluteY);
+        const newKey = target?.key || null;
+        if (newKey !== hoveredRailKeyRef.current) {
+          hoveredRailKeyRef.current = newKey;
+          setHoveredRailKey(newKey);
+        }
+      })
+      .onEnd(async (e) => {
+        const target = findRailDropTargetAtXY(e.absoluteX, e.absoluteY);
+        setDragActivity(null);
+        setHoveredRailKey(null);
+        hoveredRailKeyRef.current = null;
+        justDraggedRef.current = true;
+        setTimeout(() => { justDraggedRef.current = false; }, 300);
+        if (target) {
+          await handleRailPlaceActivity(activity, sourceWeek, sourceDayOfWeek, target.week, target.dayOfWeek);
+        }
+      })
+      .onFinalize(() => {
+        if (didActivate) {
+          setDragActivity(null);
+          setHoveredRailKey(null);
+          hoveredRailKeyRef.current = null;
+          justDraggedRef.current = true;
+          setTimeout(() => { justDraggedRef.current = false; }, 300);
+        }
+        didActivate = false;
+      });
+  };
+
   const cachedPlanHash = useRef(null); // Track plan state to avoid unnecessary reloads
   const initialLoadDone = useRef(false);
   const isMounted = useRef(true); // Guard against setState after unmount
@@ -732,6 +838,16 @@ export default function HomeScreen({ navigation, route }) {
           onComplete={async () => {
             setShowOnboarding(false);
             try { await setOnboardingDone(); } catch {}
+            // See the populated-state branch below — same reason: pull
+            // the freshly-typed display name back into local state so
+            // the WelcomeScreen greeting reflects what the user just
+            // entered, not the Apple Sign-In fallback.
+            try {
+              const fresh = await getUserPrefs();
+              if (fresh?.displayName && isMounted.current) {
+                setName(fresh.displayName);
+              }
+            } catch {}
           }}
         />
       </>
@@ -819,39 +935,89 @@ export default function HomeScreen({ navigation, route }) {
   const todayActivities = allPlanActivities.filter(matchesToday);
   const tomorrowActivities = allPlanActivities.filter(matchesTomorrow);
 
-  // Build an array of the next N days with their primary activity (if
-  // any) for the new horizontal-scroll Today/Tomorrow rail. Replaces
-  // the separate todayHero + tomorrowSection blocks: instead of two
-  // cards stacked vertically, the user now horizontally scrolls
-  // through TODAY → TOMORROW → next-day → next-day. The first card is
-  // the Today card (still gets the prominent CTAs); subsequent cards
-  // are compact preview cards. Length 5 covers today + the next four
-  // days, which is enough to read "the rest of this week" without
-  // pulling in a 7-day grid.
-  const UPCOMING_DAY_COUNT = 5;
+  // Build the 7-day rail for the currently-selected week.
+  //
+  // Three modes:
+  //   - Plan running, viewing CURRENT week: anchor on TODAY, then
+  //     forward 6 days. Today is the hero card with View + Ask CTAs.
+  //   - Plan running, viewing OTHER week: show Mon → Sun of that
+  //     selected week. Today is NOT in this view (user is browsing,
+  //     not acting on now), all cards are uniform previews.
+  //   - Plan NOT yet started: anchor on the plan's Monday-of-week-1.
+  //     This is the new behaviour: previously we anchored on today
+  //     even pre-start, which meant a plan starting tomorrow showed
+  //     "Today · Rest" + "Tomorrow · first session" + a tail of empty
+  //     days. Anchoring on the plan start instead surfaces the whole
+  //     first proper week of the plan, which is what the user actually
+  //     wants to see when they're inspecting "what's coming".
+  const UPCOMING_DAY_COUNT = 7;
   const upcomingDays = (() => {
     if (!activePlan?.startDate) return [];
-    const days = [];
     const now = new Date();
     now.setHours(12, 0, 0, 0);
     const sameDate = (d, t) =>
       d.getFullYear() === t.getFullYear()
       && d.getMonth() === t.getMonth()
       && d.getDate() === t.getDate();
+    const isCurrentWeek = planHasStarted && currentWeek === realTodayWeek;
+    const days = [];
+
+    let anchor;
+    let anchorWeek; // which plan week the anchor falls in (1-indexed)
+    if (!planHasStarted) {
+      // Pre-plan-start: anchor on the plan's first Monday so the user
+      // sees the actual plan week ahead (not today + dead days).
+      const planMonday = snapToMonday(parseDateLocal(activePlan.startDate));
+      anchor = new Date(planMonday);
+      anchor.setHours(12, 0, 0, 0);
+      anchorWeek = 1;
+    } else if (isCurrentWeek) {
+      anchor = new Date(now);
+      anchorWeek = currentWeek;
+    } else {
+      const planMonday = snapToMonday(parseDateLocal(activePlan.startDate));
+      anchor = new Date(planMonday);
+      anchor.setDate(anchor.getDate() + (currentWeek - 1) * 7);
+      anchor.setHours(12, 0, 0, 0);
+      anchorWeek = currentWeek;
+    }
+
     for (let i = 0; i < UPCOMING_DAY_COUNT; i++) {
-      const target = new Date(now);
+      const target = new Date(anchor);
       target.setDate(target.getDate() + i);
       const dayActivities = allPlanActivities.filter(a => {
         if (a.dayOfWeek == null || a.week == null) return false;
         return sameDate(getActivityDate(activePlan.startDate, a.week, a.dayOfWeek), target);
       });
       const primary = dayActivities.find(a => a.type === 'ride') || dayActivities[0] || null;
-      const eyebrow = i === 0
-        ? 'TODAY'
-        : i === 1
-          ? 'TOMORROW'
-          : target.toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase();
-      days.push({ date: target, primary, eyebrow, isToday: i === 0 });
+      const isToday = sameDate(target, now);
+      let eyebrow;
+      if (isCurrentWeek && i === 0) eyebrow = 'TODAY';
+      else if (isCurrentWeek && i === 1) eyebrow = 'TOMORROW';
+      else eyebrow = target.toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase();
+      // dayOfWeek is 0=Mon..6=Sun for the activity model. When the
+      // anchor is today it might land mid-week (e.g. Wed), so we
+      // can't just use `i` directly — compute it from the JS Date.
+      const jsDay = target.getDay(); // 0=Sun..6=Sat
+      const dayOfWeek = (jsDay + 6) % 7; // 0=Mon..6=Sun
+      // The plan-relative week number for this card. Days drift across
+      // week boundaries when the rail starts mid-week (current-week
+      // mode), so we compute it from the date rather than `anchorWeek`.
+      const planWeekForDate = (() => {
+        const planMonday = snapToMonday(parseDateLocal(activePlan.startDate));
+        const diffDays = Math.round((target - planMonday) / 86400000);
+        return Math.max(1, Math.floor(diffDays / 7) + 1);
+      })();
+      days.push({
+        date: target,
+        primary,
+        eyebrow,
+        isToday,
+        // Drag target metadata — every card knows what (week, dayOfWeek)
+        // it represents so a drop here can compute the destination.
+        week: planWeekForDate,
+        dayOfWeek,
+      });
     }
     return days;
   })();
@@ -1342,7 +1508,21 @@ export default function HomeScreen({ navigation, route }) {
                   icon button here keeps the action one tap away
                   without the weight. */}
               <View style={s.planTabsHeader}>
-                <Text style={s.planTabsLabel}>YOUR PLANS</Text>
+                {/* Label + "+" grouped together on the left so the
+                    button reads as part of the section header instead
+                    of floating across the screen. The dots (when
+                    multiple plans) push to the right. */}
+                <View style={s.planTabsHeaderLeft}>
+                  <Text style={s.planTabsLabel}>YOUR PLANS</Text>
+                  <TouchableOpacity
+                    onPress={handleNewPlanPress}
+                    style={[s.newPlanIconBtn, planLimits && !planLimits.unlimited && planLimits.remaining === 0 && { opacity: 0.5 }]}
+                    hitSlop={HIT}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialCommunityIcons name="plus" size={16} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
                 {plans.length > 1 && (
                   <View style={s.planDots}>
                     {plans.map((_, i) => (
@@ -1351,14 +1531,6 @@ export default function HomeScreen({ navigation, route }) {
                     <Text style={s.planDotsHint}>swipe {'\u00B7'} hold to manage</Text>
                   </View>
                 )}
-                <TouchableOpacity
-                  onPress={handleNewPlanPress}
-                  style={[s.newPlanIconBtn, planLimits && !planLimits.unlimited && planLimits.remaining === 0 && { opacity: 0.5 }]}
-                  hitSlop={HIT}
-                  activeOpacity={0.7}
-                >
-                  <MaterialCommunityIcons name="plus" size={18} color={colors.primary} />
-                </TouchableOpacity>
               </View>
               {/* Single plan = no horizontal scroll. The ScrollView was
                   letting the card drift off-screen when the title was
@@ -1560,10 +1732,21 @@ export default function HomeScreen({ navigation, route }) {
           {(planHasStarted || todayActivities.length > 0 || tomorrowActivities.length > 0) && (() => {
             const coach = getCoach(activePlanConfig?.coachId);
             const coachFirstName = (coach?.name || 'your coach').split(' ')[0];
-            const cardWidth = Math.min(Dimensions.get('window').width - 56, 320);
+            // Two card widths — Today is the hero (wider, with View
+            // Details + Ask coach CTAs), the rest of the week is a
+            // compact preview. With Today at ~62% of screen width and
+            // every other day at ~46%, you get Today plus most of
+            // Tomorrow visible at rest, and 1.5 compact cards visible
+            // when scrolled past Today. Old single-width approach
+            // showed Today + a tiny peek and felt like the rail was
+            // broken.
+            const screenW = Dimensions.get('window').width;
+            const todayCardWidth = Math.min(screenW * 0.62, 240);
+            const otherCardWidth = Math.min(screenW * 0.46, 180);
 
             const renderUpcomingCard = (day, idx) => {
               const isToday = day.isToday;
+              const cardWidth = isToday ? todayCardWidth : otherCardWidth;
               const a = day.primary;
               const isRest = !a;
               const isDone = !!a?.completed;
@@ -1573,11 +1756,45 @@ export default function HomeScreen({ navigation, route }) {
               if (a?.effort) metaParts.push(a.effort);
               const meta = metaParts.join(' \u00B7 ');
 
-              return (
+              // Type pill — monochrome (no colour encoding). Picks the
+              // icon from the existing app-wide icon system so an
+              // endurance ride here matches the same icon on Calendar
+              // / WeekView / ActivityDetail. Rest days get a sleep
+              // glyph + REST tag. The pill background is a faint white
+              // tint, same for every type — colour was deliberately
+              // dropped because it added rainbow-noise to the rail.
+              const typeIcon = isRest ? 'sleep' : getActivityIcon(a);
+              const typeTag = isRest ? 'REST' : (getSessionTag(a) || 'RIDE');
+
+              // Drag setup. Cards with no activity (rest days) aren't
+              // draggable — there's nothing to move. Cards WITH an
+              // activity get a Pan gesture that activates after a 350ms
+              // long-press, so a normal tap still navigates to detail.
+              const dateKey = dateKeyOf(day.date);
+              const isHovered = hoveredRailKey === dateKey && dragActivity && dragActivity.id !== a?.id;
+              const isDragSource = dragActivity?.id === a?.id;
+              const draggable = !!a;
+              // Callback ref + onLayout: the layout fires after the
+              // node is mounted AND laid out in the rail's horizontal
+              // ScrollView, which is the right moment to measureInWindow
+              // and register this card as a rail drop zone. Storing
+              // the node in a closure-local var so the onLayout callback
+              // can find it.
+              let cardNode = null;
+              const setCardNode = (node) => { cardNode = node; };
+              const onCardLayout = () => {
+                if (!cardNode) return;
+                // Defer one tick so the parent ScrollView has measured.
+                setTimeout(() => registerRailDropZone(dateKey, day.week, day.dayOfWeek, cardNode), 0);
+              };
+
+              const cardInner = (
                 <TouchableOpacity
-                  key={idx}
+                  ref={setCardNode}
+                  onLayout={onCardLayout}
                   activeOpacity={0.85}
                   onPress={() => {
+                    if (justDraggedRef.current) return;
                     if (a) navigation.navigate('ActivityDetail', { activityId: a.id });
                   }}
                   style={[
@@ -1585,13 +1802,24 @@ export default function HomeScreen({ navigation, route }) {
                     { width: cardWidth, marginRight: idx === UPCOMING_DAY_COUNT - 1 ? 20 : 10 },
                     isToday && s.upcomingCardToday,
                     isDone && isToday && s.todayHeroDone,
+                    isHovered && s.upcomingCardHovered,
+                    isDragSource && s.upcomingCardDragSource,
                   ]}
                 >
                   <View style={s.upcomingCardHeader}>
                     <Text style={[s.upcomingCardLabel, isToday && s.upcomingCardLabelToday]}>{day.eyebrow}</Text>
-                    {isDone && (
+                    {isDone ? (
                       <View style={s.todayHeroDoneBadge}>
                         <Text style={s.todayHeroDoneBadgeText}>{'\u2713'} DONE</Text>
+                      </View>
+                    ) : (
+                      <View style={s.upcomingTypePill}>
+                        <MaterialCommunityIcons
+                          name={typeIcon}
+                          size={11}
+                          color={colors.textMid}
+                        />
+                        <Text style={s.upcomingTypePillText}>{typeTag}</Text>
                       </View>
                     )}
                   </View>
@@ -1630,22 +1858,90 @@ export default function HomeScreen({ navigation, route }) {
                       </TouchableOpacity>
                     </View>
                   )}
+
+                  {/* Drag handle hint — only on cards that have a real
+                      activity. The ≡-and-text affordance is the same
+                      visual vocabulary the Calendar list uses, so users
+                      who've moved sessions there will recognise it. */}
+                  {draggable && (
+                    <View style={s.upcomingDragHint}>
+                      <MaterialCommunityIcons
+                        name="drag-horizontal-variant"
+                        size={12}
+                        color={colors.textMuted}
+                      />
+                      <Text style={s.upcomingDragHintText}>Hold to move</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
+
+              // Wrap in a GestureDetector when the card has a draggable
+              // activity. Long-press 350ms activates Pan; quick taps
+              // still navigate via the inner TouchableOpacity's onPress.
+              if (draggable) {
+                return (
+                  <GestureDetector
+                    key={idx}
+                    gesture={makeRailDragGesture(a, day.week, day.dayOfWeek)}
+                  >
+                    <View>{cardInner}</View>
+                  </GestureDetector>
+                );
+              }
+              return <View key={idx}>{cardInner}</View>;
             };
 
+            const totalWeeks = activePlan?.weeks || 1;
+            const canPrev = currentWeek > 1;
+            const canNext = currentWeek < totalWeeks;
+
             return (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingLeft: 20, paddingVertical: 4 }}
-                style={{ marginBottom: 16 }}
-                snapToAlignment="start"
-                decelerationRate="fast"
-                snapToInterval={cardWidth + 10}
-              >
-                {upcomingDays.map(renderUpcomingCard)}
-              </ScrollView>
+              <>
+                {/* Week toggle — minimal, sits above the rail. Only
+                    rendered when the plan has actually started so we
+                    don't show "Week 1 of 12" before Week 1 is real
+                    (the pre-plan-start card below covers that case). */}
+                {planHasStarted && (
+                  <View style={s.weekToggleRow}>
+                    <TouchableOpacity
+                      onPress={() => canPrev && setCurrentWeek(w => Math.max(1, w - 1))}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      disabled={!canPrev}
+                      style={[s.weekToggleArrow, !canPrev && s.weekToggleArrowDisabled]}
+                    >
+                      <Text style={[s.weekToggleArrowText, !canPrev && s.weekToggleArrowTextDisabled]}>{'\u2039'}</Text>
+                    </TouchableOpacity>
+                    <Text style={s.weekToggleLabel}>
+                      Week {currentWeek} of {totalWeeks}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => canNext && setCurrentWeek(w => Math.min(totalWeeks, w + 1))}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      disabled={!canNext}
+                      style={[s.weekToggleArrow, !canNext && s.weekToggleArrowDisabled]}
+                    >
+                      <Text style={[s.weekToggleArrowText, !canNext && s.weekToggleArrowTextDisabled]}>{'\u203A'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingLeft: 20, paddingVertical: 4 }}
+                  style={{ marginBottom: 16 }}
+                  snapToAlignment="start"
+                  decelerationRate="fast"
+                  // Snap on the compact-card width because that's the
+                  // dominant card size in the rail (Today is the only
+                  // wider card). Snapping on the wider value would feel
+                  // sluggish past the first card.
+                  snapToInterval={otherCardWidth + 10}
+                >
+                  {upcomingDays.map(renderUpcomingCard)}
+                </ScrollView>
+              </>
             );
           })()}
 
@@ -1725,54 +2021,10 @@ export default function HomeScreen({ navigation, route }) {
             );
           })()}
 
-          {/* ── Tomorrow preview ───────────────────────────────────────
-              Sits directly below the Today hero so the user sees both
-              "what am I doing now" and "what's next" without scrolling.
-              Compact card — just the tag + title + metrics — because
-              Tomorrow is FYI, not the primary action. Tapping opens the
-              activity detail; tapping through to the week list still
-              works below for anyone who wants to see the full context.
-              Gate is symmetric with the Today hero: renders whenever
-              there's an activity for tomorrow, even pre-plan-start
-              (e.g. a session dragged onto tomorrow before Week 1
-              officially begins). Previously the planHasStarted AND
-              made Tomorrow disappear while Today was still visible —
-              inconsistent. */}
-          {tomorrowActivities.length > 0 && (
-            <View style={s.tomorrowSection}>
-              <Text style={s.tomorrowLabel}>TOMORROW</Text>
-              {tomorrowActivities.map((activity) => (
-                <TouchableOpacity
-                  key={activity.id}
-                  style={s.tomorrowCard}
-                  onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
-                  activeOpacity={0.85}
-                >
-                  <View style={s.tomorrowCardBody}>
-                    <View style={[s.todayTypeBadge, { backgroundColor: ACTIVITY_BLUE + '18', alignSelf: 'flex-start' }]}>
-                      <Text style={[s.todayTypeText, { color: ACTIVITY_BLUE }]}>{getSessionLabel(activity)}</Text>
-                    </View>
-                    <Text style={s.tomorrowTitle}>{activity.title}</Text>
-                    <Text style={s.tomorrowMeta}>
-                      {activity.distanceKm ? formatDistance(activity.distanceKm) : ''}
-                      {activity.distanceKm && activity.durationMins ? ' \u00B7 ' : ''}
-                      {activity.durationMins ? `${activity.durationMins} min` : ''}
-                      {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
-                    </Text>
-                  </View>
-                  <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textMuted} />
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-          {/* Also show "Tomorrow · Rest" as a tiny hint when tomorrow
-              is a rest day — helps users who check the app before bed
-              know they can have a lie-in. */}
-          {planHasStarted && tomorrowActivities.length === 0 && (
-            <View style={s.tomorrowRestWrap}>
-              <Text style={s.tomorrowRestText}>Tomorrow · Rest day</Text>
-            </View>
-          )}
+          {/* (Tomorrow preview + "Tomorrow · Rest" hint deleted —
+              Tomorrow is now the second card inside the upcoming-day
+              rail above. Showing it twice was redundant and ate vertical
+              space without adding information.) */}
 
           {/* ── This week progress ─────────────────────────────────────
               The sibling "View full week" / "View full plan" buttons were
@@ -2372,6 +2624,18 @@ export default function HomeScreen({ navigation, route }) {
         onComplete={async () => {
           setShowOnboarding(false);
           try { await setOnboardingDone(); } catch {}
+          // Re-read userPrefs so the name the user just typed in the
+          // final tour step replaces the Apple Sign-In `full_name`
+          // fallback that was loaded at first mount. Without this,
+          // Home would keep showing the user's Apple name (e.g.
+          // "Robert") even though they typed "Rob" in onboarding —
+          // looked like the name hadn't been saved at all.
+          try {
+            const fresh = await getUserPrefs();
+            if (fresh?.displayName && isMounted.current) {
+              setName(fresh.displayName);
+            }
+          } catch {}
         }}
       />
     </View>
@@ -2477,11 +2741,18 @@ const s = StyleSheet.create({
 
   // Plan tabs
   planTabsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 10, gap: 12 },
+  // Left cluster — label sits next to the compact "+" button so
+  // they read as a single header unit instead of two unrelated
+  // controls separated by a stretch of empty space.
+  planTabsHeaderLeft: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+  },
   // Compact "+" icon button in the YOUR PLANS header — replaces the
   // standalone full-pill "+ New plan" button for users who already
-  // have at least one plan.
+  // have at least one plan. Sized down (24×24) so it sits beside the
+  // 10pt YOUR PLANS label without dwarfing it.
   newPlanIconBtn: {
-    width: 30, height: 30, borderRadius: 15,
+    width: 24, height: 24, borderRadius: 12,
     backgroundColor: 'rgba(232,69,139,0.10)',
     borderWidth: 1, borderColor: 'rgba(232,69,139,0.30)',
     alignItems: 'center', justifyContent: 'center',
@@ -2671,6 +2942,72 @@ const s = StyleSheet.create({
   },
   upcomingCardActions: {
     flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10,
+  },
+
+  // Hovered state — applied while a drag is in progress and the finger
+  // is inside this card's hit zone. Pink dashed-feel border + soft pink
+  // tint so the user clearly sees "this is where it'll land".
+  upcomingCardHovered: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+    backgroundColor: 'rgba(232,69,139,0.12)',
+  },
+  // Source card while being dragged — fade slightly so the ghost is
+  // visually distinct from the card it lifted off.
+  upcomingCardDragSource: {
+    opacity: 0.4,
+  },
+  // ≡ Hold to move — small caption inside every draggable card so the
+  // affordance is obvious without users having to discover it.
+  upcomingDragHint: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    marginTop: 8, paddingTop: 8,
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.04)',
+  },
+  upcomingDragHintText: {
+    fontSize: 10, fontFamily: FF.medium, fontWeight: '500',
+    color: colors.textMuted, letterSpacing: 0.3,
+  },
+
+  // Type pill — monochrome icon + tag, sits in the top-right of every
+  // upcoming-day card. Same shape and colour for every session type so
+  // the rail reads as a clean grid instead of a rainbow.
+  upcomingTypePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 7, paddingVertical: 2,
+    borderRadius: 100,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)',
+  },
+  upcomingTypePillText: {
+    fontSize: 9, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.textMid, letterSpacing: 0.5,
+  },
+
+  // Week toggle row — sits above the upcoming-day rail.  ‹ Week N of M ›
+  // Centre-aligned, no card chrome, deliberately quiet — the rail
+  // beneath does the visual work.
+  weekToggleRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 12, paddingHorizontal: 20, marginBottom: 10,
+  },
+  weekToggleArrow: {
+    width: 28, height: 28, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  weekToggleArrowDisabled: {
+    backgroundColor: 'transparent',
+  },
+  weekToggleArrowText: {
+    fontSize: 18, color: colors.text, lineHeight: 20, fontFamily: FF.medium,
+  },
+  weekToggleArrowTextDisabled: {
+    color: colors.textFaint,
+  },
+  weekToggleLabel: {
+    fontSize: 13, fontFamily: FF.medium, fontWeight: '500',
+    color: colors.text,
   },
 
   todayHero: {

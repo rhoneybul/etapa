@@ -1153,7 +1153,7 @@ export default function CoachChatScreen({ navigation, route }) {
                     // affordance visible without adding extra vertical
                     // space below every message.
                     <View style={s.bubbleUserRow}>
-                      <Text style={[s.bubbleText, s.bubbleTextUser, { flex: 1 }]}>{msg.content}</Text>
+                      <Text style={[s.bubbleText, s.bubbleTextUser, s.bubbleUserText]}>{msg.content}</Text>
                       {!msg.pending && msg.content && (
                         <TouchableOpacity
                           onPress={() => setInput(msg.content)}
@@ -1485,6 +1485,18 @@ const s = StyleSheet.create({
   // whitespace.
   bubbleUserRow: {
     flexDirection: 'row', alignItems: 'flex-end', gap: 8,
+  },
+  // CRITICAL: flexShrink (NOT flex:1). The bubble has maxWidth 88% but
+  // no fixed width — it sizes to its content. A Text with flex:1 in a
+  // content-sized row resolves to 0 width because there's no available
+  // space to grow into, and the message content disappears (bubble
+  // still renders because of padding). flexShrink:1 lets the Text use
+  // its intrinsic width to drive the bubble's size, then wrap if the
+  // bubble hits the 88% cap. Caused a "user bubbles drawn but empty"
+  // bug Rob hit — coach replies were unaffected because they go
+  // through renderMarkdown which doesn't apply flex.
+  bubbleUserText: {
+    flexShrink: 1,
   },
   bubbleResendIcon: {
     paddingTop: 2, paddingLeft: 4,

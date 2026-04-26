@@ -120,21 +120,32 @@ function getBuildWeekRec(level, trainingTypes = []) {
   const hasIndoor   = trainingTypes.includes('indoor');
   const hasStrength = trainingTypes.includes('strength');
 
+  // Base sentence — ride count + the single most important rule for
+  // that level. We deliberately do NOT mention strength stacking here
+  // any more; that belongs in the strength extra below so it's said
+  // exactly once, not duplicated when both the base and the extra
+  // include it (the prior version read as a near-verbatim repeat).
   const base = (() => {
     switch (level) {
       case 'beginner':
-        return "One or two rides a week is plenty to start. Three is doable if life lets you, but two consistent weeks beats one heroic one. Try to leave a rest day between rides — that's where the fitness actually banks.";
+        return "One or two rides a week is plenty to start. Three is doable if life lets you, but two consistent weeks beats one heroic one. Leave a rest day between rides — that's where the fitness actually banks.";
       case 'intermediate':
         return "Two or three rides a week is the sweet spot. You don't need to fill every slot — quality over quantity. Keep at least one rest day between hard sessions.";
       case 'advanced':
-        return "Three rides a week, or four if you've got time and feel good. Stack the harder ride and any strength on the same day so easy days stay easy.";
+        return "Three or four rides a week works well at this level. Keep your easy rides genuinely easy so the hard ones can be properly hard.";
       case 'expert':
       default:
-        return "Build for the work you're aiming for. Rest is part of training too.";
+        return "Build for the work you're targeting. Rest counts as training too.";
     }
   })();
 
   // Type-aware extras — only mentions what the user actually picked.
+  // Tone is deliberately relaxed: this app is for normal people, not
+  // pros. We avoid prescriptive "do it on day X" rules that make it
+  // feel like there's a wrong way to fit a session in. The only rule
+  // that's actually worth giving a normal person is "not the day
+  // before your longest ride" because tired legs will skew that one
+  // session — the rest is up to them.
   const extras = [];
   if (hasIndoor && hasOutdoor) {
     extras.push("Indoor's a good fit for short midweek slots when time is tight.");
@@ -142,7 +153,7 @@ function getBuildWeekRec(level, trainingTypes = []) {
     extras.push("With indoor as your main, two or three sessions a week with a rest day between works well.");
   }
   if (hasStrength) {
-    extras.push("Put strength on the same day as a harder ride so your easy days actually stay easy.");
+    extras.push("Strength can go on whichever day fits your week — try not to do it right before your longest ride and you'll be fine.");
   }
 
   return extras.length > 0 ? `${base} ${extras.join(' ')}` : base;

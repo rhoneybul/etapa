@@ -129,34 +129,41 @@ function getWeekVolume(plan, weekNum) {
 
   // Break down km by session category for stacked bars.
   //
-  // Cross-training (run / swim / hike / row / etc.) has type set to
-  // the CT key and usually no subType. The old logic
-  // (`a.subType || 'other'`) routed every CT activity into the
-  // 'other' bucket, which renders as muted slate-grey — looked
-  // almost black against the dark chart background, and users
-  // (rightly) flagged it as a broken colour.
+  // CRITICAL: every kilometre that contributes to totalKm MUST also
+  // land in a recognised bucket, otherwise the rendered bar height
+  // (sized to totalKm) is taller than the sum of the segments and
+  // the bottom of the bar shows the dark track — the "bars are only
+  // half-filled" bug. Previously, ride subTypes like `long`, `hills`,
+  // `threshold`, `sweet_spot` went into their own buckets which were
+  // then filtered out by the typeOrder allow-list, silently dropping
+  // their km from the visualisation.
   //
-  // New bucketing:
-  //   - strength    → 'strength'
-  //   - ride        → subType (endurance / tempo / intervals / etc.)
-  //                   or 'endurance' if no subType given
-  //   - any other   → 'endurance' (swims, runs, walks, hikes — they're
-  //                   all aerobic base work; distance contributes to
-  //                   the weekly volume in the same way a steady ride
-  //                   would, so colouring them as endurance is honest)
+  // Bucketing rules:
+  //   - strength            → 'strength'
+  //   - ride.subType in known set → that subType's bucket
+  //   - ride with unknown / no subType → 'endurance' (default aerobic)
+  //   - cross-training (run, swim, hike, row, …) → 'endurance' (it's
+  //     aerobic distance work, colour as endurance for honesty)
+  const KNOWN_RIDE_SUBTYPES = new Set(['endurance', 'tempo', 'intervals', 'indoor', 'recovery']);
   const byType = {};
   acts.forEach(a => {
     let key;
-    if (a.type === 'strength') key = 'strength';
-    else if (a.type === 'ride') key = a.subType || 'endurance';
-    else key = 'endurance';
+    if (a.type === 'strength') {
+      key = 'strength';
+    } else if (a.type === 'ride') {
+      key = KNOWN_RIDE_SUBTYPES.has(a.subType) ? a.subType : 'endurance';
+    } else {
+      key = 'endurance';
+    }
     const km = a.distanceKm || 0;
     if (!byType[key]) byType[key] = 0;
     byType[key] += km;
   });
 
-  // Convert to ordered segments array
-  const typeOrder = ['endurance', 'tempo', 'intervals', 'indoor', 'recovery', 'strength', 'other'];
+  // Convert to ordered segments array. Every bucket that has km is
+  // guaranteed to be in typeOrder now, so the filter below only drops
+  // empty buckets — never a real km contribution.
+  const typeOrder = ['endurance', 'tempo', 'intervals', 'indoor', 'recovery', 'strength'];
   const segments = typeOrder
     .filter(t => byType[t] > 0)
     .map(t => ({ type: t, km: byType[t], color: RIDE_TYPE_COLORS[t] || RIDE_TYPE_COLORS.other }));
@@ -309,19 +316,48 @@ export default function PlanOverviewScreen({ navigation, route }) {
                         </Text>
                       )}
                       <View style={[s.chartBarStack, { height: totalH }, isCurrent && s.chartBarStackCurrent]}>
-                        {v.segments.length > 0 ? v.segments.map((seg, si) => {
-                          const segH = v.totalKm > 0 ? (seg.km / v.totalKm) * totalH : 0;
-                          return (
-                            <View
-                              key={si}
-                              style={{
-                                width: '100%',
-                                height: segH,
-                                backgroundColor: seg.color,
-                              }}
-                            />
+                        {v.segments.length > 0 ? (() => {
+                          // Render each segment, then a "remainder"
+                          // catch-all in the dominant colour if for any
+                          // reason segments don't sum to totalKm. This
+                          // is the belt-and-braces fix for the
+                          // "bars are half-filled" bug — the bar's
+                          // height is sized to totalKm so the segments
+                          // MUST cover it visually, even if the data
+                          // upstream had a category mismatch.
+                          const segmentSum = v.segments.reduce((s, seg) => s + seg.km, 0);
+                          const remainder = Math.max(0, v.totalKm - segmentSum);
+                          const dominant = v.segments.reduce(
+                            (best, seg) => (seg.km > best.km ? seg : best),
+                            v.segments[0],
                           );
-                        }) : (
+                          return (
+                            <>
+                              {v.segments.map((seg, si) => {
+                                const segH = v.totalKm > 0 ? (seg.km / v.totalKm) * totalH : 0;
+                                return (
+                                  <View
+                                    key={si}
+                                    style={{
+                                      width: '100%',
+                                      height: segH,
+                                      backgroundColor: seg.color,
+                                    }}
+                                  />
+                                );
+                              })}
+                              {remainder > 0 && dominant && (
+                                <View
+                                  style={{
+                                    width: '100%',
+                                    height: (remainder / v.totalKm) * totalH,
+                                    backgroundColor: dominant.color,
+                                  }}
+                                />
+                              )}
+                            </>
+                          );
+                        })() : (
                           // Empty-week fallback (no rides, only strength
                           // or rest). Brighter pink than the track so
                           // the bar still reads as data rather than as
