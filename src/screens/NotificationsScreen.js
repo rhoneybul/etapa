@@ -8,11 +8,16 @@ import {
   ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, fontFamily } from '../theme';
 import { api } from '../services/api';
 import { getCoach } from '../data/coaches';
 
 const FF = fontFamily;
+// AsyncStorage key for the cache-first render. Anything we've shown
+// the user before is replayed instantly on next mount; the network
+// call then runs in the background and merges in fresh items.
+const NOTIFS_CACHE_KEY = '@etapa_notifications_cache';
 
 // Per-type label + whether the row should render a coach avatar.
 // `coachAvatar: true` tells the item to look up the coach via
@@ -97,21 +102,63 @@ function NotificationItem({ item, onPress }) {
 
 export default function NotificationsScreen({ navigation }) {
   const [notifications, setNotifications] = useState([]);
+  // `loading` = true ONLY when we have nothing to show (no cache + no
+  // network result yet). Once a cache hit lands we flip to false and
+  // render real rows even while a fresh fetch is in flight — the
+  // separate `refreshing` flag drives a small "Refreshing…" hint in
+  // the header so the user knows there might be more on the way.
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Cache-first: replay anything we showed last time as soon as the
+  // screen mounts, then hit the server. This means opening Messages
+  // feels instant on every visit after the first — no spinner, no
+  // empty state flash. Comparison shape on the network result is
+  // forgiving (any `data || []`), and we only persist non-empty
+  // arrays so a one-off network blip doesn't poison the cache.
   const fetchNotifications = useCallback(async () => {
+    setRefreshing(true);
     try {
       const data = await api.notifications.list();
-      setNotifications(data || []);
+      const next = data || [];
+      setNotifications(next);
+      if (next.length > 0) {
+        AsyncStorage.setItem(NOTIFS_CACHE_KEY, JSON.stringify(next)).catch(() => {});
+      }
     } catch {
-      // fail silently
+      // Network failed — leave cached state in place rather than
+      // wiping it. The user keeps reading what they had before.
+    } finally {
+      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchNotifications().finally(() => setLoading(false));
-  }, []);
+    let cancelled = false;
+    (async () => {
+      // Step 1 — try the cache. If we have anything, paint it
+      // immediately and clear `loading` so the user is in the list.
+      try {
+        const cached = await AsyncStorage.getItem(NOTIFS_CACHE_KEY);
+        if (!cancelled && cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setNotifications(parsed);
+            setLoading(false);
+          }
+        }
+      } catch {
+        // Ignore — fall through to the network fetch.
+      }
+      // Step 2 — fetch fresh. The "Refreshing…" hint shows in the
+      // header during this in-flight period IF the cache hit landed
+      // (loading=false, header visible). On a cold load with no
+      // cache, the centered spinner takes over and the hint is moot.
+      await fetchNotifications();
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [fetchNotifications]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -190,7 +237,14 @@ export default function NotificationsScreen({ navigation }) {
             <Text style={s.backArrow}>{'\u2190'}</Text>
           </TouchableOpacity>
           <Text style={s.headerTitle}>Messages</Text>
-          {unreadCount > 0 ? (
+          {/* Right-side header slot, three states (priority order):
+              1. refreshing — soft "Refreshing…" hint while a background
+                 fetch is in flight on top of cached rows.
+              2. unread > 0 — "Read all" action.
+              3. nothing — invisible spacer to keep the title centred. */}
+          {refreshing ? (
+            <Text style={s.refreshingHint}>Refreshing…</Text>
+          ) : unreadCount > 0 ? (
             <TouchableOpacity onPress={handleMarkAllRead} hitSlop={HIT}>
               <Text style={s.markAllRead}>Read all</Text>
             </TouchableOpacity>
@@ -240,6 +294,13 @@ const s = StyleSheet.create({
   backArrow: { fontSize: 22, color: colors.text, width: 32 },
   headerTitle: { flex: 1, fontSize: 18, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, textAlign: 'center' },
   markAllRead: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+  // "Refreshing…" hint that replaces "Read all" while a background
+  // fetch is in flight on top of cached rows. Half-strength pink so
+  // it reads as "in progress" not as a tappable action.
+  refreshingHint: {
+    fontSize: 12, fontFamily: FF.medium, fontWeight: '500',
+    color: 'rgba(232,69,139,0.55)', letterSpacing: 0.2,
+  },
 
   list: { paddingHorizontal: 16, paddingBottom: 40 },
 

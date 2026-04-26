@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1700" width="800" height="1700">
+  <!-- Promo: guided-setup question step. Uses the actual Q1 intent
+       question from PlanPickerScreen.js step 1 ("What brings you
+       here?"). Shown mid-flow so progress dots pick up the pink
+       accent and the user's on the second slot. -->
+  <defs>
+    <linearGradient id="bg-guide-2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1A0F15"/>
+      <stop offset="100%" stop-color="#05030A"/>
+    </linearGradient>
+    <linearGradient id="phone-bg-2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0E0E10"/>
+      <stop offset="100%" stop-color="#07070A"/>
+    </linearGradient>
+    <clipPath id="phone-clip-2">
+      <rect x="175" y="530" width="450" height="1050" rx="54" ry="54"/>
+    </clipPath>
+  </defs>
+
+  <rect width="800" height="1700" fill="url(#bg-guide-2)"/>
+
+  <!-- Marketing eyebrow -->
+  <text x="400" y="120" font-family="Poppins, 'Helvetica Neue', Arial, sans-serif"
+        font-weight="600" font-size="22" fill="#E8458B" text-anchor="middle"
+        letter-spacing="6">ANSWER, WE LISTEN</text>
+
+  <!-- Marketing headline -->
+  <text x="400" y="210" font-family="Poppins, 'Helvetica Neue', Arial, sans-serif"
+        font-weight="700" font-size="56" fill="#FFFFFF" text-anchor="middle"
+        letter-spacing="-1">Three questions.</text>
+  <text x="400" y="278" font-family="Poppins, 'Helvetica Neue', Arial, sans-serif"
+        font-weight="700" font-size="56" fill="#FFFFFF" text-anchor="middle"
+        letter-spacing="-1">A plan that fits you.</text>
+
+  <!-- Supporting line -->
+  <text x="400" y="350" font-family="Poppins, 'Helvetica Neue', Arial, sans-serif"
+        font-weight="400" font-size="24" fill="#B8B5BE" text-anchor="middle">
+    No forms. No jargon. Just what we need to guide you.
+  </text>
+
+  <!-- Faint pink glow behind the phone -->
+  <rect x="160" y="515" width="480" height="1080" rx="62" ry="62"
+        fill="none" stroke="rgba(232,69,139,0.22)" stroke-width="1.5"/>
+
+  <!-- Phone outer frame -->
+  <rect x="170" y="525" width="460" height="1060" rx="58" ry="58"
+        fill="#1C1A1E" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+
+  <!-- Phone screen -->
+  <rect x="175" y="530" width="450" height="1050" rx="54" ry="54" fill="url(#phone-bg-2)"/>
+
+  <!-- Content inside phone — clipped so it never bleeds -->
+  <g clip-path="url(#phone-clip-2)">
+    <!-- Back + Skip row -->
+    <text x="220" y="606" font-family="Poppins, Arial, sans-serif"
+          font-weight="400" font-size="20" fill="rgba(255,255,255,0.6)">‹ Back</text>
+    <text x="580" y="606" font-family="Poppins, Arial, sans-serif"
+          font-weight="500" font-size="20" fill="#E8458B" text-anchor="end">Skip</text>
+
+    <!-- Progress bar (step 1 of 5 — two pink slots, three dim) -->
+    <g transform="translate(225, 640)">
+      <rect x="0" y="0" width="66" height="4" rx="2" fill="#E8458B"/>
+      <rect x="74" y="0" width="66" height="4" rx="2" fill="#E8458B"/>
+      <rect x="148" y="0" width="66" height="4" rx="2" fill="rgba(255,255,255,0.18)"/>
+      <rect x="222" y="0" width="66" height="4" rx="2" fill="rgba(255,255,255,0.18)"/>
+      <rect x="296" y="0" width="66" height="4" rx="2" fill="rgba(255,255,255,0.18)"/>
+    </g>
+
+    <!-- Title -->
+    <text x="220" y="740" font-family="Poppins, Arial, sans-serif"
+          font-weight="700" font-size="38" fill="#FFFFFF" letter-spacing="-0.5">What brings you here?</text>
+
+    <!-- Subtitle — two lines -->
+    <text x="220" y="790" font-family="Poppins, Arial, sans-serif"
+          font-weight="400" font-size="20" fill="#9B98A3">Tell us what you're after and</text>
+    <text x="220" y="818" font-family="Poppins, Arial, sans-serif"
+          font-weight="400" font-size="20" fill="#9B98A3">we'll help you pick the right plan.</text>
+
+    <!-- Choice cards — three options, middle one highlighted as selected -->
+    <!-- Option 1: getting started -->
+    <rect x="220" y="870" width="360" height="90" rx="14"
+          fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="240" y="905" font-family="Poppins, Arial, sans-serif"
+          font-weight="600" font-size="18" fill="#FFFFFF">I'm getting started</text>
+    <text x="240" y="935" font-family="Poppins, Arial, sans-serif"
+          font-weight="400" font-size="14" fill="#8E8B95">New, or coming back after time off</text>
+
+    <!-- Option 2: event — selected (pink border + faint pink tint) -->
+    <rect x="220" y="980" width="360" height="90" rx="14"
+          fill="rgba(232,69,139,0.08)" stroke="#E8458B" stroke-width="1.5"/>
+    <text x="240" y="1015" font-family="Poppins, Arial, sans-serif"
+          font-weight="600" font-size="18" fill="#FFFFFF">I'm training for an event or goal</text>
+    <text x="240" y="1045" font-family="Poppins, Arial, sans-serif"
+          font-weight="400" font-size="14" fill="#8E8B95">Sportive, race, or a distance by a date</text>
+
+    <!-- Option 3: fitter -->
+    <rect x="220" y="1090" width="360" height="90" rx="14"
+          fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="240" y="1125" font-family="Poppins, Arial, sans-serif"
+          font-weight="600" font-size="18" fill="#FFFFFF">I want to get fitter</text>
+    <text x="240" y="1155" font-family="Poppins, Arial, sans-serif"
+          font-weight="400" font-size="14" fill="#8E8B95">No deadline, just ride more</text>
+  </g>
+</svg>

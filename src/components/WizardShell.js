@@ -110,16 +110,27 @@ export function OptionCard({ label, description, emoji, selected, onPress, style
   );
 }
 
-export function CheckCard({ label, emoji, checked, onPress, style }) {
+export function CheckCard({ label, emoji, checked, onPress, style, description }) {
+  // When `description` is provided the layout switches from a single
+  // centred-row (emoji • label • checkbox) to a left-aligned column
+  // body so the description sits under the label inside the same
+  // tappable box. The checkbox shifts to flex-start alignment so it
+  // anchors top-right of the row instead of vertical-centring against
+  // the (now taller) body.
   return (
     <TouchableOpacity
-      style={[s.checkCard, checked && s.checkCardChecked, style]}
+      style={[s.checkCard, checked && s.checkCardChecked, style, description && s.checkCardWithDesc]}
       onPress={onPress}
       activeOpacity={0.7}
     >
       {emoji ? <Text style={s.checkEmoji}>{emoji}</Text> : null}
-      <Text style={[s.checkLabel, checked && s.checkLabelChecked]}>{label}</Text>
-      <View style={[s.checkbox, checked && s.checkboxChecked]}>
+      <View style={s.checkCardBody}>
+        <Text style={[s.checkLabel, checked && s.checkLabelChecked]}>{label}</Text>
+        {description ? (
+          <Text style={s.checkDescription}>{description}</Text>
+        ) : null}
+      </View>
+      <View style={[s.checkbox, checked && s.checkboxChecked, description && s.checkboxAligned]}>
         {checked && <Text style={s.checkMark}>{'\u2713'}</Text>}
       </View>
     </TouchableOpacity>
@@ -177,10 +188,31 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 10,
     borderWidth: 1.5, borderColor: colors.border,
   },
+  // Slightly more vertical breathing room when there's a description.
+  // Padding 14 instead of 16 because the body block already reserves
+  // its own height; without this tweak the card felt overstuffed.
+  checkCardWithDesc: {
+    alignItems: 'flex-start',
+    paddingVertical: 14,
+  },
   checkCardChecked: { borderColor: colors.primary, backgroundColor: colors.surfaceLight },
   checkEmoji: { fontSize: 18, width: 28, textAlign: 'center' },
-  checkLabel: { flex: 1, fontSize: 15, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
+  // Body block — wraps the label + optional description so they stack
+  // tightly inside the card. flex:1 so the checkbox holds its own
+  // column on the right.
+  checkCardBody: { flex: 1 },
+  checkLabel: { fontSize: 15, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
   checkLabelChecked: { color: colors.text },
+  // Description sits under the label. Same colour as muted body text
+  // elsewhere so it reads as supporting copy, not a second action.
+  checkDescription: {
+    fontSize: 12, fontFamily: FF.regular, color: colors.textMid,
+    lineHeight: 17, marginTop: 4,
+  },
+  // When there's a description the card grows taller. Aligning the
+  // checkbox to flex-start (top) keeps it next to the label rather
+  // than vertical-centring against the body, which looked off.
+  checkboxAligned: { marginTop: 1 },
   checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: colors.textFaint, alignItems: 'center', justifyContent: 'center' },
   checkboxChecked: { borderColor: colors.primary, backgroundColor: colors.primary },
   checkMark: { fontSize: 14, color: '#fff', fontWeight: '700' },

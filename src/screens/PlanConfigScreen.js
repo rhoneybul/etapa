@@ -77,6 +77,77 @@ const TRAINING_TYPES = [
   { key: 'strength', label: 'Strength training', short: 'Strength' },
 ];
 
+// Per-option value copy for the "What types of training?" step. Plain
+// English, no jargon, no pressure — explains WHY each type matters
+// without making the user feel they have to pick everything. Aligned
+// with the brand voice (warm, beginner-friendly, science-backed but
+// not showing off).
+const TRAINING_TYPE_DESCRIPTIONS = {
+  outdoor: "Where most of your fitness comes from. Long rides build endurance; short ones keep things ticking over.",
+  indoor: "Useful when life gets in the way of going outside — short, focused, no traffic, no weather.",
+  strength: "One or two short sessions a week protects your knees and back, makes hills easier, and helps prevent injuries.",
+};
+
+// Level-aware "we recommend typically..." copy. Deliberately
+// CONSERVATIVE — numbers are biased towards the lower end so users
+// don't feel pressured to train more than they can sustain. Voice is
+// shared across both screens (training types + build week) so the
+// flow reads as one continuous conversation. Beginners get the most
+// reassurance; advanced / expert get a lighter touch because they
+// probably know what they want and don't need a cap on what they'll
+// actually do.
+function getTrainingTypesRec(level) {
+  switch (level) {
+    case 'beginner':
+      return "Most new riders do well with one or two outdoor rides a week. A short strength session helps with hills and prevents injuries. Indoor's optional — handy when the weather isn't cooperating.";
+    case 'intermediate':
+      return "Two or three outdoor rides a week plus one short strength session is the sweet spot for most people. You don't need every option — pick what you'll actually do.";
+    case 'advanced':
+      return "Three rides a week with a strength session or two is typical. More is fine, but rest is where the fitness actually banks.";
+    case 'expert':
+    default:
+      return "Pick whatever fits this block. Rest is part of training too.";
+  }
+}
+
+// Build-your-week recommendation. Same conservative number bias as
+// getTrainingTypesRec(), AND shaped by which training types the
+// user actually picked — a tail line is added per type so the
+// guidance reflects their choices instead of nudging them toward
+// sessions they didn't ask for.
+function getBuildWeekRec(level, trainingTypes = []) {
+  const hasOutdoor  = trainingTypes.includes('outdoor');
+  const hasIndoor   = trainingTypes.includes('indoor');
+  const hasStrength = trainingTypes.includes('strength');
+
+  const base = (() => {
+    switch (level) {
+      case 'beginner':
+        return "One or two rides a week is plenty to start. Three is doable if life lets you, but two consistent weeks beats one heroic one. Try to leave a rest day between rides — that's where the fitness actually banks.";
+      case 'intermediate':
+        return "Two or three rides a week is the sweet spot. You don't need to fill every slot — quality over quantity. Keep at least one rest day between hard sessions.";
+      case 'advanced':
+        return "Three rides a week, or four if you've got time and feel good. Stack the harder ride and any strength on the same day so easy days stay easy.";
+      case 'expert':
+      default:
+        return "Build for the work you're aiming for. Rest is part of training too.";
+    }
+  })();
+
+  // Type-aware extras — only mentions what the user actually picked.
+  const extras = [];
+  if (hasIndoor && hasOutdoor) {
+    extras.push("Indoor's a good fit for short midweek slots when time is tight.");
+  } else if (hasIndoor && !hasOutdoor) {
+    extras.push("With indoor as your main, two or three sessions a week with a rest day between works well.");
+  }
+  if (hasStrength) {
+    extras.push("Put strength on the same day as a harder ride so your easy days actually stay easy.");
+  }
+
+  return extras.length > 0 ? `${base} ${extras.join(' ')}` : base;
+}
+
 // Activity types for cross-training
 const CROSS_TRAINING_TYPES = [
   { key: 'run',             label: 'Run' },
@@ -583,11 +654,27 @@ export default function PlanConfigScreen({ navigation, route }) {
       // — that's the safe assumption for an event user who just walked
       // through an intake. User can still edit the weeks by going back.
       if (step === 5 && prefillWeeks && planWeeks) {
-        setStep(7);
+        // Step 7 (coach pick) is also redundant when a coach is already
+        // set (from onboarding) — fall through to completion instead of
+        // hopping into a step the user just answered minutes ago.
+        if (coachId) {
+          // fall through to completion logic below
+        } else {
+          setStep(7);
+          return;
+        }
+      } else if (step === 6 && coachId) {
+        // Coach already chosen during the OnboardingTour (which now
+        // requires it). Skip the redundant step 7 picker entirely and
+        // run plan generation directly. If for some reason coachId
+        // isn't set (e.g. a legacy user reaching here without having
+        // done onboarding), we still advance to step 7 so they can
+        // pick before generating.
+        // fall through to completion logic below
+      } else {
+        setStep(step + 1);
         return;
       }
-      setStep(step + 1);
-      return;
     }
 
     const availableDays = Object.keys(dayAssignments);
@@ -713,10 +800,23 @@ export default function PlanConfigScreen({ navigation, route }) {
     if (step === 2) {
       return (
         <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Level-aware "we recommend typically..." panel — gentle,
+              never prescriptive. See getTrainingTypesRec() at the top
+              of this file for per-level copy. */}
+          <View style={s.recCard}>
+            <View style={s.recCardIconWrap}>
+              <MaterialCommunityIcons name="lightbulb-outline" size={13} color={colors.primary} />
+            </View>
+            <View style={s.recCardTextWrap}>
+              <Text style={s.recCardLabel}>We typically recommend</Text>
+              <Text style={s.recCardBody}>{getTrainingTypesRec(fitnessLevel)}</Text>
+            </View>
+          </View>
           {TRAINING_TYPES.map(tt => (
             <CheckCard
               key={tt.key}
               label={tt.label}
+              description={TRAINING_TYPE_DESCRIPTIONS[tt.key]}
               checked={trainingTypes.includes(tt.key)}
               onPress={() => toggleTrainingType(tt.key)}
             />
@@ -892,6 +992,21 @@ export default function PlanConfigScreen({ navigation, route }) {
 
       return (
         <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Level-aware "we recommend typically..." panel — same
+              treatment as Step 2. Pitches the typical session count
+              + spacing in plain English so the user has a target to
+              shoot for without it feeling prescriptive. See
+              getBuildWeekRec() at the top of this file. */}
+          <View style={s.recCard}>
+            <View style={s.recCardIconWrap}>
+              <MaterialCommunityIcons name="lightbulb-outline" size={13} color={colors.primary} />
+            </View>
+            <View style={s.recCardTextWrap}>
+              <Text style={s.recCardLabel}>We typically recommend</Text>
+              <Text style={s.recCardBody}>{getBuildWeekRec(fitnessLevel, trainingTypes)}</Text>
+            </View>
+          </View>
+
           {/* Show a summary of organised rides + long ride day already set */}
           {(recurringRides.length > 0 || effectiveLongRideDay) && (
             <View style={s.buildWeekSummary}>
@@ -1298,7 +1413,15 @@ export default function PlanConfigScreen({ navigation, route }) {
       onBack={handleBack}
       onClose={() => navigation.popToTop()}
       onContinue={handleContinue}
-      continueLabel={step === TOTAL_STEPS ? 'Generate my plan' : 'Continue'}
+      continueLabel={
+        step === TOTAL_STEPS
+          ? 'Generate my plan'
+          // Step 6 becomes the effective last step when the coach has
+          // already been picked in onboarding (we skip step 7). Show
+          // the same final-step label so the user knows the next tap
+          // commits and starts plan generation.
+          : (step === 6 && coachId ? 'Generate my plan' : 'Continue')
+      }
       continueDisabled={!canContinue()}
       skipLabel={step === 3 ? 'Skip — I don\'t have regular rides' : undefined}
       onSkip={step === 3 ? () => setStep(4) : undefined}
@@ -1309,6 +1432,52 @@ export default function PlanConfigScreen({ navigation, route }) {
 }
 
 const s = StyleSheet.create({
+  // ── Recommendation card (steps 2 + 5) ──────────────────────────────────
+  // Soft pink-tinted block at the top of each plan-shape step. Holds
+  // a "We recommend typically…" message that adapts to the user's
+  // fitness level. Tone is gentle by design — the brand position is
+  // beginner-friendly and we don't want to set hard expectations the
+  // user feels they have to meet.
+  recCard: {
+    // Geometry deliberately matches the CheckCard exactly — same
+    // padding (16), same borderRadius (14), no horizontal margin —
+    // so the rec card and the option cards below it form a tidy
+    // column with consistent left/right edges and corner radii.
+    // Previously had paddingHorizontal: 14 which made the inner
+    // spacing visibly tighter than the option boxes underneath.
+    marginBottom: 10, marginTop: 4,
+    padding: 16,
+    borderRadius: 14,
+    backgroundColor: 'rgba(232,69,139,0.07)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.18)',
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+  },
+  recCardIconWrap: {
+    width: 22, height: 22, borderRadius: 11,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(232,69,139,0.18)',
+    marginTop: 1,
+  },
+  recCardTextWrap: { flex: 1 },
+  recCardLabel: {
+    fontSize: 11, fontWeight: '600', fontFamily: FF.semibold,
+    color: 'rgba(232,69,139,0.9)',
+    letterSpacing: 1, textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  recCardBody: {
+    fontSize: 13, fontFamily: FF.regular, color: colors.text,
+    lineHeight: 19,
+  },
+  // Per-option description shown under the CheckCard label on the
+  // training-types step. Smaller + muted — explains the value without
+  // dominating the row.
+  trainingTypeDesc: {
+    fontSize: 12, fontFamily: FF.regular, color: colors.textMid,
+    lineHeight: 17, paddingHorizontal: 16, paddingBottom: 12,
+    marginTop: -8,
+  },
+
   // ── Level cards (step 1) ────────────────────────────────────────────────
   levelCard: {
     backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 10,

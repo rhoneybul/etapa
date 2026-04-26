@@ -143,6 +143,34 @@ export default function CoachChatScreen({ navigation, route }) {
   // refreshing state uses so the two loading moments feel like the
   // same thing. Only runs while loadingChat is true.
   const loadingPulse = useRef(new Animated.Value(1)).current;
+  // Tick clock used by the pending-bubble copy below. Re-renders the
+  // chat list every second while at least one assistant reply is in
+  // flight so the "thinking… → looking at your plan… → still going,
+  // feel free to leave" copy escalates promptly with the wait time.
+  // Cleared as soon as no pending bubble remains so we're not running
+  // an idle timer.
+  const [pendingTick, setPendingTick] = useState(Date.now());
+  useEffect(() => {
+    const hasPending = messages.some(m => m.pending);
+    if (!hasPending) return;
+    const interval = setInterval(() => setPendingTick(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [messages]);
+  // Returns the right "I'm still working" copy for the given pending
+  // bubble's age. Tightened thresholds: most replies land in 2-5s, so
+  // chrome appears almost immediately and escalates to the "you can
+  // leave, we'll push" path within ~15 seconds. Was previously 4s →
+  // 12s → 25s → 45s, which left people staring at a bare spinner
+  // for too long.
+  const getPendingCopy = (ts) => {
+    if (!ts) return null;
+    const elapsedMs = pendingTick - ts;
+    if (elapsedMs < 1500) return null;
+    if (elapsedMs < 4000) return 'Thinking…';
+    if (elapsedMs < 8000) return 'Looking at your plan…';
+    if (elapsedMs < 15000) return 'Getting this right — coaches don\'t rush…';
+    return "Still going. You can leave the chat — we'll send you a notification when your coach replies.";
+  };
   useEffect(() => {
     if (!loadingChat) return;
     const anim = Animated.loop(
@@ -208,12 +236,21 @@ export default function CoachChatScreen({ navigation, route }) {
           }
         });
 
-        // Load saved chat — local + server, merging any new server-side
-        // messages (e.g. coach check-ins injected by the cron job).
+        // Load saved chat — local first (instant), server second (merge).
+        //
+        // Cache-first render: if local has anything, paint it IMMEDIATELY
+        // and clear the loading overlay. The server fetch then runs in
+        // the background and reconciles. This is what "could we cache
+        // it a little bit" gets the user — opening the chat screen
+        // feels instant on every visit after the first.
         let localMessages = [];
         const saved = await AsyncStorage.getItem(chatKey(p.id, weekNum));
         if (saved) {
           try { localMessages = JSON.parse(saved); } catch {}
+        }
+        if (localMessages.length > 0) {
+          setMessages(localMessages);
+          setLoadingChat(false);
         }
 
         try {
@@ -248,23 +285,71 @@ export default function CoachChatScreen({ navigation, route }) {
           }
 
           if (chosen) {
-            setMessages(chosen);
-            if (chosen === serverMessages) {
-              await AsyncStorage.setItem(chatKey(p.id, weekNum), JSON.stringify(chosen));
+            // Repair any pending bubbles that were left in-flight when the
+            // user navigated away. For each pending bubble we either:
+            //   - if it's got a jobId and the server says completed →
+            //     swap in the real reply (and updatedActivities)
+            //   - if the server says failed/cancelled → mark as failed
+            //   - if it's still pending but older than 90 s → assume
+            //     orphaned and mark as failed (with a friendly retry
+            //     message)
+            //   - otherwise leave alone — a fresh send may be in flight
+            //     and we don't want to stomp it
+            const repaired = await Promise.all(chosen.map(async (m) => {
+              if (!m.pending) return m;
+              const ageMs = m.ts ? Date.now() - m.ts : 0;
+              if (m.jobId) {
+                try {
+                  const state = await pollCoachChatJob(m.jobId);
+                  if (state.status === 'completed') {
+                    return {
+                      ...m, pending: false,
+                      content: state.reply || m.content || '',
+                      ...(Array.isArray(state.updatedActivities) && state.updatedActivities.length
+                        ? { hasUpdate: true, updatedActivities: state.updatedActivities }
+                        : {}),
+                    };
+                  }
+                  if (state.status === 'failed' || state.status === 'cancelled') {
+                    return {
+                      ...m, pending: false, failed: true,
+                      content: state.error || 'Message failed — tap retry to try again.',
+                    };
+                  }
+                } catch {
+                  // Poll itself failed (network) — fall through to age check.
+                }
+              }
+              if (ageMs > 90_000) {
+                return {
+                  ...m, pending: false, failed: true,
+                  content: 'Message timed out — tap retry to try again.',
+                };
+              }
+              return m; // young + still pending — leave it
+            }));
+            setMessages(repaired);
+            // Mirror the repaired array to AsyncStorage so the same repair
+            // doesn't have to happen on every subsequent mount.
+            AsyncStorage.setItem(chatKey(p.id, weekNum), JSON.stringify(repaired)).catch(() => {});
+            // If repair produced any failed bubble that came from an
+            // orphaned send, surface its lastFailedMsg for the retry
+            // affordance.
+            const orphanedFailed = [...repaired].reverse().find(m => m.failed && m.role === 'assistant');
+            if (orphanedFailed) {
+              const before = repaired.slice(0, repaired.lastIndexOf(orphanedFailed)).reverse();
+              const triggeringUserMsg = before.find(m => m.role === 'user');
+              if (triggeringUserMsg?.content) setLastFailedMsg(triggeringUserMsg.content);
             }
             // Re-hydrate the Apply/Dismiss UI from the last persisted
-            // coach recommendation. Previously the server only stored
-            // `hasUpdate: true` on the message — not the activities
-            // themselves — so re-opening the chat showed the coach's
-            // "I'll shift Saturday to Sunday" text without any way to
-            // apply or dismiss it. The server now persists the full
+            // coach recommendation (server now stores the full
             // updatedActivities array on the assistant message, so we
-            // can restore the pending-update pane here.
-            const lastAssistantWithUpdate = [...chosen].reverse().find(
+            // can restore the pending-update pane here).
+            const lastAssistantWithUpdate = [...repaired].reverse().find(
               m => m.role === 'assistant' && Array.isArray(m.updatedActivities) && m.updatedActivities.length > 0
             );
             if (lastAssistantWithUpdate) {
-              const msgIndex = chosen.lastIndexOf(lastAssistantWithUpdate);
+              const msgIndex = repaired.lastIndexOf(lastAssistantWithUpdate);
               setPendingUpdate({ activities: lastAssistantWithUpdate.updatedActivities, msgIndex });
             }
           }
@@ -316,36 +401,29 @@ export default function CoachChatScreen({ navigation, route }) {
 
   // Save chat whenever messages change — local + server.
   //
-  // Filters out any still-pending assistant bubbles before saving to EITHER
-  // local storage or the server. Two reasons:
-  //   1. Server: the server will append the real reply to chat_sessions
-  //      when runCoachChatJob completes — if we saved our placeholder now,
-  //      it'd look like the coach never replied after a reload.
-  //   2. Local: same story, but worse — if we stored the pending bubble in
-  //      AsyncStorage and the user navigates away, on return our
-  //      local-vs-server reconcile would see equal lengths (pending
-  //      placeholder in local, real reply on server) and keep the stale
-  //      local version, losing the completed reply.
+  // LOCAL: we save the full messages array INCLUDING pending bubbles. This
+  // is essential for navigation-away resilience: if the user sends a
+  // message and immediately backs out of the screen, we want their
+  // message AND the placeholder thinking bubble to be on disk so a
+  // return mount can repair the conversation (poll the job, swap in the
+  // real reply, or mark as failed). Filtering pending out of local
+  // caused the "I sent a message, came back, my message disappeared"
+  // bug Rob reported.
   //
-  // Settled messages are always safe to mirror to both stores.
+  // SERVER: still gated on hasPending. The server worker
+  // (runCoachChatJob) is the authoritative writer for assistant replies
+  // — it writes to chat_sessions when the Claude call finishes. If the
+  // client PUTs its "user msg only, no assistant yet" view while the
+  // worker is mid-stream, the PUT can clobber the worker's later append
+  // (the server PUT shrink-guard catches the obvious case but not all
+  // races). Letting the worker own server persistence while a reply is
+  // in flight is the simplest safe rule. Failed bubbles aren't
+  // "pending" so they DO sync to server via this effect.
   useEffect(() => {
     if (plan && messages.length > 0) {
+      // FULL state to AsyncStorage — pending bubbles included.
+      AsyncStorage.setItem(chatKey(plan.id, weekNum), JSON.stringify(messages)).catch(() => {});
       const settled = messages.filter(m => !m.pending);
-      AsyncStorage.setItem(chatKey(plan.id, weekNum), JSON.stringify(settled)).catch(() => {});
-      // ⚠️ Do NOT PUT to the server while an assistant reply is pending.
-      //
-      // Why: the server-side runCoachChatJob worker also writes to
-      // chat_sessions when the reply completes (server/src/routes/ai.js
-      // ~line 2471). If the client keeps PUTing its "settled = [user
-      // msg only]" view while the worker has already written the
-      // completed [user, assistant] pair, the PUT overwrites the
-      // worker's reply — and when the user comes back, they see their
-      // message but no coach response. This was the root cause of the
-      // "coach reply missing on return" bug reported in testing.
-      //
-      // Letting the worker own persistence while a reply is in flight
-      // is safe: the worker has the full message list in job.messages,
-      // so the user's message lands on the server either way.
       const hasPending = messages.some(m => m.pending);
       if (!hasPending && settled.length > 0) {
         api.chatSessions.save(plan.id, weekNum, settled).catch(() => {});
@@ -947,7 +1025,6 @@ export default function CoachChatScreen({ navigation, route }) {
                     resizeMode="contain"
                   />
                 </View>
-                <Text style={s.loadingStateText}>Loading your chat…</Text>
               </View>
             )}
             {!loadingChat && messages.length === 0 && (
@@ -1042,18 +1119,52 @@ export default function CoachChatScreen({ navigation, route }) {
                     <Text style={s.bubbleLabel}>{getCoach(planConfig?.coachId)?.name || 'Coach'}</Text>
                   )}
                   {msg.role === 'assistant' ? (
-                    // Pending + no text yet: thinking spinner.
+                    // Pending + no text yet: thinking spinner with
+                    // progressive copy that escalates with wait time
+                    // (see getPendingCopy above for thresholds).
                     // Pending + streaming text: show the partial reply.
                     // Done: markdown-render the final reply.
                     msg.pending && !msg.content ? (
-                      <ActivityIndicator size="small" color={colors.primary} style={{ alignSelf: 'flex-start', marginTop: 4 }} />
+                      <View style={s.pendingWrap}>
+                        <ActivityIndicator size="small" color={colors.primary} style={{ alignSelf: 'flex-start' }} />
+                        {(() => {
+                          const copy = getPendingCopy(msg.ts);
+                          if (!copy) return null;
+                          // Final stage gets the slightly-bigger
+                          // "you can leave" treatment so it reads as
+                          // an option, not a status. Earlier stages
+                          // are quieter — they're acknowledgements.
+                          const isLongWait = (pendingTick - (msg.ts || pendingTick)) >= 15000;
+                          return (
+                            <Text style={[s.pendingCopy, isLongWait && s.pendingCopyLong]}>{copy}</Text>
+                          );
+                        })()}
+                      </View>
                     ) : renderMarkdown(msg.content, [s.bubbleText], (wk) => {
                       if (plan && wk >= 1 && wk <= plan.weeks) {
                         navigation.navigate('WeekView', { week: wk, planId: plan.id });
                       }
                     })
                   ) : (
-                    <Text style={[s.bubbleText, s.bubbleTextUser]}>{msg.content}</Text>
+                    // User message: text + small resend icon in the
+                    // bubble's bottom-right corner. Tap copies the
+                    // content into the input for re-send (no auto-fire).
+                    // Replaces the row-below variant — keeps the
+                    // affordance visible without adding extra vertical
+                    // space below every message.
+                    <View style={s.bubbleUserRow}>
+                      <Text style={[s.bubbleText, s.bubbleTextUser, { flex: 1 }]}>{msg.content}</Text>
+                      {!msg.pending && msg.content && (
+                        <TouchableOpacity
+                          onPress={() => setInput(msg.content)}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          activeOpacity={0.6}
+                          style={s.bubbleResendIcon}
+                        >
+                          <MaterialCommunityIcons name="refresh" size={14} color="rgba(255,255,255,0.55)" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   )}
                 </TouchableOpacity>
                 {msg.blocked && (
@@ -1070,24 +1181,10 @@ export default function CoachChatScreen({ navigation, route }) {
                     <Text style={s.retryText}>Tap to retry</Text>
                   </TouchableOpacity>
                 )}
-                {/* Visible resend affordance — shown under every settled
-                    user message so the action is discoverable without
-                    long-press. Matches the MaterialCommunityIcons set
-                    used elsewhere in the app (consistent iconography
-                    per Rob's note). Loads the message text into the
-                    input so the user can tweak before firing; doesn't
-                    auto-send. */}
-                {msg.role === 'user' && !msg.pending && msg.content && (
-                  <TouchableOpacity
-                    style={s.resendRow}
-                    onPress={() => setInput(msg.content)}
-                    activeOpacity={0.7}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <MaterialCommunityIcons name="refresh" size={13} color={colors.textMuted} />
-                    <Text style={s.resendText}>Resend</Text>
-                  </TouchableOpacity>
-                )}
+                {/* (Resend now lives inline inside the user bubble — see
+                    bubbleResendIcon above. The standalone row was dropped
+                    so the affordance doesn't add vertical space below
+                    every message.) */}
               </View>
             ))}
             {/* No separate "sending" indicator — the pending bubble above
@@ -1213,26 +1310,26 @@ const s = StyleSheet.create({
   // the iOS app icon users see on their home screen.
   loadingState: {
     alignItems: 'center', justifyContent: 'center',
-    paddingTop: 120, paddingHorizontal: 20, gap: 20,
+    paddingTop: 80, paddingHorizontal: 20,
   },
-  // Halo-wrapped icon — matches the shared LoadingSplash styling
-  // exactly (72pt icon, 108pt halo = 72 × 1.5, 24pt corner radius =
-  // 108 × 0.22, 1px pink border at 35% alpha). Previously this block
-  // was a solid filled pink square which read as heavy / error-ish;
-  // the faint outline version feels like a loading state, not an
-  // alert.
+  // Tight in-line loader — small throbbing icon inside a thin pink
+  // outline. Sized so the chat doesn't feel like it's launching a
+  // full-screen splash on every cache miss; with cache-first render
+  // this rarely shows anyway. Reverted from the bigger 72/108pt halo
+  // to a 36/56pt one per Rob's "way too big, smaller and just a
+  // simple basic pink outline" note.
   loadingIconWrap: {
-    width: 108, height: 108,
+    width: 56, height: 56,
     alignItems: 'center', justifyContent: 'center',
   },
   loadingHalo: {
     position: 'absolute',
-    width: 108, height: 108,
-    borderRadius: 24,
+    width: 56, height: 56,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(232,69,139,0.35)',
   },
-  loadingIcon: { width: 72, height: 72 },
+  loadingIcon: { width: 36, height: 36 },
   loadingStateText: {
     fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint,
     letterSpacing: 0.2,
@@ -1360,17 +1457,37 @@ const s = StyleSheet.create({
     paddingVertical: 2,
   },
 
-  // Resend affordance — small, right-aligned under each user message
-  // so it reads as a subtle tool, not a primary CTA. Muted grey so it
-  // doesn't compete with the message itself.
-  resendRow: {
-    alignSelf: 'flex-end',
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    marginTop: 4, marginRight: 4, marginBottom: 4,
-    paddingVertical: 3, paddingHorizontal: 6,
+  // Pending-bubble container — spinner + escalating "thinking…" copy
+  // stacked vertically. Spinner sits on its own line so the copy
+  // wraps cleanly underneath when it gets to the longer "you can
+  // leave" message.
+  pendingWrap: {
+    flexDirection: 'column', alignItems: 'flex-start', gap: 6,
+    paddingVertical: 2,
   },
-  resendText: {
-    fontSize: 11, fontFamily: FF.medium, fontWeight: '500',
-    color: colors.textMuted, letterSpacing: 0.2,
+  pendingCopy: {
+    fontSize: 13, fontFamily: FF.regular, color: colors.textMid,
+    lineHeight: 18, fontStyle: 'italic',
+  },
+  // Long-wait variant gets a slightly higher contrast + drops the
+  // italic so the "you can leave" line reads as actionable info, not
+  // mid-sentence prose. Adds a touch more line-height because the
+  // copy wraps to two lines on most phone widths.
+  pendingCopyLong: {
+    color: colors.text, fontStyle: 'normal',
+    lineHeight: 19,
+  },
+
+  // User-bubble inner row — text on the left, resend icon on the right.
+  // Keeps the affordance discoverable without adding vertical space
+  // below every user message. The icon sits at the bottom-right of
+  // the bubble so multi-line messages don't have it floating in
+  // whitespace.
+  bubbleUserRow: {
+    flexDirection: 'row', alignItems: 'flex-end', gap: 8,
+  },
+  bubbleResendIcon: {
+    paddingTop: 2, paddingLeft: 4,
+    opacity: 0.85,
   },
 });

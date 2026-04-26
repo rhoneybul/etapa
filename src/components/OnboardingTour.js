@@ -18,7 +18,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated, Dimensions,
-  Modal, ScrollView, ActivityIndicator,
+  Modal, ScrollView, ActivityIndicator, TextInput,
 } from 'react-native';
 import { colors, fontFamily } from '../theme';
 import { getCoaches, DEFAULT_COACH_ID } from '../data/coaches';
@@ -60,6 +60,12 @@ const STEPS = [
     title: 'One last thing — km or miles?',
     body: 'Just so we know how to show your distances. You can change this anytime in Settings.',
     dummyCard: { type: 'units' },
+  },
+  {
+    id: 'name',
+    title: 'And finally — what should we call you?',
+    body: "We'll use it on the home screen and in your coach's replies. Just a first name is fine.",
+    dummyCard: { type: 'name' },
     cta: 'Get started',
   },
 ];
@@ -251,16 +257,51 @@ function UnitsCard({ units, pending, onSelect }) {
 }
 
 /**
- * Dispatcher — picks the right renderer for the current step's card. The
- * coach + units cards need handlers, the other cards are stateless.
+ * Final tour step — capture the display name. Single text input. Saved
+ * via the same fire-and-forget pattern as coach + units. Submitting
+ * (Enter / "Done" on the keyboard) advances the tour by calling
+ * `onSubmit`. The actual write happens on every keystroke so the value
+ * is persisted even if the user dismisses without submitting.
  */
-function DummyCardRenderer({ dummyCard, selectedCoachId, pendingCoachId, onPickCoach, units, pendingUnits, onPickUnits }) {
+function NameCard({ value, saving, onChange, onSubmit }) {
+  return (
+    <View style={cs.card}>
+      <Text style={cs.cardLabel}>YOUR NAME</Text>
+      <TextInput
+        style={cs.nameInput}
+        value={value}
+        onChangeText={onChange}
+        placeholder="First name"
+        placeholderTextColor={colors.textFaint}
+        autoFocus
+        autoCapitalize="words"
+        returnKeyType="done"
+        onSubmitEditing={onSubmit}
+        maxLength={40}
+      />
+      {saving && (
+        <ActivityIndicator
+          size="small"
+          color={colors.primary}
+          style={{ position: 'absolute', top: 14, right: 14 }}
+        />
+      )}
+    </View>
+  );
+}
+
+/**
+ * Dispatcher — picks the right renderer for the current step's card. The
+ * coach + units + name cards need handlers, the other cards are stateless.
+ */
+function DummyCardRenderer({ dummyCard, selectedCoachId, pendingCoachId, onPickCoach, units, pendingUnits, onPickUnits, displayName, savingName, onChangeName, onSubmitName }) {
   if (!dummyCard) return null;
   switch (dummyCard.type) {
     case 'today':              return <TodayCard />;
     case 'coachPicker':        return <CoachPickerCard selectedId={selectedCoachId} pendingId={pendingCoachId} onSelect={onPickCoach} />;
     case 'sessionBreakdown':   return <SessionBreakdownCard />;
     case 'units':              return <UnitsCard units={units} pending={pendingUnits} onSelect={onPickUnits} />;
+    case 'name':               return <NameCard value={displayName} saving={savingName} onChange={onChangeName} onSubmit={onSubmitName} />;
     default:                    return null;
   }
 }
@@ -269,8 +310,22 @@ function DummyCardRenderer({ dummyCard, selectedCoachId, pendingCoachId, onPickC
 
 export default function OnboardingTour({ visible, onComplete }) {
   const [step, setStep] = useState(0);
-  const [selectedCoachId, setSelectedCoachId] = useState(DEFAULT_COACH_ID);
-  const [units, setUnits] = useState('km');
+  // Defaults are `null`, NOT pre-filled. We deliberately want the user
+  // to actively make a choice on the coach and units steps — those two
+  // pick-flows shape the rest of the app (which coach personality
+  // greets them everywhere, which unit every distance is shown in)
+  // and a quiet pre-selected default lets users tap Next without
+  // engaging. The Next / Get started CTA on those steps is disabled
+  // (and the Skip button is hidden) until a real selection lands.
+  const [selectedCoachId, setSelectedCoachId] = useState(null);
+  const [units, setUnits] = useState(null);
+  // Display name — final tour step. Like coach + units it's required;
+  // unlike them it's a free-text field that only counts as "set" when
+  // the user has typed at least 1 non-whitespace character. Persisted
+  // on every keystroke so a partial entry survives a dismiss-and-
+  // resume.
+  const [displayName, setDisplayName] = useState('');
+  const [savingName, setSavingName] = useState(false);
   // Transient "saving" state for coach + units picks. Set the moment the
   // user taps, cleared after the async prefs write settles. Drives a
   // small spinner on the tapped chip so the tap doesn't feel dead while
@@ -292,6 +347,7 @@ export default function OnboardingTour({ visible, onComplete }) {
     getUserPrefs().then((p) => {
       if (p?.coachId) setSelectedCoachId(p.coachId);
       if (p?.units) setUnits(p.units);
+      if (p?.displayName) setDisplayName(p.displayName);
     }).catch(() => {});
     Animated.parallel([
       Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
@@ -342,6 +398,20 @@ export default function OnboardingTour({ visible, onComplete }) {
       .finally(() => setPendingUnits(null));
   };
 
+  // Display name — keystroke-by-keystroke local state, debounced save
+  // via setUserPrefs. We deliberately persist on every change (not
+  // only on submit/blur) so a user who types and dismisses the tour
+  // doesn't lose what they wrote. The `savingName` spinner blinks
+  // briefly per write — fine for the cadence here.
+  const handleChangeName = (next) => {
+    setDisplayName(next);
+    const trimmed = next.trim();
+    setSavingName(true);
+    setUserPrefs({ displayName: trimmed })
+      .catch(() => {})
+      .finally(() => setSavingName(false));
+  };
+
   const handleNext = () => {
     if (step >= STEPS.length - 1) {
       // Final step — dismiss; units + coachId are already saved.
@@ -363,18 +433,33 @@ export default function OnboardingTour({ visible, onComplete }) {
   const current = STEPS[step];
   const isLast = step === STEPS.length - 1;
   const isFirst = step === 0;
+  // Three steps demand an active choice before the user can advance:
+  //   - 'coach'  — pick a coach personality
+  //   - 'ready'  — pick km or miles
+  //   - 'name'   — type at least one non-whitespace character
+  // On those steps the advance button is disabled until a valid value
+  // lands AND Skip is hidden, so users can't no-op past the decisions
+  // (and now the name capture) that shape the rest of the experience.
+  const isCoachStep = current.id === 'coach';
+  const isUnitsStep = current.id === 'ready';
+  const isNameStep = current.id === 'name';
+  const nameValid = displayName.trim().length > 0;
+  const choiceRequired =
+    (isCoachStep && !selectedCoachId)
+    || (isUnitsStep && !units)
+    || (isNameStep && !nameValid);
 
   return (
     <Modal visible={visible} transparent animationType="none" statusBarTranslucent>
       <View style={s.overlay}>
-        {/* Skip button — always available, including the final step.
-            Users who reach the last step and decide they're done can hit
-            Skip to dismiss without the "Get started" confirmation. Picks
-            made in earlier steps are preserved (handlePickCoach /
-            handlePickUnits wrote them as the user tapped). */}
-        <TouchableOpacity style={s.skipBtn} onPress={handleSkip} activeOpacity={0.7}>
-          <Text style={s.skipText}>Skip</Text>
-        </TouchableOpacity>
+        {/* Skip — hidden on the coach, units, AND name steps to force
+            an active value. On every other step it's a normal escape
+            hatch. */}
+        {!isCoachStep && !isUnitsStep && !isNameStep && (
+          <TouchableOpacity style={s.skipBtn} onPress={handleSkip} activeOpacity={0.7}>
+            <Text style={s.skipText}>Skip</Text>
+          </TouchableOpacity>
+        )}
 
         <Animated.View style={[
           s.contentWrap,
@@ -398,6 +483,12 @@ export default function OnboardingTour({ visible, onComplete }) {
                   units={units}
                   pendingUnits={pendingUnits}
                   onPickUnits={handlePickUnits}
+                  displayName={displayName}
+                  savingName={savingName}
+                  onChangeName={handleChangeName}
+                  onSubmitName={() => {
+                    if (displayName.trim().length > 0) handleNext();
+                  }}
                 />
               </View>
             )}
@@ -425,12 +516,27 @@ export default function OnboardingTour({ visible, onComplete }) {
               </TouchableOpacity>
             )}
             <TouchableOpacity
-              style={[s.nextBtn, isLast && s.ctaBtn]}
+              style={[
+                s.nextBtn,
+                isLast && s.ctaBtn,
+                choiceRequired && s.nextBtnDisabled,
+              ]}
               onPress={handleNext}
-              activeOpacity={0.85}
+              activeOpacity={choiceRequired ? 1 : 0.85}
+              disabled={choiceRequired}
             >
-              <Text style={[s.nextBtnText, isLast && s.ctaBtnText]}>
-                {isLast ? (current.cta || 'Get started') : 'Next'}
+              <Text style={[
+                s.nextBtnText,
+                isLast && s.ctaBtnText,
+                choiceRequired && s.nextBtnTextDisabled,
+              ]}>
+                {choiceRequired
+                  ? (isCoachStep
+                      ? 'Pick a coach to continue'
+                      : isUnitsStep
+                        ? 'Pick units to continue'
+                        : 'Type your name to continue')
+                  : (isLast ? (current.cta || 'Get started') : 'Next')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -506,6 +612,16 @@ const s = StyleSheet.create({
   },
   nextBtnText: {
     fontSize: 15, fontFamily: FF.semibold, color: colors.text,
+  },
+  // Disabled state — coach + units steps can't advance until the user
+  // actively picks. Half-opacity background + muted label so it reads
+  // as "not yet" rather than "broken".
+  nextBtnDisabled: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  nextBtnTextDisabled: {
+    color: colors.textMuted, fontWeight: '500',
   },
   ctaBtn: {
     backgroundColor: colors.primary, borderColor: colors.primary,
@@ -678,6 +794,15 @@ const cs = StyleSheet.create({
   // ── Units picker ─────────────────────────────────────────────────────
   unitsRow: {
     flexDirection: 'row', gap: 10,
+  },
+  // Name-step text input — same visual weight as the units buttons
+  // so the final two steps feel of a piece. Single line, autofocus,
+  // submit-on-Enter advances the tour.
+  nameInput: {
+    borderWidth: 1.5, borderColor: colors.border,
+    borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
+    fontSize: 17, fontFamily: FF.medium, fontWeight: '500',
+    color: colors.text, backgroundColor: colors.bg,
   },
   unitsBtn: {
     flex: 1,

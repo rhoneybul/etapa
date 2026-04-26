@@ -546,22 +546,22 @@ export default function PlanPickerScreen({ navigation, route }) {
     try { await setUserPrefs({ skillIntake: intake }); } catch {}
     analytics.events.planPickerRecommended?.({ path: recommendedPath });
 
-    // Skip the PlanSelection confirmation when the recommendation matches
-    // what the user already told us they wanted. The confirmation screen
-    // only earns its place when there's a *surprise* — e.g. user said
-    // "getting started" but we're routing them to the ongoing plan because
-    // they already have a 60 km base. Otherwise it's a redundant tap.
+    // ALWAYS route based on the recommended path — never bounce through
+    // the PlanSelection "rationale + alternatives" screen. The review
+    // step the user just confirmed (e.g. "You're set up beautifully —
+    // we're putting you on The 12-Week Improver. Sounds good — let's
+    // go.") is the confirmation; showing another picker afterwards
+    // re-asks a question they've already answered, and doubly so when
+    // the recommended path differs from the user's stated intent
+    // (which is exactly the moment the picker used to fire — most
+    // confusing time to show it).
     //
-    //   intent=event            → always matches → skip
-    //   intent=fitter + quick   → matches → skip
-    //   intent=getting_started + beginner → matches → skip
-    //   any other combination   → show PlanSelection with rationale
-    const intentMatchesRecommendation =
-      (intent === 'event' && recommendedPath === 'event') ||
-      (intent === 'fitter' && recommendedPath === 'quick') ||
-      (intent === 'getting_started' && recommendedPath === 'beginner');
-
-    if (intentMatchesRecommendation) {
+    // Previously gated on `intentMatchesRecommendation` (intent ===
+    // event ↔ event, fitter ↔ quick, getting_started ↔ beginner) and
+    // fell through to PlanSelection on every mismatch. The mismatch
+    // path is now treated the same as the match path: we trust the
+    // review confirmation.
+    {
       const subscribed = __DEV__ ? false : await isSubscribed();
       const requirePaywall = !subscribed;
 
@@ -640,6 +640,11 @@ export default function PlanPickerScreen({ navigation, route }) {
       return;
     }
 
+    // Belt-and-braces fallback: if `recommendedPath` somehow doesn't
+    // match any of the three branches above (event / beginner / quick),
+    // fall back to PlanSelection so the user lands somewhere usable.
+    // Should be unreachable in practice — computeRecommendation only
+    // returns one of those three.
     navigation.replace('PlanSelection', { recommendedPath, intake });
   }, [intent, cyclingType, longestRide, customKm, eventDate, eventName, targetDistance, targetElevation, targetTime, trainingLen, navigation]);
 

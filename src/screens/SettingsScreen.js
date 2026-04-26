@@ -48,6 +48,29 @@ function useSkeletonPulse() {
 // row causes zero vertical shift. `titleWidth` / `subWidth` fake the
 // content widths. `trailing` optionally reserves space on the right for
 // a badge or chevron so those don't pop in either.
+// Inline value-slot skeleton — drops into a row in place of the real
+// `<Text style={s.rowSub}>` while the underlying async data is still
+// loading. Sized to match a typical sub-line value so the row's
+// vertical rhythm is preserved (the row doesn't shrink and re-grow
+// when text replaces the bar). Throbs in sync with every other
+// SkelBar / SkeletonRow on the screen via the shared pulse.
+function SkelBar({ pulse, width = 120, height = 11, style }) {
+  return (
+    <Animated.View
+      style={[
+        {
+          width, height,
+          borderRadius: 4,
+          backgroundColor: 'rgba(232,69,139,0.14)',
+          marginTop: 4,
+          opacity: pulse,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
 function SkeletonRow({ pulse, titleWidth = 120, subWidth = 200, trailing = null }) {
   return (
     <View style={sk.row}>
@@ -186,19 +209,14 @@ export default function SettingsScreen({ navigation }) {
   const [subscriptionLoaded, setSubscriptionLoaded] = useState(false);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [appConfigLoaded, setAppConfigLoaded] = useState(false);
-  const allLoaded = authUserLoaded && subscriptionLoaded && preferencesLoaded && appConfigLoaded;
-  // Shared pulse driver — every skeleton block brightens/dims in sync
-  // instead of flickering out-of-phase as each row mounts.
+  // Shared pulse driver — every skeleton block (SkelBar, SkeletonRow,
+  // and the in-place value slots throughout this screen) brightens/
+  // dims in sync instead of flickering out-of-phase as each row
+  // mounts. Drives a single Animated.Value that's reused everywhere.
+  // The previous separate <SettingsSkeleton /> + cross-fade was
+  // dropped (April 2026) in favour of this in-place approach so the
+  // layout never shifts on data arrival.
   const skeletonPulse = useSkeletonPulse();
-  // Cross-fade from the skeleton to the real content. Opacity 0 → 1 as
-  // soon as `allLoaded` flips, so the user sees a soft wash-in rather
-  // than a hard swap.
-  const contentOpacity = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (allLoaded) {
-      Animated.timing(contentOpacity, { toValue: 1, duration: 220, useNativeDriver: true }).start();
-    }
-  }, [allLoaded, contentOpacity]);
 
   useEffect(() => {
     checkStrava();
@@ -463,43 +481,56 @@ export default function SettingsScreen({ navigation }) {
           missing). Once `allLoaded` flips true the real content cross-
           fades in via `contentOpacity`.
         */}
-        {!allLoaded && (
-          <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <SettingsSkeleton pulse={skeletonPulse} />
-            </ScrollView>
-          </View>
-        )}
-
-        <Animated.View style={{ flex: 1, opacity: contentOpacity }} pointerEvents={allLoaded ? 'auto' : 'none'}>
+        {/*
+          IN-PLACE SKELETONS (April 2026 refactor): we used to render a
+          separate <SettingsSkeleton /> overlay and cross-fade to the real
+          content, but the two layouts didn't perfectly match — section
+          dividers shifted by a few pixels on swap, and the cross-fade
+          itself drew the eye away from "your settings just appeared".
+          Now we render the REAL screen always and inline a small <SkelBar />
+          where each async value would go until the data lands. Pixel-
+          perfect alignment, no swap moment, no separate skeleton tree to
+          maintain. The shared `skeletonPulse` Animated.Value drives the
+          opacity throb on every <SkelBar /> so they breathe in sync.
+        */}
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         {/* Profile */}
         <Text style={s.sectionLabel}>PROFILE</Text>
         <View style={s.card}>
-          {authUser && (
-            <>
-              <View style={s.row}>
-                <View style={s.rowLeft}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.rowTitle}>Email</Text>
-                    <Text style={s.rowSub} numberOfLines={1} ellipsizeMode="tail">
-                      {authUser.email || 'Not available'}
-                    </Text>
-                  </View>
-                </View>
+          {/* Email + Sign-in Method rows render ALWAYS — when authUser
+              hasn't resolved yet, the value slot shows a SkelBar of
+              the same height as the real text so the layout never
+              shifts when data lands. Previously these rows were gated
+              on `authUser &&` which made everything below them slide
+              down ~110pt when auth resolved. */}
+          <View style={s.row}>
+            <View style={s.rowLeft}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.rowTitle}>Email</Text>
+                {authUser ? (
+                  <Text style={s.rowSub} numberOfLines={1} ellipsizeMode="tail">
+                    {authUser.email || 'Not available'}
+                  </Text>
+                ) : (
+                  <SkelBar pulse={skeletonPulse} width={180} />
+                )}
               </View>
-              <View style={s.divider} />
-              <View style={s.row}>
-                <View style={s.rowLeft}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.rowTitle}>Sign-in Method</Text>
-                    <Text style={s.rowSub}>{formatSignInMethod(authUser)}</Text>
-                  </View>
-                </View>
+            </View>
+          </View>
+          <View style={s.divider} />
+          <View style={s.row}>
+            <View style={s.rowLeft}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.rowTitle}>Sign-in Method</Text>
+                {authUser ? (
+                  <Text style={s.rowSub}>{formatSignInMethod(authUser)}</Text>
+                ) : (
+                  <SkelBar pulse={skeletonPulse} width={70} />
+                )}
               </View>
-              <View style={s.divider} />
-            </>
-          )}
+            </View>
+          </View>
+          <View style={s.divider} />
           <View style={s.row}>
             <View style={s.rowLeft}>
               <View style={{ flex: 1 }}>
@@ -1154,7 +1185,6 @@ export default function SettingsScreen({ navigation }) {
           })()}
         </Text>
         </ScrollView>
-        </Animated.View>
       </SafeAreaView>
       <UpgradePrompt
         visible={showUpgrade}

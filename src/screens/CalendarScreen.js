@@ -720,7 +720,22 @@ export default function CalendarScreen({ navigation, route }) {
                 const dayKey = day ? getKey(day) : null;
                 const isDragHover = dragActivity && dayKey && hoveredDateKey === dayKey;
                 const isJustMoved = dayKey && justMovedKey === dayKey;
-                return (
+                // Long-press-to-drag from the calendar GRID itself (not
+                // just the activity list below it). Pick the day's
+                // primary activity — first ride if there is one, else
+                // the first session of any kind. If a day has multiple
+                // activities the user can still tap the cell to surface
+                // the list and drag from there. The gesture lives on
+                // the cell wrapper so the existing onPress (tap-to-
+                // select) still works — long-press kicks in only after
+                // ~350ms.
+                const dayActs = dayKey ? (activityMap[dayKey] || []) : [];
+                const dragTarget = dayActs.find(a => a.type === 'ride') || dayActs[0] || null;
+                const dragPlan = dragTarget ? plans.find(p => p.id === dragTarget._planId) : null;
+                const cellDragGesture = (dragTarget && dragPlan?.startDate)
+                  ? makeDragGesture(dragTarget, dragTarget._planId, dragPlan.startDate)
+                  : null;
+                const cellInner = (
                   <TouchableOpacity
                     // Key includes year/month so cells remount on month
                     // navigation — this retriggers the ref callback and
@@ -791,6 +806,20 @@ export default function CalendarScreen({ navigation, route }) {
                     ) : null}
                   </TouchableOpacity>
                 );
+                // If the cell has a draggable activity, wrap in a
+                // GestureDetector so long-press + pan moves it. The
+                // detector wraps the cell so the day's onPress (tap to
+                // select) still fires for normal taps. The drag gesture
+                // is `activateAfterLongPress(350)` so a quick tap won't
+                // accidentally start a drag.
+                return cellDragGesture ? (
+                  <GestureDetector
+                    key={`gd-${year}-${month}-${wi}-${di}`}
+                    gesture={cellDragGesture}
+                  >
+                    {cellInner}
+                  </GestureDetector>
+                ) : cellInner;
               })}
             </View>
           ))}
@@ -809,6 +838,20 @@ export default function CalendarScreen({ navigation, route }) {
             mouse — on real devices it only flashes during scroll, but
             turning it off entirely avoids the simulator artefact and
             looks cleaner regardless. */}
+        {/* KeyboardAvoidingView wrapping the scroll list AND the review
+            panel below. This is the reliable pattern for "absolute-bottom
+            input + scrollable content above" — the KAV treats the
+            wrapped column as one unit and pads its own bottom when the
+            keyboard rises, so the scroll above shrinks and the panel
+            below sits exactly at the keyboard's top edge. The previous
+            sibling-only KAV (which wrapped just the panel) failed
+            because nothing was using flex:1 inside it, so padding had
+            nowhere to push. */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? bottomInset : (StatusBar.currentHeight ?? 0)}
+          style={{ flex: 1 }}
+        >
         <GHScrollView
           style={s.activityList}
           scrollEnabled={!dragActivity}
@@ -997,13 +1040,11 @@ export default function CalendarScreen({ navigation, route }) {
           <View style={{ height: 24 + bottomInset }} />
         </GHScrollView>
 
-        {/* Review mode bottom panel */}
+        {/* Review mode bottom panel — wrapped in a plain View now; the
+            outer KeyboardAvoidingView (around the GHScrollView above)
+            handles keyboard avoidance for the whole column. */}
         {reviewMode && changeDiff && (
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : (StatusBar.currentHeight ?? 0)}
-            style={s.reviewPanel}
-          >
+          <View style={s.reviewPanel}>
             {/* Inline chat messages */}
             {showReviewChat && reviewMessages.length > 0 && (
               <ScrollView
@@ -1060,8 +1101,10 @@ export default function CalendarScreen({ navigation, route }) {
                 <Text style={s.acceptBtnText}>Accept changes</Text>
               </TouchableOpacity>
             </View>
-          </KeyboardAvoidingView>
+          </View>
         )}
+        </KeyboardAvoidingView>
+        {/* /outer KeyboardAvoidingView wrapping GHScrollView + reviewPanel */}
 
         {/* Floating drag ghost — follows the finger during a drag and
             renders a shadowed copy of the activity so the user can see

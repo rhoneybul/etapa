@@ -713,8 +713,28 @@ export default function HomeScreen({ navigation, route }) {
     // want" → PlanSelection). The legacy three-card layout is gone — its
     // role is now covered by PlanSelection which renders the same cards
     // from either path of the welcome.
+    //
+    // CRITICAL: render <OnboardingTour /> here too. Previously the tour
+    // was only mounted in the populated-Home branch (~line 2350), which
+    // meant new users never saw it — they hit the empty-state early
+    // return BEFORE the tour element rendered, then by the time they
+    // came back from plan creation `initialLoadDone.current` had already
+    // flipped true and the gate was closed. Surfacing the tour as a
+    // sibling here means it fires the moment a brand-new user lands on
+    // Home, on top of the Welcome screen, which is exactly when "first
+    // login" is. Tour is a Modal so it stacks above WelcomeScreen
+    // without breaking layout.
     return (
-      <WelcomeScreen navigation={navigation} firstName={firstName} />
+      <>
+        <WelcomeScreen navigation={navigation} firstName={firstName} />
+        <OnboardingTour
+          visible={showOnboarding}
+          onComplete={async () => {
+            setShowOnboarding(false);
+            try { await setOnboardingDone(); } catch {}
+          }}
+        />
+      </>
     );
   }
 
@@ -798,6 +818,43 @@ export default function HomeScreen({ navigation, route }) {
   const allPlanActivities = activePlan?.activities || [];
   const todayActivities = allPlanActivities.filter(matchesToday);
   const tomorrowActivities = allPlanActivities.filter(matchesTomorrow);
+
+  // Build an array of the next N days with their primary activity (if
+  // any) for the new horizontal-scroll Today/Tomorrow rail. Replaces
+  // the separate todayHero + tomorrowSection blocks: instead of two
+  // cards stacked vertically, the user now horizontally scrolls
+  // through TODAY → TOMORROW → next-day → next-day. The first card is
+  // the Today card (still gets the prominent CTAs); subsequent cards
+  // are compact preview cards. Length 5 covers today + the next four
+  // days, which is enough to read "the rest of this week" without
+  // pulling in a 7-day grid.
+  const UPCOMING_DAY_COUNT = 5;
+  const upcomingDays = (() => {
+    if (!activePlan?.startDate) return [];
+    const days = [];
+    const now = new Date();
+    now.setHours(12, 0, 0, 0);
+    const sameDate = (d, t) =>
+      d.getFullYear() === t.getFullYear()
+      && d.getMonth() === t.getMonth()
+      && d.getDate() === t.getDate();
+    for (let i = 0; i < UPCOMING_DAY_COUNT; i++) {
+      const target = new Date(now);
+      target.setDate(target.getDate() + i);
+      const dayActivities = allPlanActivities.filter(a => {
+        if (a.dayOfWeek == null || a.week == null) return false;
+        return sameDate(getActivityDate(activePlan.startDate, a.week, a.dayOfWeek), target);
+      });
+      const primary = dayActivities.find(a => a.type === 'ride') || dayActivities[0] || null;
+      const eyebrow = i === 0
+        ? 'TODAY'
+        : i === 1
+          ? 'TOMORROW'
+          : target.toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase();
+      days.push({ date: target, primary, eyebrow, isToday: i === 0 });
+    }
+    return days;
+  })();
 
   const todayDateStr = activePlan?.startDate ? getDayDateStr(activePlan.startDate, realTodayWeek, todayIdx) : null;
   const todayStravaRides = todayDateStr
@@ -1028,6 +1085,34 @@ export default function HomeScreen({ navigation, route }) {
     );
   };
 
+  // Hoisted "+ New plan" handler so both the full empty-state button
+  // and the compact "+" in the YOUR PLANS header share identical
+  // behaviour: weekly plan-limit guard → confirm dialog → navigate.
+  // Previously this lived inline in the JSX.
+  const handleNewPlanPress = () => {
+    if (planLimits && !planLimits.unlimited && planLimits.remaining === 0) {
+      Alert.alert(
+        'Weekly plan limit reached',
+        `You've generated ${planLimits.used} of ${planLimits.limit} plans in the last 7 days. The count resets as individual plans age out. If you need more, contact support.`,
+        [{ text: 'OK' }],
+      );
+      return;
+    }
+    if (planLimits && !planLimits.unlimited) {
+      const after = Math.max(0, planLimits.remaining - 1);
+      Alert.alert(
+        'Create a new plan?',
+        `This will use 1 of your ${planLimits.limit} plans this week. You'll have ${after} left after this.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Create plan', onPress: () => navigation.navigate('PlanSelection') },
+        ],
+      );
+      return;
+    }
+    navigation.navigate('PlanSelection');
+  };
+
   const handlePlanLongPress = (targetPlan, targetGoal) => {
     const planName = targetPlan.name || targetGoal?.eventName || (targetGoal?.targetDistance ? `${targetGoal.targetDistance} km plan` : 'this plan');
     Alert.alert(
@@ -1228,46 +1313,34 @@ export default function HomeScreen({ navigation, route }) {
               moment of creation so the user sees it exactly when it
               matters. If they've already hit the limit, same dialog path
               but with a different tone. */}
-          <TouchableOpacity
-            style={[s.newPlanBtn, planLimits && !planLimits.unlimited && planLimits.remaining === 0 && { opacity: 0.5 }]}
-            onPress={() => {
-              // Blocked — already out of plans this week.
-              if (planLimits && !planLimits.unlimited && planLimits.remaining === 0) {
-                Alert.alert(
-                  'Weekly plan limit reached',
-                  `You've generated ${planLimits.used} of ${planLimits.limit} plans in the last 7 days. The count resets as individual plans age out. If you need more, contact support.`,
-                  [{ text: 'OK' }],
-                );
-                return;
-              }
-              // Confirm — "are you sure?" style dialog that also tells the
-              // user what this will cost them against their weekly quota.
-              // Users with unlimited plans bypass the confirm entirely
-              // (there's nothing to warn them about).
-              if (planLimits && !planLimits.unlimited) {
-                const after = Math.max(0, planLimits.remaining - 1);
-                Alert.alert(
-                  'Create a new plan?',
-                  `This will use 1 of your ${planLimits.limit} plans this week. You'll have ${after} left after this.`,
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Create plan', onPress: () => navigation.navigate('PlanSelection') },
-                  ],
-                );
-                return;
-              }
-              navigation.navigate('PlanSelection');
-            }}
-            activeOpacity={0.8}
-          >
-            <Text style={s.newPlanBtnPlus}>+</Text>
-            <Text style={s.newPlanBtnText}>New plan</Text>
-          </TouchableOpacity>
+          {/* "+ New plan" — full-pill button only when the user has NO
+              plans yet (empty state, biggest CTA on the screen). Once
+              they have a plan, the action moves to a small "+" icon
+              inside the YOUR PLANS header row to save vertical space.
+              The handler itself is hoisted to handleNewPlanPress so
+              both surfaces share identical behaviour (limit warning,
+              confirm dialog, navigation). */}
+          {plans.length === 0 && (
+            <TouchableOpacity
+              style={[s.newPlanBtn, planLimits && !planLimits.unlimited && planLimits.remaining === 0 && { opacity: 0.5 }]}
+              onPress={handleNewPlanPress}
+              activeOpacity={0.8}
+            >
+              <Text style={s.newPlanBtnPlus}>+</Text>
+              <Text style={s.newPlanBtnText}>New plan</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Plan tabs — always visible, scrollable */}
           {plans.length > 0 && (
             <View>
-              {/* Header row: label + dots */}
+              {/* Header row: label + dots + "+ new plan" icon button.
+                  The standalone full-pill "New plan" button above this
+                  was eating ~60pt of vertical space on every load —
+                  ALL users have at least one plan once they're past
+                  the empty state, so it was permanent chrome. Compact
+                  icon button here keeps the action one tap away
+                  without the weight. */}
               <View style={s.planTabsHeader}>
                 <Text style={s.planTabsLabel}>YOUR PLANS</Text>
                 {plans.length > 1 && (
@@ -1278,6 +1351,14 @@ export default function HomeScreen({ navigation, route }) {
                     <Text style={s.planDotsHint}>swipe {'\u00B7'} hold to manage</Text>
                   </View>
                 )}
+                <TouchableOpacity
+                  onPress={handleNewPlanPress}
+                  style={[s.newPlanIconBtn, planLimits && !planLimits.unlimited && planLimits.remaining === 0 && { opacity: 0.5 }]}
+                  hitSlop={HIT}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons name="plus" size={18} color={colors.primary} />
+                </TouchableOpacity>
               </View>
               {/* Single plan = no horizontal scroll. The ScrollView was
                   letting the card drift off-screen when the title was
@@ -1468,16 +1549,110 @@ export default function HomeScreen({ navigation, route }) {
               the week list to drop the activity. The inline top banner
               disappeared behind the fold during a drag. */}
 
-          {/* ── Today hero card ─────────────────────────────────────────────
-              The first thing a returning user should see: "here's what you're
-              doing today." Strong CTA to open the session, secondary CTA to
-              ask the coach. Three states: active ride, rest day, done.
-              Renders when the plan has started OR when the user has moved
-              an activity to today (pre-plan-start) — the old gate hid
-              moved-to-today sessions. The "Rest day" fallback only shows
-              once the plan is running; pre-plan-start users shouldn't
-              see a Rest Day card for every day before their plan begins. */}
-          {(planHasStarted || todayActivities.length > 0) && (() => {
+          {/* ── Upcoming days rail (Today + Tomorrow + a few more) ─────────
+              Horizontal scroll containing the next 5 days. The first
+              card (Today) is the hero — prominent View Details / Ask
+              Coach CTAs. The rest are compact preview cards showing
+              just session title + meta. Tap any card → ActivityDetail.
+              Replaces what was previously two separate vertical
+              sections (Today hero + Tomorrow preview), saving
+              ~150-200pt of vertical home-screen space. */}
+          {(planHasStarted || todayActivities.length > 0 || tomorrowActivities.length > 0) && (() => {
+            const coach = getCoach(activePlanConfig?.coachId);
+            const coachFirstName = (coach?.name || 'your coach').split(' ')[0];
+            const cardWidth = Math.min(Dimensions.get('window').width - 56, 320);
+
+            const renderUpcomingCard = (day, idx) => {
+              const isToday = day.isToday;
+              const a = day.primary;
+              const isRest = !a;
+              const isDone = !!a?.completed;
+              const metaParts = [];
+              if (a?.distanceKm) metaParts.push(formatDistance(a.distanceKm));
+              if (a?.durationMins) metaParts.push(`${a.durationMins} min`);
+              if (a?.effort) metaParts.push(a.effort);
+              const meta = metaParts.join(' \u00B7 ');
+
+              return (
+                <TouchableOpacity
+                  key={idx}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    if (a) navigation.navigate('ActivityDetail', { activityId: a.id });
+                  }}
+                  style={[
+                    s.upcomingCard,
+                    { width: cardWidth, marginRight: idx === UPCOMING_DAY_COUNT - 1 ? 20 : 10 },
+                    isToday && s.upcomingCardToday,
+                    isDone && isToday && s.todayHeroDone,
+                  ]}
+                >
+                  <View style={s.upcomingCardHeader}>
+                    <Text style={[s.upcomingCardLabel, isToday && s.upcomingCardLabelToday]}>{day.eyebrow}</Text>
+                    {isDone && (
+                      <View style={s.todayHeroDoneBadge}>
+                        <Text style={s.todayHeroDoneBadgeText}>{'\u2713'} DONE</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={s.upcomingCardTitle} numberOfLines={2}>
+                    {isRest ? 'Rest day' : a.title}
+                  </Text>
+                  <Text style={s.upcomingCardMeta} numberOfLines={1}>
+                    {isRest
+                      ? 'Recovery is training too.'
+                      : meta}
+                  </Text>
+                  {/* Today-only: keep the prominent CTAs from the
+                      previous Today hero so the primary action is
+                      one tap away (open session detail / ask the
+                      coach). On other days, just the chevron-style
+                      tap target is enough. */}
+                  {isToday && (
+                    <View style={s.upcomingCardActions}>
+                      {!isRest && (
+                        <TouchableOpacity
+                          style={[s.todayHeroCta, isDone && s.todayHeroCtaDone]}
+                          onPress={() => navigation.navigate('ActivityDetail', { activityId: a.id })}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={s.todayHeroCtaText}>View details</Text>
+                          <Text style={s.todayHeroCtaArrow}>{'\u203A'}</Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        style={s.todayHeroCoachBtn}
+                        onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={s.todayHeroCoachBtnText}>Ask {coachFirstName}</Text>
+                        {isRest && <Text style={s.todayHeroCoachBtnArrow}>{'\u203A'}</Text>}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            };
+
+            return (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingLeft: 20, paddingVertical: 4 }}
+                style={{ marginBottom: 16 }}
+                snapToAlignment="start"
+                decelerationRate="fast"
+                snapToInterval={cardWidth + 10}
+              >
+                {upcomingDays.map(renderUpcomingCard)}
+              </ScrollView>
+            );
+          })()}
+
+          {/* Legacy todayHero block — left commented as a fallback to
+              restore the old layout if the rail above causes issues.
+              Delete after a release of bake-time. */}
+          {false && (planHasStarted || todayActivities.length > 0) && (() => {
             const primary = todayActivities.find(a => a.type === 'ride') || todayActivities[0] || null;
             const coach = getCoach(activePlanConfig?.coachId);
             const coachFirstName = (coach?.name || 'your coach').split(' ')[0];
@@ -2301,7 +2476,16 @@ const s = StyleSheet.create({
   //  lives as an Alert at the moment of creation, not an always-on hint.)
 
   // Plan tabs
-  planTabsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 10 },
+  planTabsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 10, gap: 12 },
+  // Compact "+" icon button in the YOUR PLANS header — replaces the
+  // standalone full-pill "+ New plan" button for users who already
+  // have at least one plan.
+  newPlanIconBtn: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: 'rgba(232,69,139,0.10)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.30)',
+    alignItems: 'center', justifyContent: 'center',
+  },
   planTabsLabel: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 },
   planDots: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   planDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
@@ -2457,6 +2641,38 @@ const s = StyleSheet.create({
   // Magenta-accented card that shows the user's session for today at the
   // top of the screen. This is the "do this now" moment — CTA is deliberately
   // loud and the coach ask is a clear second action.
+  // ── Upcoming-day cards (horizontal rail) ──────────────────────────
+  // First card (today) gets the pink accent border + slightly stronger
+  // background. Subsequent cards are quieter previews.
+  upcomingCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  upcomingCardToday: {
+    borderColor: 'rgba(232,69,139,0.35)',
+    backgroundColor: 'rgba(232,69,139,0.05)',
+  },
+  upcomingCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  upcomingCardLabel: {
+    fontSize: 10, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase',
+  },
+  upcomingCardLabelToday: { color: colors.primary },
+  upcomingCardTitle: {
+    fontSize: 17, fontWeight: '600', fontFamily: FF.semibold, color: colors.text,
+    lineHeight: 22, marginBottom: 4,
+  },
+  upcomingCardMeta: {
+    fontSize: 12, fontFamily: FF.regular, color: colors.textMid, lineHeight: 17,
+    marginBottom: 4,
+  },
+  upcomingCardActions: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10,
+  },
+
   todayHero: {
     marginHorizontal: 16, marginBottom: 12,
     backgroundColor: colors.surface,

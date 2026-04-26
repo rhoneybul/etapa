@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1700" width="800" height="1700">
+  <!-- Promo: guided-setup landing step. Frames the new Plan Picker
+       intake as "guided" — the copy above the phone is marketing,
+       the copy inside the phone is the actual in-app strings
+       (verbatim from PlanPickerScreen.js step 0). -->
+  <defs>
+    <linearGradient id="bg-guide-1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1A0F15"/>
+      <stop offset="100%" stop-color="#05030A"/>
+    </linearGradient>
+    <linearGradient id="phone-bg-1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0E0E10"/>
+      <stop offset="100%" stop-color="#07070A"/>
+    </linearGradient>
+    <clipPath id="phone-clip-1">
+      <rect x="175" y="530" width="450" height="1050" rx="54" ry="54"/>
+    </clipPath>
+  </defs>
+
+  <rect width="800" height="1700" fill="url(#bg-guide-1)"/>
+
+  <!-- Marketing eyebrow -->
+  <text x="400" y="120" font-family="Poppins, 'Helvetica Neue', Arial, sans-serif"
+        font-weight="600" font-size="22" fill="#E8458B" text-anchor="middle"
+        letter-spacing="6">GUIDED SETUP</text>
+
+  <!-- Marketing headline -->
+  <text x="400" y="210" font-family="Poppins, 'Helvetica Neue', Arial, sans-serif"
+        font-weight="700" font-size="56" fill="#FFFFFF" text-anchor="middle"
+        letter-spacing="-1">We'll point you</text>
+  <text x="400" y="278" font-family="Poppins, 'Helvetica Neue', Arial, sans-serif"
+        font-weight="700" font-size="56" fill="#FFFFFF" text-anchor="middle"
+        letter-spacing="-1">at the plan that fits.</text>
+
+  <!-- Supporting line -->
+  <text x="400" y="350" font-family="Poppins, 'Helvetica Neue', Arial, sans-serif"
+        font-weight="400" font-size="24" fill="#B8B5BE" text-anchor="middle">
+    Three questions, thirty seconds, your plan.
+  </text>
+
+  <!-- Faint pink glow behind the phone -->
+  <rect x="160" y="515" width="480" height="1080" rx="62" ry="62"
+        fill="none" stroke="rgba(232,69,139,0.22)" stroke-width="1.5"/>
+
+  <!-- Phone outer frame -->
+  <rect x="170" y="525" width="460" height="1060" rx="58" ry="58"
+        fill="#1C1A1E" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+
+  <!-- Phone screen -->
+  <rect x="175" y="530" width="450" height="1050" rx="54" ry="54" fill="url(#phone-bg-1)"/>
+
+  <!-- Content inside phone — clipped so it never bleeds -->
+  <g clip-path="url(#phone-clip-1)">
+    <!-- Progress dots (5 steps, first one active/pink) -->
+    <g transform="translate(0, 600)">
+      <circle cx="325" cy="0" r="5" fill="#E8458B"/>
+      <circle cx="345" cy="0" r="4" fill="rgba(255,255,255,0.18)"/>
+      <circle cx="365" cy="0" r="4" fill="rgba(255,255,255,0.18)"/>
+      <circle cx="385" cy="0" r="4" fill="rgba(255,255,255,0.18)"/>
+      <circle cx="405" cy="0" r="4" fill="rgba(255,255,255,0.18)"/>
+      <circle cx="425" cy="0" r="4" fill="rgba(255,255,255,0.18)"/>
+    </g>
+
+    <!-- Back + Skip row -->
+    <text x="220" y="606" font-family="Poppins, Arial, sans-serif"
+          font-weight="400" font-size="20" fill="rgba(255,255,255,0.6)">‹ Back</text>
+    <text x="580" y="606" font-family="Poppins, Arial, sans-serif"
+          font-weight="500" font-size="20" fill="#E8458B" text-anchor="end">Skip</text>
+
+    <!-- Eyebrow -->
+    <text x="220" y="700" font-family="Poppins, Arial, sans-serif"
+          font-weight="600" font-size="16" fill="#E8458B"
+          letter-spacing="3">LET'S GO</text>
+
+    <!-- Title — wrapped onto two lines -->
+    <text x="220" y="770" font-family="Poppins, Arial, sans-serif"
+          font-weight="700" font-size="38" fill="#FFFFFF" letter-spacing="-0.5">Let's find the right</text>
+    <text x="220" y="815" font-family="Poppins, Arial, sans-serif"
+          font-weight="700" font-size="38" fill="#FFFFFF" letter-spacing="-0.5">plan for you</text>
+
+    <!-- Body copy — three lines -->
+    <text x="220" y="890" font-family="Poppins, Arial, sans-serif"
+          font-weight="400" font-size="20" fill="#9B98A3">Three quick questions,</text>
+    <text x="220" y="920" font-family="Poppins, Arial, sans-serif"
+          font-weight="400" font-size="20" fill="#9B98A3">about 30 seconds — we'll point</text>
+    <text x="220" y="950" font-family="Poppins, Arial, sans-serif"
+          font-weight="400" font-size="20" fill="#9B98A3">you at the kind of plan that fits.</text>
+    <text x="220" y="988" font-family="Poppins, Arial, sans-serif"
+          font-weight="400" font-size="20" fill="#9B98A3">You can always switch later.</text>
+
+    <!-- CTA — pink pill button "Get started" -->
+    <rect x="220" y="1420" width="360" height="60" rx="30" fill="#E8458B"/>
+    <text x="400" y="1459" font-family="Poppins, Arial, sans-serif"
+          font-weight="600" font-size="20" fill="#FFFFFF" text-anchor="middle">Get started</text>
+  </g>
+</svg>
