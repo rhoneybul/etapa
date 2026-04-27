@@ -104,7 +104,9 @@ function getWeekFlags(weekVolumes, phases, plan) {
 const RIDE_TYPE_COLORS = {
   recovery:   '#85B7EB',      // mid blue — easiest, cool
   endurance:  '#F472B6',      // bright magenta-pink — aerobic base (pops on dark)
-  tempo:      '#D85A30',      // coral — moderate intensity
+  tempo:      '#185FA5',      // deep blue — moderate intensity (replaced
+                              //  the previous coral/orange which Rob found
+                              //  jarring in the otherwise pink/blue palette)
   intervals:  '#993556',      // deep raspberry — high intensity
   indoor:     '#378ADD',      // vivid blue — distinct indoor
   strength:   '#7F77DD',      // purple — different modality
@@ -129,23 +131,17 @@ function getWeekVolume(plan, weekNum) {
 
   // Break down km by session category for stacked bars.
   //
-  // CRITICAL: every kilometre that contributes to totalKm MUST also
-  // land in a recognised bucket, otherwise the rendered bar height
-  // (sized to totalKm) is taller than the sum of the segments and
-  // the bottom of the bar shows the dark track — the "bars are only
-  // half-filled" bug. Previously, ride subTypes like `long`, `hills`,
-  // `threshold`, `sweet_spot` went into their own buckets which were
-  // then filtered out by the typeOrder allow-list, silently dropping
-  // their km from the visualisation.
-  //
-  // Bucketing rules:
-  //   - strength            → 'strength'
-  //   - ride.subType in known set → that subType's bucket
-  //   - ride with unknown / no subType → 'endurance' (default aerobic)
-  //   - cross-training (run, swim, hike, row, …) → 'endurance' (it's
-  //     aerobic distance work, colour as endurance for honesty)
+  // Bucket BOTH km AND minutes per type — the chart toggles between
+  // volume (km) and time (mins), and we need the same per-type
+  // breakdown for either axis. Without minute buckets, the time
+  // toggle would have no segments to colour. CRITICAL: every value
+  // that contributes to totalKm/totalMins MUST also land in a
+  // recognised bucket, otherwise the rendered bar height is taller
+  // than the sum of the segments and the bottom of the bar shows
+  // the dark track. Unknown ride subTypes route to endurance.
   const KNOWN_RIDE_SUBTYPES = new Set(['endurance', 'tempo', 'intervals', 'indoor', 'recovery']);
-  const byType = {};
+  const byTypeKm = {};
+  const byTypeMin = {};
   acts.forEach(a => {
     let key;
     if (a.type === 'strength') {
@@ -155,20 +151,34 @@ function getWeekVolume(plan, weekNum) {
     } else {
       key = 'endurance';
     }
-    const km = a.distanceKm || 0;
-    if (!byType[key]) byType[key] = 0;
-    byType[key] += km;
+    byTypeKm[key] = (byTypeKm[key] || 0) + (a.distanceKm || 0);
+    byTypeMin[key] = (byTypeMin[key] || 0) + (a.durationMins || 0);
   });
 
-  // Convert to ordered segments array. Every bucket that has km is
-  // guaranteed to be in typeOrder now, so the filter below only drops
-  // empty buckets — never a real km contribution.
-  const typeOrder = ['endurance', 'tempo', 'intervals', 'indoor', 'recovery', 'strength'];
-  const segments = typeOrder
-    .filter(t => byType[t] > 0)
-    .map(t => ({ type: t, km: byType[t], color: RIDE_TYPE_COLORS[t] || RIDE_TYPE_COLORS.other }));
+  return {
+    totalKm,
+    totalMins,
+    rideCount,
+    strengthCount,
+    total: acts.length,
+    byTypeKm,
+    byTypeMin,
+  };
+}
 
-  return { totalKm, totalMins, rideCount, strengthCount, total: acts.length, segments };
+// Build the colour-segment array for a single week given the active
+// chart mode ('km' or 'time'). Centralised so both the legend and the
+// per-bar render use the exact same segment computation.
+function getWeekSegments(weekVolume, mode) {
+  const buckets = mode === 'time' ? weekVolume.byTypeMin : weekVolume.byTypeKm;
+  const typeOrder = ['endurance', 'tempo', 'intervals', 'indoor', 'recovery', 'strength'];
+  return typeOrder
+    .filter(t => (buckets[t] || 0) > 0)
+    .map(t => ({
+      type: t,
+      value: buckets[t],
+      color: RIDE_TYPE_COLORS[t] || RIDE_TYPE_COLORS.other,
+    }));
 }
 
 export default function PlanOverviewScreen({ navigation, route }) {
@@ -181,6 +191,10 @@ export default function PlanOverviewScreen({ navigation, route }) {
   const [showAddRecurring, setShowAddRecurring] = useState(false);
   const [recurringForm, setRecurringForm] = useState({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' });
   const [stravaActivities, setStravaActivities] = useState([]);
+  // Chart axis mode — 'km' shows weekly volume in kilometres,
+  // 'time' shows weekly minutes. Toggled by the segmented control
+  // above the chart. Persists for the screen lifetime only.
+  const [chartMode, setChartMode] = useState('km');
 
   const load = useCallback(async () => {
     const plans = await getPlans();
@@ -243,6 +257,27 @@ export default function PlanOverviewScreen({ navigation, route }) {
   const maxKm = Math.max(...weekVolumes.map(v => v.totalKm), 1);
   const weekFlags = getWeekFlags(weekVolumes, phases, plan);
 
+  // Mode-aware derivations for the chart. When the user toggles
+  // 'time', `chartTotal` returns minutes per week and `chartMax` is
+  // the tallest minutes-week — bar heights then scale by minutes
+  // instead of km. Segments come from the matching byTypeMin /
+  // byTypeKm bucket via getWeekSegments().
+  const chartTotal = (v) => (chartMode === 'time' ? v.totalMins : v.totalKm);
+  const chartMax = Math.max(...weekVolumes.map(chartTotal), 1);
+  const formatChartValue = (n) => {
+    if (chartMode === 'time') {
+      // Convert minutes → "Xh" or "Xh Ym" for compactness above bars.
+      const total = Math.round(n);
+      if (total >= 60) {
+        const h = Math.floor(total / 60);
+        const m = total % 60;
+        return m > 0 ? `${h}h${m}` : `${h}h`;
+      }
+      return `${total}m`;
+    }
+    return `${Math.round(n)}`;
+  };
+
   const now = new Date();
   const startParts = plan.startDate.split('T')[0].split('-');
   const start = new Date(Number(startParts[0]), Number(startParts[1]) - 1, Number(startParts[2]), 12, 0, 0);
@@ -298,11 +333,35 @@ export default function PlanOverviewScreen({ navigation, route }) {
 
             {/* Volume chart — stacked by ride type */}
             <View style={s.chartCard}>
-              <Text style={s.chartTitle}>Weekly volume</Text>
+              <View style={s.chartHeader}>
+                <Text style={s.chartTitle}>Weekly {chartMode === 'time' ? 'time' : 'volume'}</Text>
+                {/* Volume / Time toggle. Tiny segmented control in the
+                    chart header so users can swap axis without leaving
+                    the screen. State is screen-local — switches back
+                    to km on next mount. */}
+                <View style={s.chartToggle}>
+                  <TouchableOpacity
+                    style={[s.chartToggleBtn, chartMode === 'km' && s.chartToggleBtnActive]}
+                    onPress={() => setChartMode('km')}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[s.chartToggleText, chartMode === 'km' && s.chartToggleTextActive]}>km</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.chartToggleBtn, chartMode === 'time' && s.chartToggleBtnActive]}
+                    onPress={() => setChartMode('time')}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[s.chartToggleText, chartMode === 'time' && s.chartToggleTextActive]}>time</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
               <View style={s.chartArea}>
                 {weekVolumes.map((v, i) => {
-                  const totalH = maxKm > 0 ? Math.max(4, (v.totalKm / maxKm) * 100) : 4;
+                  const total = chartTotal(v);
+                  const totalH = chartMax > 0 ? Math.max(4, (total / chartMax) * 100) : 4;
                   const isCurrent = i + 1 === currentWeek;
+                  const segments = getWeekSegments(v, chartMode);
                   return (
                     <TouchableOpacity
                       key={i}
@@ -310,31 +369,35 @@ export default function PlanOverviewScreen({ navigation, route }) {
                       onPress={() => navigation.navigate('WeekView', { week: i + 1, planId: plan.id })}
                       activeOpacity={0.7}
                     >
-                      {v.totalKm > 0 && (
-                        <Text style={[s.chartBarLabel, isCurrent && { color: '#E8458B' }]}>
-                          {Math.round(v.totalKm)}
+                      {total > 0 && (
+                        <Text
+                          style={[s.chartBarLabel, isCurrent && { color: '#E8458B' }]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                        >
+                          {formatChartValue(total)}
                         </Text>
                       )}
                       <View style={[s.chartBarStack, { height: totalH }, isCurrent && s.chartBarStackCurrent]}>
-                        {v.segments.length > 0 ? (() => {
+                        {segments.length > 0 ? (() => {
                           // Render each segment, then a "remainder"
                           // catch-all in the dominant colour if for any
-                          // reason segments don't sum to totalKm. This
+                          // reason segments don't sum to total. This
                           // is the belt-and-braces fix for the
                           // "bars are half-filled" bug — the bar's
-                          // height is sized to totalKm so the segments
+                          // height is sized to total so the segments
                           // MUST cover it visually, even if the data
                           // upstream had a category mismatch.
-                          const segmentSum = v.segments.reduce((s, seg) => s + seg.km, 0);
-                          const remainder = Math.max(0, v.totalKm - segmentSum);
-                          const dominant = v.segments.reduce(
-                            (best, seg) => (seg.km > best.km ? seg : best),
-                            v.segments[0],
+                          const segmentSum = segments.reduce((s, seg) => s + seg.value, 0);
+                          const remainder = Math.max(0, total - segmentSum);
+                          const dominant = segments.reduce(
+                            (best, seg) => (seg.value > best.value ? seg : best),
+                            segments[0],
                           );
                           return (
                             <>
-                              {v.segments.map((seg, si) => {
-                                const segH = v.totalKm > 0 ? (seg.km / v.totalKm) * totalH : 0;
+                              {segments.map((seg, si) => {
+                                const segH = total > 0 ? (seg.value / total) * totalH : 0;
                                 return (
                                   <View
                                     key={si}
@@ -350,7 +413,7 @@ export default function PlanOverviewScreen({ navigation, route }) {
                                 <View
                                   style={{
                                     width: '100%',
-                                    height: (remainder / v.totalKm) * totalH,
+                                    height: (remainder / total) * totalH,
                                     backgroundColor: dominant.color,
                                   }}
                                 />
@@ -365,13 +428,16 @@ export default function PlanOverviewScreen({ navigation, route }) {
                           <View style={{ width: '100%', height: totalH, backgroundColor: 'rgba(244,114,182,0.55)', borderRadius: 3 }} />
                         )}
                       </View>
-                      {/* Strava actual km label */}
-                      {(() => {
+                      {/* Strava actual km label — only meaningful in km
+                          mode. In time mode, hide it (Strava activities
+                          may have durations too but we'd need a separate
+                          mapping; out of scope for this toggle). */}
+                      {chartMode === 'km' && (() => {
                         const weekStrava = getStravaActivitiesForWeek(stravaActivities, i + 1);
                         const actualKm = Math.round(weekStrava.reduce((s, a) => s + (a.distanceKm || 0), 0));
                         if (actualKm <= 0) return null;
                         return (
-                          <Text style={s.stravaBarLabel}>{actualKm}</Text>
+                          <Text style={s.stravaBarLabel} numberOfLines={1}>{actualKm}</Text>
                         );
                       })()}
                     </TouchableOpacity>
@@ -387,9 +453,19 @@ export default function PlanOverviewScreen({ navigation, route }) {
                   const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
                   const dateLabel = `${monthNames[weekStart.getMonth()]} ${weekStart.getDate()}`;
                   const isCurrent = i + 1 === currentWeek;
+                  // numberOfLines + adjustsFontSizeToFit keep the date
+                  // inside its column so the rightmost label can't
+                  // flow over the chart card edge. Previously "Jul 13"
+                  // (or longer plan dates) could clip past the card.
                   return (
                     <View key={i} style={s.chartDateCol}>
-                      <Text style={[s.chartDateLabel, isCurrent && s.chartDateLabelCurrent]}>{dateLabel}</Text>
+                      <Text
+                        style={[s.chartDateLabel, isCurrent && s.chartDateLabelCurrent]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                      >
+                        {dateLabel}
+                      </Text>
                     </View>
                   );
                 })}
@@ -404,7 +480,13 @@ export default function PlanOverviewScreen({ navigation, route }) {
               <View style={s.chartLegend}>
                 {(() => {
                   const typesUsed = new Set();
-                  weekVolumes.forEach(v => v.segments.forEach(seg => typesUsed.add(seg.type)));
+                  // Build the set from the active mode's segments so the
+                  // legend matches what's actually rendered (e.g. a week
+                  // that has strength duration but no strength km still
+                  // contributes a legend chip in time mode).
+                  weekVolumes.forEach(v =>
+                    getWeekSegments(v, chartMode).forEach(seg => typesUsed.add(seg.type))
+                  );
                   const typeOrder = ['endurance', 'tempo', 'intervals', 'indoor', 'recovery', 'strength'];
                   return typeOrder.filter(t => typesUsed.has(t)).map(t => (
                     <View key={t} style={s.legendItem}>
@@ -648,7 +730,34 @@ const s = StyleSheet.create({
   statLabel: { fontSize: 10, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 },
 
   chartCard: { backgroundColor: colors.surface, marginHorizontal: 16, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border },
-  chartTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 12 },
+  chartHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  chartTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  // km / time segmented control — sits in the chart header, swaps
+  // axis without leaving the screen. Pill background, two button
+  // halves, active half gets the brand-pink fill.
+  chartToggle: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 100,
+    padding: 2,
+  },
+  chartToggleBtn: {
+    paddingHorizontal: 12, paddingVertical: 4,
+    borderRadius: 100,
+  },
+  chartToggleBtnActive: {
+    backgroundColor: colors.primary,
+  },
+  chartToggleText: {
+    fontSize: 11, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.textMuted, letterSpacing: 0.3,
+  },
+  chartToggleTextActive: {
+    color: '#fff',
+  },
   chartArea: { flexDirection: 'row', alignItems: 'flex-end', height: 125, gap: 2 },
   chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
   // Subtle background fill so users can see "0%" vs "100%" even when

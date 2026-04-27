@@ -5,7 +5,7 @@
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, RefreshControl,
   TextInput, KeyboardAvoidingView, Platform, StatusBar, ActivityIndicator, Alert,
   Animated, Image,
 } from 'react-native';
@@ -259,17 +259,24 @@ export default function CoachChatScreen({ navigation, route }) {
           const match = sessions?.find(s => s.planId === p.id && s.weekNum === wn);
           const serverMessages = match?.messages || [];
 
-          // Merge strategy: compare ASSISTANT message counts, not total
-          // length. Assistant messages only come from the server worker
-          // (runCoachChatJob writing to chat_sessions), so they're the
-          // authoritative "real chat happened" signal. Using total
-          // length was wrong: a corrupted server row with only user
-          // messages could match local's length exactly, fall through
-          // to "use local", and leave the user staring at only their
-          // own messages with no coach replies ever showing.
-          const countAssistant = (arr) => arr.filter(m => m?.role === 'assistant').length;
-          const serverAssistants = countAssistant(serverMessages);
-          const localAssistants = countAssistant(localMessages);
+          // Merge strategy: compare COMPLETED ASSISTANT message counts,
+          // not total length. Server only persists FINISHED replies
+          // (runCoachChatJob's append after Claude finishes), so a real
+          // coach reply is the authoritative "this conversation
+          // progressed" signal. We deliberately exclude PENDING local
+          // bubbles from the local count — the "still loading on push
+          // notification tap" bug was caused by counting the placeholder
+          // pending bubble as 1 assistant: when the user backed out
+          // mid-reply and tapped the push, local had [user, pending]
+          // (1 assistant) while server had [user, completed-reply]
+          // (1 assistant) — a tie, fell through to "use local" and the
+          // completed reply got ignored, leaving the user staring at a
+          // forever-spinner. Filtering pending out of local makes the
+          // tie break in server's favour.
+          const countCompletedAssistant = (arr) =>
+            arr.filter(m => m?.role === 'assistant' && !m.pending).length;
+          const serverAssistants = countCompletedAssistant(serverMessages);
+          const localAssistants = countCompletedAssistant(localMessages);
 
           let chosen = null;
           if (serverAssistants > localAssistants) {
@@ -485,12 +492,18 @@ export default function CoachChatScreen({ navigation, route }) {
     };
   }, [weekNum]);
 
-  const handleSend = async () => {
-    if (!input.trim() || sending || !plan) return;
-    const userMsg = { role: 'user', content: input.trim(), ts: Date.now() };
+  // handleSend accepts an optional `textOverride` so the resend
+  // affordance on a failed bubble can fire the same path without
+  // round-tripping through the input field. When `textOverride` is
+  // omitted (the normal Send-button path), we read from input state
+  // and clear it like before.
+  const handleSend = async (textOverride) => {
+    const text = (typeof textOverride === 'string' ? textOverride : input).trim();
+    if (!text || sending || !plan) return;
+    const userMsg = { role: 'user', content: text, ts: Date.now() };
     const updated = [...messages, userMsg];
     const userMsgCount = updated.filter(m => m.role === 'user').length;
-    analytics.events.chatMessageSent({ coachId: planConfig?.coachId || null, messageLength: input.trim().length, messageIndex: userMsgCount, scope: weekNum ? 'week' : 'plan' });
+    analytics.events.chatMessageSent({ coachId: planConfig?.coachId || null, messageLength: text.length, messageIndex: userMsgCount, scope: weekNum ? 'week' : 'plan' });
 
     // Fire a conversation-depth milestone when user crosses 2, 4, 6, 10 turns.
     // Tells us whether coach chats go deep (multi-turn) or stay shallow.
@@ -505,7 +518,9 @@ export default function CoachChatScreen({ navigation, route }) {
     // Optimistic user msg goes in immediately; the pending assistant bubble
     // is appended further down so we can tag it with its jobId at that point.
     setMessages(updated);
-    setInput('');
+    // Only clear the composer when we read from it. A resend keeps any
+    // half-typed message the user has staged.
+    if (typeof textOverride !== 'string') setInput('');
     setSending(true);
 
     // Helper: the pending bubble block below assumes `messages` starts from
@@ -929,6 +944,97 @@ export default function CoachChatScreen({ navigation, route }) {
     }]);
   };
 
+  // Cancel an in-flight coach reply. Fires when the user taps the
+  // "Cancel" affordance on the pending status strip above the input.
+  // Tells the server to abort the Claude call (so we don't pay for
+  // tokens we'll discard), tears down the local SSE/poll/timeout
+  // resources, and removes the pending bubble from the chat. The
+  // user message stays in place — they may want to edit and resend.
+  const handleCancelInflight = async () => {
+    const pending = messages.filter(m => m.pending);
+    // Drop pending bubbles from view immediately so the cancel feels
+    // instant, even before the server roundtrip.
+    setMessages(prev => prev.filter(m => !m.pending));
+    setSending(false);
+    setPreparingUpdate(false);
+    setLastFailedMsg(null);
+    // Tear down every active job's local resources + ask server to
+    // abort. activeJobsRef holds the closeStream / pollInterval /
+    // timeout for each in-flight job; cancelling them stops the SSE
+    // from re-introducing a bubble after we've removed it.
+    for (const [jobId, resources] of activeJobsRef.current) {
+      try { resources.closeStream?.(); } catch {}
+      if (resources.pollInterval) clearInterval(resources.pollInterval);
+      if (resources.timeout) clearTimeout(resources.timeout);
+      cancelCoachChatJob(jobId).catch(() => {});
+    }
+    activeJobsRef.current.clear();
+    // Belt-and-braces: any pending bubble that already had a jobId
+    // stamped but didn't make it into activeJobsRef (race window)
+    // also gets a cancel call.
+    for (const m of pending) {
+      if (m.jobId) cancelCoachChatJob(m.jobId).catch(() => {});
+    }
+  };
+
+  // Resend the failed/copied message immediately — no detour through
+  // the composer. handleSend has been refactored to accept a text
+  // override exactly for this path.
+  const handleResend = (text) => {
+    if (!text || sending) return;
+    handleSend(text);
+  };
+
+  // Pull-to-refresh on the message list. Re-fetches the chat session
+  // from the server and merges in any new completed coach replies the
+  // local cache hadn't seen yet (e.g. the user backgrounded the app
+  // before the SSE finished, the server's runCoachChatJob completed,
+  // they swiped down to manually pull the reply in).
+  //
+  // Uses the same "exclude pending from the count" merge as the mount
+  // effect so a server reply always wins over a local pending bubble
+  // for the same turn.
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = async () => {
+    if (!plan) return;
+    setRefreshing(true);
+    try {
+      const sessions = await api.chatSessions.list(plan.id);
+      const wn = weekNum || null;
+      const match = sessions?.find(s => s.planId === plan.id && s.weekNum === wn);
+      const serverMessages = match?.messages || [];
+      if (serverMessages.length === 0) return;
+      const countCompletedAssistant = (arr) =>
+        arr.filter(m => m?.role === 'assistant' && !m.pending).length;
+      const serverAssistants = countCompletedAssistant(serverMessages);
+      const localAssistants = countCompletedAssistant(messages);
+      // Only adopt server messages if they have at least as many
+      // completed coach replies as local. This stops a stale server
+      // row from clobbering an in-flight local message; the mount
+      // effect's repair flow handles the more complex pending cases.
+      if (serverAssistants > localAssistants
+          || (serverAssistants === localAssistants && serverMessages.length > messages.length)) {
+        setMessages(serverMessages);
+        AsyncStorage.setItem(chatKey(plan.id, weekNum), JSON.stringify(serverMessages)).catch(() => {});
+        // Re-hydrate the Apply/Dismiss UI from the last persisted
+        // assistant message that carries updatedActivities — same
+        // pattern as the mount effect.
+        const lastAssistantWithUpdate = [...serverMessages].reverse().find(
+          m => m.role === 'assistant' && Array.isArray(m.updatedActivities) && m.updatedActivities.length > 0
+        );
+        if (lastAssistantWithUpdate) {
+          const msgIndex = serverMessages.lastIndexOf(lastAssistantWithUpdate);
+          setPendingUpdate({ activities: lastAssistantWithUpdate.updatedActivities, msgIndex });
+        }
+      }
+    } catch {
+      // Network error — silently fall through. The user pulled to
+      // refresh, didn't get new content, no need to surface an error.
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const handleRetry = () => {
     if (!lastFailedMsg) return;
     // Remove the last failed assistant message and the user message before it
@@ -1002,28 +1108,57 @@ export default function CoachChatScreen({ navigation, route }) {
             showsVerticalScrollIndicator={false}
             onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
             keyboardShouldPersistTaps="handled"
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.primary}
+                colors={[colors.primary]}
+                progressBackgroundColor={colors.surface}
+              />
+            }
           >
-            {/* First-open loading overlay — shows until the mount
-                effect finishes hydrating from AsyncStorage + the server
-                session list. Replaces what was previously a flash of
-                the empty state (suggestion chips) before real messages
-                popped in, which felt like the chat had been wiped.
-                Uses the throbbing pink app-icon (same rhythm the Home
-                splash + CoachChatCard refresh use) so the loading
-                reads as "Etapa" rather than generic iOS. */}
+            {/* First-open skeleton — three placeholder bubbles in the
+                same shape as real messages (coach / user / coach), each
+                with shimmering line placeholders inside. Replaces the
+                throbbing pink app-icon overlay: that read as "the app
+                is loading" when what we actually want is "the
+                conversation is loading". The skeleton communicates
+                "this is a chat, content is on its way" without making
+                the screen flash from icon → empty → messages.
+                Cache-first hydration means returning visitors usually
+                never see this — they get real messages from
+                AsyncStorage on the first paint. Skeleton only shows
+                when there's no cached transcript yet. */}
             {loadingChat && (
-              <View style={s.loadingState}>
-                <View style={s.loadingIconWrap}>
-                  {/* Faint pink outline — matches LoadingSplash exactly
-                      (same 1.5× halo, 22% corner radius, 1px at 0.35
-                      alpha). Replaces the old solid-pink filled box
-                      which read as a heavy "error state" block. */}
-                  <Animated.View style={[s.loadingHalo, { transform: [{ scale: loadingPulse }] }]} />
-                  <Animated.Image
-                    source={require('../../assets/icon.png')}
-                    style={[s.loadingIcon, { transform: [{ scale: loadingPulse }] }]}
-                    resizeMode="contain"
-                  />
+              <View style={s.skeletonWrap}>
+                {/* Coach bubble (left) — eyebrow + 3 lines */}
+                <View style={s.skeletonCoachWrap}>
+                  <Animated.View style={[s.skeletonEyebrow, { opacity: loadingPulse.interpolate({ inputRange: [1, 1.12], outputRange: [0.5, 0.85] }) }]} />
+                  <View style={s.skeletonBubbleCoach}>
+                    <Animated.View style={[s.skeletonLine, { width: '100%', opacity: loadingPulse.interpolate({ inputRange: [1, 1.12], outputRange: [0.5, 0.85] }) }]} />
+                    <Animated.View style={[s.skeletonLine, { width: '85%', opacity: loadingPulse.interpolate({ inputRange: [1, 1.12], outputRange: [0.5, 0.85] }) }]} />
+                    <Animated.View style={[s.skeletonLine, { width: '60%', marginBottom: 0, opacity: loadingPulse.interpolate({ inputRange: [1, 1.12], outputRange: [0.5, 0.85] }) }]} />
+                  </View>
+                </View>
+
+                {/* User bubble (right, pink-tinted) — 2 lines */}
+                <View style={s.skeletonUserWrap}>
+                  <View style={s.skeletonBubbleUser}>
+                    <Animated.View style={[s.skeletonLineUser, { width: '100%', opacity: loadingPulse.interpolate({ inputRange: [1, 1.12], outputRange: [0.5, 0.85] }) }]} />
+                    <Animated.View style={[s.skeletonLineUser, { width: '70%', marginBottom: 0, opacity: loadingPulse.interpolate({ inputRange: [1, 1.12], outputRange: [0.5, 0.85] }) }]} />
+                  </View>
+                </View>
+
+                {/* Coach bubble (left) — eyebrow + 4 lines */}
+                <View style={s.skeletonCoachWrap}>
+                  <Animated.View style={[s.skeletonEyebrow, { opacity: loadingPulse.interpolate({ inputRange: [1, 1.12], outputRange: [0.5, 0.85] }) }]} />
+                  <View style={s.skeletonBubbleCoach}>
+                    <Animated.View style={[s.skeletonLine, { width: '100%', opacity: loadingPulse.interpolate({ inputRange: [1, 1.12], outputRange: [0.5, 0.85] }) }]} />
+                    <Animated.View style={[s.skeletonLine, { width: '95%', opacity: loadingPulse.interpolate({ inputRange: [1, 1.12], outputRange: [0.5, 0.85] }) }]} />
+                    <Animated.View style={[s.skeletonLine, { width: '78%', opacity: loadingPulse.interpolate({ inputRange: [1, 1.12], outputRange: [0.5, 0.85] }) }]} />
+                    <Animated.View style={[s.skeletonLine, { width: '50%', marginBottom: 0, opacity: loadingPulse.interpolate({ inputRange: [1, 1.12], outputRange: [0.5, 0.85] }) }]} />
+                  </View>
                 </View>
               </View>
             )}
@@ -1102,7 +1237,7 @@ export default function CoachChatScreen({ navigation, route }) {
                       }},
                       ...(isUser ? [{
                         text: 'Resend',
-                        onPress: () => setInput(msg.content),
+                        onPress: () => handleResend(msg.content),
                       }] : []),
                       { text: 'Cancel', style: 'cancel' },
                     ];
@@ -1156,12 +1291,14 @@ export default function CoachChatScreen({ navigation, route }) {
                       <Text style={[s.bubbleText, s.bubbleTextUser, s.bubbleUserText]}>{msg.content}</Text>
                       {!msg.pending && msg.content && (
                         <TouchableOpacity
-                          onPress={() => setInput(msg.content)}
+                          onPress={() => handleResend(msg.content)}
                           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                           activeOpacity={0.6}
-                          style={s.bubbleResendIcon}
+                          style={s.bubbleResendBtn}
+                          disabled={sending}
                         >
-                          <MaterialCommunityIcons name="refresh" size={14} color="rgba(255,255,255,0.55)" />
+                          <MaterialCommunityIcons name="refresh" size={12} color="rgba(255,255,255,0.65)" />
+                          <Text style={s.bubbleResendText}>Resend</Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -1256,6 +1393,31 @@ export default function CoachChatScreen({ navigation, route }) {
             </View>
           )}
 
+          {/* Pending status strip — appears the moment a coach reply is
+              in flight and disappears the second it lands. Reassures
+              first-time users that they can leave the screen / app
+              while waiting (we'll fire a push), and gives them an
+              explicit Cancel that aborts the in-flight job + clears
+              the pending bubble. Hidden when there's no pending bubble
+              so the input area stays clean during normal use. */}
+          {messages.some(m => m.pending) && (
+            <View style={s.pendingStatusStrip}>
+              <View style={s.pendingStatusLeft}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={s.pendingStatusText} numberOfLines={2}>
+                  You can leave — we'll notify you when {getCoach(planConfig?.coachId)?.name?.split(' ')[0] || 'your coach'} replies.
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={handleCancelInflight}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                activeOpacity={0.6}
+              >
+                <Text style={s.pendingStatusCancel}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Input bar */}
           <View style={s.inputBar}>
             <TextInput
@@ -1305,34 +1467,55 @@ const s = StyleSheet.create({
   // Empty state
   // First-open loading state — big throbbing Etapa icon + caption,
   // matching the Home splash treatment so the brand moment carries
-  // through every loading state in the app. Wrap is a chunky pink
-  // rounded-square (the app-icon frame) so the silhouette matches
-  // the iOS app icon users see on their home screen.
-  loadingState: {
-    alignItems: 'center', justifyContent: 'center',
-    paddingTop: 80, paddingHorizontal: 20,
+  // (Old loadingState / loadingIcon / loadingHalo styles removed —
+  //  the chat now uses bubble skeletons instead of a throbbing icon.
+  //  See skeleton* styles below.)
+
+  // Bubble skeletons — three placeholder shapes (coach / user / coach)
+  // that sit in the message scroll while the chat hydrates. Each has
+  // the same padding, radius, and asymmetric corner tweak as the
+  // real bubble component so the layout doesn't shift when content
+  // paints in.
+  skeletonWrap: {
+    paddingTop: 8, gap: 14,
   },
-  // Tight in-line loader — small throbbing icon inside a thin pink
-  // outline. Sized so the chat doesn't feel like it's launching a
-  // full-screen splash on every cache miss; with cache-first render
-  // this rarely shows anyway. Reverted from the bigger 72/108pt halo
-  // to a 36/56pt one per Rob's "way too big, smaller and just a
-  // simple basic pink outline" note.
-  loadingIconWrap: {
-    width: 56, height: 56,
-    alignItems: 'center', justifyContent: 'center',
+  skeletonCoachWrap: {
+    alignSelf: 'flex-start', maxWidth: '78%',
   },
-  loadingHalo: {
-    position: 'absolute',
-    width: 56, height: 56,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(232,69,139,0.35)',
+  skeletonUserWrap: {
+    alignSelf: 'flex-end', maxWidth: '70%',
   },
-  loadingIcon: { width: 36, height: 36 },
-  loadingStateText: {
-    fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint,
-    letterSpacing: 0.2,
+  // Faint label placeholder above the coach bubble — stands in for
+  // the "LARS" / coach name eyebrow so layout stays faithful.
+  skeletonEyebrow: {
+    width: 36, height: 8, borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginLeft: 16, marginBottom: 4,
+  },
+  skeletonBubbleCoach: {
+    backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.border,
+    borderRadius: 16, borderBottomLeftRadius: 4,
+    paddingHorizontal: 16, paddingVertical: 12,
+    minWidth: 200,
+  },
+  skeletonBubbleUser: {
+    backgroundColor: 'rgba(232,69,139,0.55)',
+    borderRadius: 16, borderBottomRightRadius: 4,
+    paddingHorizontal: 16, paddingVertical: 12,
+    minWidth: 140,
+  },
+  // Each line inside a bubble — height matches the bubbleText line
+  // height, so 2-3 lines visually equal a real short reply.
+  skeletonLine: {
+    height: 10, borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginBottom: 6,
+  },
+  skeletonLineUser: {
+    height: 10, borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.35)',
+    marginBottom: 6,
   },
   emptyState: { alignItems: 'center', paddingTop: 40, paddingHorizontal: 20 },
   emptyIcon: {
@@ -1501,5 +1684,51 @@ const s = StyleSheet.create({
   bubbleResendIcon: {
     paddingTop: 2, paddingLeft: 4,
     opacity: 0.85,
+  },
+  // Resend pill — sits at the bottom-right of a user message bubble.
+  // ↻ + "Resend" reads as "fire it again, immediately" rather than
+  // the previous icon-only treatment which was too quiet. Tapping
+  // this hits handleResend → handleSend(text) directly; it does NOT
+  // route through the input field any more (the prior behaviour
+  // staged the message in the composer for editing, which the user
+  // disliked because they wanted a no-friction one-tap resend).
+  bubbleResendBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 6, paddingVertical: 2,
+    borderRadius: 100,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignSelf: 'flex-end',
+  },
+  bubbleResendText: {
+    fontSize: 10, fontFamily: FF.semibold, fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)', letterSpacing: 0.3,
+  },
+
+  // Pending status strip — pink-tinted row that sits between the
+  // message list and the input bar while a reply is in flight.
+  // Combines the "you can leave, we'll notify you" reassurance with
+  // an explicit Cancel for users who change their mind. Disappears
+  // the second the reply lands.
+  pendingStatusStrip: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    gap: 10,
+    marginHorizontal: 16, marginBottom: 8,
+    paddingHorizontal: 12, paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: 'rgba(232,69,139,0.06)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.20)',
+  },
+  pendingStatusLeft: {
+    flexDirection: 'row', alignItems: 'center',
+    flex: 1, minWidth: 0, gap: 8,
+  },
+  pendingStatusText: {
+    flex: 1, minWidth: 0,
+    fontSize: 11, fontFamily: FF.regular,
+    color: colors.textMid, lineHeight: 15,
+  },
+  pendingStatusCancel: {
+    fontSize: 12, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.primary,
   },
 });

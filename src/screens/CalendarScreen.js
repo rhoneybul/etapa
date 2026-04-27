@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert,
-  TextInput, KeyboardAvoidingView, Platform, StatusBar, ActivityIndicator,
+  TextInput, Keyboard, Platform, ActivityIndicator,
   Animated,
 } from 'react-native';
 import { Gesture, GestureDetector, ScrollView as GHScrollView } from 'react-native-gesture-handler';
@@ -48,6 +48,42 @@ export default function CalendarScreen({ navigation, route }) {
   const [reviewSending, setReviewSending] = useState(false);
   const [showReviewChat, setShowReviewChat] = useState(false);
   const reviewScrollRef = useRef(null);
+
+  // ── Keyboard tracking (iOS only) ───────────────────────────────────────────
+  // We tried KeyboardAvoidingView (behavior=padding/height with various
+  // offsets) but the layout above (header + filter row + month nav +
+  // review banner + day headers + calendar grid) eats so much vertical
+  // space that the KAV's children ended up squeezed below the
+  // keyboard's top edge on iPhones with notches.
+  //
+  // iOS doesn't auto-resize the layout when the keyboard opens, so we
+  // listen to keyboardWillShow/Hide and apply the keyboard height as
+  // paddingBottom on the bottom-of-screen wrapper. With flex:1 the
+  // inner scroll absorbs the squeeze and the input rises into view.
+  //
+  // Android handles this for us via the default `adjustResize`
+  // softwareKeyboardLayoutMode — the system resizes the window so
+  // the keyboard takes part of the screen, and our flex:1 children
+  // naturally adjust. Applying our own paddingBottom on top of that
+  // would double-shift, so the listener is iOS-only.
+  const [kbHeight, setKbHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return undefined;
+    const onShow = (e) => {
+      const h = e?.endCoordinates?.height || 0;
+      // Subtract bottomInset — SafeAreaView has already reserved
+      // that gap for the home indicator, so using the raw keyboard
+      // height would lift the input too far.
+      setKbHeight(Math.max(0, h - bottomInset));
+    };
+    const onHide = () => setKbHeight(0);
+    const showSub = Keyboard.addListener('keyboardWillShow', onShow);
+    const hideSub = Keyboard.addListener('keyboardWillHide', onHide);
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [bottomInset]);
 
   // ── Drag-and-drop state ────────────────────────────────────────────────
   // Same pattern as HomeScreen: long-press activates Pan, ghost follows the
@@ -838,20 +874,16 @@ export default function CalendarScreen({ navigation, route }) {
             mouse — on real devices it only flashes during scroll, but
             turning it off entirely avoids the simulator artefact and
             looks cleaner regardless. */}
-        {/* KeyboardAvoidingView wrapping the scroll list AND the review
-            panel below. This is the reliable pattern for "absolute-bottom
-            input + scrollable content above" — the KAV treats the
-            wrapped column as one unit and pads its own bottom when the
-            keyboard rises, so the scroll above shrinks and the panel
-            below sits exactly at the keyboard's top edge. The previous
-            sibling-only KAV (which wrapped just the panel) failed
-            because nothing was using flex:1 inside it, so padding had
-            nowhere to push. */}
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? bottomInset : (StatusBar.currentHeight ?? 0)}
-          style={{ flex: 1 }}
-        >
+        {/* Manual keyboard-avoid wrapper. Replaces the previous
+            KeyboardAvoidingView which couldn't reliably handle this
+            screen's layout — the calendar grid sits ABOVE the wrapper
+            and eats so much vertical space that the KAV's children
+            ended up squeezed below the keyboard's top edge on both
+            iOS and Android. We track the keyboard height directly
+            and apply it as paddingBottom; with flex:1 the inner
+            scroll absorbs the squeeze and the input + review panel
+            rise to sit just above the keyboard on every platform. */}
+        <View style={{ flex: 1, paddingBottom: kbHeight }}>
         <GHScrollView
           style={s.activityList}
           scrollEnabled={!dragActivity}
@@ -1103,8 +1135,8 @@ export default function CalendarScreen({ navigation, route }) {
             </View>
           </View>
         )}
-        </KeyboardAvoidingView>
-        {/* /outer KeyboardAvoidingView wrapping GHScrollView + reviewPanel */}
+        </View>
+        {/* /manual keyboard-avoid wrapper */}
 
         {/* Floating drag ghost — follows the finger during a drag and
             renders a shadowed copy of the activity so the user can see
