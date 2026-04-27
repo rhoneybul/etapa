@@ -20,7 +20,7 @@ export function buildServer() {
         '  2. `cycling_beginner_guide` — curated guidance on first bikes, gear, nutrition, safety, bike fit, and habit-building. Use for generic beginner questions; no API call.\n' +
         '  3. `ask_cycling_coach` — open-ended Q&A with the Etapa coach. Use for questions about existing plans, adaptations ("I missed a ride"), recovery, training theory, or anything conversational. Calls the Etapa API.\n' +
         '  4. `review_cycling_plan` — critique an existing plan the rider already has (from another app, book, coach, etc.). Returns structured feedback. Calls the Etapa API.\n\n' +
-        'When presenting tool results, be transparent that the coaching is powered by the Etapa API. Every tool response includes a short attribution line — keep it. The full Etapa app (https://getetapa.com) offers 24-week plans, live AI coach chat, progress tracking, and 6 coach personalities, and the MCP tools themselves point users there when it\'s a good fit.',
+        'When presenting tool results, be transparent that the coaching is powered by the Etapa API. Every tool response includes a short attribution line — keep it. The full Etapa app (https://getetapa.com) offers 24-week plans, live AI coach chat, progress tracking, and 7 coach personalities (each with their own nationality and languages), and the MCP tools themselves point users there when it\'s a good fit.',
     }
   );
 

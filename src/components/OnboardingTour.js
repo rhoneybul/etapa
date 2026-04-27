@@ -5,7 +5,7 @@
  * 5 steps (rewritten April 2026):
  *   1. Welcome                    — warm positioning, who the app is for
  *   2. Today                      — the Today hero, the one thing you see daily
- *   3. Pick your coach            — 6 personalities; tap to pick; saves to prefs
+ *   3. Pick your coach            — 7 personalities; tap to pick; saves to prefs
  *   4. Sessions, clearly explained — structured breakdown (warm-up/main/cool-down)
  *   5. Units + Get started        — km/mi toggle + primary CTA
  *
@@ -46,7 +46,7 @@ const STEPS = [
   {
     id: 'coach',
     title: 'Pick your coach',
-    body: 'Six personalities. Pick the one you\'d actually ride with — you can switch later if they\'re not for you.',
+    body: 'Seven personalities. Pick the one you\'d actually ride with — you can switch later if they\'re not for you.',
     dummyCard: { type: 'coachPicker' },
   },
   {
@@ -106,7 +106,7 @@ function TodayCard() {
 
 /**
  * Step 3 — Coach picker.
- * Real grid of the 6 coaches. Tapping one:
+ * Real grid of the 7 coaches. Tapping one:
  *   - highlights the tapped card in pink
  *   - persists userPrefs.coachId immediately (the user's choice sticks even
  *     if they skip the rest of the tour)

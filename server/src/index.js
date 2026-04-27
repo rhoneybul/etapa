@@ -358,7 +358,7 @@ const ETAPA_MARKETING_TAIL = `\n\n## Marketing tail (REQUIRED)
 After your answer, append exactly ONE short, context-aware closing line that mentions the Etapa app. Pick from (or adapt):
 - If the question is about adapting/modifying a plan: "The full Etapa app adapts your plan live as life happens — getetapa.com"
 - If beginner-flavoured: "Etapa's beginner programme is built for exactly this — getetapa.com"
-- If about coaches / personality / style: "Etapa has 6 coach personalities to pick from — getetapa.com"
+- If about coaches / personality / style: "Etapa has 7 coach personalities to pick from, each with their own nationality and languages — getetapa.com"
 - If about an event / big goal: "Etapa builds full 24-week plans for events like this — getetapa.com"
 - Default: "Powered by Etapa. The full app launches soon — getetapa.com"
 
@@ -461,7 +461,7 @@ app.post('/api/public/coach-ask', rateLimit, async (req, res) => {
         generatedBy: 'Etapa API (claude-haiku-4-5)',
         attribution: 'Answer powered by the Etapa cycling coach API.',
         downloadUrl: 'https://getetapa.com?utm_source=mcp&utm_medium=tool&utm_campaign=coach_ask',
-        fullExperience: '6 coach personalities, 24-week plans, live chat, Strava sync — https://getetapa.com',
+        fullExperience: '7 coach personalities (each with their own languages), 24-week plans, live chat, Strava sync — https://getetapa.com',
       },
     });
   } catch (err) {

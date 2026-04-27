@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, RefreshControl,
   TextInput, KeyboardAvoidingView, Platform, StatusBar, ActivityIndicator, Alert,
-  Animated, Image,
+  Animated, Image, Modal, Pressable,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -24,7 +24,7 @@ import {
   openCoachChatStream,
 } from '../services/llmPlanService';
 import { api } from '../services/api';
-import { getCoach } from '../data/coaches';
+import { getCoach, getCoachLanguages } from '../data/coaches';
 import { getCurrentUser } from '../services/authService';
 import { setFocusedScreen } from '../services/notificationService';
 import { syncStravaActivities, buildStravaContextForAI, weekComparisonSummary } from '../services/stravaSyncService';
@@ -92,6 +92,17 @@ function chatKey(planId, weekNum) {
   return `@etapa_coach_chat_${planId}`;
 }
 
+// Per-(plan, week, coach) chat language preference. Scoped to the coach
+// so that if the user switches coaches mid-plan we don't carry over a
+// language the new coach can't speak — each coach has its own remembered
+// language. Default is the coach's first listed language (English for
+// every persona today).
+function chatLangKey(planId, weekNum, coachId) {
+  const w = weekNum ? `_w${weekNum}` : '';
+  const c = coachId ? `_${coachId}` : '';
+  return `@etapa_coach_chat_lang_${planId}${w}${c}`;
+}
+
 export default function CoachChatScreen({ navigation, route }) {
   const _screenGuard = useScreenGuard('CoachChatScreen', navigation);
   const planId = route.params?.planId;
@@ -133,6 +144,13 @@ export default function CoachChatScreen({ navigation, route }) {
   const [preparingUpdate, setPreparingUpdate] = useState(false);
   const [applyingUpdate, setApplyingUpdate] = useState(false);
   const [lastFailedMsg, setLastFailedMsg] = useState(null); // last user message content that failed
+  // Chat language — null until the per-coach preference loads from
+  // AsyncStorage; set to one of the active coach's `languages` once
+  // hydrated. Drives the language pill in the header and is forwarded
+  // to the server in chat context so the coach replies in this
+  // language. Switching coach causes a re-hydrate (see effect below).
+  const [chatLanguage, setChatLanguage] = useState(null);
+  const [langPickerOpen, setLangPickerOpen] = useState(false);
   const [userName, setUserName] = useState(null);
   const [stravaActivities, setStravaActivities] = useState([]);
   // Weekly coach-message limit: { used, limit, remaining, unlimited }
@@ -171,6 +189,69 @@ export default function CoachChatScreen({ navigation, route }) {
     if (elapsedMs < 15000) return 'Getting this right — coaches don\'t rush…';
     return "Still going. You can leave the chat — we'll send you a notification when your coach replies.";
   };
+  // Hydrate the chat-language preference whenever the active plan or coach
+  // changes. Falls back to the coach's primary language (first entry in
+  // their `languages` array, English by default) if no preference has
+  // been saved yet, or if the saved one isn't supported by the current
+  // coach (can happen if the user switched coaches between sessions).
+  useEffect(() => {
+    if (!plan?.id) return;
+    const coachId = planConfig?.coachId || null;
+    const coach = getCoach(coachId);
+    const supported = getCoachLanguages(coach);
+    (async () => {
+      let saved = null;
+      try { saved = await AsyncStorage.getItem(chatLangKey(plan.id, weekNum, coachId)); } catch {}
+      const next = saved && supported.includes(saved) ? saved : supported[0];
+      setChatLanguage(next);
+    })();
+  }, [plan?.id, weekNum, planConfig?.coachId]);
+
+  // Persist language whenever it changes (debounced trivially by React's
+  // own batching — the user only changes language by tapping the picker).
+  //
+  // Side effect: appends a synthetic in-language welcome bubble from the
+  // coach so the switch is visible immediately, instead of feeling like
+  // nothing happened until the user's next reply lands. The welcome line
+  // is pre-baked per (coach, language) in coaches.js — kept short, in
+  // the coach's voice. Persisted into the same chat cache as real
+  // messages so it survives a re-open. Skipped if the language hasn't
+  // actually changed (e.g. tapping the current language).
+  const handleSelectLanguage = useCallback(async (lang) => {
+    if (!plan?.id) return;
+    setLangPickerOpen(false);
+    if (lang === chatLanguage) return;
+    const coachId = planConfig?.coachId || null;
+    const coach = getCoach(coachId);
+    setChatLanguage(lang);
+    try {
+      await AsyncStorage.setItem(chatLangKey(plan.id, weekNum, coachId), lang);
+    } catch {}
+    analytics.track('chat_language_changed', { coachId, language: lang, scope: weekNum ? 'week' : 'plan' });
+
+    // Append the in-language welcome bubble. Falls back silently if the
+    // coach has no canned line for this language — the next user reply
+    // will surface the language change anyway via the model's response.
+    const welcomeText = coach?.languageWelcomes?.[lang];
+    if (welcomeText) {
+      const welcomeMsg = {
+        role: 'assistant',
+        content: welcomeText,
+        ts: Date.now(),
+        // Marker for downstream consumers — analytics, future filtering,
+        // and so the styling layer could differentiate language-switch
+        // bubbles from regular replies if we wanted to.
+        languageSwitch: true,
+        language: lang,
+      };
+      setMessages(prev => {
+        const next = [...prev, welcomeMsg];
+        AsyncStorage.setItem(chatKey(plan.id, weekNum), JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+    }
+  }, [plan?.id, weekNum, planConfig?.coachId, chatLanguage]);
+
   useEffect(() => {
     if (!loadingChat) return;
     const anim = Animated.loop(
@@ -605,6 +686,11 @@ export default function CoachChatScreen({ navigation, route }) {
       } : null,
       fitnessLevel: planConfig?.fitnessLevel || null,
       coachId: planConfig?.coachId || null,
+      // Language the user has chosen for this conversation. Server uses
+      // this to instruct the model to reply in the chosen language while
+      // staying in coach persona. Falls back server-side to the coach's
+      // primary language if missing or unsupported.
+      language: chatLanguage || null,
       weekSummaries,
       allActivities,
     };
@@ -1065,6 +1151,8 @@ export default function CoachChatScreen({ navigation, route }) {
           <View style={s.headerCenter}>
             {(() => {
               const coach = getCoach(planConfig?.coachId);
+              const supportedLangs = getCoachLanguages(coach);
+              const canSwitchLang = supportedLangs.length > 1 && !!chatLanguage;
               return coach ? (
                 <>
                   <View style={s.headerCoachRow}>
@@ -1073,7 +1161,31 @@ export default function CoachChatScreen({ navigation, route }) {
                     </View>
                     <Text style={s.headerTitle}>{coach.name}</Text>
                   </View>
-                  <Text style={s.headerScope}>{scopeLabel}</Text>
+                  <View style={s.headerSubRow}>
+                    <Text style={s.headerScope}>{scopeLabel}</Text>
+                    {chatLanguage && (
+                      <>
+                        <Text style={s.headerSubDot}>·</Text>
+                        {canSwitchLang ? (
+                          <TouchableOpacity
+                            onPress={() => setLangPickerOpen(true)}
+                            hitSlop={HIT}
+                            style={s.headerLangPill}
+                            activeOpacity={0.7}
+                          >
+                            <MaterialCommunityIcons name="translate" size={11} color={colors.primary} style={{ marginRight: 4 }} />
+                            <Text style={s.headerLangText}>{chatLanguage}</Text>
+                            <Text style={s.headerLangChevron}>▾</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <View style={[s.headerLangPill, s.headerLangPillStatic]}>
+                            <MaterialCommunityIcons name="translate" size={11} color={colors.textFaint} style={{ marginRight: 4 }} />
+                            <Text style={[s.headerLangText, { color: colors.textFaint }]}>{chatLanguage}</Text>
+                          </View>
+                        )}
+                      </>
+                    )}
+                  </View>
                 </>
               ) : (
                 <>
@@ -1089,6 +1201,50 @@ export default function CoachChatScreen({ navigation, route }) {
             </TouchableOpacity>
           ) : <View style={{ width: 40 }} />}
         </View>
+
+        {/* Language picker — shown when the user taps the chip in the
+            header. Only the coach's supported languages appear; the
+            currently-selected one is marked. Persists per-coach so
+            switching coach restores their last-used language. */}
+        <Modal
+          visible={langPickerOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setLangPickerOpen(false)}
+        >
+          <Pressable style={s.langSheetBackdrop} onPress={() => setLangPickerOpen(false)}>
+            <Pressable style={s.langSheet} onPress={(e) => e.stopPropagation()}>
+              {(() => {
+                const coach = getCoach(planConfig?.coachId);
+                const supportedLangs = getCoachLanguages(coach);
+                return (
+                  <>
+                    <Text style={s.langSheetTitle}>Chat language</Text>
+                    <Text style={s.langSheetSubtitle}>
+                      {coach?.name?.split(' ')[0] || 'Your coach'} will reply in the language you pick.
+                    </Text>
+                    <View style={{ marginTop: 16 }}>
+                      {supportedLangs.map((lang) => {
+                        const isCurrent = lang === chatLanguage;
+                        return (
+                          <TouchableOpacity
+                            key={lang}
+                            style={[s.langOption, isCurrent && s.langOptionSelected]}
+                            onPress={() => handleSelectLanguage(lang)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[s.langOptionText, isCurrent && s.langOptionTextSelected]}>{lang}</Text>
+                            {isCurrent && <Text style={s.langOptionTick}>{'\u2713'}</Text>}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </>
+                );
+              })()}
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         <KeyboardAvoidingView
           style={{ flex: 1 }}
@@ -1459,7 +1615,34 @@ const s = StyleSheet.create({
   headerCoachInitials: { fontSize: 10, fontWeight: '700', color: '#fff', fontFamily: FF.semibold },
   headerTitle: { fontSize: 17, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
   headerScope: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary, marginTop: 1 },
+  // Sub-row beneath the coach name — holds the scope label ("Your plan",
+  // "Week 4") and the language pill side by side. Centred under the
+  // coach name and dot.
+  headerSubRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  headerSubDot: { fontSize: 11, color: colors.textFaint, marginHorizontal: 6 },
+  headerLangPill: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10,
+    backgroundColor: 'rgba(232,69,139,0.12)',
+  },
+  headerLangPillStatic: { backgroundColor: 'transparent', paddingHorizontal: 0 },
+  headerLangText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary },
+  headerLangChevron: { fontSize: 9, color: colors.primary, marginLeft: 3, marginTop: 1 },
   clearBtn: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, width: 40, textAlign: 'right' },
+
+  // Language picker sheet — modal centred over the chat. Tap-outside
+  // closes; tap-on-sheet does nothing (stopPropagation in the inner
+  // Pressable). Visual treatment matches the rest of the app's modal
+  // sheets — dark surface, soft border, generous padding.
+  langSheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
+  langSheet: { width: '100%', maxWidth: 380, backgroundColor: colors.surface, borderRadius: 18, paddingHorizontal: 22, paddingVertical: 22, borderWidth: 1, borderColor: colors.border },
+  langSheetTitle: { fontSize: 17, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  langSheetSubtitle: { fontSize: 13, fontWeight: '300', fontFamily: FF.regular, color: colors.textMuted, marginTop: 4, lineHeight: 18 },
+  langOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.bg, marginBottom: 8, borderWidth: 1, borderColor: colors.border },
+  langOptionSelected: { borderColor: colors.primary, backgroundColor: 'rgba(232,69,139,0.06)' },
+  langOptionText: { fontSize: 15, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
+  langOptionTextSelected: { color: colors.primary, fontWeight: '600', fontFamily: FF.semibold },
+  langOptionTick: { fontSize: 14, color: colors.primary, fontWeight: '700' },
 
   messageList: { flex: 1 },
   messageContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 },

@@ -94,7 +94,7 @@ export default function ChangeCoachScreen({ navigation }) {
         </View>
 
         <Text style={s.subtitle}>
-          Pick a new coaching personality. This changes the tone and style of your AI coach across chat, plan edits, and activity suggestions.
+          Pick a new coaching personality. This changes the tone, style, and nationality of your AI coach across chat, plan edits, and activity suggestions. Each coach also lists the languages they reply in — switch language any time inside chat.
         </Text>
 
         <ScrollView
@@ -145,7 +145,35 @@ export default function ChangeCoachScreen({ navigation }) {
                           : 'Advanced+'}
                       </Text>
                     </View>
+                    {coach.nationality && (
+                      <View style={s.coachLevelBadge}>
+                        {coach.countryCode ? (
+                          <Text style={s.coachCountryCode}>{coach.countryCode}</Text>
+                        ) : (
+                          <MaterialCommunityIcons
+                            name="earth"
+                            size={12}
+                            color={colors.textMuted}
+                            style={{ marginRight: 4 }}
+                          />
+                        )}
+                        <Text style={s.coachLevelText}>{coach.nationality}</Text>
+                      </View>
+                    )}
                   </View>
+                  {Array.isArray(coach.languages) && coach.languages.length > 0 && (
+                    <View style={s.coachLangRow}>
+                      <MaterialCommunityIcons
+                        name="translate"
+                        size={11}
+                        color={colors.textFaint}
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text style={s.coachLangText} numberOfLines={1}>
+                        Speaks {coach.languages.join(' · ')}
+                      </Text>
+                    </View>
+                  )}
                   {selected && (
                     <Text style={s.coachQuote}>"{coach.sampleQuote}"</Text>
                   )}
@@ -219,9 +247,27 @@ const s = StyleSheet.create({
   coachTagline: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, marginTop: 1 },
   coachTaglineSelected: { color: colors.primary },
   coachBio: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 17, marginTop: 4 },
-  coachBadgeRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
+  coachBadgeRow: { flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' },
   coachLevelBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   coachLevelText: { fontSize: 10, fontWeight: '600', fontFamily: FF.semibold, color: colors.textMuted },
+  // Two-letter ISO country code rendered as a small uppercase tag inside
+  // the nationality badge — sits where a flag emoji would, but reads as
+  // typographic design rather than as a colourful sticker. Slightly
+  // tighter letter-spacing than the rest of the badge for a clean look,
+  // and a faint divider via marginRight before the nationality word.
+  coachCountryCode: {
+    fontSize: 9,
+    fontWeight: '700',
+    fontFamily: FF.semibold,
+    color: colors.textFaint,
+    letterSpacing: 0.5,
+    marginRight: 6,
+  },
+  // Language pill row — sits below the level/nationality badges so users can
+  // see which languages each coach replies in before picking. Kept faint so
+  // it informs without competing with the bio.
+  coachLangRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+  coachLangText: { fontSize: 11, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, flex: 1 },
   coachQuote: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, fontStyle: 'italic', marginTop: 6, lineHeight: 17 },
   coachCheck: {
     width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primary,

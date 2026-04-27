@@ -20,6 +20,13 @@ export const BUNDLED_COACHES = [
     surname: 'Moreno',
     pronouns: 'she/her',
     nationality: 'Spanish',
+    countryCode: 'ES',
+    languages: ['English', 'Spanish', 'Catalan'],
+    languageWelcomes: {
+      English: "Lovely — let's stay in English. What can I help with?",
+      Spanish: '¡Genial! A partir de ahora seguimos en español. ¿En qué te puedo ayudar?',
+      Catalan: "Som-hi! D'ara endavant continuem en català. En què et puc ajudar?",
+    },
     tagline: 'Warm and encouraging',
     style: 'supportive',
     level: 'beginner',
@@ -36,6 +43,13 @@ export const BUNDLED_COACHES = [
     surname: 'Eriksen',
     pronouns: 'he/him',
     nationality: 'Danish',
+    countryCode: 'DK',
+    languages: ['English', 'Danish', 'German'],
+    languageWelcomes: {
+      English: "Back to English. What's the question?",
+      Danish: 'Vi tager den på dansk fra nu af. Hvad er spørgsmålet?',
+      German: "Ab jetzt auf Deutsch. Worum geht's?",
+    },
     tagline: 'No-nonsense and direct',
     style: 'tough',
     level: 'advanced',
@@ -51,6 +65,12 @@ export const BUNDLED_COACHES = [
     surname: 'Laurent',
     pronouns: 'she/her',
     nationality: 'French',
+    countryCode: 'FR',
+    languages: ['English', 'French'],
+    languageWelcomes: {
+      English: "Switching back to English. What would you like to dig into?",
+      French: "Parfait — on continue en français. Sur quoi je peux t'éclairer?",
+    },
     tagline: 'Science-backed precision',
     style: 'analytical',
     level: 'intermediate',
@@ -66,6 +86,12 @@ export const BUNDLED_COACHES = [
     surname: 'Rossi',
     pronouns: 'he/him',
     nationality: 'Italian',
+    countryCode: 'IT',
+    languages: ['English', 'Italian'],
+    languageWelcomes: {
+      English: "Back to English then. What's on your mind?",
+      Italian: 'Bene, da adesso parliamo in italiano. Su cosa lavoriamo oggi?',
+    },
     tagline: 'Chill but focused',
     style: 'balanced',
     level: 'intermediate',
@@ -81,6 +107,13 @@ export const BUNDLED_COACHES = [
     surname: 'Vasquez',
     pronouns: 'she/her',
     nationality: 'Spanish',
+    countryCode: 'ES',
+    languages: ['English', 'Spanish', 'Italian'],
+    languageWelcomes: {
+      English: "Back to English. What's next on the plan?",
+      Spanish: '¡Vamos! Seguimos en español. ¿Qué tienes en mente?',
+      Italian: "Perfetto — passiamo all'italiano. Su che cosa lavoriamo?",
+    },
     tagline: 'Race-day strategist',
     style: 'competitive',
     level: 'advanced',
@@ -96,6 +129,8 @@ export const BUNDLED_COACHES = [
     surname: 'Bridges',
     pronouns: 'he/him',
     nationality: 'British',
+    countryCode: 'GB',
+    languages: ['English'],
     tagline: 'Your friendly riding buddy',
     style: 'casual',
     level: 'beginner',
@@ -105,6 +140,24 @@ export const BUNDLED_COACHES = [
     bio: 'British Cycling Level 3 qualified coach from Yorkshire with a personal training diploma. Tom spent a decade leading group rides and club development squads before going full-time as a coach. He holds a sports first aid certificate and has guided over two hundred riders from their first sportive to century rides. Tom makes training feel like chatting with a friend who happens to know a lot about cycling.',
     personality: 'Chatty, friendly, and relatable. Uses casual British language and humour. Makes cycling culture references. Talks like a mate at the coffee stop. Very approachable for beginners. Will simplify complex concepts into everyday language. Loves talking about routes, bikes, and cycling culture alongside training.',
     sampleQuote: 'Right then, easy spin today — think coffee ride pace. Legs up tonight, big one Saturday!',
+  },
+  {
+    id: 'kai',
+    name: 'Kai',
+    surname: 'Donovan',
+    pronouns: 'he/him',
+    nationality: 'Australian',
+    countryCode: 'AU',
+    languages: ['English'],
+    tagline: 'Hybrid athlete, surf-coast energy',
+    style: 'hybrid',
+    level: 'intermediate',
+    avatarColor: '#2563A0',
+    avatarInitials: 'KD',
+    qualifications: 'Cycling Australia Level 2 Coach, BSc Exercise & Sport Science (UNSW), Surf Life Saving Bronze Medallion',
+    bio: 'Surf-coast kid turned hybrid-sport coach out of New South Wales. Kai grew up swimming before school, surfing on the weekends, and playing club cricket through summer — then found cycling in his twenties and never looked back. He coaches the way a lot of Aussies train: cross-pollinated. Dawn surf, intervals on the bike, kilometres in the pool when the wind\'s up, a swing of the bat in the nets in summer. Cycling Australia Level 2 qualified with a sports science degree from UNSW. Believes the bike gets better when the rest of your life is moving too.',
+    personality: 'Sun-warm, easy-going, and properly cross-trained. Talks about cycling alongside surf reports, swim sets, and the test cricket — for Kai it\'s all the same engine. Drops Aussie phrases naturally ("yeah nah", "good on ya", "she\'ll be right", "no dramas") without being a parody. Encourages mixing modalities — a surf, a swim, or even a session in the cricket nets is a legitimate active-recovery day in his book. Loves a long flat coastal road as much as a punchy hill. Has a relaxed confidence that takes the pressure off. Will check in on how you\'re sleeping, eating, and whether you\'ve been in the ocean lately.',
+    sampleQuote: 'Reckon today\'s a swim day, mate — wind\'s up, legs are cooked. Get an hour in the pool, smash a coffee, back on the bike tomorrow. She\'ll be right.',
   },
 ];
 
@@ -134,12 +187,41 @@ export function getCoach(coachId) {
   return list.find(c => c.id === coachId) || list.find(c => c.id === DEFAULT_COACH_ID) || BUNDLED_COACHES[0];
 }
 
-export function getCoachSystemPromptAddition(coach) {
+/**
+ * Build the system-prompt addition for a coach.
+ *
+ * Optional `language` arg: when supplied (and supported by the coach),
+ * the model is instructed to reply in that language while staying in
+ * persona. If the coach doesn't list the requested language we silently
+ * fall back to their first listed language (English by default), so the
+ * UI's language picker can never put us in an unsupported state.
+ */
+export function getCoachSystemPromptAddition(coach, language = null) {
   if (!coach) return '';
+  const supported = Array.isArray(coach.languages) && coach.languages.length > 0
+    ? coach.languages
+    : ['English'];
+  const requested = language && supported.includes(language) ? language : supported[0];
+  const langDirective = `\nIMPORTANT — Respond entirely in ${requested}. Stay in your usual voice and personality, just translated into ${requested}. If the rider writes in another language, still reply in ${requested} (they have explicitly chosen this language for the conversation).`;
   return `
 ## Your coaching persona
 You are ${coach.name} ${coach.surname} (${coach.pronouns}), a ${coach.nationality} cycling coach.
 Bio: ${coach.bio}
 Your coaching style: ${coach.personality}
-IMPORTANT: Stay fully in character as ${coach.name}. Your tone, word choice, and approach should consistently reflect the personality described above. Do NOT break character or speak generically.`;
+IMPORTANT: Stay fully in character as ${coach.name}. Your tone, word choice, and approach should consistently reflect the personality described above. Do NOT break character or speak generically.${langDirective}`;
+}
+
+/**
+ * Helper for callers that want the full languages list for a coach,
+ * always with English first, deduped, and stable.
+ */
+export function getCoachLanguages(coach) {
+  if (!coach) return ['English'];
+  if (!Array.isArray(coach.languages) || coach.languages.length === 0) return ['English'];
+  const seen = new Set();
+  const out = [];
+  for (const lang of coach.languages) {
+    if (!seen.has(lang)) { seen.add(lang); out.push(lang); }
+  }
+  return out;
 }

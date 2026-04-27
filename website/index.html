@@ -300,12 +300,19 @@
     }
     .coaches-text { flex: 1; }
     .coaches-text .section-sub { margin-bottom: 32px; }
-    .coach-list { display: flex; flex-direction: column; gap: 10px; }
+    .coach-list { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+    /* Full-width chip — fills the column rather than hugging its content.
+       Pill border-radius (100px) was right when the chip was content-
+       width; with full-width rows we drop to a card radius (14px) so the
+       chip reads as a "list row" rather than a long stretched pill.
+       flex-wrap lets the tagline drop below name + country on narrow
+       viewports (mobile) instead of overflowing the chip. */
     .coach-chip {
-      display: inline-flex; align-items: center; gap: 12px;
+      display: flex; align-items: center; flex-wrap: wrap;
+      gap: 6px 12px;
       background: #0a0a0a; border: 1px solid #1a1a1a;
-      border-radius: 100px; padding: 8px 18px 8px 8px;
-      width: fit-content; transition: border-color 0.2s;
+      border-radius: 14px; padding: 10px 16px 10px 10px;
+      width: 100%; transition: border-color 0.2s;
     }
     .coach-chip:hover { border-color: #333; }
     .coach-avatar {
@@ -315,6 +322,28 @@
     }
     .coach-chip-name { font-size: 14px; font-weight: 500; }
     .coach-chip-style { font-size: 13px; color: #666; }
+    /* Tight wrapper around name + country code so the two read as one
+       unit — avoids the country tag floating equidistant between name
+       and tagline thanks to the parent chip's 12px gap. The wrapper
+       collapses to a single flex item from the chip's POV, then
+       internally lays the name and the country tag out with their own
+       smaller gap. */
+    .coach-chip-id { display: inline-flex; align-items: center; gap: 8px; }
+    /* Two-letter ISO country code tag — replaces the flag emoji on coach
+       chips with a typographic country tag. Subtle dark surface, faint
+       border, slightly tracked uppercase letters. Reads as "designed"
+       rather than as a sticker. The translateY(-0.5px) is an optical
+       centering nudge — the bordered pill sits a hair below the name's
+       baseline visually because of the border weight; the half-pixel
+       lift fixes it. */
+    .coach-chip-country {
+      display: inline-flex; align-items: center;
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 0.6px; line-height: 1;
+      color: #888; background: #141416; border: 1px solid #222;
+      padding: 3px 6px; border-radius: 4px;
+      transform: translateY(-0.5px);
+    }
     .coaches-visual {
       flex: 1; display: flex; justify-content: center; gap: 16px;
     }
@@ -1154,7 +1183,7 @@
       // Two CTA variants to A/B test
       var CTA_COPY = {
         A: {
-          blurb: 'This is a 30-second preview. The full Etapa app has 24-week plans, live coach chat, and 6 coach personalities.',
+          blurb: 'This is a 30-second preview. The full Etapa app has 24-week plans, live coach chat, and 7 coach personalities — each with their own nationality and languages.',
           button: 'Register interest in Etapa →',
         },
         B: {
@@ -1389,41 +1418,68 @@
         <div class="section-label">Coaches</div>
         <h2>Pick a Coach That<br>Fits <span style="color:#E8458B">Your Style</span></h2>
         <p class="section-sub">
-          Six AI coaches, each with a distinct personality.
-          Whether you want warm encouragement or straight-talking guidance,
-          there's a coach for you — and you can switch any time.
+          Seven AI coaches, each with a distinct personality and nationality.
+          Whether you want warm encouragement, straight-talking guidance, or
+          a chilled hybrid-sport take, there's a coach for you — switch any
+          time, and chat with them in their native language if you'd rather.
         </p>
         <p style="font-size:14px;color:#666;font-weight:300;margin-bottom:20px;">New to cycling? Clara or Sophie are a great place to start.</p>
         <div class="coach-list">
           <div class="coach-chip">
             <div class="coach-avatar" style="background:#2563A0;">CM</div>
-            <span class="coach-chip-name">Clara Moreno</span>
+            <div class="coach-chip-id">
+              <span class="coach-chip-name">Clara Moreno</span>
+              <span class="coach-chip-country">ES</span>
+            </div>
             <span class="coach-chip-style">— Warm, patient & encouraging</span>
           </div>
           <div class="coach-chip">
             <div class="coach-avatar" style="background:#2563A0;">SL</div>
-            <span class="coach-chip-name">Sophie Laurent</span>
+            <div class="coach-chip-id">
+              <span class="coach-chip-name">Sophie Laurent</span>
+              <span class="coach-chip-country">FR</span>
+            </div>
             <span class="coach-chip-style">— Science-backed, no fluff</span>
           </div>
           <div class="coach-chip">
             <div class="coach-avatar" style="background:#2563A0;">EV</div>
-            <span class="coach-chip-name">Elena Vasquez</span>
+            <div class="coach-chip-id">
+              <span class="coach-chip-name">Elena Vasquez</span>
+              <span class="coach-chip-country">ES</span>
+            </div>
             <span class="coach-chip-style">— Race-day strategist</span>
           </div>
           <div class="coach-chip">
             <div class="coach-avatar" style="background:#2563A0;">LE</div>
-            <span class="coach-chip-name">Lars Eriksen</span>
+            <div class="coach-chip-id">
+              <span class="coach-chip-name">Lars Eriksen</span>
+              <span class="coach-chip-country">DK</span>
+            </div>
             <span class="coach-chip-style">— No-nonsense & direct</span>
           </div>
           <div class="coach-chip">
             <div class="coach-avatar" style="background:#2563A0;">MR</div>
-            <span class="coach-chip-name">Matteo Rossi</span>
+            <div class="coach-chip-id">
+              <span class="coach-chip-name">Matteo Rossi</span>
+              <span class="coach-chip-country">IT</span>
+            </div>
             <span class="coach-chip-style">— Chill but focused</span>
           </div>
           <div class="coach-chip">
             <div class="coach-avatar" style="background:#2563A0;">TB</div>
-            <span class="coach-chip-name">Tom Bridges</span>
+            <div class="coach-chip-id">
+              <span class="coach-chip-name">Tom Bridges</span>
+              <span class="coach-chip-country">GB</span>
+            </div>
             <span class="coach-chip-style">— Casual riding buddy</span>
+          </div>
+          <div class="coach-chip">
+            <div class="coach-avatar" style="background:#2563A0;">KD</div>
+            <div class="coach-chip-id">
+              <span class="coach-chip-name">Kai Donovan</span>
+              <span class="coach-chip-country">AU</span>
+            </div>
+            <span class="coach-chip-style">— Hybrid athlete, surf-coast energy</span>
           </div>
         </div>
       </div>
