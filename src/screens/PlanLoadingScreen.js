@@ -713,10 +713,10 @@ export default function PlanLoadingScreen({ navigation, route }) {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   safe: { flex: 1 },
-  scrollContent: { paddingHorizontal: 24, paddingTop: 40, paddingBottom: 20 },
+  scrollContent: { paddingHorizontal: 24, paddingTop: 32, paddingBottom: 20 },
 
   // ── Header ─────────────────────────────────────────────────────────────────
-  header: { alignItems: 'center', marginBottom: 32 },
+  header: { alignItems: 'center', marginBottom: 16 },
   logoWrap: {
     width: 72, height: 72, borderRadius: 20,
     overflow: 'hidden', marginBottom: 24,
@@ -725,10 +725,10 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
   },
   logoImage: { width: 72, height: 72 },
-  title: { fontSize: 22, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
-  subtitle: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary, textAlign: 'center', marginBottom: 10 },
-  message: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center', lineHeight: 20, minHeight: 20 },
-  progressTrack: { width: '100%', height: 3, backgroundColor: colors.border, borderRadius: 1.5, overflow: 'hidden', marginTop: 20 },
+  title: { fontSize: 20, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4 },
+  subtitle: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary, textAlign: 'center', marginBottom: 6 },
+  message: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center', lineHeight: 18, minHeight: 18 },
+  progressTrack: { width: '100%', height: 3, backgroundColor: colors.border, borderRadius: 1.5, overflow: 'hidden', marginTop: 12 },
   progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 1.5 },
   // ── Live ETA + elapsed stat block ─────────────────────────────────
   // Two-column grid below the progress bar. Each column is a quiet
@@ -736,7 +736,7 @@ const s = StyleSheet.create({
   // sub-line. Read-only — no user interaction.
   etaStats: {
     flexDirection: 'row', gap: 10,
-    paddingHorizontal: 4, marginTop: 18,
+    paddingHorizontal: 4, marginTop: 4,
   },
   etaStat: {
     flex: 1,
@@ -766,7 +766,7 @@ const s = StyleSheet.create({
   // unmissable. The grey bgNote at the bottom stays as a redundant
   // backup but the primary read happens here, near the top.
   stepAwayCallout: {
-    marginTop: 14, marginHorizontal: 4,
+    marginTop: 10, marginBottom: 10, marginHorizontal: 4,
     backgroundColor: 'rgba(232,69,139,0.07)',
     borderWidth: 1, borderColor: 'rgba(232,69,139,0.22)',
     borderLeftWidth: 3, borderLeftColor: colors.primary,
@@ -801,15 +801,18 @@ const s = StyleSheet.create({
   // hugging the card edges and reading cramped. 28pt vertical / 22pt
   // horizontal lets the content breathe and matches the rest of the
   // app's content-card density.
+  // Apr 27 evening: Rob flagged padding was still too much — vertical
+  // 28 → 18 and content gap tightened. Card still breathes but doesn't
+  // dwarf the step-away callout above it.
   tipCard: {
     backgroundColor: 'rgba(232,69,139,0.06)', borderRadius: 16, borderWidth: 1,
     borderColor: 'rgba(232,69,139,0.15)',
-    paddingVertical: 28, paddingHorizontal: 22,
-    marginBottom: 20, alignItems: 'center',
+    paddingVertical: 18, paddingHorizontal: 20,
+    marginBottom: 16, alignItems: 'center',
   },
   tipIcon: { fontSize: 28, marginBottom: 10, fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif' },
-  tipTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 8, textAlign: 'center' },
-  tipBody: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center', lineHeight: 20 },
+  tipTitle: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 4, textAlign: 'center' },
+  tipBody: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center', lineHeight: 19 },
 
   // ── Background note ────────────────────────────────────────────────────────
   bgNote: {

@@ -168,6 +168,40 @@ export async function getPlans() {
   return (await getJSON(KEYS.PLANS)) || [];
 }
 
+/**
+ * Shift a plan's start date without regenerating any activities.
+ *
+ * Activity calendar dates are computed dynamically via getActivityDate
+ * (plan.startDate, week, dayOfWeek), so updating plan.startDate alone
+ * is enough to reposition every session — no need to mutate the
+ * activities array. This is the right primitive for "move my plan to
+ * start today" / "shift everything one week later" flows that the
+ * coach chat or Settings screens trigger.
+ *
+ * `newStartDate` accepts either a Date or a 'YYYY-MM-DD' string. We
+ * normalise to YYYY-MM-DD for storage so timezone shenanigans don't
+ * accidentally bump the date by ±1 day on round-trip.
+ */
+export async function shiftPlanStartDate(planId, newStartDate) {
+  const plans = await getPlans();
+  const plan = plans.find(p => p.id === planId);
+  if (!plan) throw new Error('Plan not found');
+  let ymd;
+  if (newStartDate instanceof Date) {
+    const y = newStartDate.getFullYear();
+    const m = String(newStartDate.getMonth() + 1).padStart(2, '0');
+    const d = String(newStartDate.getDate()).padStart(2, '0');
+    ymd = `${y}-${m}-${d}`;
+  } else if (typeof newStartDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(newStartDate)) {
+    ymd = newStartDate;
+  } else {
+    throw new Error('newStartDate must be a Date or YYYY-MM-DD string');
+  }
+  plan.startDate = ymd;
+  await savePlan(plan); // bumps updatedAt + syncs to server
+  return plan;
+}
+
 export async function getPlan(planId) {
   const plans = await getPlans();
   if (planId) return plans.find(p => p.id === planId) || null;

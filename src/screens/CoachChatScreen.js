@@ -147,6 +147,21 @@ export default function CoachChatScreen({ navigation, route }) {
   const [messages, setMessages] = useState([]); // { role: 'user'|'assistant', content: string, ts: number }
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  // Elapsed seconds since the most recent coach reply went pending.
+  // Drives the "long wait" copy swap on the inline pending banner so
+  // the user knows when a reply (typically a plan-change with a
+  // structured block) is taking a while and they can step away. Reset
+  // to 0 whenever there are no pending messages.
+  const [pendingElapsedSecs, setPendingElapsedSecs] = useState(0);
+  useEffect(() => {
+    const hasPending = messages.some(m => m.pending);
+    if (!hasPending) { setPendingElapsedSecs(0); return; }
+    const startedAt = Date.now();
+    const id = setInterval(() => {
+      setPendingElapsedSecs(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [messages]);
   // True while the mount effect is hydrating plan / goal / planConfig /
   // chat history. Without it, users see an empty scroll area with a
   // blinking cursor in the input for ~500ms–2s after opening the
@@ -1540,8 +1555,14 @@ export default function CoachChatScreen({ navigation, route }) {
                   </TouchableOpacity>
                 )}
                 {msg.failed && i === messages.length - 1 && lastFailedMsg && (
-                  <TouchableOpacity style={s.retryBtn} onPress={handleRetry} activeOpacity={0.7}>
-                    <Text style={s.retryText}>Tap to retry</Text>
+                  <TouchableOpacity
+                    onPress={handleRetry}
+                    activeOpacity={0.6}
+                    style={s.retryPill}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <MaterialCommunityIcons name="refresh" size={12} color="rgba(255,255,255,0.85)" />
+                    <Text style={s.retryPillText}>Resend</Text>
                   </TouchableOpacity>
                 )}
                 {/* (Resend now lives inline inside the user bubble — see
@@ -1628,13 +1649,38 @@ export default function CoachChatScreen({ navigation, route }) {
               so the input area stays clean during normal use. */}
           {messages.some(m => m.pending) && (() => {
             const coachFirst = getCoach(planConfig?.coachId)?.name?.split(' ')[0] || 'your coach';
+            // Progressive copy keyed off pendingElapsedSecs. The strong
+            // word stays scannable across all four phases while the sub
+            // line escalates to acknowledge the wait. Tuned against the
+            // 180s server timeout — by the time the user sees phase 4
+            // they've waited a full minute, so the message is honest
+            // ("this is a long one") rather than empty reassurance.
+            const phase = (() => {
+              const s = pendingElapsedSecs;
+              if (s >= 60) return {
+                strong: 'Working on it.',
+                sub: ' Hang tight or step away — we\'ll send a notification when it\'s ready.',
+              };
+              if (s >= 25) return {
+                strong: 'Still going.',
+                sub: ' Plan changes can take a minute — feel free to step away.',
+              };
+              if (s >= 8) return {
+                strong: `${coachFirst} is replying.`,
+                sub: ' Plan changes can take a moment.',
+              };
+              return {
+                strong: `${coachFirst} is replying.`,
+                sub: ' Feel free to step away.',
+              };
+            })();
             return (
               <View style={s.pendingStatusStrip}>
                 <ActivityIndicator size="small" color={colors.primary} />
-                <View style={s.pendingStatusBody}>
-                  <Text style={s.pendingStatusTitle} numberOfLines={1}>{coachFirst} is replying\u2026</Text>
-                  <Text style={s.pendingStatusSub} numberOfLines={1}>You can leave \u2014 we'll send a notification.</Text>
-                </View>
+                <Text style={s.pendingStatusInline} numberOfLines={2}>
+                  <Text style={s.pendingStatusInlineStrong}>{phase.strong}</Text>
+                  {phase.sub}
+                </Text>
                 <TouchableOpacity
                   onPress={handleCancelInflight}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1871,13 +1917,22 @@ const s = StyleSheet.create({
   sendBtnDisabled: { opacity: 0.3 },
   sendBtnText: { fontSize: 20, color: '#fff', fontWeight: '700' },
 
-  retryBtn: {
-    alignSelf: 'flex-start', marginBottom: 12, marginTop: -4,
-    backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 8,
-    borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)',
+  // Apr 27 evening: dropped the loud red 'Tap to retry' card and
+  // replaced it with a small pill that matches the Resend control
+  // inside the user bubble. Same icon + label, same chip shape — the
+  // two retry affordances now read as one consistent pattern.
+  retryPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: 100,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignSelf: 'flex-start',
+    marginTop: 6, marginLeft: 4, marginBottom: 12,
   },
-  retryText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: '#EF4444' },
+  retryPillText: {
+    fontSize: 11, fontFamily: FF.semibold, fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)', letterSpacing: 0.3,
+  },
   reportBtn: { alignSelf: 'flex-start', marginTop: 6, marginLeft: 4, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: 'rgba(232,69,139,0.08)', borderRadius: 8 },
   reportText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
   // Flash highlight applied to the message a notification tap landed
@@ -1965,31 +2020,28 @@ const s = StyleSheet.create({
   // Combines the "you can leave, we'll notify you" reassurance with
   // an explicit Cancel for users who change their mind. Disappears
   // the second the reply lands.
-  // Apr 27 evening redesign — was a single 2-line wrap that read messy.
-  // Now a structured two-line block: bold title row ("Elena is
-  // replying…") + muted sub-line ("You can leave — we'll send a
-  // notification."). Both single-line via numberOfLines=1, so on a
-  // narrow phone the sub-line truncates rather than wrapping into a
-  // hard-to-read fourth row.
+  // Apr 27 evening v2 — single-line inline banner. The earlier two-
+  // line block (title row + muted sub) read as "two messages" and
+  // felt duplicated. Now it's one continuous sentence with the
+  // strong word inline ("Elena is replying."), making it scannable
+  // in one read. Long-wait copy swap (after ~8s) softens the wait
+  // for plan-change replies that take 30-60s.
   pendingStatusStrip: {
     flexDirection: 'row', alignItems: 'center',
-    gap: 12,
+    gap: 10,
     marginHorizontal: 16, marginBottom: 8,
     paddingHorizontal: 14, paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(232,69,139,0.06)',
+    borderRadius: 10,
+    backgroundColor: 'rgba(232,69,139,0.07)',
     borderWidth: 1, borderColor: 'rgba(232,69,139,0.22)',
   },
-  pendingStatusBody: {
+  pendingStatusInline: {
     flex: 1, minWidth: 0,
+    fontSize: 12, fontFamily: FF.regular,
+    color: colors.textMid, lineHeight: 16,
   },
-  pendingStatusTitle: {
-    fontSize: 13, fontFamily: FF.semibold, fontWeight: '600',
-    color: colors.text, lineHeight: 16,
-  },
-  pendingStatusSub: {
-    fontSize: 11, fontFamily: FF.regular,
-    color: colors.textMuted, lineHeight: 14, marginTop: 1,
+  pendingStatusInlineStrong: {
+    color: colors.text, fontFamily: FF.semibold, fontWeight: '600',
   },
   pendingStatusCancelBtn: {
     paddingHorizontal: 4,

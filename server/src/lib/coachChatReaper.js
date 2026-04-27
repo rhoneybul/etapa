@@ -24,7 +24,11 @@
 
 const { supabase } = require('./supabase');
 
-const STALE_AFTER_MS = 3 * 60 * 1000;   // 3 minutes
+// Apr 27 evening: bumped 3min → 5min after the per-call coach chat
+// timeout went 60s → 180s (plan-change replies need the headroom).
+// Reaper must always sit comfortably above the call ceiling so
+// streaming jobs aren't killed mid-stream.
+const STALE_AFTER_MS = 5 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 2 * 60 * 1000; // sweep every 2 minutes
 
 let sweepTimer = null;

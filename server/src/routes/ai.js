@@ -2453,9 +2453,15 @@ function parseCoachReply(rawReply) {
   return { reply, updatedActivities };
 }
 
-// Hard cap on the Claude call server-side. Client is instructed to give up
-// polling at this + buffer; reaper catches anything still 'running' after 3m.
-const COACH_CHAT_TIMEOUT_MS = 60 * 1000;
+// Hard cap on the Claude call server-side. Apr 27 evening: bumped
+// 60s → 180s after Sonnet 4.6 plan-change replies (with a structured
+// JSON plan_update block) started timing out — they routinely take
+// 60-90s because the model has to re-emit every activity in the
+// affected weeks alongside the conversational reply. The pending
+// banner copy swaps to a "this can take a minute" message after 8s
+// to keep the user in the loop. Reaper catches anything still
+// 'running' after the coach-chat-reaper STALE_AFTER_MS (3 min).
+const COACH_CHAT_TIMEOUT_MS = 180 * 1000;
 
 /**
  * Kick off an async coach chat job.

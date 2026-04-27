@@ -13,7 +13,7 @@ import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { signOut, getCurrentUser } from '../services/authService';
-import { clearPlan, getPlans, clearUserData, getUserPrefs, setUserPrefs } from '../services/storageService';
+import { clearPlan, getPlans, clearUserData, getUserPrefs, setUserPrefs, shiftPlanStartDate } from '../services/storageService';
 import { openBillingPortal, getSubscriptionStatus, restorePurchases, getPrices } from '../services/subscriptionService';
 import { logoutRevenueCat, isRevenueCatAvailable } from '../services/revenueCatService';
 import { connectStrava, disconnectStrava, isStravaConnected, isStravaConfigured, getStravaTokens } from '../services/stravaService';
@@ -200,6 +200,8 @@ export default function SettingsScreen({ navigation }) {
   }, [navigation]);
   const [nameInput, setNameInput] = useState('');
   const [hasBeginnerPlan, setHasBeginnerPlan] = useState(false);
+  // Active plan for the in-place start-date shifter in COACHING.
+  const [activePlanForSettings, setActivePlanForSettings] = useState(null);
   const [authUser, setAuthUser] = useState(null);
   // "Finished loading" flags — tracked separately from the data itself
   // because `null` is ambiguous (could mean "not fetched yet" OR, for
@@ -254,6 +256,9 @@ export default function SettingsScreen({ navigation }) {
     getPlans().then(plans => {
       const hasBeginner = plans.some(p => p.name && p.name.startsWith('Get into Cycling'));
       setHasBeginnerPlan(hasBeginner);
+      // Cache the user's primary plan so the COACHING section can
+      // surface its start date for in-place shifting.
+      setActivePlanForSettings(plans[0] || null);
     }).catch(() => {});
   }, []);
 
@@ -735,6 +740,68 @@ export default function SettingsScreen({ navigation }) {
         {/* Coaching */}
         <Text style={s.sectionLabel}>COACHING</Text>
         <View style={s.card}>
+          {/* Plan start-date shifter. Surfaces the active plan's start
+              date and lets the user move every session by adjusting the
+              anchor — no plan regeneration, no AI call, just a
+              metadata change. Activity calendar dates are derived from
+              plan.startDate via getActivityDate, so updating the
+              anchor reorients the whole plan automatically. */}
+          {activePlanForSettings?.startDate && (
+            <TouchableOpacity
+              style={s.row}
+              onPress={() => {
+                const plan = activePlanForSettings;
+                const sp = plan.startDate.split('T')[0].split('-');
+                const current = new Date(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]), 12, 0, 0);
+                // Quick-shift options: today, next Monday, ±1 week
+                const today = new Date(); today.setHours(12, 0, 0, 0);
+                const nextMonday = (() => {
+                  const d = new Date(today);
+                  const offset = ((1 - d.getDay()) + 7) % 7 || 7;
+                  d.setDate(d.getDate() + offset);
+                  return d;
+                })();
+                const plusWeek = new Date(current); plusWeek.setDate(plusWeek.getDate() + 7);
+                const minusWeek = new Date(current); minusWeek.setDate(minusWeek.getDate() - 7);
+                const fmt = (d) => d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+                const apply = async (newDate) => {
+                  try {
+                    await shiftPlanStartDate(plan.id, newDate);
+                    const fresh = (await getPlans()).find(p => p.id === plan.id);
+                    setActivePlanForSettings(fresh || null);
+                    Alert.alert('Plan moved', `Your plan now starts ${fmt(newDate)}. Sessions have shifted to match.`);
+                  } catch (err) {
+                    Alert.alert('Could not move plan', err?.message || 'Please try again.');
+                  }
+                };
+                Alert.alert(
+                  'Move plan start date',
+                  'Sessions shift with the new start date — your plan content is unchanged.',
+                  [
+                    { text: `Today (${fmt(today)})`, onPress: () => apply(today) },
+                    { text: `Next Monday (${fmt(nextMonday)})`, onPress: () => apply(nextMonday) },
+                    { text: `+1 week (${fmt(plusWeek)})`, onPress: () => apply(plusWeek) },
+                    { text: `−1 week (${fmt(minusWeek)})`, onPress: () => apply(minusWeek) },
+                    { text: 'Cancel', style: 'cancel' },
+                  ],
+                );
+              }}
+            >
+              <View style={s.rowLeft}>
+                <View>
+                  <Text style={s.rowTitle}>Plan start date</Text>
+                  <Text style={s.rowSub}>
+                    Starts {(() => {
+                      const sp = activePlanForSettings.startDate.split('T')[0].split('-');
+                      const d = new Date(Number(sp[0]), Number(sp[1]) - 1, Number(sp[2]), 12, 0, 0);
+                      return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+                    })()} · tap to shift
+                  </Text>
+                </View>
+              </View>
+              <Text style={s.chevron}>{'\u203A'}</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={s.row} onPress={() => {
             navigation.navigate('ChangeCoach');
           }}>

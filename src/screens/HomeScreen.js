@@ -831,10 +831,14 @@ export default function HomeScreen({ navigation, route }) {
   // ── No plan state ─────────────────────────────────────────────────────────
   // Guard: if we just arrived from plan generation (`freshPlanId`) and plans
   // haven't hydrated yet, don't flash the empty-state "Make me a plan" CTA.
-  // Render a blank matching surface for the handful of frames it takes for
-  // getPlans() to populate `plans`.
+  // Apr 27 evening: was a blank black surface for the handful of frames
+  // it takes to hydrate, which read as "the plan just appears out of
+  // nowhere" — Rob flagged this as feeling abrupt. Now we render the
+  // shared LoadingSplash instead so there's a continuous loading
+  // affordance from PlanLoadingScreen → here → populated home, with no
+  // blank-flash gap in between.
   if (plans.length === 0 && freshPlanId) {
-    return <View style={[s.container, { backgroundColor: colors.bg }]} />;
+    return <LoadingSplash label="Loading your plan\u2026" />;
   }
 
   if (plans.length === 0) {

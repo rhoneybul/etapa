@@ -672,21 +672,16 @@ export default function PlanConfigScreen({ navigation, route }) {
       if (step === 5) analytics.events.configStepCompleted(3, { sessionsPerWeek: totalSessions, daysPlaced: Object.keys(dayActivities).length });
       if (step === 6) analytics.events.configStepCompleted(4, { planWeeks, startDateChoice });
       if (step === 7) analytics.events.configStepCompleted(5, { coachId });
-      // Skip step 6 (weeks + start date) when the intake already gave us a
-      // plan length. Start date falls back to its own default ('next_monday')
-      // — that's the safe assumption for an event user who just walked
-      // through an intake. User can still edit the weeks by going back.
-      if (step === 5 && prefillWeeks && planWeeks) {
-        // Step 7 (coach pick) is also redundant when a coach is already
-        // set (from onboarding) — fall through to completion instead of
-        // hopping into a step the user just answered minutes ago.
-        if (coachId) {
-          // fall through to completion logic below
-        } else {
-          setStep(7);
-          return;
-        }
-      } else if (step === 6 && coachId) {
+      // Apr 27 evening: previously skipped step 6 entirely when
+      // prefillWeeks was set, on the theory that the intake already
+      // gave us a plan length. Side-effect: users were also robbed
+      // of the start-date picker on that step (it sat alongside the
+      // weeks selector) and the start always defaulted to
+      // 'next_monday'. Now we keep step 6 in the flow — the weeks
+      // value pre-fills from the intake so it's a one-tap confirm,
+      // and the user can still pick when they want the plan to
+      // start.
+      if (step === 6 && coachId) {
         // Coach already chosen during the OnboardingTour (which now
         // requires it). Skip the redundant step 7 picker entirely and
         // run plan generation directly. If for some reason coachId
@@ -782,8 +777,9 @@ export default function PlanConfigScreen({ navigation, route }) {
       navigation.goBack();
       return;
     }
-    // Mirror the forward-skip when prefillWeeks fixed the weeks step.
-    if (step === 7 && prefillWeeks && planWeeks) { setStep(5); return; }
+    // Apr 27 evening: matching forward-skip removed (start-date picker
+    // was getting bypassed for prefillWeeks users), so the back path
+    // is plain step-1 again.
     setStep(step - 1);
   };
 
