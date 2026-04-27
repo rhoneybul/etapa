@@ -216,12 +216,11 @@ router.post('/generate-plan', async (req, res) => {
     const prompt = buildPlanPrompt(goal, config);
     const systemWithCoach = COACH_SYSTEM_PROMPT + getCoachPromptBlock(config.coachId);
     const estimatedActs = (config.weeks || 8) * (config.daysPerWeek || 3);
-    // Cap raised from 16384 → 32768 (Apr 27 2026). Sonnet 4.6 produces
-    // more elaborate descriptions than 4.0 and 12-week × 9-session plans
-    // were truncating mid-array around the old cap. Sonnet 4.6 supports
-    // 64K output so 32K leaves plenty of headroom; we still want a
-    // ceiling so a runaway prompt doesn't burn unbounded tokens.
-    const planMaxTokens = Math.min(32768, Math.max(8192, estimatedActs * 120));
+    // Mirrors the async plan-gen formula — see the longer comment on
+    // the matching block in runAsyncGeneration. Floor 16384 / ceiling
+    // 32768 / per-activity multiplier 200 to handle Sonnet 4.6's
+    // verbose output without truncation.
+    const planMaxTokens = Math.min(32768, Math.max(16384, estimatedActs * 200));
     const _claudeModel = 'claude-sonnet-4-6';
     const _claudeStartedAt = Date.now();
 
@@ -231,6 +230,10 @@ router.post('/generate-plan', async (req, res) => {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        // Extended output unlock — see runAsyncGeneration comment.
+        // Without this header Sonnet 4.6 caps output_tokens at 8192
+        // regardless of max_tokens in the body.
+        'anthropic-beta': 'output-128k-2025-02-19',
       },
       body: JSON.stringify({
         model: _claudeModel,
@@ -3274,14 +3277,24 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
     const prompt = buildPlanPrompt(goal, config);
     const systemWithCoach = COACH_SYSTEM_PROMPT + getCoachPromptBlock(config.coachId);
 
-    // Scale max_tokens based on plan size — long plans (20+ weeks, 5+ days) need more output room
+    // Plan-size-scaled max_tokens. Apr 27 2026: bumped both the floor
+    // and the ceiling after Sonnet 4.6 started truncating plans —
+    // 4.6 writes notably more elaborate session descriptions than 4.0,
+    // and the old 8192 floor / 16384 ceiling combo was clipping mid-
+    // array on plans we'd previously thought were "small enough".
+    //   - Floor 16384: even a small plan needs comfortable headroom
+    //     given 4.6's verbose tone.
+    //   - Ceiling 32768: leaves room for the largest plans (16w × 5d
+    //     ≈ 80 activities × 200 tokens). 4.6 supports up to 64K with
+    //     the extended-output beta header (set on the request below).
+    //   - Per-activity multiplier 120 → 200: matches observed token
+    //     usage for fully-structured hard sessions (warm-up + main +
+    //     cool-down + intensity block).
+    // Output_tokens billing is for actual usage, so a larger ceiling
+    // costs nothing on the happy path; it only kicks in when the model
+    // genuinely needs the room.
     const estimatedActivities = (config.weeks || 8) * (config.daysPerWeek || 3);
-    // Cap raised from 16384 → 32768 (Apr 27 2026). Sonnet 4.6 produces
-    // more elaborate descriptions than 4.0 and 12-week × 9-session plans
-    // were truncating mid-array around the old cap. Sonnet 4.6 supports
-    // 64K output so 32K leaves plenty of headroom; we still want a
-    // ceiling so a runaway prompt doesn't burn unbounded tokens.
-    const planMaxTokens = Math.min(32768, Math.max(8192, estimatedActivities * 120));
+    const planMaxTokens = Math.min(32768, Math.max(16384, estimatedActivities * 200));
 
     // Default prod model, can be swapped by test runner via modelOverride.
     const _claudeModel = modelOverride || 'claude-sonnet-4-6';
@@ -3320,6 +3333,14 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
+          // Extended output unlock — without this header, Sonnet 4.6
+          // silently caps output_tokens at 8192 regardless of what we
+          // pass as max_tokens in the body. Apr 27 2026: confirmed in
+          // production after a job hit exactly 8192 output_tokens with
+          // stop_reason='max_tokens' despite max_tokens=16384 in the
+          // request. With the header the cap rises to 64K, matching
+          // the ceiling we set in planMaxTokens above.
+          'anthropic-beta': 'output-128k-2025-02-19',
         },
         body: JSON.stringify({
           model: _claudeModel,
@@ -3557,6 +3578,10 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
             'Content-Type': 'application/json',
             'x-api-key': apiKey,
             'anthropic-version': '2023-06-01',
+            // Same extended-output unlock as the primary call —
+            // otherwise the retry would silently cap at 8192 even
+            // though the first pass had headroom.
+            'anthropic-beta': 'output-128k-2025-02-19',
           },
           body: JSON.stringify({
             model: _claudeModel,
