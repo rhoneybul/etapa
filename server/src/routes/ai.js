@@ -1888,8 +1888,34 @@ When in doubt, answer "yes". The classifier is a safety net, not a gate — fals
       data, response, durationMs: Date.now() - _claudeStartedAt,
       metadata: { messageLength: userMessage.length, contextTurns: contextWindow.length },
     });
+    // ── Fail-open parser ────────────────────────────────────────────
+    // Apr 27 evening: was `answer.startsWith('yes')` — strict English
+    // match that blocked any non-conforming response. Production case
+    // that broke it: a Spanish on-topic question about today's cycling
+    // session got rejected because Haiku answered "sí" (or just
+    // anything not starting with literal "yes"), and our parser saw
+    // that as ≠ yes → block. The system prompt itself says
+    // "false negatives are worse than false positives" — the parser
+    // should match that intent.
+    //
+    // New behaviour: ONLY block when the first word is an explicit
+    // "no" in one of the supported languages. Yes / sí / ambiguous /
+    // empty / weird whitespace all pass through. The downstream coach
+    // prompt itself politely declines off-topic asks anyway, so a
+    // false positive (slipping through) is a much softer failure
+    // than a false negative (rejecting a real cycling question).
     const answer = (data?.content?.[0]?.text || '').trim().toLowerCase();
-    return { allowed: answer.startsWith('yes') };
+    const NO_PATTERNS = [
+      /^no\b/,        // English / Spanish / Italian / Catalan
+      /^nein\b/,      // German
+      /^non\b/,       // French (and Italian "non" — block-equivalent)
+      /^nej\b/,       // Danish / Swedish
+      /^nei\b/,       // Norwegian
+      /^n[aã]o\b/,    // Portuguese (não)
+      /^nee\b/,       // Dutch
+    ];
+    const isExplicitNo = NO_PATTERNS.some(p => p.test(answer));
+    return { allowed: !isExplicitNo };
   } catch {
     // Fail open — don't block if the guard itself errors
     return { allowed: true };
