@@ -612,12 +612,24 @@ export default function PlanConfigScreen({ navigation, route }) {
     setLongRideDayOverride(dayKey);
   };
 
-  // Derive legacy formats for downstream compatibility
+  // Derive downstream formats from dayActivities. dayAssignments is
+  // now multi-value: every cycling-or-strength type the user placed
+  // on a day flows through as an array, so a Monday with both
+  // "outdoor" and "strength" placed produces { monday: ['outdoor',
+  // 'strength'] }. The previous single-string flatten silently
+  // dropped one of the two — when a user packed 9 sessions into 6
+  // available days, three days needed to host both an outdoor ride
+  // AND a strength session, but the constraint sent to Claude only
+  // mentioned "outdoor". Result: an unsolvable prompt that timed out
+  // at the 90s cap. Server + post-processor accept arrays now.
   const dayAssignments = {};
   const crossTrainingDays = {};
   Object.entries(dayActivities).forEach(([day, acts]) => {
-    const cycling = acts.find(a => isCyclingType(a));
-    if (cycling) dayAssignments[day] = cycling;
+    const cyclingActs = acts.filter(a => isCyclingType(a));
+    if (cyclingActs.length > 0) {
+      // De-dupe in case the UI ever places the same type twice on a day.
+      dayAssignments[day] = Array.from(new Set(cyclingActs));
+    }
     const ct = acts.filter(a => !isCyclingType(a));
     if (ct.length > 0) crossTrainingDays[day] = ct;
   });

@@ -191,7 +191,7 @@ router.post('/generate-plan', async (req, res) => {
     const systemWithCoach = COACH_SYSTEM_PROMPT + getCoachPromptBlock(config.coachId);
     const estimatedActs = (config.weeks || 8) * (config.daysPerWeek || 3);
     const planMaxTokens = Math.min(16384, Math.max(8192, estimatedActs * 120));
-    const _claudeModel = 'claude-sonnet-4-20250514';
+    const _claudeModel = 'claude-sonnet-4-6';
     const _claudeStartedAt = Date.now();
 
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
@@ -309,7 +309,7 @@ router.post('/edit-plan', async (req, res) => {
   try {
     const prompt = buildEditPrompt(plan, goal, instruction, scope, currentWeek);
     const systemWithCoach = COACH_SYSTEM_PROMPT + getCoachPromptBlock(coachId);
-    const _claudeModel = 'claude-sonnet-4-20250514';
+    const _claudeModel = 'claude-sonnet-4-6';
     const _claudeStartedAt = Date.now();
 
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
@@ -377,7 +377,7 @@ router.post('/edit-activity', async (req, res) => {
   try {
     const prompt = buildActivityEditPrompt(activity, goal, instruction);
     const systemWithCoach = COACH_SYSTEM_PROMPT + getCoachPromptBlock(coachId);
-    const _claudeModel = 'claude-sonnet-4-20250514';
+    const _claudeModel = 'claude-sonnet-4-6';
     const _claudeStartedAt = Date.now();
 
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
@@ -986,15 +986,30 @@ ${activityGuidance.join('\n\n')}
     ? config.dayAssignments
     : null;
   const hasDayAssignments = dayAssignments && Object.keys(dayAssignments).length > 0;
-  const dayAssignmentLabel = (type) => {
-    if (type === 'strength') return 'STRENGTH ONLY (no cycling)';
-    if (type === 'outdoor') return 'OUTDOOR ride';
-    if (type === 'indoor') return 'INDOOR ride';
-    return type;
+  // Normalise — accept either a single string ('outdoor') from legacy
+  // saved configs OR an array (['outdoor','strength']) from the new
+  // multi-value format. Always returns an array of unique types so
+  // every consumer below can treat assignments uniformly.
+  const normaliseDayValue = (val) => {
+    if (Array.isArray(val)) return Array.from(new Set(val.filter(Boolean)));
+    if (typeof val === 'string' && val) return [val];
+    return [];
+  };
+  const dayAssignmentLabel = (val) => {
+    const types = normaliseDayValue(val);
+    if (types.length === 0) return 'free';
+    const labels = types.map(t => {
+      if (t === 'strength') return 'STRENGTH session';
+      if (t === 'outdoor') return 'OUTDOOR ride';
+      if (t === 'indoor') return 'INDOOR ride';
+      return t;
+    });
+    // "OUTDOOR ride + STRENGTH session" reads as "do BOTH on this day".
+    return labels.join(' + ');
   };
   const dayAssignmentLines = hasDayAssignments
     ? Object.entries(dayAssignments)
-        .map(([day, type]) => `   - ${day.charAt(0).toUpperCase() + day.slice(1)}: ${dayAssignmentLabel(type)}`)
+        .map(([day, val]) => `   - ${day.charAt(0).toUpperCase() + day.slice(1)}: ${dayAssignmentLabel(val)}`)
         .join('\n')
     : '';
 
@@ -1010,7 +1025,10 @@ ${isBeginnerPlan && goal.targetDistance ? `5a. **Beginner target-distance ceilin
 ${crossTrainingDayNames.length > 0 ? `6. **Cross-training days** (${crossTrainingDayNames.join(', ')}): NO ride activities on these days. The athlete already has non-cycling work planned there — do not double up.` : ''}
 ${hasDayAssignments ? `7. **Day-by-day session type** — the athlete has explicitly chosen what goes on each day. EVERY WEEK must follow this mapping:
 ${dayAssignmentLines}
-   **Strength days must NOT contain rides.** **Ride days must NOT contain strength.** These assignments are strict — a strength session placed on a day tagged as an outdoor ride day is a failure, even if the total session count is right. Plan the WHOLE week around this map first, then fill in session types (endurance / tempo / intervals / long_ride) within it.` : ''}
+   - A day labelled with one type (e.g. "OUTDOOR ride") gets ONLY that type — no other activity on it.
+   - A day labelled with two types joined by " + " (e.g. "OUTDOOR ride + STRENGTH session") gets BOTH on the same day — schedule one of each. This is how the athlete fits 9 sessions across 6 days, for example.
+   - Never place a session type that isn't listed for that day. A strength session on an "OUTDOOR ride"-only day is a failure; a ride on a "STRENGTH session"-only day is a failure.
+   Plan the WHOLE week around this map first, then fill in session types (endurance / tempo / intervals / long_ride) within it.` : ''}
 
 If any constraint conflicts with what you'd naturally do, adjust your plan to satisfy the constraint rather than break it.
 `;
@@ -1522,7 +1540,7 @@ Rules:
 Return ONLY the JSON object, no other text.`;
 
     const systemPrompt = COACH_SYSTEM_PROMPT + coachBlock;
-    const _claudeModel = 'claude-sonnet-4-20250514';
+    const _claudeModel = 'claude-sonnet-4-6';
     const _claudeStartedAt = Date.now();
 
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
@@ -1647,7 +1665,7 @@ Rules:
 
 Return ONLY the JSON object, no other text.`;
 
-    const _claudeModel = 'claude-sonnet-4-20250514';
+    const _claudeModel = 'claude-sonnet-4-6';
     const _claudeStartedAt = Date.now();
 
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
@@ -2010,7 +2028,7 @@ Never, ever write "I'll" / "I've" / "I'm" + a verb of change ("shift", "move", "
       content: m.content,
     }));
 
-    const _claudeModel = 'claude-sonnet-4-20250514';
+    const _claudeModel = 'claude-sonnet-4-6';
     const _claudeStartedAt = Date.now();
 
     const response = await _fetch('https://api.anthropic.com/v1/messages', {
@@ -2473,7 +2491,7 @@ async function runCoachChatJob(jobId) {
   job.status = 'running';
   job.startedAt = Date.now();
 
-  const _claudeModel = 'claude-sonnet-4-20250514';
+  const _claudeModel = 'claude-sonnet-4-6';
   job.model = _claudeModel;
 
   const systemPrompt = buildCoachSystemPrompt(job.context || {});
@@ -3033,7 +3051,7 @@ async function startGenerationJob({ userId, goal, config, replacePlanId = null, 
     goal,
     config,
     reason,
-    model: modelOverride || 'claude-sonnet-4-20250514',
+    model: modelOverride || 'claude-sonnet-4-6',
     systemPrompt: _systemPrompt,
     prompt: _userPrompt,
   }).then((logId) => { job.logId = logId; });
@@ -3228,16 +3246,33 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
     const planMaxTokens = Math.min(16384, Math.max(8192, estimatedActivities * 120));
 
     // Default prod model, can be swapped by test runner via modelOverride.
-    const _claudeModel = modelOverride || 'claude-sonnet-4-20250514';
+    const _claudeModel = modelOverride || 'claude-sonnet-4-6';
     const _claudeStartedAt = Date.now();
 
-    // Hard timeout on the Claude call. Without this, a hung connection
-    // leaves the job at status='running' forever — the reaper would
-    // eventually catch it after 5 minutes, but failing fast gives the app
-    // a chance to show an actual error state.
-    const CLAUDE_CALL_TIMEOUT_MS = 90 * 1000;
+    // ── Streaming + idle timeout ─────────────────────────────────────────
+    // Switched from a single-shot fetch with a 90s total cap to a
+    // streaming call with an IDLE timer. Plan generation can produce
+    // 12k+ tokens for long plans (16w × 5d), and at typical Claude
+    // throughput that runs 60–120s end-to-end. With the old total
+    // timeout, every plan that crossed 90s failed even though Claude
+    // was producing tokens fine — the dashboard was littered with
+    // "Claude API call timed out after 90s" entries that were
+    // genuinely just slow generations.
+    //
+    // Streaming fixes this: we read tokens as they arrive and reset
+    // the idle timer on every chunk. The job only times out if Claude
+    // genuinely stalls (no data for 45s straight), which is the
+    // failure mode we actually want to catch. Total wall-clock can
+    // now reach ~5 minutes if needed; the reaper still kicks any job
+    // that exceeds the absolute hard cap further up the chain.
+    const IDLE_TIMEOUT_MS = 45 * 1000;
+    const ABSOLUTE_TIMEOUT_MS = 5 * 60 * 1000; // Hard ceiling.
     const abortCtrl = new AbortController();
-    const abortTimer = setTimeout(() => abortCtrl.abort(), CLAUDE_CALL_TIMEOUT_MS);
+    let lastChunkAt = Date.now();
+    const idleTimer = setInterval(() => {
+      if (Date.now() - lastChunkAt > IDLE_TIMEOUT_MS) abortCtrl.abort();
+    }, 5000);
+    const absoluteTimer = setTimeout(() => abortCtrl.abort(), ABSOLUTE_TIMEOUT_MS);
 
     let response;
     try {
@@ -3253,15 +3288,17 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
           max_tokens: planMaxTokens,
           system: cachedSystem(systemWithCoach),
           messages: [{ role: 'user', content: prompt }],
+          stream: true,
         }),
         signal: abortCtrl.signal,
       });
     } catch (fetchErr) {
       clearInterval(progressInterval);
-      clearTimeout(abortTimer);
+      clearInterval(idleTimer);
+      clearTimeout(absoluteTimer);
       const aborted = fetchErr?.name === 'AbortError';
       const msg = aborted
-        ? `Claude API call timed out after ${Math.round(CLAUDE_CALL_TIMEOUT_MS / 1000)}s`
+        ? `Claude stalled (no tokens for ${Math.round(IDLE_TIMEOUT_MS / 1000)}s)`
         : `Claude API call failed: ${fetchErr?.message || 'unknown error'}`;
       console.error(`[async-gen] Job ${jobId} ${msg}`);
       logClaudeUsage({
@@ -3285,25 +3322,10 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
       }
       return;
     }
-    clearTimeout(abortTimer);
-
-    clearInterval(progressInterval);
-
-    if (job.status === 'cancelled') {
-      // Still log the usage — we paid for the tokens even if the user bailed.
-      try {
-        const data = await response.json();
-        logClaudeUsage({
-          userId, feature: 'plan_gen', model: _claudeModel,
-          data, response, durationMs: Date.now() - _claudeStartedAt,
-          status: 'ok',
-          metadata: { async: true, cancelled: true, weeks: config.weeks, daysPerWeek: config.daysPerWeek, coachId: config.coachId, goalType: goal?.goalType },
-        });
-      } catch {}
-      return;
-    }
 
     if (!response.ok) {
+      clearInterval(idleTimer);
+      clearTimeout(absoluteTimer);
       const errBody = await response.text();
       console.error(`[async-gen] Job ${jobId} API error:`, response.status, errBody);
       logClaudeUsage({
@@ -3326,13 +3348,76 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
       return;
     }
 
-    const data = await response.json();
+    // ── Stream parsing ───────────────────────────────────────────────────
+    // Anthropic SSE: each frame is "event: <name>\ndata: <json>\n\n".
+    // We accumulate text from content_block_delta events and capture
+    // the final usage from message_delta. The idle timer resets every
+    // time a chunk arrives, so steady streaming never trips it.
+    let text = '';
+    let usage = null;
+    let stopReason = null;
+    try {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      while (true) {
+        if (job.status === 'cancelled') {
+          try { reader.cancel(); } catch {}
+          break;
+        }
+        const { value, done } = await reader.read();
+        if (done) break;
+        lastChunkAt = Date.now();
+        buffer += decoder.decode(value, { stream: true });
+        let sep;
+        while ((sep = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          const dataLine = frame.split('\n').find(l => l.startsWith('data: '));
+          if (!dataLine) continue;
+          const payload = dataLine.slice(6).trim();
+          if (!payload || payload === '[DONE]') continue;
+          try {
+            const evt = JSON.parse(payload);
+            if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
+              text += evt.delta.text || '';
+            } else if (evt.type === 'message_delta') {
+              if (evt.usage) usage = { ...(usage || {}), ...evt.usage };
+              if (evt.delta?.stop_reason) stopReason = evt.delta.stop_reason;
+            } else if (evt.type === 'message_start' && evt.message?.usage) {
+              usage = { ...(usage || {}), ...evt.message.usage };
+            }
+          } catch {
+            // Single bad frame — ignore, keep streaming.
+          }
+        }
+      }
+    } finally {
+      clearInterval(idleTimer);
+      clearTimeout(absoluteTimer);
+    }
+    clearInterval(progressInterval);
+
+    // Cancellation honours: still log what we have so we can see
+    // partial-token costs in usage tracking.
+    if (job.status === 'cancelled') {
+      logClaudeUsage({
+        userId, feature: 'plan_gen', model: _claudeModel,
+        data: { content: [{ text }], usage }, response, durationMs: Date.now() - _claudeStartedAt,
+        status: 'ok',
+        metadata: { async: true, cancelled: true, weeks: config.weeks, daysPerWeek: config.daysPerWeek, coachId: config.coachId, goalType: goal?.goalType },
+      });
+      return;
+    }
+
+    // Streaming complete — log usage with the assembled text.
     logClaudeUsage({
       userId, feature: 'plan_gen', model: _claudeModel,
-      data, response, durationMs: Date.now() - _claudeStartedAt,
-      metadata: { async: true, weeks: config.weeks, daysPerWeek: config.daysPerWeek, coachId: config.coachId, goalType: goal?.goalType },
+      data: { content: [{ text }], usage, stop_reason: stopReason }, response,
+      durationMs: Date.now() - _claudeStartedAt,
+      metadata: { async: true, weeks: config.weeks, daysPerWeek: config.daysPerWeek, coachId: config.coachId, goalType: goal?.goalType, streamed: true },
     });
-    const text = data?.content?.[0]?.text || '[]';
+    if (!text) text = '[]';
     // Stash on the job so the success path can also log it on finish.
     job.rawResponse = String(text).slice(0, 50000);
     const jsonMatch = text.match(/\[[\s\S]*\]/);

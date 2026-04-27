@@ -383,17 +383,27 @@ function enforceTargetDistance(acts, goal, config) {
 
 // ── 7. Enforce dayAssignments ───────────────────────────────────────────────
 // When the athlete explicitly says "Monday is strength, Tuesday is outdoor,
-// Wednesday is strength", Claude used to get this wrong routinely — it would
-// put strength on ride days (its default pattern) and rides on strength days.
-// The prompt now surfaces dayAssignments explicitly, but we still clamp as a
-// safety net: for each week, if a strength session is on a ride-day and a
-// ride is on a strength-day, swap their dayOfWeek values.
+// Wednesday is outdoor + strength", Claude used to get this wrong routinely —
+// it would put strength on ride-only days (its default pattern) and rides on
+// strength-only days. The prompt surfaces dayAssignments explicitly, but we
+// clamp here as a safety net.
+//
+// dayAssignments[day] is an ARRAY of allowed types now (legacy single-string
+// values are coerced to single-item arrays). A session is "misplaced" only if
+// its type is NOT in the day's allowed set — so a Monday assigned
+// ['outdoor','strength'] happily hosts both a ride and a strength session.
 //
 // We do not move recurring / one-off rides — those are user-pinned to
 // specific days and injected after Claude's output. We also skip days that
 // aren't in dayAssignments (unassigned days keep whatever the model chose).
 
 const RIDE_ASSIGNMENTS = new Set(['outdoor', 'indoor']);
+
+const normaliseDayValue = (val) => {
+  if (Array.isArray(val)) return Array.from(new Set(val.filter(Boolean)));
+  if (typeof val === 'string' && val) return [val];
+  return [];
+};
 
 function enforceDayAssignments(acts, goal, config) {
   const violations = [];
@@ -402,14 +412,16 @@ function enforceDayAssignments(acts, goal, config) {
     return { activities: acts, violations };
   }
 
-  // Normalise: map dayOfWeek index → assignment ('strength' | 'outdoor' | 'indoor').
-  const assignmentByDow = new Map();
-  for (const [dayName, type] of Object.entries(da)) {
+  // Normalise: map dayOfWeek index → Set of allowed assignment types.
+  const allowedByDow = new Map();
+  for (const [dayName, val] of Object.entries(da)) {
     const dow = DAY_NAMES.indexOf(String(dayName).toLowerCase());
-    if (dow < 0 || !type) continue;
-    assignmentByDow.set(dow, type);
+    if (dow < 0) continue;
+    const types = normaliseDayValue(val);
+    if (types.length === 0) continue;
+    allowedByDow.set(dow, new Set(types));
   }
-  if (assignmentByDow.size === 0) return { activities: acts, violations };
+  if (allowedByDow.size === 0) return { activities: acts, violations };
 
   const byWeek = groupByWeek(acts);
   let next = acts.slice();
@@ -419,20 +431,38 @@ function enforceDayAssignments(acts, goal, config) {
   // those — the user has a real-world commitment on that day.
   const isPinned = (a) => a.isOneOff || a.subType === 'oneoff' || a.isRecurring || a.subType === 'recurring';
 
+  // Does this activity's type belong on the given day?
+  // - rides count if 'outdoor' or 'indoor' is in the day's allowed set
+  // - strength counts if 'strength' is in the day's allowed set
+  const fitsDay = (a, allowed) => {
+    if (!allowed) return true; // no rule for this day → don't move
+    if (a.type === 'strength') return allowed.has('strength');
+    if (a.type === 'ride') {
+      // Indoor rides only fit indoor-allowed days; outdoor rides fit
+      // outdoor-allowed days. If we can't tell from subType, fall
+      // back to "any ride bucket fits".
+      if (a.subType === 'indoor') return allowed.has('indoor');
+      // For non-indoor rides, accept any ride bucket on the day.
+      return allowed.has('outdoor') || allowed.has('indoor');
+    }
+    return true;
+  };
+
   for (const [week, weekActs] of byWeek.entries()) {
     // For each week, find swap candidates:
-    //   A = ride on a strength-assigned day (needs to move off)
-    //   B = strength on a ride-assigned day (needs to move off)
+    //   A = ride on a day that doesn't allow rides
+    //   B = strength on a day that doesn't allow strength
     // Pair them up and swap dayOfWeek. This preserves session count per
     // week and keeps every activity on an available day.
     const misplacedRides = [];
     const misplacedStrength = [];
     for (const a of weekActs) {
       if (isPinned(a)) continue;
-      const assigned = assignmentByDow.get(a.dayOfWeek);
-      if (!assigned) continue;
-      if (a.type === 'ride' && assigned === 'strength') misplacedRides.push(a);
-      if (a.type === 'strength' && RIDE_ASSIGNMENTS.has(assigned)) misplacedStrength.push(a);
+      const allowed = allowedByDow.get(a.dayOfWeek);
+      if (!allowed) continue;
+      if (fitsDay(a, allowed)) continue;
+      if (a.type === 'ride') misplacedRides.push(a);
+      else if (a.type === 'strength') misplacedStrength.push(a);
     }
 
     const pairs = Math.min(misplacedRides.length, misplacedStrength.length);

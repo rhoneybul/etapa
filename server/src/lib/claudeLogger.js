@@ -31,7 +31,12 @@ const { supabase } = require('./supabase');
 // USD per million tokens. Update when Anthropic changes prices.
 // Source: https://docs.anthropic.com/en/docs/about-claude/models
 const PRICING = {
-  // Sonnet 4 (current default for plan generation & coach chat)
+  // Sonnet 4.6 (current default for plan generation, coach chat, edits)
+  // Pricing mirrors Sonnet 4 — Anthropic has held the Sonnet tier flat at
+  // $3/$15 across versions. Verify against the billing console after the
+  // first day of usage and adjust here if it's drifted.
+  'claude-sonnet-4-6':         { input: 3.00,  output: 15.00, cacheRead: 0.30, cacheWrite: 3.75 },
+  // Sonnet 4 — kept for back-compat on any legacy logs / overrides.
   'claude-sonnet-4-20250514':  { input: 3.00,  output: 15.00, cacheRead: 0.30, cacheWrite: 3.75 },
   // Haiku 4.5 (cheaper, used for lighter tasks)
   'claude-haiku-4-5-20251001': { input: 1.00,  output: 5.00,  cacheRead: 0.10, cacheWrite: 1.25 },

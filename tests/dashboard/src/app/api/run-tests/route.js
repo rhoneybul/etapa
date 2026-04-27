@@ -27,7 +27,7 @@ function newRunId() { return `run_${crypto.randomBytes(8).toString('hex')}`; }
 // Model the test runner uses to GENERATE plans. Matches production by default
 // so the dashboard exercises exactly what customers get. Override via
 // TEST_MODEL env if you want to compare against a stronger / weaker model.
-const TEST_GENERATOR_MODEL = process.env.TEST_MODEL || 'claude-sonnet-4-20250514';
+const TEST_GENERATOR_MODEL = process.env.TEST_MODEL || 'claude-sonnet-4-6';
 
 // Model the test runner uses to VERIFY each generated plan (LLM-as-judge).
 // Deliberately DIFFERENT family from the generator so it can catch errors the

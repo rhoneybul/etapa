@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import useScreenGuard from '../hooks/useScreenGuard';
 import { getCurrentUser } from '../services/authService';
-import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig, getUserPrefs, isOnboardingDone, setOnboardingDone, saveGoal, markActivityComplete, getActivityDate } from '../services/storageService';
+import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig, getUserPrefs, setUserPrefs, isOnboardingDone, setOnboardingDone, saveGoal, markActivityComplete, getActivityDate } from '../services/storageService';
 import OnboardingTour from '../components/OnboardingTour';
 import { isSubscribed, getSubscriptionStatus, openCheckout, getPrices } from '../services/subscriptionService';
 import UpgradePrompt from '../components/UpgradePrompt';
@@ -131,6 +131,22 @@ export default function HomeScreen({ navigation, route }) {
   const [deleting, setDeleting] = useState(false);
   const [stravaActivities, setStravaActivities] = useState([]);
   const [selectedDayIdx, setSelectedDayIdx] = useState(null); // tapped day in the week strip
+  // ── Week module display mode ──────────────────────────────────────────
+  // Single source of truth for the week section. Was previously two
+  // overlapping views (horizontal cards rail + a 7-day calendar strip
+  // below). Now the user picks one — Cards (horizontal carousel) or List
+  // (vertical day rows) — and the choice persists per-user via
+  // setUserPrefs so it survives app restarts. Calendar icon in the
+  // unified header is the entry point to the full Calendar screen.
+  const [viewMode, setViewMode] = useState('cards');
+  const setViewModeAndPersist = useCallback((next) => {
+    setViewMode(next);
+    // Fire-and-forget — UI doesn't wait on the persistence write. If the
+    // write fails the choice still applies in-session; only resilience
+    // across an app restart is lost, which is acceptable for a UI prefs.
+    setUserPrefs({ homeViewMode: next }).catch(() => {});
+    analytics.events.homeViewModeChanged?.(next);
+  }, []);
   // Scroll refs — tapping a day in the top week strip scrolls the outer
   // ScrollView to that day's row in the inline week list below. Without
   // this, the selection highlight moves but the actual session can be
@@ -407,6 +423,15 @@ export default function HomeScreen({ navigation, route }) {
       bannerMessage: remoteTrial?.bannerMessage ?? 'Subscribe to unlock full training access',
     };
     if (isMounted.current) setTrialConfig(resolvedTrialConfig);
+
+    // Restore the user's last week-module view mode (cards/list). Done
+    // here rather than in a separate effect so it lands in the same
+    // tick as the rest of the prefs hydration — avoids a single-frame
+    // flash where Cards is visible before swapping to List on a user
+    // who'd previously chosen List.
+    if (isMounted.current && userPrefs?.homeViewMode === 'list') {
+      setViewMode('list');
+    }
 
     // Load coming soon config (only shown if showOnHome is true)
     if (remoteConfig?.coming_soon && isMounted.current) {
@@ -1721,32 +1746,141 @@ export default function HomeScreen({ navigation, route }) {
               the week list to drop the activity. The inline top banner
               disappeared behind the fold during a drag. */}
 
-          {/* ── Upcoming days rail (Today + Tomorrow + a few more) ─────────
-              Horizontal scroll containing the next 5 days. The first
-              card (Today) is the hero — prominent View Details / Ask
-              Coach CTAs. The rest are compact preview cards showing
-              just session title + meta. Tap any card → ActivityDetail.
-              Replaces what was previously two separate vertical
-              sections (Today hero + Tomorrow preview), saving
-              ~150-200pt of vertical home-screen space. */}
-          {(planHasStarted || todayActivities.length > 0 || tomorrowActivities.length > 0) && (() => {
+          {/* ── Unified week module header ─────────────────────────────────
+              ONE header for the whole week section: prev/next week
+              navigation, Cards/List view toggle, and the Calendar shortcut.
+              This replaces what used to be three separate header rows
+              (week-toggle above the rail, weekHeader above the 7-day
+              calendar strip, and a separate weekStrip calendar button)
+              all of which competed for the same screen real estate.
+              Renders whenever the rail OR the list would render — the
+              same condition both downstream blocks use. */}
+          {(planHasStarted || todayActivities.length > 0 || tomorrowActivities.length > 0) && effectivePlanRunning && (() => {
+            const totalWeeks = activePlan?.weeks || 1;
+            const canPrev = currentWeek > 1;
+            const canNext = currentWeek < totalWeeks;
+            return (
+              <View style={s.unifiedWeekHeader}>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (!canPrev) return;
+                    const to = Math.max(1, currentWeek - 1);
+                    analytics.events.weekNavigated('prev', currentWeek, to);
+                    setCurrentWeek(to);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  disabled={!canPrev}
+                  style={[s.weekToggleArrow, !canPrev && s.weekToggleArrowDisabled]}
+                >
+                  <Text style={[s.weekToggleArrowText, !canPrev && s.weekToggleArrowTextDisabled]}>{'\u2039'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('WeekView', { week: currentWeek, planId: activePlan.id })}
+                  hitSlop={HIT}
+                  activeOpacity={0.7}
+                  style={s.unifiedWeekLabelTap}
+                >
+                  <Text style={s.weekToggleLabel}>Week {currentWeek} of {totalWeeks}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (!canNext) return;
+                    const to = Math.min(totalWeeks, currentWeek + 1);
+                    analytics.events.weekNavigated('next', currentWeek, to);
+                    setCurrentWeek(to);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  disabled={!canNext}
+                  style={[s.weekToggleArrow, !canNext && s.weekToggleArrowDisabled]}
+                >
+                  <Text style={[s.weekToggleArrowText, !canNext && s.weekToggleArrowTextDisabled]}>{'\u203A'}</Text>
+                </TouchableOpacity>
+                {/* Cards / List segmented toggle. Pink-tinted active
+                    chip echoes the brand colour without competing with
+                    the calendar pill. Two-segment so labels stay
+                    readable; doesn't expand when the screen is narrow. */}
+                <View style={s.viewModeToggle}>
+                  <TouchableOpacity
+                    onPress={() => setViewModeAndPersist('cards')}
+                    style={[s.viewModeBtn, viewMode === 'cards' && s.viewModeBtnActive]}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[s.viewModeBtnText, viewMode === 'cards' && s.viewModeBtnTextActive]}>Cards</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setViewModeAndPersist('list')}
+                    style={[s.viewModeBtn, viewMode === 'list' && s.viewModeBtnActive]}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[s.viewModeBtnText, viewMode === 'list' && s.viewModeBtnTextActive]}>List</Text>
+                  </TouchableOpacity>
+                </View>
+                {/* Calendar shortcut — same target as the old corner
+                    button on the week strip. Kept the pink-tinted bg so
+                    users who'd learned the previous icon position still
+                    recognise it here. */}
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('Calendar')}
+                  style={s.unifiedCalendarBtn}
+                  hitSlop={HIT}
+                  activeOpacity={0.7}
+                  accessibilityLabel="View calendar"
+                >
+                  <MaterialCommunityIcons name="calendar-month-outline" size={16} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            );
+          })()}
+
+          {/* This week progress — one pink dot per planned session,
+              filled when complete, hollow when not. Sits directly under
+              the unified header and above the cards / list view. The
+              dots scale to whatever the user's week looks like (3 for
+              a beginner, 9 for an advanced multi-session week) and
+              wrap to a second row past 7 sessions so the count chip on
+              the right doesn't get pushed off-screen on a narrow phone.
+              Pink because the brand colour does the work — green felt
+              like a Strava/done-button signal that didn't fit the warm
+              "this is your training" tone. Hidden pre-plan-start
+              because "0/0 done" before a plan starts is noise, not
+              information. */}
+          {activePlan && effectivePlanRunning && progress.total > 0 && (
+            <View style={s.weekDotsRow}>
+              <Text style={s.weekDotsLabel}>This week</Text>
+              <View style={s.weekDotsTrack}>
+                {Array.from({ length: progress.total }).map((_, i) => (
+                  <View
+                    key={i}
+                    style={[s.weekDot, i < progress.done && s.weekDotDone]}
+                  />
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* ── Upcoming days rail (Cards mode only) ─────────────────────
+              Horizontal scroll of the next 7 days. Today + Tomorrow are
+              equal-width compressed cards; the rest are the same width
+              for a consistent rhythm in the rail. Tap any card →
+              ActivityDetail. Long-press → drag to move. Mark-done
+              circle is inline in the action row. */}
+          {viewMode === 'cards' && (planHasStarted || todayActivities.length > 0 || tomorrowActivities.length > 0) && (() => {
             const coach = getCoach(activePlanConfig?.coachId);
             const coachFirstName = (coach?.name || 'your coach').split(' ')[0];
-            // Two card widths — Today is the hero (wider, with View
-            // Details + Ask coach CTAs), the rest of the week is a
-            // compact preview. With Today at ~62% of screen width and
-            // every other day at ~46%, you get Today plus most of
-            // Tomorrow visible at rest, and 1.5 compact cards visible
-            // when scrolled past Today. Old single-width approach
-            // showed Today + a tiny peek and felt like the rail was
-            // broken.
+            // Equal-width compressed cards. Previously Today was a wider
+            // hero (~62%) with the rest at ~46%, but Rob (Apr 27 design
+            // pass) flagged the cards still felt oversized and the
+            // unequal sizing made the rail look uneven during scroll.
+            // 48% across the board lets the user see Today + Tomorrow
+            // side-by-side at rest, with Wed peeking in. Today still
+            // pops via the pink border and TODAY eyebrow rather than
+            // dimensional difference.
             const screenW = Dimensions.get('window').width;
-            const todayCardWidth = Math.min(screenW * 0.62, 240);
-            const otherCardWidth = Math.min(screenW * 0.46, 180);
+            const compactCardWidth = Math.min(screenW * 0.48, 200);
 
             const renderUpcomingCard = (day, idx) => {
               const isToday = day.isToday;
-              const cardWidth = isToday ? todayCardWidth : otherCardWidth;
+              const cardWidth = compactCardWidth;
               const a = day.primary;
               const isRest = !a;
               const isDone = !!a?.completed;
@@ -1808,22 +1942,16 @@ export default function HomeScreen({ navigation, route }) {
                 >
                   <View style={s.upcomingCardHeader}>
                     <Text style={[s.upcomingCardLabel, isToday && s.upcomingCardLabelToday]}>{day.eyebrow}</Text>
-                    {isDone ? (
-                      <View style={s.todayHeroDoneBadge}>
-                        <Text style={s.todayHeroDoneBadgeText}>{'\u2713'} DONE</Text>
-                      </View>
-                    ) : (
-                      <View style={s.upcomingTypePill}>
-                        <MaterialCommunityIcons
-                          name={typeIcon}
-                          size={11}
-                          color={colors.textMid}
-                        />
-                        <Text style={s.upcomingTypePillText}>{typeTag}</Text>
-                      </View>
-                    )}
+                    <View style={s.upcomingTypePill}>
+                      <MaterialCommunityIcons
+                        name={typeIcon}
+                        size={10}
+                        color={colors.textMid}
+                      />
+                      <Text style={s.upcomingTypePillText}>{typeTag}</Text>
+                    </View>
                   </View>
-                  <Text style={s.upcomingCardTitle} numberOfLines={2}>
+                  <Text style={s.upcomingCardTitle} numberOfLines={1}>
                     {isRest ? 'Rest day' : a.title}
                   </Text>
                   <Text style={s.upcomingCardMeta} numberOfLines={1}>
@@ -1831,33 +1959,49 @@ export default function HomeScreen({ navigation, route }) {
                       ? 'Recovery is training too.'
                       : meta}
                   </Text>
-                  {/* Today-only: keep the prominent CTAs from the
-                      previous Today hero so the primary action is
-                      one tap away (open session detail / ask the
-                      coach). On other days, just the chevron-style
-                      tap target is enough. */}
-                  {isToday && (
-                    <View style={s.upcomingCardActions}>
-                      {!isRest && (
-                        <TouchableOpacity
-                          style={[s.todayHeroCta, isDone && s.todayHeroCtaDone]}
-                          onPress={() => navigation.navigate('ActivityDetail', { activityId: a.id })}
-                          activeOpacity={0.85}
-                        >
-                          <Text style={s.todayHeroCtaText}>View details</Text>
-                          <Text style={s.todayHeroCtaArrow}>{'\u203A'}</Text>
-                        </TouchableOpacity>
-                      )}
+                  {/* Action row — single line on every card. View on the
+                      left for non-rest, Ask? bridges to the coach (label
+                      kept short and coach-agnostic so it doesn't wrap
+                      with longer coach names like "Matteo"), and the
+                      mark-done circle on the right. The circle works
+                      for rest days too (some users like checking off
+                      rest days as a "I actually rested" affirmation). */}
+                  <View style={s.upcomingCardActions}>
+                    {!isRest && (
                       <TouchableOpacity
-                        style={s.todayHeroCoachBtn}
-                        onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
+                        style={s.todayHeroCta}
+                        onPress={() => navigation.navigate('ActivityDetail', { activityId: a.id })}
                         activeOpacity={0.85}
                       >
-                        <Text style={s.todayHeroCoachBtnText}>Ask {coachFirstName}</Text>
-                        {isRest && <Text style={s.todayHeroCoachBtnArrow}>{'\u203A'}</Text>}
+                        <Text style={s.todayHeroCtaText}>View</Text>
                       </TouchableOpacity>
-                    </View>
-                  )}
+                    )}
+                    <TouchableOpacity
+                      style={[s.todayHeroCoachBtn, isRest && s.todayHeroCoachBtnRest]}
+                      onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={s.todayHeroCoachBtnText}>Ask?</Text>
+                    </TouchableOpacity>
+                    {!isRest && (
+                      <TouchableOpacity
+                        onPress={async (e) => {
+                          e.stopPropagation?.();
+                          if (!a) return;
+                          await markActivityComplete(a.id);
+                          // force:true bypasses load()'s plan-hash cache
+                          // (matches the same pattern used by the weekList
+                          // mark-done at the bottom of this screen).
+                          await load({ force: true });
+                        }}
+                        style={[s.cardDoneCircle, isDone && s.cardDoneCircleDone]}
+                        hitSlop={HIT}
+                        activeOpacity={0.7}
+                      >
+                        {isDone ? <Text style={s.cardDoneTick}>{'\u2713'}</Text> : null}
+                      </TouchableOpacity>
+                    )}
+                  </View>
 
                   {/* Drag handle hint — only on cards that have a real
                       activity. The ≡-and-text affordance is the same
@@ -1867,7 +2011,7 @@ export default function HomeScreen({ navigation, route }) {
                     <View style={s.upcomingDragHint}>
                       <MaterialCommunityIcons
                         name="drag-horizontal-variant"
-                        size={12}
+                        size={11}
                         color={colors.textMuted}
                       />
                       <Text style={s.upcomingDragHintText}>Hold to move</Text>
@@ -1892,39 +2036,12 @@ export default function HomeScreen({ navigation, route }) {
               return <View key={idx}>{cardInner}</View>;
             };
 
-            const totalWeeks = activePlan?.weeks || 1;
-            const canPrev = currentWeek > 1;
-            const canNext = currentWeek < totalWeeks;
-
             return (
               <>
-                {/* Week toggle — minimal, sits above the rail. Only
-                    rendered when the plan has actually started so we
-                    don't show "Week 1 of 12" before Week 1 is real
-                    (the pre-plan-start card below covers that case). */}
-                {planHasStarted && (
-                  <View style={s.weekToggleRow}>
-                    <TouchableOpacity
-                      onPress={() => canPrev && setCurrentWeek(w => Math.max(1, w - 1))}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      disabled={!canPrev}
-                      style={[s.weekToggleArrow, !canPrev && s.weekToggleArrowDisabled]}
-                    >
-                      <Text style={[s.weekToggleArrowText, !canPrev && s.weekToggleArrowTextDisabled]}>{'\u2039'}</Text>
-                    </TouchableOpacity>
-                    <Text style={s.weekToggleLabel}>
-                      Week {currentWeek} of {totalWeeks}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => canNext && setCurrentWeek(w => Math.min(totalWeeks, w + 1))}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      disabled={!canNext}
-                      style={[s.weekToggleArrow, !canNext && s.weekToggleArrowDisabled]}
-                    >
-                      <Text style={[s.weekToggleArrowText, !canNext && s.weekToggleArrowTextDisabled]}>{'\u203A'}</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
+                {/* Week navigation + view toggle moved to a dedicated
+                    unified header below — rendered for both Cards and
+                    List modes so the controls don't disappear when the
+                    user toggles. See `s.unifiedWeekHeader` block. */}
 
                 <ScrollView
                   horizontal
@@ -1937,7 +2054,10 @@ export default function HomeScreen({ navigation, route }) {
                   // dominant card size in the rail (Today is the only
                   // wider card). Snapping on the wider value would feel
                   // sluggish past the first card.
-                  snapToInterval={otherCardWidth + 10}
+                  // All cards share one width now that Today is no longer a
+                  // wider hero — snap on the unified width so the rail
+                  // pages cleanly card-by-card.
+                  snapToInterval={compactCardWidth + 10}
                 >
                   {upcomingDays.map(renderUpcomingCard)}
                 </ScrollView>
@@ -2026,26 +2146,6 @@ export default function HomeScreen({ navigation, route }) {
               rail above. Showing it twice was redundant and ate vertical
               space without adding information.) */}
 
-          {/* ── This week progress ─────────────────────────────────────
-              The sibling "View full week" / "View full plan" buttons were
-              removed April 2026 — tapping the pink plan card goes to
-              PlanOverview, tapping the week label inside the week strip
-              goes to WeekView. Keeping just the progress bar here so the
-              user has a quick "where am I this week" glance without extra
-              chrome. Hidden pre-plan-start because "0/0 done" for a plan
-              that hasn't started is noise, not information. */}
-          {activePlan && effectivePlanRunning && (
-            <View style={s.section}>
-              <View style={s.sectionRow}>
-                <Text style={s.sectionTitle}>This week</Text>
-                <Text style={s.sectionMeta}>{progress.done}/{progress.total} done</Text>
-              </View>
-              <View style={s.weekProgressTrack}>
-                <View style={[s.weekProgressFill, { width: `${progress.pct}%` }]} />
-              </View>
-            </View>
-          )}
-
           {/* Pre-plan-start card — shown in place of the Week 1/12 strip
               when the plan hasn't started yet. Previously the home screen
               showed Week 1 of the plan immediately, which was misleading:
@@ -2102,139 +2202,30 @@ export default function HomeScreen({ navigation, route }) {
             );
           })()}
 
-          {/* Week calendar strip with navigation — only once the plan is
-              actually running. See the pre-plan-start card above for the
-              pre-start treatment.
-              Layout convention — iOS / Material mobile pattern:
-                - Nav arrows flank the week title (prev / title / next)
-                - The title itself is the primary tap target → WeekView
-                - Secondary actions (here: open full Calendar screen) sit
-                  in the top-right corner of the card, NOT competing
-                  with the navigation bar for space
-              This stops the header row overflowing on narrow screens. */}
-          {effectivePlanRunning && (
-          <View style={s.weekStrip}>
-            {/* Header row — title CENTERED, calendar icon on the right.
-                An invisible spacer (same width as the calendar button)
-                on the left balances the layout so the title sits at the
-                visual centre of the card despite the icon on one side.
-                Standard iOS app-bar pattern. Week 1/12 is the primary
-                tap target (→ WeekView); calendar opens the full
-                Calendar screen. Prev/next chevrons live in the day row
-                below, not in this header. */}
-            <View style={s.weekHeader}>
-              <View style={s.weekHeaderSpacer} />
-              <TouchableOpacity
-                onPress={() => navigation.navigate('WeekView', { week: currentWeek, planId: activePlan.id })}
-                hitSlop={HIT}
-                activeOpacity={0.7}
-                style={s.weekLabelInnerRow}
-              >
-                <Text style={s.weekLabel}>Week {currentWeek}/{activePlan.weeks}</Text>
-                <MaterialCommunityIcons name="chevron-right" size={18} color={colors.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('Calendar')}
-                style={s.weekHeaderCalendarBtn}
-                hitSlop={HIT}
-                activeOpacity={0.7}
-                accessibilityLabel="View calendar"
-              >
-                <MaterialCommunityIcons name="calendar-month-outline" size={18} color={colors.primary} />
-              </TouchableOpacity>
-            </View>
-            <Text style={s.monthLabel}>{monthLabel}</Text>
+          {/* List mode — the inline vertical week view. The previous
+              7-day calendar strip (day-circles + activity icons) and the
+              separate weekHeader (title + calendar btn) lived here too,
+              both of which duplicated info now consolidated in the
+              unified week header above and the cards rail. The list
+              still owns drag-to-day, mark-done, and full session detail
+              — it's just rendered when the user toggles to List, not
+              alongside Cards. */}
+          {effectivePlanRunning && viewMode === 'list' && (
+          <View style={s.weekListWrap}>
+            {/* "Go to today" — only when we've drifted off the current
+                week in list mode. Smaller and inline since the unified
+                header above handles primary navigation. */}
             {(!viewingToday && (planHasStarted ? currentWeek !== realTodayWeek : currentWeek !== 1)) && (
               <TouchableOpacity
                 onPress={() => {
                   setCurrentWeek(planHasStarted ? realTodayWeek : 1);
                 }}
                 hitSlop={HIT}
-                style={s.goTodayBtn}
+                style={s.goTodayBtnInline}
               >
                 <Text style={s.goTodayText}>{planHasStarted ? 'Go to today' : 'Go to start'}</Text>
               </TouchableOpacity>
             )}
-            {/* Day row + prev/next chevrons on the same horizontal line,
-                flanking the 7-day grid. Lowers the chevrons so they
-                don't compete with the title on the header row, and puts
-                them right where users' thumbs naturally swipe to
-                navigate between weeks. */}
-            <View style={s.dayRowWithNav}>
-              <TouchableOpacity
-                onPress={() => { const to = Math.max(1, currentWeek - 1); analytics.events.weekNavigated('prev', currentWeek, to); setCurrentWeek(to); }}
-                disabled={currentWeek <= 1}
-                hitSlop={HIT}
-                style={s.weekNavSideBtn}
-              >
-                <Text style={[s.weekNavArrow, currentWeek <= 1 && s.weekNavDisabled]}>{'\u2039'}</Text>
-              </TouchableOpacity>
-              <View style={[s.dayRow, { flex: 1 }]}>
-              {DAY_LABELS.map((d, i) => {
-                const items = getDayItems(i);
-                const isSelected = i === selectedDayIdx;
-                return (
-                  <TouchableOpacity
-                    key={i}
-                    style={[s.dayCell, isSelected && s.dayCellSelected]}
-                    onPress={() => {
-                      // Day strip up here is a PREVIEW only. When the user
-                      // is mid-move, drops must happen on the larger week
-                      // list below (where each session row is clearly
-                      // labelled "Drop here · Mon" etc.). Ignoring taps
-                      // up here avoids users accidentally dropping on the
-                      // tiny 40pt day cells when their thumb was aiming
-                      // for a highlighted session row.
-                      if (movingActivity) return;
-                      handleDayPress(i);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[s.dayLabelText, viewingToday && i === todayIdx && s.dayLabelToday, isSelected && s.dayLabelSelected]}>{d}</Text>
-                    <View style={[s.dayCircle, viewingToday && i === todayIdx && s.dayCircleToday, isSelected && s.dayCircleSelected]}>
-                      <Text style={[s.dayNumber, viewingToday && i === todayIdx && s.dayNumberToday, isSelected && s.dayNumberSelected]}>
-                        {getDayDate(activePlan.startDate, currentWeek, i)}
-                      </Text>
-                    </View>
-                    {items.map((item, idx) => {
-                      const iconName = item.isCrossTraining
-                        ? getActivityIcon(item.ctKey || 'other')
-                        : getActivityIcon(item._activity);
-                      // Selected column gets the brand pink — echoes the
-                      // pink circle around the day number. Previously was
-                      // white-on-pink-rectangle; now that the rectangle's
-                      // gone, pink on dark matches the selected day's
-                      // circle and keeps the column visually linked.
-                      const iconColor = isSelected ? colors.primary : ACTIVITY_BLUE;
-                      const metricText = item.metric || '';
-                      return (
-                        <View key={idx} style={s.daySummaryCol}>
-                          <MaterialCommunityIcons
-                            name={iconName}
-                            size={10}
-                            color={iconColor}
-                          />
-                          {metricText ? (
-                            <Text style={[s.daySummaryMetric, { color: iconColor }]} numberOfLines={1}>
-                              {metricText}
-                            </Text>
-                          ) : null}
-                        </View>
-                      );
-                    })}
-                  </TouchableOpacity>
-                );
-              })}
-              </View>
-              <TouchableOpacity
-                onPress={() => { const to = Math.min(activePlan.weeks, currentWeek + 1); analytics.events.weekNavigated('next', currentWeek, to); setCurrentWeek(to); }}
-                disabled={currentWeek >= activePlan.weeks}
-                hitSlop={HIT}
-                style={s.weekNavSideBtn}
-              >
-                <Text style={[s.weekNavArrow, currentWeek >= activePlan.weeks && s.weekNavDisabled]}>{'\u203A'}</Text>
-              </TouchableOpacity>
-            </View>
 
             {/* Inline week list — full session titles for every day so the
                 user sees the whole week at a glance without tapping through
@@ -2418,6 +2409,11 @@ export default function HomeScreen({ navigation, route }) {
                 header row itself (see weekNavCenter above). */}
           </View>
           )}
+
+          {/* This-week progress block moved to the TOP of the unified
+              week module — see the block right after the unified
+              header above. Reads as a section intro rather than an
+              afterthought below the cards/list. */}
 
           {/* Selected-day panel removed April 2026 — tapping a day in the
               strip now just highlights the corresponding row in the week
@@ -2917,31 +2913,31 @@ const s = StyleSheet.create({
   // background. Subsequent cards are quieter previews.
   upcomingCard: {
     backgroundColor: colors.surface,
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 12,
+    padding: 11,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
   },
   upcomingCardToday: {
-    borderColor: 'rgba(232,69,139,0.35)',
-    backgroundColor: 'rgba(232,69,139,0.05)',
+    borderColor: 'rgba(232,69,139,0.5)',
+    backgroundColor: 'rgba(232,69,139,0.06)',
   },
-  upcomingCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  upcomingCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   upcomingCardLabel: {
-    fontSize: 10, fontWeight: '600', fontFamily: FF.semibold,
+    fontSize: 9, fontWeight: '600', fontFamily: FF.semibold,
     color: colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase',
   },
   upcomingCardLabelToday: { color: colors.primary },
   upcomingCardTitle: {
-    fontSize: 17, fontWeight: '600', fontFamily: FF.semibold, color: colors.text,
-    lineHeight: 22, marginBottom: 4,
+    fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.text,
+    lineHeight: 16, marginBottom: 2,
   },
   upcomingCardMeta: {
-    fontSize: 12, fontFamily: FF.regular, color: colors.textMid, lineHeight: 17,
-    marginBottom: 4,
+    fontSize: 10, fontFamily: FF.regular, color: colors.textMid, lineHeight: 14,
+    marginBottom: 2,
   },
   upcomingCardActions: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8,
   },
 
   // Hovered state — applied while a drag is in progress and the finger
@@ -2984,9 +2980,75 @@ const s = StyleSheet.create({
     color: colors.textMid, letterSpacing: 0.5,
   },
 
-  // Week toggle row — sits above the upcoming-day rail.  ‹ Week N of M ›
-  // Centre-aligned, no card chrome, deliberately quiet — the rail
-  // beneath does the visual work.
+  // ── Unified week module header ────────────────────────────────────
+  // Single row: week prev/next, week label (tap → WeekView), Cards/List
+  // segmented toggle, calendar shortcut. Replaces what used to be three
+  // separate header rows that all lived above the rail and the 7-day
+  // calendar strip. Sits in margin (not a card) so the rail / list
+  // beneath does the visual work — same approach as the old
+  // weekToggleRow.
+  unifiedWeekHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 20, marginBottom: 10,
+  },
+  unifiedWeekLabelTap: {
+    flex: 1, alignItems: 'center', paddingVertical: 4,
+  },
+  viewModeToggle: {
+    flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 999, padding: 2,
+  },
+  viewModeBtn: {
+    paddingVertical: 4, paddingHorizontal: 10,
+    borderRadius: 999, minWidth: 44, alignItems: 'center',
+  },
+  viewModeBtnActive: {
+    backgroundColor: 'rgba(232,69,139,0.18)',
+  },
+  viewModeBtnText: {
+    fontSize: 11, fontFamily: FF.medium, fontWeight: '500',
+    color: colors.textMid,
+  },
+  viewModeBtnTextActive: {
+    color: colors.primary, fontWeight: '600',
+  },
+  unifiedCalendarBtn: {
+    width: 28, height: 28, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(232,69,139,0.1)',
+  },
+  // ── Mark-done circle on rail cards ────────────────────────────────
+  // Same visual vocabulary as the list-mode mark-done circle below
+  // (s.weekListDoneCircle) so users see the affordance is the same
+  // control. Smaller because it lives on a compressed card.
+  cardDoneCircle: {
+    width: 22, height: 22, borderRadius: 11,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  cardDoneCircleDone: {
+    backgroundColor: '#2bb673',
+    borderColor: '#2bb673',
+  },
+  cardDoneTick: {
+    fontSize: 12, color: '#FFFFFF', fontWeight: '600',
+  },
+
+  // ── Wrapper for the list-mode block ───────────────────────────────
+  // Replaces the old s.weekStrip card. The list itself owns its own
+  // padding and divider via s.weekList further down — this is just
+  // the outer container so a "Go to today" inline shortcut has a
+  // place to sit above the list.
+  weekListWrap: {
+    paddingHorizontal: 20, marginBottom: 14,
+  },
+  goTodayBtnInline: {
+    alignSelf: 'center', paddingVertical: 4, paddingHorizontal: 10,
+    marginBottom: 6,
+  },
+
+  // Week toggle row (legacy — kept because the styles are still
+  // referenced by the unified header above for the prev/next arrows).
   weekToggleRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 12, paddingHorizontal: 20, marginBottom: 10,
@@ -3056,31 +3118,44 @@ const s = StyleSheet.create({
   todayHeroActions: {
     flexDirection: 'row', gap: 8, alignItems: 'stretch',
   },
+  // Compact CTAs sized for the compressed rail cards (Apr 27 2026
+  // redesign — Rob flagged the originals as too tall for ~48% width
+  // cards). Padding, font and radius all dropped a step. The legacy
+  // todayHero block further down references the same names but it's
+  // gated behind `{false && …}` so this resize doesn't affect anything
+  // currently rendering.
   todayHeroCta: {
     flex: 1,
     backgroundColor: colors.primary,
-    borderRadius: 12, paddingVertical: 13, paddingHorizontal: 16,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderRadius: 8, paddingVertical: 8, paddingHorizontal: 10,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
   },
   todayHeroCtaDone: {
     backgroundColor: colors.surfaceLight,
   },
   todayHeroCtaText: {
-    fontSize: 15, fontWeight: '600', fontFamily: FF.semibold,
+    fontSize: 12, fontWeight: '600', fontFamily: FF.semibold,
     color: '#FFFFFF',
   },
   todayHeroCtaArrow: {
-    fontSize: 18, fontWeight: '400', color: '#FFFFFF', lineHeight: 18,
+    fontSize: 14, fontWeight: '400', color: '#FFFFFF', lineHeight: 14,
   },
   todayHeroCoachBtn: {
-    paddingVertical: 13, paddingHorizontal: 16,
-    borderRadius: 12,
+    flex: 1,
+    paddingVertical: 8, paddingHorizontal: 10,
+    borderRadius: 8,
     borderWidth: 1, borderColor: colors.border,
     backgroundColor: 'transparent',
-    flexDirection: 'row', alignItems: 'center', gap: 6,
+    alignItems: 'center', justifyContent: 'center',
+    flexDirection: 'row', gap: 4,
+  },
+  // Rest day variant — coach button takes full width on rest cards
+  // (no View CTA to share the row with).
+  todayHeroCoachBtnRest: {
+    flex: 1,
   },
   todayHeroCoachBtnText: {
-    fontSize: 14, fontWeight: '500', fontFamily: FF.medium,
+    fontSize: 12, fontWeight: '500', fontFamily: FF.medium,
     color: colors.text,
   },
   todayHeroCoachBtnArrow: {
@@ -3337,7 +3412,7 @@ const s = StyleSheet.create({
     color: colors.textMid, letterSpacing: 0.6,
   },
   weekListTitle: {
-    fontSize: 14, fontWeight: '500', fontFamily: FF.medium,
+    fontSize: 13, fontWeight: '500', fontFamily: FF.medium,
     color: colors.text,
   },
   weekListTitleToday: { color: colors.text },
@@ -3488,6 +3563,38 @@ const s = StyleSheet.create({
   // Week progress
   weekProgressTrack: { height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden' },
   weekProgressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 3 },
+  // ── Dot-style week progress ───────────────────────────────────────
+  // One dot per planned session this week. Pink fill when complete,
+  // hollow ring when not. Replaces the bar-style progress block above
+  // the cards/list — dots feel discrete (matches "I have 3 sessions
+  // and did 1") rather than a percentage abstraction. flexWrap so a
+  // 9-session week can spill onto a second row instead of squashing
+  // dots smaller than the touch / readability minimum.
+  weekDotsRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 20, marginBottom: 14, marginTop: 2,
+  },
+  weekDotsLabel: {
+    fontSize: 12, fontFamily: FF.medium, fontWeight: '500',
+    color: colors.textMid,
+  },
+  weekDotsTrack: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6,
+    flexWrap: 'wrap', rowGap: 4,
+  },
+  weekDot: {
+    width: 10, height: 10, borderRadius: 5,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: 'transparent',
+  },
+  weekDotDone: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  weekDotsCount: {
+    fontSize: 12, fontFamily: FF.medium, fontWeight: '500',
+    color: colors.textMid,
+  },
 
   // (View full week / View full plan button pair removed April 2026 —
   //  tap the plan card for PlanOverview, tap the Week N/N label for
