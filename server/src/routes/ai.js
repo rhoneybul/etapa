@@ -216,7 +216,12 @@ router.post('/generate-plan', async (req, res) => {
     const prompt = buildPlanPrompt(goal, config);
     const systemWithCoach = COACH_SYSTEM_PROMPT + getCoachPromptBlock(config.coachId);
     const estimatedActs = (config.weeks || 8) * (config.daysPerWeek || 3);
-    const planMaxTokens = Math.min(16384, Math.max(8192, estimatedActs * 120));
+    // Cap raised from 16384 → 32768 (Apr 27 2026). Sonnet 4.6 produces
+    // more elaborate descriptions than 4.0 and 12-week × 9-session plans
+    // were truncating mid-array around the old cap. Sonnet 4.6 supports
+    // 64K output so 32K leaves plenty of headroom; we still want a
+    // ceiling so a runaway prompt doesn't burn unbounded tokens.
+    const planMaxTokens = Math.min(32768, Math.max(8192, estimatedActs * 120));
     const _claudeModel = 'claude-sonnet-4-6';
     const _claudeStartedAt = Date.now();
 
@@ -3271,7 +3276,12 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
 
     // Scale max_tokens based on plan size — long plans (20+ weeks, 5+ days) need more output room
     const estimatedActivities = (config.weeks || 8) * (config.daysPerWeek || 3);
-    const planMaxTokens = Math.min(16384, Math.max(8192, estimatedActivities * 120));
+    // Cap raised from 16384 → 32768 (Apr 27 2026). Sonnet 4.6 produces
+    // more elaborate descriptions than 4.0 and 12-week × 9-session plans
+    // were truncating mid-array around the old cap. Sonnet 4.6 supports
+    // 64K output so 32K leaves plenty of headroom; we still want a
+    // ceiling so a runaway prompt doesn't burn unbounded tokens.
+    const planMaxTokens = Math.min(32768, Math.max(8192, estimatedActivities * 120));
 
     // Default prod model, can be swapped by test runner via modelOverride.
     const _claudeModel = modelOverride || 'claude-sonnet-4-6';
@@ -3454,14 +3464,36 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
       job.status = 'failed';
       job.error = 'Could not parse AI response';
       job.progress = 'Something went wrong';
+      // Diagnostic block. The first/last chars + length + stop_reason
+      // are usually enough to spot the failure mode at a glance:
+      //   - stop_reason='max_tokens' + no closing ']' → bumped against
+      //     planMaxTokens, need to raise the cap or split the prompt
+      //   - stop_reason='end_turn' + truncated mid-object → model
+      //     decided it was done before producing a closing ']' (rare;
+      //     usually means the prompt encouraged a non-array output)
+      //   - empty text → upstream Claude error before any tokens arrived
+      // Full body still lives in raw_response (50KB cap) for cases the
+      // summary doesn't catch.
       if (job.logId) {
+        const len = text.length;
+        const head = text.slice(0, 500);
+        const tail = len > 500 ? text.slice(Math.max(0, len - 500)) : '';
+        const errorLines = [
+          `Could not parse AI response`,
+          `Length: ${len.toLocaleString()} chars · stop_reason: ${stopReason || 'unknown'} · usage: ${JSON.stringify(usage || {})}`,
+          stopReason === 'max_tokens'
+            ? `LIKELY TRUNCATED — Claude hit the max_tokens cap (${planMaxTokens}) before finishing the JSON array. Raise planMaxTokens or split the plan into phases.`
+            : null,
+          `\nFirst 500 chars:\n${head}`,
+          tail ? `\nLast 500 chars:\n${tail}` : null,
+        ].filter(Boolean);
         planGenLogger.finish(job.logId, {
           status: 'failed',
-          error: `Could not parse AI response — first 500 chars: ${text.slice(0, 500)}`,
+          error: errorLines.join('\n'),
           progress: 'Something went wrong',
           duration_ms: Date.now() - job.createdAt,
-          // Capture what Claude actually returned so you can see why the
-          // regex didn't match ([ ] looking for a JSON array).
+          // Full response (up to 50KB) stays available in raw_response
+          // for the admin dashboard to render in a scrollable block.
           raw_response: job.rawResponse,
         });
       }

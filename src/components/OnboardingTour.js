@@ -27,6 +27,21 @@ import { getUserPrefs, setUserPrefs } from '../services/storageService';
 const FF = fontFamily;
 const { height: SH } = Dimensions.get('window');
 
+// ── Language-name → 2-letter code ─────────────────────────────────
+// Coach data stores languages as full English names ("English",
+// "Spanish", "Catalan"…). On the picker chips we want the compact
+// 2-letter codes — the chip is ~110pt wide and full names would wrap
+// or truncate for any coach that speaks 2+ languages. Falls back to
+// the first two characters for any language not in the map. The full
+// names still surface in the system prompt and elsewhere; this map is
+// a UI concern only.
+const LANG_CODE = {
+  English: 'EN', Spanish: 'ES', Catalan: 'CA', Danish: 'DA',
+  German: 'DE', French: 'FR', Italian: 'IT', Portuguese: 'PT',
+  Dutch: 'NL', Swedish: 'SV', Norwegian: 'NO',
+};
+const langCode = (lang) => LANG_CODE[lang] || (lang || '').slice(0, 2).toUpperCase();
+
 // ── Tour steps ─────────────────────────────────────────────────────────────
 // Step order and copy are tuned for Etapa's positioning (beginners,
 // returning riders, women). Every string is in plain English — no FTP,
@@ -116,52 +131,102 @@ function TodayCard() {
 function CoachPickerCard({ selectedId, pendingId, onSelect }) {
   const coaches = getCoaches();
   const selected = coaches.find(c => c.id === selectedId) || coaches[0];
+  const selectedIdx = coaches.findIndex(c => c.id === selectedId);
+
+  // Render a single coach chip. Pulled out so we can reuse it inside the
+  // row builder below without restating the whole TouchableOpacity tree.
+  const renderChip = (c) => {
+    const picked = c.id === selectedId;
+    // pendingId fires for ~300ms while we write the pref to AsyncStorage —
+    // shows a tiny spinner on the tapped chip so the tap doesn't feel dead
+    // before the highlight settles.
+    const saving = c.id === pendingId;
+    const langText = Array.isArray(c.languages) && c.languages.length > 0
+      ? c.languages.map(langCode).join(' \u00B7 ')
+      : null;
+    return (
+      <TouchableOpacity
+        key={c.id}
+        style={[cs.coachChip, (picked || saving) && cs.coachChipPicked]}
+        onPress={() => onSelect(c.id)}
+        activeOpacity={0.85}
+        disabled={pendingId !== null && pendingId !== c.id}
+      >
+        <View style={[cs.coachAvatar, { backgroundColor: c.avatarColor }]}>
+          <Text style={cs.coachAvatarText}>{c.avatarInitials}</Text>
+        </View>
+        <Text style={[cs.coachName, picked && cs.coachNamePicked]} numberOfLines={1}>{c.name}</Text>
+        <Text style={cs.coachTag} numberOfLines={2}>{c.tagline}</Text>
+        {/* Locale row — country code in a small pill (so it visually reads
+            as "the country tag") followed by spoken language codes as
+            plain text. Two visually distinct elements removes the
+            ambiguity of the previous "ES · EN, ES, CA" format where every
+            code looked the same. Hidden entirely when the coach has
+            neither piece of locale data on their record. */}
+        {(c.countryCode || langText) && (
+          <View style={cs.coachLocaleRow}>
+            {!!c.countryCode && <Text style={cs.countryPill}>{c.countryCode}</Text>}
+            {!!langText && <Text style={cs.langCodes} numberOfLines={1}>{langText}</Text>}
+          </View>
+        )}
+        {saving && (
+          <ActivityIndicator
+            size="small"
+            color={colors.primary}
+            style={cs.coachSpinner}
+          />
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  // Quote drawer — same component, rendered below whichever row contains
+  // the selected coach so the picked chip and the quote sit visually
+  // adjacent. Spans the full width of the grid (both columns).
+  const renderDrawer = () => {
+    if (!selected) return null;
+    return (
+      <View style={cs.quoteDrawer} key={`drawer-${selected.id}`}>
+        <View style={[cs.quoteAvatar, { backgroundColor: selected.avatarColor }]}>
+          <Text style={cs.quoteAvatarText}>{selected.avatarInitials}</Text>
+        </View>
+        <View style={cs.quoteBody}>
+          <Text style={cs.quoteAttrib}>{selected.name} says</Text>
+          <Text style={cs.quoteText}>&ldquo;{selected.sampleQuote}&rdquo;</Text>
+        </View>
+      </View>
+    );
+  };
+
+  // Row builder — group coaches into pairs (2-col layout) so the drawer
+  // can slot in between rows. Previously the grid relied on flexWrap
+  // with the quote box appended at the bottom, which meant the quote was
+  // always far from a chip on the top row. Now we know exactly which
+  // pair contains the selected coach (Math.floor(selectedIdx / 2)) and
+  // render the drawer immediately after that pair.
+  const rows = [];
+  for (let i = 0; i < coaches.length; i += 2) {
+    rows.push(coaches.slice(i, i + 2));
+  }
+  const selectedRowIdx = selectedIdx >= 0 ? Math.floor(selectedIdx / 2) : -1;
+
   return (
     <View style={cs.card}>
       <Text style={cs.cardLabel}>YOUR COACH</Text>
 
-      {/* 3×2 grid of coach chips — initials + name + tagline */}
-      <View style={cs.coachGrid}>
-        {coaches.map((c) => {
-          const picked = c.id === selectedId;
-          // pendingId fires for ~300ms while we write the pref to
-          // AsyncStorage — shows a tiny spinner on the tapped chip so
-          // the tap doesn't feel dead before the highlight settles.
-          const saving = c.id === pendingId;
-          return (
-            <TouchableOpacity
-              key={c.id}
-              style={[cs.coachChip, (picked || saving) && cs.coachChipPicked]}
-              onPress={() => onSelect(c.id)}
-              activeOpacity={0.85}
-              disabled={pendingId !== null && pendingId !== c.id}
-            >
-              <View style={[cs.coachAvatar, { backgroundColor: c.avatarColor }]}>
-                <Text style={cs.coachAvatarText}>{c.avatarInitials}</Text>
-              </View>
-              <Text style={[cs.coachName, picked && cs.coachNamePicked]} numberOfLines={1}>{c.name}</Text>
-              <Text style={cs.coachTag} numberOfLines={2}>{c.tagline}</Text>
-              {saving && (
-                <ActivityIndicator
-                  size="small"
-                  color={colors.primary}
-                  style={cs.coachSpinner}
-                />
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {/* Sample quote from the currently-selected coach — gives the user a
-          feel for the voice before they commit. Updates live as they tap
-          different chips. */}
-      {selected && (
-        <View style={cs.quoteBox}>
-          <Text style={cs.quoteAttrib}>{selected.name} says</Text>
-          <Text style={cs.quoteText}>&ldquo;{selected.sampleQuote}&rdquo;</Text>
-        </View>
-      )}
+      {rows.map((row, rIdx) => (
+        <React.Fragment key={`row-${rIdx}`}>
+          <View style={cs.coachRow}>
+            {row.map(renderChip)}
+            {/* Half-width spacer for the orphan chip on the final row (7
+                coaches in a 2-col grid leaves one alone) so the lone
+                chip doesn't stretch full-width and break the column
+                rhythm of the rows above. */}
+            {row.length === 1 && <View style={cs.coachChipSpacer} />}
+          </View>
+          {rIdx === selectedRowIdx && renderDrawer()}
+        </React.Fragment>
+      ))}
     </View>
   );
 }
@@ -585,11 +650,14 @@ const s = StyleSheet.create({
   },
   scrollContent: {
     alignItems: 'center',
-    // Give the title room to clear the status bar / notch / Skip button
-    // (Skip is positioned at top: 60). Without this, the title slammed
-    // up against the system clock and felt cramped on iPhones with
-    // notches. 96pt drops the title comfortably below the Skip row.
-    paddingTop: 96,
+    // Skip lives in the top-right at top: 60, but it's positioned
+    // absolute and the title is centred — they don't horizontally
+    // collide, so the title only needs to clear the system status
+    // bar / notch, not the Skip row. Rob (Apr 27) flagged 96pt
+    // felt cavernous; 56pt sits the title cleanly below the
+    // notch on modern iPhones while letting the cards breathe in
+    // the upper portion of the screen.
+    paddingTop: 56,
     paddingBottom: 16,
   },
   title: {
@@ -722,20 +790,30 @@ const cs = StyleSheet.create({
   },
 
   // ── Coach picker ─────────────────────────────────────────────────────
-  coachGrid: {
-    flexDirection: 'row', flexWrap: 'wrap',
-    gap: 8, marginBottom: 12,
+  // Two-column row layout (Apr 27 redesign — Rob). The previous 3-col
+  // flex-wrap grid had narrow chips with cramped tagline + locale
+  // text. Going to 2 cols gives each chip ~48% of card width, lets
+  // the tagline + locale read clearly, and crucially lets us slot the
+  // quote drawer between rows so the picked coach and their quote sit
+  // visually adjacent.
+  coachRow: {
+    flexDirection: 'row', gap: 8, marginBottom: 8,
   },
   coachChip: {
-    width: '31.5%',
+    flex: 1,
     alignItems: 'center',
-    paddingVertical: 12, paddingHorizontal: 6,
+    paddingVertical: 12, paddingHorizontal: 8,
     borderRadius: 10, borderWidth: 1, borderColor: colors.border,
     backgroundColor: colors.bg,
   },
   coachChipPicked: {
     borderColor: colors.primary,
     backgroundColor: 'rgba(232,69,139,0.08)',
+  },
+  // Half-width filler used on the final row when there's an odd number
+  // of coaches (7 coaches → row 4 has 1 chip + 1 spacer).
+  coachChipSpacer: {
+    flex: 1,
   },
   coachAvatar: {
     width: 36, height: 36, borderRadius: 18,
@@ -756,19 +834,62 @@ const cs = StyleSheet.create({
     fontSize: 10, fontFamily: FF.regular,
     color: colors.textMuted, textAlign: 'center', lineHeight: 13,
   },
+  // Locale row — country code in a pill (visually distinct, reads as a
+  // tag) followed by spoken language codes as plain text. The visual
+  // separation removes the ambiguity of an all-codes single-string
+  // format where every 2-letter token looked the same.
+  coachLocaleRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, marginTop: 7, paddingHorizontal: 2,
+  },
+  countryPill: {
+    fontSize: 9, fontFamily: FF.semibold, fontWeight: '700',
+    color: colors.text,
+    paddingHorizontal: 6, paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    letterSpacing: 0.4,
+    overflow: 'hidden',
+  },
+  langCodes: {
+    fontSize: 9, fontFamily: FF.medium, fontWeight: '500',
+    color: colors.textMuted, letterSpacing: 0.3,
+    flexShrink: 1,
+  },
   // Positioned absolutely so it overlays the chip without bumping the
   // other text content around when it appears/disappears.
   coachSpinner: {
     position: 'absolute', top: 6, right: 6,
   },
-  quoteBox: {
-    padding: 12, borderRadius: 10,
-    backgroundColor: 'rgba(232,69,139,0.06)',
-    borderWidth: 1, borderColor: 'rgba(232,69,139,0.18)',
+  // Quote drawer — full-width row that slots between chip rows, directly
+  // beneath the row containing the selected coach. Pink left-rail and
+  // tinted bg make the picked-chip → drawer relationship visually
+  // obvious. Avatar inline matches the picked chip's so the connection
+  // doesn't rely on memory of which chip the user just tapped.
+  quoteDrawer: {
+    flexDirection: 'row', gap: 11,
+    paddingVertical: 12, paddingLeft: 14, paddingRight: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(232,69,139,0.1)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.32)',
+    borderLeftWidth: 3, borderLeftColor: colors.primary,
+    marginBottom: 8,
+  },
+  quoteAvatar: {
+    width: 38, height: 38, borderRadius: 19,
+    alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  quoteAvatarText: {
+    fontSize: 12, fontFamily: FF.semibold, fontWeight: '700', color: '#fff',
+  },
+  quoteBody: {
+    flex: 1, minWidth: 0,
   },
   quoteAttrib: {
-    fontSize: 10, fontFamily: FF.semibold, fontWeight: '600',
-    color: colors.primary, letterSpacing: 1.2,
+    fontSize: 9, fontFamily: FF.semibold, fontWeight: '700',
+    color: colors.primary, letterSpacing: 1.4,
     marginBottom: 4, textTransform: 'uppercase',
   },
   quoteText: {

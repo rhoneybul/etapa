@@ -448,11 +448,14 @@ export default function PlanGenerationsPage() {
                   <DetailField label="Activities" value={detail.generation.activities_count ?? "—"} />
                 </div>
 
-                {/* Error */}
+                {/* Error — scrollable so long diagnostic blocks (parse
+                    failures now embed first 500 + last 500 chars + the
+                    Claude stop_reason) stay usable instead of pushing the
+                    rest of the detail panel off-screen. */}
                 {detail.generation.error && (
                   <div className="bg-red-900/20 border border-red-900/40 rounded p-3">
                     <div className="text-xs text-red-400 uppercase tracking-wide mb-1 font-medium">Error</div>
-                    <pre className="text-xs text-red-300 whitespace-pre-wrap font-mono">{detail.generation.error}</pre>
+                    <pre className="text-xs text-red-300 whitespace-pre-wrap font-mono max-h-96 overflow-y-auto">{detail.generation.error}</pre>
                   </div>
                 )}
 
@@ -515,9 +518,17 @@ export default function PlanGenerationsPage() {
                   </details>
                 )}
 
-                {/* Raw Claude response — collapsible */}
+                {/* Raw Claude response — collapsible. Auto-opens when the
+                    failure was a parse error so the full body is visible
+                    without the user hunting for a chevron. The error
+                    block above carries first/last chars + stop_reason;
+                    the full text below is the source of truth for
+                    deeper inspection. */}
                 {detail.generation.raw_response && (
-                  <details className="bg-etapa-surfaceLight border border-etapa-border rounded">
+                  <details
+                    open={!!detail.generation.error?.includes('Could not parse AI response')}
+                    className="bg-etapa-surfaceLight border border-etapa-border rounded"
+                  >
                     <summary className="cursor-pointer px-3 py-2 text-xs text-etapa-textMuted uppercase tracking-wide font-medium">
                       Claude raw response ({detail.generation.raw_response.length.toLocaleString()} chars)
                     </summary>
