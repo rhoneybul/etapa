@@ -8,6 +8,8 @@ import {
 import * as Notifications from 'expo-notifications';
 import * as StoreReview from 'expo-store-review';
 import Constants from 'expo-constants';
+import * as Updates from 'expo-updates';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { signOut, getCurrentUser } from '../services/authService';
@@ -1173,17 +1175,40 @@ export default function SettingsScreen({ navigation }) {
           </Text>
         </View>
 
-        {/* App version — useful for support tickets. Pulled from expo-constants
-            so the number always matches the installed build. */}
-        <Text style={s.versionText}>
-          {(() => {
-            const v = Constants?.expoConfig?.version || Constants?.manifest?.version || '0.0.0';
-            const iosBuild = Constants?.expoConfig?.ios?.buildNumber;
-            const androidCode = Constants?.expoConfig?.android?.versionCode;
-            const build = Platform.OS === 'ios' ? iosBuild : androidCode;
-            return `Etapa v${v}${build ? ` (build ${build})` : ''}`;
-          })()}
-        </Text>
+        {/* App version + OTA update ID. The native build number changes
+            only when a fresh TestFlight / App Store binary ships; the
+            update tag changes on every OTA. Tapping the line copies it
+            to the clipboard — useful for support tickets ("what version
+            are you on?") and for verifying an OTA actually landed (the
+            update tag flips after force-quit + relaunch). */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => {
+            const line = (() => {
+              const v = Constants?.expoConfig?.version || Constants?.manifest?.version || '0.0.0';
+              const iosBuild = Constants?.expoConfig?.ios?.buildNumber;
+              const androidCode = Constants?.expoConfig?.android?.versionCode;
+              const build = Platform.OS === 'ios' ? iosBuild : androidCode;
+              const updateId = Updates?.updateId;
+              const channel = Updates?.channel;
+              const tag = updateId ? updateId.slice(0, 7) : 'embedded';
+              return `Etapa v${v}${build ? ` (build ${build})` : ''} · ${tag}${channel ? ` · ${channel}` : ''}`;
+            })();
+            try { Clipboard.setStringAsync?.(line); } catch {}
+          }}
+        >
+          <Text style={s.versionText}>
+            {(() => {
+              const v = Constants?.expoConfig?.version || Constants?.manifest?.version || '0.0.0';
+              const iosBuild = Constants?.expoConfig?.ios?.buildNumber;
+              const androidCode = Constants?.expoConfig?.android?.versionCode;
+              const build = Platform.OS === 'ios' ? iosBuild : androidCode;
+              const updateId = Updates?.updateId;
+              const tag = updateId ? updateId.slice(0, 7) : 'embedded';
+              return `Etapa v${v}${build ? ` (build ${build})` : ''} · ${tag}`;
+            })()}
+          </Text>
+        </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
       <UpgradePrompt
