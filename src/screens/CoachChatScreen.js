@@ -662,8 +662,58 @@ export default function CoachChatScreen({ navigation, route }) {
       week1Days[`dayOfWeek ${dow}`] = `${DAY_NAMES[dow]} ${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
 
+    // ── Local time + today's sessions for the coach ───────────────────
+    // Reported (Apr 27 2026): coach replied as if today's session was
+    // already done — but the user hadn't trained yet. Root cause: the
+    // server only got the UTC date, not the time of day or the user's
+    // timezone, so the model had to guess where in the day the user
+    // was. We now pass:
+    //   - Pre-formatted local time string (the model can read this
+    //     verbatim without doing timezone math).
+    //   - IANA timezone for clarity ("Europe/London").
+    //   - todaySessions array — explicit list of what's planned for
+    //     today + completion state, so the coach can't infer "must
+    //     be done by now" from absence.
+    const tz = (() => {
+      try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return null; }
+    })();
+    const localTimeStr = (() => {
+      try {
+        return now.toLocaleString('en-GB', {
+          weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+          hour: '2-digit', minute: '2-digit', hour12: false,
+        });
+      } catch { return now.toString(); }
+    })();
+    const todayYMD = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const todaySessions = (plan.activities || [])
+      .filter((a) => {
+        if (a.dayOfWeek == null || a.week == null) return false;
+        const d = getActivityDate(plan.startDate, a.week, a.dayOfWeek);
+        const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return ymd === todayYMD;
+      })
+      .map((a) => ({
+        title: a.title,
+        type: a.type,
+        subType: a.subType,
+        durationMins: a.durationMins,
+        distanceKm: a.distanceKm,
+        effort: a.effort,
+        completed: !!a.completed,
+        completedAt: a.completedAt || null,
+      }));
+
     const context = {
       athleteName: userName || null,
+      // Local time + tz let the server format a "right now (athlete's
+      // local time)" line in the system prompt.
+      clientLocalTime: localTimeStr,
+      clientTimezone: tz,
+      // Today's sessions broken out as their own field — sits more
+      // visibly in the prompt than buried inside allActivities, and
+      // carries explicit completion state.
+      todaySessions,
       // plan.id is needed on the server so push notifications can
       // carry a planId in their data payload — the App-level response
       // handler routes `coach_reply` pushes to CoachChat using

@@ -989,14 +989,16 @@ export default function HomeScreen({ navigation, route }) {
 
     let anchor;
     let anchorWeek; // which plan week the anchor falls in (1-indexed)
-    if (!planHasStarted) {
-      // Pre-plan-start: anchor on the plan's first Monday so the user
-      // sees the actual plan week ahead (not today + dead days).
-      const planMonday = snapToMonday(parseDateLocal(activePlan.startDate));
-      anchor = new Date(planMonday);
-      anchor.setHours(12, 0, 0, 0);
-      anchorWeek = 1;
-    } else if (isCurrentWeek) {
+    // Apr 27 2026: removed a special-case `!planHasStarted` branch that
+    // hardcoded the anchor to the plan's first Monday regardless of
+    // `currentWeek`. With the new unified header in place, the user can
+    // sit on Week 0 (the calendar week before plan start) when they've
+    // placed pre-start activities — and the list view correctly shows
+    // those. The cards were jumping ahead to Week 1 in that state and
+    // showing rest days for the same "Week 0 of 12" the list was
+    // populating with real sessions. Now both views read from the same
+    // currentWeek, so they always agree.
+    if (isCurrentWeek) {
       anchor = new Date(now);
       anchorWeek = currentWeek;
     } else {
@@ -1016,10 +1018,20 @@ export default function HomeScreen({ navigation, route }) {
       });
       const primary = dayActivities.find(a => a.type === 'ride') || dayActivities[0] || null;
       const isToday = sameDate(target, now);
+      // Eyebrow combines the relative-day word (TODAY / TMRW / WED)
+      // with the actual calendar date so users always have an
+      // unambiguous date anchor on every card. "TMRW" rather than
+      // "TOMORROW" so the line fits on a 48%-width card without
+      // wrapping. Date format: "27 APR" — matches the brand's plain
+      // English without a trailing year (year is implicit on the
+      // home screen).
+      const dateShort = target.toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'short',
+      }).toUpperCase();
       let eyebrow;
-      if (isCurrentWeek && i === 0) eyebrow = 'TODAY';
-      else if (isCurrentWeek && i === 1) eyebrow = 'TOMORROW';
-      else eyebrow = target.toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase();
+      if (isCurrentWeek && i === 0) eyebrow = `TODAY · ${dateShort}`;
+      else if (isCurrentWeek && i === 1) eyebrow = `TMRW · ${dateShort}`;
+      else eyebrow = `${target.toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase()} ${dateShort}`;
       // dayOfWeek is 0=Mon..6=Sun for the activity model. When the
       // anchor is today it might land mid-week (e.g. Wed), so we
       // can't just use `i` directly — compute it from the JS Date.
@@ -1757,14 +1769,32 @@ export default function HomeScreen({ navigation, route }) {
               same condition both downstream blocks use. */}
           {(planHasStarted || todayActivities.length > 0 || tomorrowActivities.length > 0) && effectivePlanRunning && (() => {
             const totalWeeks = activePlan?.weeks || 1;
-            const canPrev = currentWeek > 1;
+            // Lowest plan-week that has any activities. Lets the prev
+            // arrow keep working past Week 1 when the user has placed
+            // sessions in pre-start weeks (week 0 or negative). Without
+            // this, the user could see week-0 activities in the list
+            // but had no way to navigate INTO week 0 from week 1. Also
+            // clamps against realTodayWeek so the user can always reach
+            // today's calendar week even if it's empty.
+            const minWeekFromActivities = (activePlan?.activities || []).reduce(
+              (min, a) => (a && a.week != null && a.week < min ? a.week : min),
+              1
+            );
+            const minReachableWeek = Math.min(minWeekFromActivities, realTodayWeek);
+            const canPrev = currentWeek > minReachableWeek;
             const canNext = currentWeek < totalWeeks;
+            // Tap the week label to jump back to today's week — much
+            // faster than chevron-tapping back through 6+ weeks once a
+            // user is browsing ahead. Only renders when off-today so
+            // the affordance is discoverable without being noisy when
+            // already-on-today.
+            const isOnTodayWeek = currentWeek === realTodayWeek;
             return (
               <View style={s.unifiedWeekHeader}>
                 <TouchableOpacity
                   onPress={() => {
                     if (!canPrev) return;
-                    const to = Math.max(1, currentWeek - 1);
+                    const to = currentWeek - 1;
                     analytics.events.weekNavigated('prev', currentWeek, to);
                     setCurrentWeek(to);
                   }}
@@ -1774,14 +1804,28 @@ export default function HomeScreen({ navigation, route }) {
                 >
                   <Text style={[s.weekToggleArrowText, !canPrev && s.weekToggleArrowTextDisabled]}>{'\u2039'}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('WeekView', { week: currentWeek, planId: activePlan.id })}
-                  hitSlop={HIT}
-                  activeOpacity={0.7}
-                  style={s.unifiedWeekLabelTap}
-                >
-                  <Text style={s.weekToggleLabel}>Week {currentWeek} of {totalWeeks}</Text>
-                </TouchableOpacity>
+                <View style={s.unifiedWeekLabelCol}>
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate('WeekView', { week: currentWeek, planId: activePlan.id })}
+                    hitSlop={HIT}
+                    activeOpacity={0.7}
+                    style={s.unifiedWeekLabelTap}
+                  >
+                    <Text style={s.weekToggleLabel}>Week {currentWeek} of {totalWeeks}</Text>
+                  </TouchableOpacity>
+                  {!isOnTodayWeek && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        analytics.events.weekNavigated?.('today', currentWeek, realTodayWeek);
+                        setCurrentWeek(realTodayWeek);
+                      }}
+                      hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={s.unifiedGoTodayLink}>Go to today</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
                 <TouchableOpacity
                   onPress={() => {
                     if (!canNext) return;
@@ -2212,20 +2256,10 @@ export default function HomeScreen({ navigation, route }) {
               alongside Cards. */}
           {effectivePlanRunning && viewMode === 'list' && (
           <View style={s.weekListWrap}>
-            {/* "Go to today" — only when we've drifted off the current
-                week in list mode. Smaller and inline since the unified
-                header above handles primary navigation. */}
-            {(!viewingToday && (planHasStarted ? currentWeek !== realTodayWeek : currentWeek !== 1)) && (
-              <TouchableOpacity
-                onPress={() => {
-                  setCurrentWeek(planHasStarted ? realTodayWeek : 1);
-                }}
-                hitSlop={HIT}
-                style={s.goTodayBtnInline}
-              >
-                <Text style={s.goTodayText}>{planHasStarted ? 'Go to today' : 'Go to start'}</Text>
-              </TouchableOpacity>
-            )}
+            {/* "Go to today" affordance moved into the unified week
+                header (visible in BOTH cards and list modes when
+                off-today) — no longer rendered inline here so the two
+                view modes share one navigation surface. */}
 
             {/* Inline week list — full session titles for every day so the
                 user sees the whole week at a glance without tapping through
@@ -2254,6 +2288,18 @@ export default function HomeScreen({ navigation, route }) {
                 const isTodayRow = viewingToday && i === todayIdx;
                 const isRest = dayActs.length === 0 || dayActs.every(a => a.type === 'rest');
                 const isSelectedRow = selectedDayIdx === i;
+                // Day-of-month for this row, computed from the plan's
+                // start date and the currently-viewed week. Falls back
+                // to '' if anything in the chain is missing so the
+                // label still renders the weekday letter.
+                const rowDayNum = activePlan?.startDate
+                  ? (() => {
+                      try {
+                        const d = getActivityDate(activePlan.startDate, currentWeek, i);
+                        return d.getDate();
+                      } catch { return ''; }
+                    })()
+                  : '';
                 const formatMeta = (a) => {
                   if (!a) return '';
                   const bits = [];
@@ -2299,7 +2345,12 @@ export default function HomeScreen({ navigation, route }) {
                       onPress={() => handleDayPress(i)}
                       activeOpacity={0.7}
                     >
-                      <Text style={[s.weekListDay, isTodayRow && s.weekListDayToday]}>{dLabel.slice(0, 3)}</Text>
+                      <View style={s.weekListDayCol}>
+                        <Text style={[s.weekListDay, isTodayRow && s.weekListDayToday]}>{dLabel.slice(0, 3)}</Text>
+                        {rowDayNum !== '' && (
+                          <Text style={[s.weekListDayNum, isTodayRow && s.weekListDayNumToday]}>{rowDayNum}</Text>
+                        )}
+                      </View>
                       <View style={s.weekListContent}>
                         <Text style={s.weekListRest}>Rest</Text>
                       </View>
@@ -2319,7 +2370,12 @@ export default function HomeScreen({ navigation, route }) {
                       isHovered && s.weekListRowDropTarget,
                     ]}
                   >
-                    <Text style={[s.weekListDay, isTodayRow && s.weekListDayToday, s.weekListDayTop]}>{dLabel.slice(0, 3)}</Text>
+                    <View style={[s.weekListDayCol, s.weekListDayColTop]}>
+                      <Text style={[s.weekListDay, isTodayRow && s.weekListDayToday]}>{dLabel.slice(0, 3)}</Text>
+                      {rowDayNum !== '' && (
+                        <Text style={[s.weekListDayNum, isTodayRow && s.weekListDayNumToday]}>{rowDayNum}</Text>
+                      )}
+                    </View>
                     <View style={s.weekListSessions}>
                       {dayActs.map((act, sIdx) => {
                         const tag = getSessionTag(act);
@@ -2991,8 +3047,21 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 20, marginBottom: 10,
   },
+  // Column that wraps the week label + the "Go to today" sub-link
+  // so both stack vertically in the centre of the unified header.
+  unifiedWeekLabelCol: {
+    flex: 1, alignItems: 'center',
+  },
   unifiedWeekLabelTap: {
-    flex: 1, alignItems: 'center', paddingVertical: 4,
+    paddingVertical: 4,
+  },
+  // "Go to today" appears as a quiet pink sub-link under the week
+  // label whenever the user is off-today. Tap → setCurrentWeek to
+  // realTodayWeek. Smaller and lower-contrast than the week label so
+  // it reads as a secondary action, not as competing for attention.
+  unifiedGoTodayLink: {
+    fontSize: 10, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.primary, marginTop: 1,
   },
   viewModeToggle: {
     flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.06)',
@@ -3369,6 +3438,25 @@ const s = StyleSheet.create({
     // with the first session's tag, not the centre of the whole block.
     paddingTop: 4,
   },
+  // ── Day column — letter + day-of-month number stacked ─────────────
+  // Replaces a single-line "MON" label so users always have the
+  // calendar date context on every list row. The day number is the
+  // prominent element (matches Calendar app conventions); the
+  // weekday letter is the smaller subtitle.
+  weekListDayCol: {
+    width: 36, alignItems: 'center', justifyContent: 'flex-start',
+  },
+  weekListDayColTop: {
+    paddingTop: 2,
+  },
+  weekListDayNum: {
+    fontSize: 16, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.text, lineHeight: 18, marginTop: 1,
+    fontVariant: ['tabular-nums'],
+  },
+  weekListDayNumToday: {
+    color: colors.primary,
+  },
   weekListSessions: { flex: 1, gap: 10 },
   weekListSession: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -3392,9 +3480,9 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(232,69,139,0.28)',
   },
   weekListDay: {
-    fontSize: 12, fontWeight: '600', fontFamily: FF.semibold,
+    fontSize: 10, fontWeight: '600', fontFamily: FF.semibold,
     color: colors.textMuted, letterSpacing: 0.8,
-    width: 36, textTransform: 'uppercase',
+    textTransform: 'uppercase',
   },
   weekListDayToday: { color: colors.primary },
   weekListContent: { flex: 1, gap: 2 },

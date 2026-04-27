@@ -2235,6 +2235,15 @@ Never, ever write "I'll" / "I've" / "I'm" + a verb of change ("shift", "move", "
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
     systemPrompt += `## Current plan context\n`;
+    // Right-now line. Apr 27 2026 user-reported bug: coach replied as
+    // if today's session was already done while the user hadn't yet
+    // trained. The model was guessing "what time of day is it?" off
+    // the date alone. We now plumb the client's pre-formatted local
+    // time + timezone so the model knows whether the athlete is
+    // messaging at 8am (session ahead) vs 9pm (session window over).
+    if (context.clientLocalTime) {
+      systemPrompt += `- Right now (athlete's local time): ${context.clientLocalTime}${context.clientTimezone ? ` (${context.clientTimezone})` : ''}\n`;
+    }
     systemPrompt += `- Today's date: ${todayStr} (${dayNames[today.getDay()]})\n`;
     systemPrompt += `- Plan: ${context.plan.name || 'Training plan'}\n`;
     systemPrompt += `- Total weeks: ${context.plan.weeks}\n`;
@@ -2256,6 +2265,31 @@ Never, ever write "I'll" / "I've" / "I'm" + a verb of change ("shift", "move", "
       }
     }
     systemPrompt += `- IMPORTANT: When discussing or modifying activities, be precise about dates. Today is ${todayStr}. Activities before today are in the past and should not be changed. Any adjustments apply to today or future dates only.\n`;
+
+    // Today's sessions block. Surfaces the planned work for today
+    // alongside its actual completion state so the model never has to
+    // infer "is this done?" from absence in the activity list. Without
+    // this, Lars (and other coaches) had a habit of writing "great
+    // work on today's session" before the user had touched the bike.
+    if (Array.isArray(context.todaySessions) && context.todaySessions.length > 0) {
+      systemPrompt += `\n## Today's sessions — completion state\n`;
+      for (const s of context.todaySessions) {
+        const meta = [
+          s.type,
+          s.subType,
+          s.distanceKm ? `${s.distanceKm} km` : null,
+          s.durationMins ? `${s.durationMins} min` : null,
+          s.effort,
+        ].filter(Boolean).join(' · ');
+        const status = s.completed
+          ? `COMPLETED${s.completedAt ? ` at ${s.completedAt}` : ''}`
+          : `NOT YET COMPLETED — still ahead of the athlete`;
+        systemPrompt += `- ${s.title || 'Session'} (${meta}) — STATUS: ${status}\n`;
+      }
+      systemPrompt += `\nCRITICAL: Sessions marked NOT YET COMPLETED have not been done. Refer to them in future tense ("your ride later today", "this evening's session", "before you head out") — never write as if they're already finished. Only congratulate or debrief on a session if its STATUS is COMPLETED. If the athlete tells you they did or didn't do today's session, take their word over this data — they're the source of truth on what actually happened.\n`;
+    } else if (Array.isArray(context.todaySessions) && context.todaySessions.length === 0) {
+      systemPrompt += `\n## Today's sessions\n- No training scheduled for today.\n`;
+    }
   }
   if (context.goal) {
     systemPrompt += `\n## Athlete's goal\n`;

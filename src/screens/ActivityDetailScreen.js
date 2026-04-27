@@ -875,7 +875,11 @@ const s = StyleSheet.create({
   // mirroring the week-list in HomeScreen (and ActivityDetail's old
   // "Mark as complete" button at the bottom, which users often missed).
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  title: { flex: 1, fontSize: 22, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  // Apr 27 2026: dropped 22 → 18 so the activity hero sits closer in
+  // weight to the rest of the app's typography. The previous 22pt
+  // felt cavernous on its own card and left this screen looking
+  // visually heavier than the home-screen heroes that link into it.
+  title: { flex: 1, fontSize: 18, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, lineHeight: 22 },
   titleDone: { color: colors.textMuted, textDecorationLine: 'line-through' },
   titleHint: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 8 },
   // Circular checkbox toggle — visually identical to the week-list
@@ -899,9 +903,13 @@ const s = StyleSheet.create({
   },
   metric: { flex: 1, padding: 16, alignItems: 'center', borderRightWidth: 0.5, borderRightColor: colors.border },
   metricLabel: { fontSize: 10, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
-  metricValue: { fontSize: 18, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
+  // Dropped 18 → 16 so longer effort labels ("moderate", "recovery")
+  // fit on a single line in the third metric column. At 18pt those
+  // wrapped to two lines and pushed the metric card vertically
+  // out of alignment with the other two columns.
+  metricValue: { fontSize: 16, fontWeight: '500', fontFamily: FF.medium, color: colors.text, textAlign: 'center' },
   metricInput: {
-    fontSize: 18, fontWeight: '500', fontFamily: FF.medium, color: colors.text,
+    fontSize: 16, fontWeight: '500', fontFamily: FF.medium, color: colors.text,
     textAlign: 'center',
     // Stretch to fill the parent column so the pink focus underline spans
     // the whole metric cell, not just a tiny segment under the typed
@@ -951,8 +959,11 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 12, borderRadius: 16, padding: 20,
     borderWidth: 1, borderColor: colors.border,
   },
-  descTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 8 },
-  descBody: { fontSize: 15, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 22 },
+  descTitle: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 8 },
+  // Dropped 15 → 13 with lineHeight 19 to match the body copy on
+  // HomeScreen and the rest of the app — the previous 15pt body felt
+  // a step heavier than every other paragraph in the app.
+  descBody: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 19 },
 
   // Tips
   tipsBtn: {

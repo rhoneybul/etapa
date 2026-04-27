@@ -9,7 +9,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, Animated, Easing, Image,
   TouchableOpacity, ScrollView, Alert, AppState, Platform,
+  TextInput, KeyboardAvoidingView,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import useScreenGuard from '../hooks/useScreenGuard';
@@ -21,6 +23,7 @@ import {
 } from '../services/llmPlanService';
 import { savePlan } from '../services/storageService';
 import analytics from '../services/analyticsService';
+import api from '../services/api';
 
 const FF = fontFamily;
 const POLL_INTERVAL = 2000; // 2 seconds
@@ -82,6 +85,14 @@ export default function PlanLoadingScreen({ navigation, route }) {
   // proper error screen instead of silently bouncing the user back.
   const [failure, setFailure] = useState(null);  // { error: string }
   const [retrying, setRetrying] = useState(false);
+  // ── In-app support ticket from the failure screen ────────────────────
+  // Wires straight into api.feedback.submit so it lands in the same
+  // thread the user can later reply to from FeedbackScreen — much
+  // better than a mailto: that loses the auto-attached error context.
+  const [reportText, setReportText] = useState('');
+  const [reporting, setReporting] = useState(false);
+  const [reportSent, setReportSent] = useState(false);
+  const [reportError, setReportError] = useState(null);
   // Abandon tracking — set true right before we navigate away on successful
   // plan generation. Used by the beforeRemove listener below.
   const completedRef = useRef(false);
@@ -361,6 +372,51 @@ export default function PlanLoadingScreen({ navigation, route }) {
 
   const tip = MARKETING_TIPS[tipIndex];
 
+  // Submit a feedback / support ticket from the failure screen. Bundles
+  // the user's free-text message with the auto-attached error context
+  // (error string, goal, config, app version, device) so support has
+  // everything they need to reproduce on the first reply. Lands in the
+  // same `feedback` table FeedbackScreen reads from, so the user can
+  // tap into Settings → Support and continue the conversation.
+  const handleReportSubmit = useCallback(async () => {
+    if (!reportText.trim() || reporting) return;
+    setReporting(true);
+    setReportError(null);
+
+    const appVersion = Constants.expoConfig?.version || '0.0.0';
+    const deviceInfo = `${Platform.OS} ${Platform.Version}`;
+
+    // Compose the message: user's note first (so support reads it
+    // first), then a fenced auto-context block. Triple-backticks to
+    // preserve newlines in the inbound thread view.
+    const userNote = reportText.trim();
+    const autoContext = [
+      '--- Auto-attached context (plan-gen failure) ---',
+      `When: ${new Date().toISOString()}`,
+      `Goal: ${goal?.planName || goal?.goalType || 'unknown'} (${goal?.cyclingType || '?'})`,
+      `Config: ${config?.weeks || '?'} weeks · ${config?.daysPerWeek || '?'} sessions/week · fitness=${config?.fitnessLevel || '?'} · coach=${config?.coachId || '?'}`,
+      `Error: ${(failure?.error || 'unknown').slice(0, 1500)}`,
+    ].join('\n');
+    const composed = `${userNote}\n\n\`\`\`\n${autoContext}\n\`\`\``;
+
+    try {
+      await api.feedback.submit({
+        category: 'bug',
+        message: composed,
+        appVersion,
+        deviceInfo,
+        attachments: [],
+      });
+      analytics.events.feedbackSubmitted?.('bug');
+      setReportSent(true);
+      setReportText('');
+    } catch (err) {
+      setReportError(err?.message || "Couldn't send right now — please try again.");
+    } finally {
+      setReporting(false);
+    }
+  }, [reportText, reporting, goal, config, failure]);
+
   // Remote kill-switch / redirect wins over everything. If admin has
   // disabled this screen or set a redirectTo, we short-circuit before
   // running any plan-generation logic.
@@ -375,50 +431,124 @@ export default function PlanLoadingScreen({ navigation, route }) {
     return (
       <View style={s.container}>
         <SafeAreaView style={s.safe}>
-          <ScrollView contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
-            <View style={s.failureHeader}>
-              <View style={s.failureIconWrap}>
-                <Text style={s.failureIcon}>!</Text>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ flex: 1 }}
+          >
+            <ScrollView
+              contentContainerStyle={s.scrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={s.failureHeader}>
+                <View style={s.failureIconWrap}>
+                  <Text style={s.failureIcon}>!</Text>
+                </View>
+                <Text style={s.title}>
+                  {isRateLimit ? 'Weekly plan limit reached' : "That didn't work"}
+                </Text>
+                <Text style={s.failureMessage}>
+                  {isRateLimit
+                    ? `You've generated ${failure.used ?? '?'} of ${failure.limit ?? '5'} plans in the last 7 days. The count resets on a rolling window \u2014 individual plans age out one at a time. If you need more, contact support.`
+                    : 'Your coach hit a snag building your plan. This usually works on a second try \u2014 your details are still saved.'}
+                </Text>
+                {!isRateLimit && (
+                  <View style={s.reassureBox}>
+                    <Text style={s.reassureText}>
+                      <Text style={s.reassureStrong}>Nothing's lost.</Text> Your goal, sessions, and coach choice are all still there.
+                    </Text>
+                  </View>
+                )}
+                {!isRateLimit && (
+                  <View style={s.failureReasonBox}>
+                    <Text style={s.failureReasonLabel}>Error details</Text>
+                    <Text style={s.failureReasonText} numberOfLines={4}>{failure.error}</Text>
+                  </View>
+                )}
               </View>
-              <Text style={s.title}>
-                {isRateLimit ? 'Weekly plan limit reached' : "Couldn't build your plan"}
-              </Text>
-              <Text style={s.failureMessage}>
-                {isRateLimit
-                  ? `You've generated ${failure.used ?? '?'} of ${failure.limit ?? '5'} plans in the last 7 days. The count resets on a rolling window \u2014 individual plans age out one at a time. If you need more, contact support.`
-                  : 'Something went wrong while your coach was building your plan. Your details are saved \u2014 try again and it usually works on the second attempt.'}
-              </Text>
+
+              {/* In-app support ticket. Replaces the old mailto: pattern
+                  — the user types in-app and we POST to the existing
+                  feedback API which threads the conversation in
+                  Settings → Support. Auto-context (error + goal + config
+                  + device) is appended on submit so support don't have
+                  to ask follow-up questions to reproduce. */}
               {!isRateLimit && (
-                <View style={s.failureReasonBox}>
-                  <Text style={s.failureReasonLabel}>Error details</Text>
-                  <Text style={s.failureReasonText}>{failure.error}</Text>
+                <View style={s.reportBlock}>
+                  {reportSent ? (
+                    <View style={s.reportSentRow}>
+                      <View style={s.reportSentIcon}>
+                        <Text style={s.reportSentIconText}>{'\u2713'}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.reportSentTitle}>Got it — we'll be in touch</Text>
+                        <Text style={s.reportSentBody}>
+                          Usually within 24 hours. You can keep replying from Settings → Support.
+                        </Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <>
+                      <Text style={s.reportTitle}>Still not working? Tell us what happened</Text>
+                      <Text style={s.reportSub}>
+                        We'll get back to you within 24 hours. Your error details get attached automatically.
+                      </Text>
+                      <TextInput
+                        style={s.reportInput}
+                        value={reportText}
+                        onChangeText={setReportText}
+                        placeholder="Briefly — what were you trying to do?"
+                        placeholderTextColor={colors.textFaint}
+                        multiline
+                        numberOfLines={3}
+                        maxLength={500}
+                        editable={!reporting}
+                      />
+                      {reportError && (
+                        <Text style={s.reportErrorText}>{reportError}</Text>
+                      )}
+                      <TouchableOpacity
+                        style={[
+                          s.reportSubmitBtn,
+                          (!reportText.trim() || reporting) && s.reportSubmitBtnDisabled,
+                        ]}
+                        onPress={handleReportSubmit}
+                        disabled={!reportText.trim() || reporting}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={s.reportSubmitBtnText}>
+                          {reporting ? 'Sending\u2026' : 'Send to support'}
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
                 </View>
               )}
-            </View>
-          </ScrollView>
+            </ScrollView>
 
-          <View style={s.bottom}>
-            {!isRateLimit && (
+            <View style={s.bottom}>
+              {!isRateLimit && (
+                <TouchableOpacity
+                  style={s.retryBtn}
+                  onPress={handleRetry}
+                  disabled={retrying}
+                  activeOpacity={0.85}
+                >
+                  <Text style={s.retryBtnText}>{retrying ? 'Trying again...' : 'Try again'}</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
-                style={s.retryBtn}
-                onPress={handleRetry}
+                style={isRateLimit ? s.retryBtn : s.cancelBtn}
+                onPress={() => navigation.goBack()}
                 disabled={retrying}
-                activeOpacity={0.85}
+                activeOpacity={isRateLimit ? 0.85 : 0.7}
               >
-                <Text style={s.retryBtnText}>{retrying ? 'Trying again...' : 'Try again'}</Text>
+                <Text style={isRateLimit ? s.retryBtnText : s.cancelText}>
+                  {isRateLimit ? 'Got it' : 'Go back'}
+                </Text>
               </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={isRateLimit ? s.retryBtn : s.cancelBtn}
-              onPress={() => navigation.goBack()}
-              disabled={retrying}
-              activeOpacity={isRateLimit ? 0.85 : 0.7}
-            >
-              <Text style={isRateLimit ? s.retryBtnText : s.cancelText}>
-                {isRateLimit ? 'Got it' : 'Go back'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+            </View>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </View>
     );
@@ -607,6 +737,93 @@ const s = StyleSheet.create({
   failureReasonText: {
     fontSize: 12, fontWeight: '400', fontFamily: FF.regular,
     color: colors.textMuted, lineHeight: 18,
+  },
+  // ── Reassurance pill ───────────────────────────────────────────────
+  // Sits between the headline message and the technical error block.
+  // Goal: drop user anxiety quickly so they're more likely to retry
+  // rather than churn. Soft white-tinted bg, no pink — pink is reserved
+  // for actions and accents in this screen.
+  reassureBox: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 8,
+    paddingVertical: 9, paddingHorizontal: 14,
+    width: '100%',
+    marginBottom: 14,
+  },
+  reassureText: {
+    fontSize: 12, fontFamily: FF.regular,
+    color: colors.textMuted, textAlign: 'center', lineHeight: 17,
+  },
+  reassureStrong: {
+    color: colors.text, fontFamily: FF.semibold, fontWeight: '600',
+  },
+  // ── In-app support ticket form ─────────────────────────────────────
+  // Replaces the old mailto: pattern. Posts to api.feedback.submit so
+  // the ticket lands in the same thread the user can later reply to
+  // from Settings → Support. Auto-attached error context is appended
+  // server-side from the message body (see handleReportSubmit).
+  reportBlock: {
+    backgroundColor: colors.surface,
+    borderRadius: 12, borderWidth: 1, borderColor: colors.border,
+    padding: 14, width: '100%', marginTop: 18,
+  },
+  reportTitle: {
+    fontSize: 14, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.text,
+  },
+  reportSub: {
+    fontSize: 12, fontFamily: FF.regular,
+    color: colors.textMid, lineHeight: 17,
+    marginTop: 4, marginBottom: 12,
+  },
+  reportInput: {
+    backgroundColor: colors.bg,
+    borderWidth: 1, borderColor: colors.border, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
+    fontSize: 13, fontFamily: FF.regular, color: colors.text,
+    minHeight: 78, textAlignVertical: 'top',
+    lineHeight: 18,
+  },
+  reportErrorText: {
+    fontSize: 11, fontFamily: FF.regular,
+    color: '#ef9595', marginTop: 8,
+  },
+  reportSubmitBtn: {
+    marginTop: 12,
+    backgroundColor: colors.primary,
+    borderRadius: 10, paddingVertical: 11,
+    alignItems: 'center',
+  },
+  reportSubmitBtnDisabled: {
+    backgroundColor: 'rgba(232,69,139,0.3)',
+  },
+  reportSubmitBtnText: {
+    fontSize: 13, fontFamily: FF.semibold, fontWeight: '600',
+    color: '#fff',
+  },
+  // ── Sent state ─────────────────────────────────────────────────────
+  // Replaces the form once the ticket lands. Green check + warm copy.
+  // Crucially also reminds the user where to follow the conversation
+  // (Settings → Support) so they don't think the message disappeared.
+  reportSentRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+  },
+  reportSentIcon: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: 'rgba(80,180,120,0.18)',
+    alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  reportSentIconText: {
+    fontSize: 16, color: '#6dcc94', fontWeight: '700',
+  },
+  reportSentTitle: {
+    fontSize: 14, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.text,
+  },
+  reportSentBody: {
+    fontSize: 12, fontFamily: FF.regular,
+    color: colors.textMid, lineHeight: 17, marginTop: 2,
   },
   retryBtn: {
     backgroundColor: colors.primary, borderRadius: 12,
