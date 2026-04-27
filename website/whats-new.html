@@ -150,6 +150,24 @@ a:hover { color: var(--accent-hover); }
     font-size: var(--fs-label); font-weight: var(--w-medium);
     letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--accent);
   }
+  /* Language toggle — small EN | ES pill at the right end of the
+     eyebrow row. Pushes itself to the right via margin-left:auto. */
+  .lang-toggle {
+    margin-left: auto; display: flex; align-items: center; gap: 0;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    border-radius: 999px; padding: 2px;
+  }
+  .lang-link {
+    font-size: 11px; font-weight: var(--w-medium);
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--fg-3); padding: 4px 10px;
+    border-radius: 999px; text-decoration: none;
+  }
+  .lang-link.is-active {
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .lang-link:hover { color: var(--fg); }
+  .lang-link.is-active:hover { color: var(--accent); }
   .hero h1 {
     font-size: clamp(40px, 6vw, 64px);
     line-height: 1.05;
@@ -417,6 +435,10 @@ a:hover { color: var(--accent-hover); }
       <span class="mark">Etapa</span>
       <span class="divider">·</span>
       <span class="tag">What's new</span>
+      <nav class="lang-toggle" aria-label="Language">
+        <a href="/whats-new.html" class="lang-link is-active" aria-current="page">EN</a>
+        <a href="/whats-new-es.html" class="lang-link">ES</a>
+      </nav>
     </div>
     <h1>What's new in Etapa</h1>
     <p class="lede">Fresh features, quiet fixes, and the odd proper improvement — in plain English. No changelog jargon, no "v1.2.2 (build 116)" — just what we've shipped and what you'll notice.</p>

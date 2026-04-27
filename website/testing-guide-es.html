@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Etapa — Testing guide</title>
+<title>Etapa — Guía de testing</title>
 
 <!-- Hidden page: not indexed, not linked from nav/sitemap. Shareable by direct URL only. -->
 <meta name="robots" content="noindex, nofollow, noarchive" />
@@ -820,11 +820,11 @@ a:hover { color: var(--accent-hover); }
 <div class="download-bar">
   <div class="left">
     <img src="/icon-72.png" alt="" />
-    <span><span class="brand">Etapa</span> &middot; Testing guide</span>
+    <span><span class="brand">Etapa</span> &middot; Guía de testing</span>
   </div>
-  <button onclick="window.print()" title="Save as PDF">
+  <button onclick="window.print()" title="Guardar como PDF">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-    Save as PDF
+    Guardar como PDF
   </button>
 </div>
 
@@ -837,32 +837,32 @@ a:hover { color: var(--accent-hover); }
       <span class="mark">Etapa</span>
       <span class="divider">&middot;</span>
       <span class="tag">Beta testing</span>
-      <nav class="lang-toggle" aria-label="Language">
-        <a href="/testing-guide.html" class="lang-link is-active" aria-current="page">EN</a>
-        <a href="/testing-guide-es.html" class="lang-link">ES</a>
+      <nav class="lang-toggle" aria-label="Idioma">
+        <a href="/testing-guide.html" class="lang-link">EN</a>
+        <a href="/testing-guide-es.html" class="lang-link is-active" aria-current="page">ES</a>
       </nav>
     </div>
-    <h1>Welcome aboard. Here&rsquo;s how to test Etapa.</h1>
+    <h1>Bienvenido a bordo. Aquí tienes cómo probar Etapa.</h1>
     <p class="lede">
-      Thanks for riding with us early. This guide walks you through installing the beta on your phone,
-      what to try once you&rsquo;re in, and exactly where to send the feedback that will shape the next build.
-      It takes about five minutes end&#8209;to&#8209;end.
+      Gracias por rodar con nosotros desde pronto. Esta guía te explica cómo instalar la beta en tu teléfono,
+      qué probar una vez dentro, y exactamente dónde enviar los comentarios que darán forma a la próxima versión.
+      Te llevará unos cinco minutos de principio a fin.
     </p>
     <dl class="meta">
       <div>
-        <dt>Audience</dt>
-        <dd>Invited beta testers</dd>
+        <dt>Para quién es</dt>
+        <dd>Probadores beta invitados</dd>
       </div>
       <div>
-        <dt>Platforms</dt>
+        <dt>Plataformas</dt>
         <dd>iOS &middot; Android</dd>
       </div>
       <div>
-        <dt>Time to install</dt>
-        <dd>~5 minutes</dd>
+        <dt>Tiempo de instalación</dt>
+        <dd>~5 minutos</dd>
       </div>
       <div>
-        <dt>Questions</dt>
+        <dt>Dudas</dt>
         <dd class="accent"><a class="inline" href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a></dd>
       </div>
     </dl>
@@ -872,19 +872,19 @@ a:hover { color: var(--accent-hover); }
          them above everything else so testers never have to hunt. Styled
          with the page's own design tokens so they sit inside the rest of
          the guide naturally. -->
-    <div class="install-hero" role="region" aria-label="Direct install links">
-      <div class="install-hero-eyebrow">Install Etapa right now</div>
-      <h2 class="install-hero-title">Get Etapa on your phone.</h2>
+    <div class="install-hero" role="region" aria-label="Enlaces de instalación directa">
+      <div class="install-hero-eyebrow">Instala Etapa ahora mismo</div>
+      <h2 class="install-hero-title">Mete Etapa en tu teléfono.</h2>
       <p class="install-hero-lede">
-        On iPhone there are two ways in &mdash; a TestFlight email invite, or the public link below.
-        I&rsquo;ll tell you ahead of time which one applies to you, so don&rsquo;t try both.
-        On Android, it&rsquo;s the Play Store.
+        En iPhone hay dos formas de entrar &mdash; una invitación de TestFlight por email, o el enlace público de abajo.
+        Te diremos por adelantado cuál te toca, así que no pruebes las dos.
+        En Android, es el Play Store.
       </p>
 
       <p class="install-hero-sub" style="margin: -4px 0 20px; padding: 14px 16px; background: var(--surface-hover); border-radius: 12px; color: var(--fg-2); font-size: var(--fs-body); line-height: var(--lh-body);">
-        <strong style="color: var(--fg);">Got an email from TestFlight?</strong>
-        That&rsquo;s Method 1. Open the email (sender: <em>TestFlight</em>), tap <strong>View in TestFlight</strong>, then <strong>Install</strong>.
-        TestFlight will install itself first if you don&rsquo;t already have it. You don&rsquo;t need the public link below.
+        <strong style="color: var(--fg);">¿Te ha llegado un email de TestFlight?</strong>
+        Ese es el Método 1. Abre el email (remitente: <em>TestFlight</em>), toca <strong>View in TestFlight</strong>, y luego <strong>Install</strong>.
+        TestFlight se instalará solo primero si aún no lo tienes. No necesitas el enlace público de abajo.
       </p>
 
       <div class="install-links-grid">
@@ -893,7 +893,7 @@ a:hover { color: var(--accent-hover); }
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.543 12.54c-.023-2.42 1.974-3.58 2.064-3.637-1.123-1.64-2.875-1.866-3.5-1.893-1.49-.15-2.907.876-3.66.876-.765 0-1.927-.854-3.168-.83-1.63.024-3.134.947-3.973 2.404-1.695 2.936-.433 7.28 1.216 9.666.807 1.166 1.767 2.477 3.028 2.43 1.216-.05 1.676-.787 3.147-.787 1.47 0 1.883.787 3.168.76 1.307-.022 2.134-1.186 2.932-2.36.924-1.353 1.305-2.665 1.328-2.732-.03-.013-2.553-.983-2.58-3.897zm-2.422-7.16c.67-.814 1.123-1.943.999-3.068-.966.04-2.136.644-2.83 1.458-.62.72-1.164 1.875-1.019 2.977 1.08.084 2.18-.55 2.85-1.367z"/></svg>
           </span>
           <span class="install-link-body">
-            <span class="install-link-label">iPhone &middot; Method 2 &middot; TestFlight public link</span>
+            <span class="install-link-label">iPhone &middot; Método 2 &middot; Enlace público de TestFlight</span>
             <span class="install-link-url">testflight.apple.com/join/u995w5vr</span>
           </span>
         </a>
@@ -908,40 +908,40 @@ a:hover { color: var(--accent-hover); }
         </a>
       </div>
       <p class="install-hero-fallback">
-        If TestFlight says &ldquo;This beta isn&rsquo;t accepting any new testers right now&rdquo; or the Play Store listing isn&rsquo;t visible yet,
-        email <a class="inline" href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a> and we&rsquo;ll add you manually.
+        Si TestFlight dice &ldquo;This beta isn&rsquo;t accepting any new testers right now&rdquo; o la ficha del Play Store aún no es visible,
+        escribe a <a class="inline" href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a> y te añadiremos a mano.
       </p>
     </div>
 
-    <!-- ── Sandbox-payments reassurance ──────────────────────────────────
-         Unmissable notice that the beta build uses sandbox purchases. -->
+    <!-- Sandbox-payments reassurance -->
     <div class="callout" role="note" style="margin-top: 32px;">
       <div class="icon" aria-hidden="true">&pound;</div>
       <div class="body">
-        <strong>No real payments. This is a sandbox build.</strong>
+        <strong>Sin pagos reales. Esta es una build sandbox.</strong>
         <p>
-          The beta app runs on Apple&rsquo;s TestFlight &amp; Google&rsquo;s internal-testing
-          track, which means every purchase &mdash; Monthly, Annual, Lifetime, or Starter &mdash;
-          goes through the store&rsquo;s <em>sandbox</em> environment. No card is charged, no money
-          moves. Feel free to tap the paywall, pick a tier, and complete the purchase flow &mdash;
-          it&rsquo;s exactly how we need you to test it. If Apple or Google asks you to sign in with
-          a &ldquo;sandbox tester&rdquo; account, that&rsquo;s normal &mdash; just use your regular
-          Apple ID or Google account and the store will handle the rest.
+          La app beta corre sobre TestFlight de Apple y la pista de pruebas internas de Google,
+          lo que significa que cada compra &mdash; Mensual, Anual, De por vida, o Starter &mdash;
+          pasa por el entorno <em>sandbox</em> de la tienda. No se cobra ninguna tarjeta, no se
+          mueve dinero. Toca tranquilamente el paywall, elige un nivel y completa el flujo de
+          compra &mdash; es exactamente como necesitamos que lo pruebes. Si Apple o Google te
+          pide iniciar sesión con una cuenta de &ldquo;sandbox tester&rdquo;, es normal &mdash;
+          usa tu Apple ID o cuenta de Google habituales y la tienda se encarga del resto.
         </p>
       </div>
     </div>
   </header>
 
-  <!-- ═════════ 01 · INSTALL ═════════ -->
+  <!-- ═════════ 01 · INSTALACIÓN ═════════ -->
   <section id="install">
     <div class="section-head">
       <span class="num">01</span>
-      <h2>Install the app</h2>
-      <span class="aside">Pick your phone</span>
+      <h2>Instala la app</h2>
+      <span class="aside">Elige tu teléfono</span>
     </div>
     <p class="section-intro">
-      We send invites two ways: a direct link to your inbox, and a public link you can share with anyone
-      we&rsquo;ve cleared. Either one will drop you into the store flow below.
+      Enviamos invitaciones de dos formas: un enlace directo a tu bandeja de entrada, y un enlace público
+      que puedes compartir con cualquiera que hayamos autorizado. Cualquiera de los dos te llevará al flujo
+      de la tienda que se describe abajo.
     </p>
 
     <div class="platforms">
@@ -954,67 +954,67 @@ a:hover { color: var(--accent-hover); }
           </div>
           <div>
             <h3>iOS</h3>
-            <div class="via">via TestFlight</div>
+            <div class="via">vía TestFlight</div>
           </div>
         </header>
 
         <div class="callout" role="note" style="margin: 0 0 16px; padding: 14px 16px; border-radius: 10px; background: rgba(232,69,139,0.08); border: 1px solid rgba(232,69,139,0.3);">
-          <strong style="display: block; margin-bottom: 4px;">Two ways in &mdash; I&rsquo;ll tell you ahead of time which one applies to you.</strong>
+          <strong style="display: block; margin-bottom: 4px;">Dos formas de entrar &mdash; te diremos por adelantado cuál te toca.</strong>
           <span style="display: block; margin-top: 6px;">
-            <strong>Method 1:</strong> TestFlight sends you an email invite. Open it on your iPhone and tap <em>View in TestFlight</em>.
+            <strong>Método 1:</strong> TestFlight te envía una invitación por email. Ábrela en tu iPhone y toca <em>View in TestFlight</em>.
           </span>
           <span style="display: block; margin-top: 4px;">
-            <strong>Method 2:</strong> I send you a public link &mdash;
+            <strong>Método 2:</strong> Te enviamos un enlace público &mdash;
             <a class="inline" href="https://testflight.apple.com/join/u995w5vr" target="_blank" rel="noopener" style="font-weight: 600; word-break: break-all;">
               testflight.apple.com/join/u995w5vr
             </a>
-            &mdash; tap it on your iPhone.
+            &mdash; tócalo en tu iPhone.
           </span>
         </div>
 
         <ol class="steps">
           <li>
-            <div class="step-title">Install TestFlight from the App Store</div>
+            <div class="step-title">Instala TestFlight desde la App Store</div>
             <div class="step-body">
-              It&rsquo;s Apple&rsquo;s free beta-testing app. Search <span class="code">TestFlight</span> in the App Store and install it.
-              Sign in with the Apple ID you want to use. (If you install via the email invite flow, TestFlight offers to install itself &mdash; you can skip this step.)
+              Es la app gratuita de Apple para probar betas. Busca <span class="code">TestFlight</span> en la App Store e instálala.
+              Inicia sesión con el Apple ID que quieras usar. (Si instalas vía el email de invitación, TestFlight se ofrece a instalarse solo &mdash; puedes saltarte este paso.)
             </div>
           </li>
           <li>
-            <div class="step-title">Use the method you were told to use</div>
+            <div class="step-title">Usa el método que te tocó</div>
             <div class="step-body" style="padding-bottom: 4px;">
-              <strong>If you got a TestFlight email:</strong> open it on your iPhone (sender will be <em>TestFlight</em>), tap <strong>View in TestFlight</strong>. That&rsquo;s it &mdash; you don&rsquo;t need the public link.
+              <strong>Si te llegó el email de TestFlight:</strong> ábrelo en tu iPhone (el remitente será <em>TestFlight</em>), toca <strong>View in TestFlight</strong>. Eso es todo &mdash; no necesitas el enlace público.
             </div>
             <div class="step-body" style="padding-top: 6px;">
-              <strong>If you got the public link from me:</strong> tap
+              <strong>Si te dimos el enlace público:</strong> toca
               <a class="inline" href="https://testflight.apple.com/join/u995w5vr" target="_blank" rel="noopener">
               https://testflight.apple.com/join/u995w5vr</a>
-              on your iPhone &mdash; it launches straight into TestFlight. If it says &ldquo;This beta isn&rsquo;t accepting any new testers right now,&rdquo; email
+              en tu iPhone &mdash; se abre directamente en TestFlight. Si te dice &ldquo;This beta isn&rsquo;t accepting any new testers right now&rdquo;, escribe a
               <a class="inline" href="mailto:helloetapa@gmail.com?subject=TestFlight%20invite">helloetapa@gmail.com</a>
-              and I&rsquo;ll add you as a direct email invite instead.
+              y te añadiremos como invitación directa por email.
             </div>
           </li>
           <li>
-            <div class="step-title">Accept and install Etapa</div>
+            <div class="step-title">Acepta e instala Etapa</div>
             <div class="step-body">
-              Tap <strong>Accept</strong>, then <strong>Install</strong>. The beta build downloads alongside your App&nbsp;Store apps &mdash;
-              with a small orange dot next to the icon so you can tell it apart.
+              Toca <strong>Accept</strong>, luego <strong>Install</strong>. La versión beta se descarga junto a tus apps de la App&nbsp;Store &mdash;
+              con un pequeño punto naranja al lado del icono para que la distingas.
             </div>
           </li>
           <li>
-            <div class="step-title">Open Etapa and sign in</div>
+            <div class="step-title">Abre Etapa e inicia sesión</div>
             <div class="step-body">
-              Use the email address your invite was sent to. You&rsquo;ll land on the home screen &mdash; ready to ride.
+              Usa el email al que se envió tu invitación. Llegarás a la pantalla de inicio &mdash; listo para rodar.
             </div>
           </li>
         </ol>
 
         <div class="cta-row">
           <a class="btn primary" href="https://testflight.apple.com/join/u995w5vr" target="_blank" rel="noopener">
-            Use the public link
+            Usar el enlace público
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
           </a>
-          <a class="btn ghost" href="https://apps.apple.com/app/testflight/id899247664" target="_blank" rel="noopener">Get TestFlight app</a>
+          <a class="btn ghost" href="https://apps.apple.com/app/testflight/id899247664" target="_blank" rel="noopener">Descargar la app TestFlight</a>
         </div>
       </article>
 
@@ -1026,140 +1026,140 @@ a:hover { color: var(--accent-hover); }
           </div>
           <div>
             <h3>Android</h3>
-            <div class="via">via Google Play internal testing</div>
+            <div class="via">vía pruebas internas de Google Play</div>
           </div>
         </header>
 
         <div class="callout" role="note" style="margin: 0 0 16px; padding: 14px 16px; border-radius: 10px; background: rgba(15,157,88,0.10); border: 1px solid rgba(15,157,88,0.35);">
-          <strong style="display: block; margin-bottom: 4px;">Your Play Store link &mdash; tap this on your Android phone:</strong>
+          <strong style="display: block; margin-bottom: 4px;">Tu enlace del Play Store &mdash; toca esto en tu teléfono Android:</strong>
           <a class="inline" href="https://play.google.com/store/apps/details?id=com.etapa.app" target="_blank" rel="noopener" style="font-size: 15px; font-weight: 600; word-break: break-all;">
             https://play.google.com/store/apps/details?id=com.etapa.app
           </a>
         </div>
 
-        <h4 class="subhead">Installing Etapa (first time)</h4>
+        <h4 class="subhead">Instalar Etapa (primera vez)</h4>
         <ol class="steps">
           <li>
-            <div class="step-title">Send us your Google account email</div>
+            <div class="step-title">Envíanos tu email de Google</div>
             <div class="step-body">
-              Google Play internal testing is invite-only &mdash; only whitelisted Google accounts can see the listing.
-              Email <a class="inline" href="mailto:helloetapa@gmail.com?subject=Android%20tester%20access">helloetapa@gmail.com</a> with
-              <strong>the exact Google address your Play Store is signed in with</strong>. This is usually a Gmail address but can be
-              any Google-linked email &mdash; whichever one shows up in Play Store &rarr; profile icon (top right) &rarr; &ldquo;Manage accounts&rdquo;.
-              Adding you takes a couple of minutes on our side.
+              Las pruebas internas de Google Play son solo por invitación &mdash; solo las cuentas de Google autorizadas pueden ver la ficha.
+              Escribe a <a class="inline" href="mailto:helloetapa@gmail.com?subject=Android%20tester%20access">helloetapa@gmail.com</a> con
+              <strong>la dirección exacta de Google con la que has iniciado sesión en el Play Store</strong>. Suele ser un email de Gmail pero
+              puede ser cualquier email vinculado a Google &mdash; el que aparezca en Play Store &rarr; icono de perfil (arriba a la derecha) &rarr; &ldquo;Manage accounts&rdquo;.
+              Añadirte nos lleva un par de minutos.
             </div>
           </li>
           <li>
-            <div class="step-title">Wait ~5 minutes after we confirm you're added</div>
+            <div class="step-title">Espera ~5 minutos tras confirmar que te hemos añadido</div>
             <div class="step-body">
-              Google Play caches tester lists aggressively. If you open the install link before Google has propagated the change you'll get
-              a &ldquo;not available&rdquo; error even though everything is set up correctly. Five minutes is almost always enough; up to 30 in rare cases.
+              Google Play cachea las listas de probadores con bastante agresividad. Si abres el enlace antes de que Google haya propagado el cambio,
+              te dará un error &ldquo;not available&rdquo; aunque todo esté bien configurado. Cinco minutos casi siempre bastan; hasta 30 en casos raros.
             </div>
           </li>
           <li>
-            <div class="step-title">Open the Play Store link on your phone</div>
+            <div class="step-title">Abre el enlace del Play Store en tu teléfono</div>
             <div class="step-body">
-              Tap <a class="inline" href="https://play.google.com/store/apps/details?id=com.etapa.app" target="_blank" rel="noopener">
-              https://play.google.com/store/apps/details?id=com.etapa.app</a> on the Android device you want to test on.
-              The listing <strong>must show an &ldquo;Internal testing&rdquo; label under the app name</strong> &mdash; that's the confirmation
-              you're looking at the tester build. If you only see a normal Play Store listing without that badge, you're either on the wrong Google
-              account or the propagation delay hasn't finished.
+              Toca <a class="inline" href="https://play.google.com/store/apps/details?id=com.etapa.app" target="_blank" rel="noopener">
+              https://play.google.com/store/apps/details?id=com.etapa.app</a> en el dispositivo Android que quieras probar.
+              La ficha <strong>tiene que mostrar la etiqueta &ldquo;Internal testing&rdquo; bajo el nombre de la app</strong> &mdash; esa es la confirmación
+              de que estás viendo la build de pruebas. Si solo ves una ficha normal del Play Store sin esa insignia, o estás en la cuenta de Google
+              equivocada o el retraso de propagación aún no ha terminado.
             </div>
           </li>
           <li>
-            <div class="step-title">Tap Install</div>
+            <div class="step-title">Toca Instalar</div>
             <div class="step-body">
-              Standard Play Store install &mdash; download, then Open. No sideloading, no developer settings, no unknown-sources warnings.
-              The first launch can take a few extra seconds while Android verifies the install.
+              Instalación estándar del Play Store &mdash; descarga, luego Abrir. Sin sideloading, sin ajustes de desarrollador, sin avisos de fuentes desconocidas.
+              El primer arranque puede llevar unos segundos extra mientras Android verifica la instalación.
             </div>
           </li>
           <li>
-            <div class="step-title">Open Etapa and sign in</div>
+            <div class="step-title">Abre Etapa e inicia sesión</div>
             <div class="step-body">
-              Use the email address your invite was sent to. You&rsquo;ll land on the home screen &mdash; ready to ride.
+              Usa el email al que se envió tu invitación. Llegarás a la pantalla de inicio &mdash; listo para rodar.
             </div>
           </li>
         </ol>
 
-        <h4 class="subhead">Getting updates</h4>
+        <h4 class="subhead">Recibir actualizaciones</h4>
         <ol class="steps">
           <li>
-            <div class="step-title">Updates install automatically in the background</div>
+            <div class="step-title">Las actualizaciones se instalan solas en segundo plano</div>
             <div class="step-body">
-              As long as Play Store auto-update is on (default), new builds roll out silently within a few hours of us pushing them.
-              You don't need to do anything. You'll just notice the app has restarted and maybe a new feature appeared.
+              Mientras tengas la auto-actualización del Play Store activada (por defecto lo está), las nuevas builds llegan silenciosamente en unas horas
+              desde que las publicamos. No tienes que hacer nada. Notarás que la app se ha reiniciado y quizá una nueva función ha aparecido.
             </div>
           </li>
           <li>
-            <div class="step-title">To force an update right now</div>
+            <div class="step-title">Para forzar una actualización ahora mismo</div>
             <div class="step-body">
-              Open the <a class="inline" href="https://play.google.com/store/apps/details?id=com.etapa.app" target="_blank" rel="noopener">install link</a>
-              again. If there's a newer version available, the primary button changes from &ldquo;Open&rdquo; to <strong>&ldquo;Update&rdquo;</strong>.
-              Alternatively: Play Store &rarr; profile icon &rarr; <strong>Manage apps &amp; device</strong> &rarr; <strong>Updates available</strong> &rarr; find Etapa.
+              Abre el <a class="inline" href="https://play.google.com/store/apps/details?id=com.etapa.app" target="_blank" rel="noopener">enlace de instalación</a>
+              de nuevo. Si hay una versión nueva disponible, el botón principal cambia de &ldquo;Open&rdquo; a <strong>&ldquo;Update&rdquo;</strong>.
+              Alternativa: Play Store &rarr; icono de perfil &rarr; <strong>Manage apps &amp; device</strong> &rarr; <strong>Updates available</strong> &rarr; encuentra Etapa.
             </div>
           </li>
           <li>
-            <div class="step-title">Check which version you're running</div>
+            <div class="step-title">Comprueba qué versión estás usando</div>
             <div class="step-body">
-              In the app: <strong>Settings &rarr; About</strong> shows the version + build number. In Play Store: the listing scrolls down to
-              &ldquo;About this app&rdquo; &rarr; version. If we've asked you to reproduce a bug and the build numbers don't match, try forcing an update first.
+              En la app: <strong>Ajustes &rarr; Acerca de</strong> muestra el número de versión y build. En el Play Store: baja en la ficha hasta
+              &ldquo;About this app&rdquo; &rarr; version. Si te hemos pedido reproducir un bug y los números de build no coinciden, prueba a forzar una actualización primero.
             </div>
           </li>
           <li>
-            <div class="step-title">Something feels broken after an update?</div>
+            <div class="step-title">¿Algo va mal después de una actualización?</div>
             <div class="step-body">
-              Usually a stale cache. <strong>Force-close Etapa</strong> (recent apps &rarr; swipe up on Etapa), then re-open. If the problem persists,
-              Settings (device) &rarr; Apps &rarr; Etapa &rarr; Storage &rarr; <strong>Clear cache</strong>. Don't tap &ldquo;Clear storage&rdquo; unless we ask &mdash;
-              that signs you out and loses any locally-queued data.
+              Suele ser una caché obsoleta. <strong>Cierra Etapa por la fuerza</strong> (apps recientes &rarr; desliza hacia arriba sobre Etapa), y vuelve a abrirla. Si el problema persiste,
+              Ajustes (del dispositivo) &rarr; Apps &rarr; Etapa &rarr; Almacenamiento &rarr; <strong>Borrar caché</strong>. No toques &ldquo;Borrar almacenamiento&rdquo; a menos que te lo pidamos &mdash;
+              eso te cierra la sesión y pierde cualquier dato encolado en local.
             </div>
           </li>
         </ol>
 
-        <h4 class="subhead">Common Android problems</h4>
+        <h4 class="subhead">Problemas habituales en Android</h4>
         <ul class="issues">
           <li>
-            <strong>&ldquo;App not available for your device&rdquo; or &ldquo;Item not found&rdquo;</strong>
+            <strong>&ldquo;App not available for your device&rdquo; o &ldquo;Item not found&rdquo;</strong>
             <p>
-              Your Google account isn't on the tester list yet, or the propagation hasn't finished. Confirm with us that the email address is right
-              and wait 5&ndash;30 minutes. If you recently changed the Google account your Play Store uses, you may also need to log out and back in of
-              the Play Store app.
+              Tu cuenta de Google aún no está en la lista de probadores, o la propagación no ha terminado. Confirma con nosotros que el email es correcto
+              y espera 5&ndash;30 minutos. Si recientemente cambiaste la cuenta de Google que usa tu Play Store, también puede que tengas que cerrar sesión
+              y volver a entrar en la app del Play Store.
             </p>
           </li>
           <li>
-            <strong>Install button is greyed out or says &ldquo;Not compatible&rdquo;</strong>
+            <strong>El botón Instalar está en gris o dice &ldquo;Not compatible&rdquo;</strong>
             <p>
-              Etapa requires Android 7.0+ (Nougat) and a reasonably modern processor. If you're on Android 6 or earlier, or a very old device, we can't
-              install. Check: Settings (device) &rarr; About phone &rarr; Android version. Any device from 2018 or later will work.
+              Etapa requiere Android 7.0+ (Nougat) y un procesador razonablemente moderno. Si estás en Android 6 o anterior, o en un dispositivo muy viejo,
+              no podemos instalar. Comprueba: Ajustes (del dispositivo) &rarr; Acerca del teléfono &rarr; versión de Android. Cualquier dispositivo de 2018 en adelante funciona.
             </p>
           </li>
           <li>
-            <strong>Multiple Google accounts on the phone</strong>
+            <strong>Varias cuentas de Google en el teléfono</strong>
             <p>
-              Play Store defaults to the primary account. If you asked us to add a secondary Google account, switch to it explicitly: Play Store &rarr;
-              profile icon &rarr; account switcher &rarr; pick the one we whitelisted. Then re-open the install link.
+              El Play Store usa por defecto la cuenta primaria. Si nos pediste añadir una cuenta secundaria, cámbiate a ella explícitamente: Play Store &rarr;
+              icono de perfil &rarr; selector de cuentas &rarr; elige la que autorizamos. Luego vuelve a abrir el enlace de instalación.
             </p>
           </li>
           <li>
-            <strong>Uninstalled Etapa &mdash; can I reinstall?</strong>
+            <strong>Desinstalé Etapa &mdash; ¿puedo volver a instalarla?</strong>
             <p>
-              Yes, straight from the same install link. Your tester status stays active even after uninstalling, so there's nothing to re-accept.
+              Sí, directamente desde el mismo enlace de instalación. Tu estado de probador sigue activo aunque desinstales, así que no hay nada que volver a aceptar.
             </p>
           </li>
           <li>
-            <strong>Stuck on a particular screen, or the app crashes</strong>
+            <strong>Atascado en una pantalla concreta, o la app se cae</strong>
             <p>
-              We want to know. In the app: <strong>Settings &rarr; Send feedback</strong> (a screenshot is included automatically). Or email
-              <a class="inline" href="mailto:helloetapa@gmail.com?subject=Android%20bug">helloetapa@gmail.com</a> with a screenshot and the build number.
+              Queremos saberlo. En la app: <strong>Ajustes &rarr; Enviar comentarios</strong> (se incluye una captura automáticamente). O escríbenos a
+              <a class="inline" href="mailto:helloetapa@gmail.com?subject=Android%20bug">helloetapa@gmail.com</a> con una captura y el número de build.
             </p>
           </li>
         </ul>
 
         <div class="cta-row">
           <a class="btn primary" href="https://play.google.com/store/apps/details?id=com.etapa.app" target="_blank" rel="noopener">
-            Open on Play Store
+            Abrir en el Play Store
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
           </a>
-          <a class="btn ghost" href="mailto:helloetapa@gmail.com?subject=Android%20tester%20access">Request tester access</a>
+          <a class="btn ghost" href="mailto:helloetapa@gmail.com?subject=Android%20tester%20access">Solicitar acceso de probador</a>
         </div>
       </article>
     </div>
@@ -1167,151 +1167,151 @@ a:hover { color: var(--accent-hover); }
     <div class="callout">
       <div class="icon" aria-hidden="true">!</div>
       <div class="body">
-        <strong>Stuck at any step?</strong>
+        <strong>¿Atascado en algún paso?</strong>
         <p>
-          Reply to the invite email or write to <a class="inline" href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a>.
-          A screenshot of where you got stuck is usually all we need to unblock you within a few hours.
+          Responde al email de invitación o escribe a <a class="inline" href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a>.
+          Una captura de dónde te has quedado suele ser todo lo que necesitamos para desatascarte en pocas horas.
         </p>
       </div>
     </div>
   </section>
 
-  <!-- ═════════ 02 · WHAT TO TEST ═════════ -->
+  <!-- ═════════ 02 · QUÉ PROBAR ═════════ -->
   <section id="what-to-test">
     <div class="section-head">
       <span class="num">02</span>
-      <h2>What to test</h2>
-      <span class="aside">Six focus areas</span>
+      <h2>Qué probar</h2>
+      <span class="aside">Seis áreas de foco</span>
     </div>
     <p class="section-intro">
-      You don&rsquo;t need to cover everything. Pick the areas that match how you&rsquo;d actually use Etapa and go deep.
-      Every note helps &mdash; even &ldquo;this felt fine&rdquo; is data.
+      No hace falta que cubras todo. Elige las áreas que se parezcan a cómo usarías Etapa de verdad y profundiza.
+      Cualquier nota ayuda &mdash; incluso &ldquo;esto me pareció bien&rdquo; es información útil.
     </p>
 
     <div class="test-areas">
 
       <article class="area">
-        <span class="tag">Start here</span>
-        <h3>Onboarding &amp; goal setup</h3>
-        <p>The first five minutes decide whether a new rider stays. This is the highest-signal area to test.</p>
+        <span class="tag">Empieza aquí</span>
+        <h3>Onboarding y configuración del objetivo</h3>
+        <p>Los primeros cinco minutos deciden si un ciclista nuevo se queda. Es el área con más señal para probar.</p>
         <ul>
-          <li>Does anything feel confusing, unnecessary, or too &ldquo;coach-y&rdquo;?</li>
-          <li>Were any questions hard to answer honestly?</li>
-          <li>Did the generated plan match what you told us?</li>
+          <li>¿Hay algo que se sienta confuso, innecesario, o demasiado &ldquo;tono entrenador&rdquo;?</li>
+          <li>¿Hubo alguna pregunta difícil de responder con honestidad?</li>
+          <li>¿El plan generado coincidió con lo que nos contaste?</li>
         </ul>
       </article>
 
       <article class="area">
-        <span class="tag">Core loop</span>
-        <h3>Your plan &amp; the week ahead</h3>
-        <p>This is the screen most riders will open daily. It needs to be glanceable and trustworthy.</p>
+        <span class="tag">Bucle principal</span>
+        <h3>Tu plan y la semana por delante</h3>
+        <p>Es la pantalla que la mayoría de ciclistas abrirán a diario. Tiene que ser fácil de mirar y de fiar.</p>
         <ul>
-          <li>Can you tell at a glance what today&rsquo;s session is?</li>
-          <li>Is moving or skipping a session obvious?</li>
-          <li>Does the week feel realistic for your schedule?</li>
+          <li>¿Puedes saber de un vistazo cuál es la sesión de hoy?</li>
+          <li>¿Es obvio mover o saltarse una sesión?</li>
+          <li>¿La semana se siente realista para tu agenda?</li>
         </ul>
       </article>
 
       <article class="area">
-        <span class="tag">The voice</span>
-        <h3>Coach chat</h3>
-        <p>Ask your coach anything &mdash; session advice, nutrition, recovery, pacing. Push it and see where it breaks.</p>
+        <span class="tag">La voz</span>
+        <h3>Chat del entrenador</h3>
+        <p>Pregúntale a tu entrenador lo que quieras &mdash; consejos de sesión, nutrición, recuperación, ritmos. Pónlo a prueba y mira dónde se rompe.</p>
         <ul>
-          <li>Did the answers sound like a real, helpful person?</li>
-          <li>Any jargon slip through that needs plain English?</li>
-          <li>Did it ever feel preachy, generic, or off-tone?</li>
+          <li>¿Las respuestas sonaban a una persona real y útil?</li>
+          <li>¿Se le coló alguna jerga que necesite lenguaje claro?</li>
+          <li>¿En algún momento sonó predicador, genérico, o desafinado?</li>
         </ul>
       </article>
 
       <article class="area">
-        <span class="tag">Connections</span>
-        <h3>Strava sync</h3>
-        <p>Connect Strava from <em>Settings</em>, then go for a ride. Check that it appears in Etapa.</p>
+        <span class="tag">Conexiones</span>
+        <h3>Sincronización con Strava</h3>
+        <p>Conecta Strava desde <em>Ajustes</em>, sal a rodar, y comprueba que aparece en Etapa.</p>
         <ul>
-          <li>Did the connection flow work first time?</li>
-          <li>Did your ride show up, with correct distance &amp; time?</li>
-          <li>Any rides missing or duplicated?</li>
+          <li>¿El flujo de conexión funcionó a la primera?</li>
+          <li>¿Apareció tu salida, con distancia y tiempo correctos?</li>
+          <li>¿Falta alguna salida o aparece duplicada?</li>
         </ul>
       </article>
 
       <article class="area">
         <span class="tag">Paywall</span>
-        <h3>Plans &amp; purchase flow</h3>
-        <p>Please <em>do</em> try buying a plan &mdash; the sandbox makes it free, but we need eyes on the whole flow.</p>
+        <h3>Planes y flujo de compra</h3>
+        <p>Por favor, <em>sí</em>, prueba comprar un plan &mdash; el sandbox lo hace gratis, pero necesitamos ojos en todo el flujo.</p>
         <ul>
-          <li>Is the pricing clear at a glance? Which tier felt best value?</li>
-          <li>Did the Apple / Google purchase sheet work end-to-end?</li>
-          <li>Anything about the page that made you want to close it?</li>
-          <li>Once &ldquo;purchased&rdquo;, did the app unlock correctly?</li>
+          <li>¿El precio está claro de un vistazo? ¿Qué nivel te pareció mejor relación calidad-precio?</li>
+          <li>¿La hoja de compra de Apple / Google funcionó de principio a fin?</li>
+          <li>¿Hay algo en la página que te diera ganas de cerrarla?</li>
+          <li>Una vez &ldquo;comprado&rdquo;, ¿la app se desbloqueó correctamente?</li>
         </ul>
         <p style="color: var(--fg-2); font-size: 13px; margin-top: 6px;">
-          Reminder: payments are sandbox &mdash; no real money moves.
+          Recordatorio: los pagos son sandbox &mdash; no se mueve dinero real.
         </p>
       </article>
 
       <article class="area">
-        <span class="tag">Reliability</span>
-        <h3>Bugs &amp; crashes</h3>
-        <p>Anything that feels broken, slow, or wrong. Screenshots &amp; the moment it happened are gold.</p>
+        <span class="tag">Fiabilidad</span>
+        <h3>Bugs y caídas</h3>
+        <p>Cualquier cosa que se sienta rota, lenta o mal. Las capturas y el momento en que pasó son oro.</p>
         <ul>
-          <li>App crashes or freezes</li>
-          <li>Loading states that never finish</li>
-          <li>Text overflow, cut-off buttons, wonky layout</li>
+          <li>La app se cae o se congela</li>
+          <li>Estados de carga que nunca terminan</li>
+          <li>Texto que se desborda, botones cortados, layouts raros</li>
         </ul>
       </article>
 
       <article class="area">
-        <span class="tag">Tone</span>
-        <h3>Copy &amp; feel</h3>
-        <p>Etapa is supposed to read like a knowledgeable friend. Tell us where it doesn&rsquo;t.</p>
+        <span class="tag">Tono</span>
+        <h3>Copy y sensación</h3>
+        <p>Etapa debería leerse como un amigo que sabe del tema. Dinos dónde no lo hace.</p>
         <ul>
-          <li>Sentences that felt robotic or corporate</li>
-          <li>Anything intimidating for a first-time cyclist</li>
-          <li>Button labels that made you pause</li>
+          <li>Frases que se sintieron robóticas o corporativas</li>
+          <li>Cualquier cosa intimidante para un ciclista primerizo</li>
+          <li>Etiquetas de botones que te hicieran dudar</li>
         </ul>
       </article>
     </div>
   </section>
 
-  <!-- ═════════ 03 · WHERE TO REPORT ═════════ -->
+  <!-- ═════════ 03 · DÓNDE ENVIAR COMENTARIOS ═════════ -->
   <section id="feedback">
     <div class="section-head">
       <span class="num">03</span>
-      <h2>Where to send feedback</h2>
-      <span class="aside">Two channels, same inbox</span>
+      <h2>Dónde enviar tus comentarios</h2>
+      <span class="aside">Dos canales, la misma bandeja</span>
     </div>
     <p class="section-intro">
-      Whichever is closer to hand. Both land with the same small team, and we read everything.
+      El que tengas más a mano. Ambos llegan al mismo equipo pequeño y lo leemos todo.
     </p>
 
     <div class="feedback">
 
       <div class="feedback-copy">
-        <h3>Send it the way that fits the moment.</h3>
+        <h3>Envíalo como mejor te encaje en el momento.</h3>
         <p>
-          If you&rsquo;ve just hit something in the app, use the in-app option &mdash; you&rsquo;ll have the context still in your head.
-          For bigger thoughts, longer screenshots, or anything you want to attach a file to, email works best.
+          Si acabas de toparte con algo en la app, usa la opción dentro de la app &mdash; tendrás el contexto todavía fresco en la cabeza.
+          Para reflexiones más grandes, capturas largas, o cualquier cosa donde quieras adjuntar un archivo, el email funciona mejor.
         </p>
 
         <div class="channel-row">
           <div class="channel">
             <div class="num-badge">1</div>
             <div class="txt">
-              <div class="label">In the app</div>
-              <div class="value">Settings &rarr; Send Feedback</div>
+              <div class="label">En la app</div>
+              <div class="value">Ajustes &rarr; Enviar comentarios</div>
               <div class="hint">
-                Open Etapa &rarr; <strong>Settings</strong> &rarr; <strong>Support</strong> &rarr; <strong>Send Feedback</strong>.
-                Report a bug or suggest an improvement &mdash; write it the way you&rsquo;d text a friend.
+                Abre Etapa &rarr; <strong>Ajustes</strong> &rarr; <strong>Soporte</strong> &rarr; <strong>Enviar comentarios</strong>.
+                Reporta un bug o sugiere una mejora &mdash; escríbelo como si le mandaras un mensaje a un amigo.
               </div>
             </div>
           </div>
           <div class="channel">
             <div class="num-badge">2</div>
             <div class="txt">
-              <div class="label">By email</div>
+              <div class="label">Por email</div>
               <div class="value"><a class="inline" href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a></div>
               <div class="hint">
-                Best for screenshots, recordings, or anything you want to think through properly.
+                Lo mejor para capturas, grabaciones, o cualquier cosa que quieras pensar con calma.
               </div>
             </div>
           </div>
@@ -1320,30 +1320,30 @@ a:hover { color: var(--accent-hover); }
 
       <div class="feedback-visual" aria-hidden="true">
         <div class="phone-wrap">
-          <img src="/testing-guide-assets/screens/settings-feedback.png" alt="Etapa settings screen with the Send Feedback row highlighted" />
+          <img src="/testing-guide-assets/screens/settings-feedback.png" alt="Pantalla de ajustes de Etapa con la fila Enviar comentarios resaltada" />
         </div>
         <div class="phone-hint">
-          In <strong>Settings</strong>, scroll to <strong>Support</strong> and tap <strong>Send Feedback</strong>.
+          En <strong>Ajustes</strong>, baja hasta <strong>Soporte</strong> y toca <strong>Enviar comentarios</strong>.
         </div>
       </div>
     </div>
 
-    <!-- Writing good feedback -->
+    <!-- Escribir buenos comentarios -->
     <div class="tips" style="margin-top: 40px;">
       <div class="tip">
         <div class="num">01</div>
-        <h4>Say what you expected</h4>
-        <p>&ldquo;I thought tapping this would take me to the session detail&rdquo; tells us more than &ldquo;this is broken.&rdquo;</p>
+        <h4>Cuéntanos qué esperabas</h4>
+        <p>&ldquo;Pensé que tocando esto me llevaría al detalle de la sesión&rdquo; nos dice mucho más que &ldquo;esto está roto.&rdquo;</p>
       </div>
       <div class="tip">
         <div class="num">02</div>
-        <h4>Screenshots help</h4>
-        <p>A picture of the screen, plus roughly when it happened, makes most bugs reproducible in minutes.</p>
+        <h4>Las capturas ayudan</h4>
+        <p>Una foto de la pantalla, más cuándo pasó aproximadamente, hace que la mayoría de bugs sean reproducibles en minutos.</p>
       </div>
       <div class="tip">
         <div class="num">03</div>
-        <h4>Nothing is too small</h4>
-        <p>An awkward word, a button that felt off, a pause that felt too long &mdash; send it. It all adds up.</p>
+        <h4>Nada es demasiado pequeño</h4>
+        <p>Una palabra rara, un botón que se sintió mal, una pausa demasiado larga &mdash; mándalo. Todo suma.</p>
       </div>
     </div>
   </section>
@@ -1351,11 +1351,11 @@ a:hover { color: var(--accent-hover); }
   <!-- ═════════ FOOTER ═════════ -->
   <footer class="foot">
     <div class="thanks">
-      <strong>Thank you for testing Etapa.</strong>
-      You&rsquo;re helping us build the cycling app we wish had existed when we were starting out. We won&rsquo;t waste your time.
+      <strong>Gracias por probar Etapa.</strong>
+      Nos estás ayudando a construir la app de ciclismo que ojalá hubiera existido cuando estábamos empezando. No te vamos a hacer perder el tiempo.
     </div>
     <div class="sig">
-      Etapa &middot; Beta testing guide<br/>
+      Etapa &middot; Guía de beta testing<br/>
       <a class="inline" href="mailto:helloetapa@gmail.com">helloetapa@gmail.com</a>
     </div>
   </footer>

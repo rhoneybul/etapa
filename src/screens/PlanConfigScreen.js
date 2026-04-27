@@ -349,7 +349,12 @@ export default function PlanConfigScreen({ navigation, route }) {
   // auto-placements.
   const buildAutoPlacedActivities = (prev = {}) => {
     let next = { ...prev };
-    if (longRideDayOverride) {
+    // Auto-place the long-ride only when outdoor is part of the plan.
+    // Indoor-only riders skip the long-ride-day step entirely so we
+    // shouldn't drop a stray outdoor pill on whatever the override
+    // value happens to be.
+    const hasOutdoor = trainingTypes.includes('outdoor');
+    if (hasOutdoor && longRideDayOverride) {
       const acts = next[longRideDayOverride] || [];
       if (!acts.includes('outdoor')) {
         next = { ...next, [longRideDayOverride]: [...acts, 'outdoor'] };
@@ -358,7 +363,7 @@ export default function PlanConfigScreen({ navigation, route }) {
     for (const ride of recurringRides) {
       const acts = next[ride.day] || [];
       const outdoorCount = acts.filter(a => a === 'outdoor').length;
-      const needed = ride.day === longRideDayOverride ? 2 : 1;
+      const needed = ride.day === longRideDayOverride && hasOutdoor ? 2 : 1;
       if (outdoorCount < needed) {
         next = { ...next, [ride.day]: [...acts, 'outdoor'] };
       }
@@ -376,8 +381,18 @@ export default function PlanConfigScreen({ navigation, route }) {
 
   const toggleTrainingType = (type) => {
     setTrainingTypes(prev => {
-      if (type === 'outdoor') return prev;
-      const next = prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type];
+      // Apr 27 evening: removed the early-return that pinned outdoor on
+      // forever. Users can now uncheck outdoor — typical case is
+      // indoor-only riders (turbo / Zwift / hometrainer) who have no
+      // outdoor in their plan at all. Guard against an EMPTY selection
+      // by requiring at least one cycling type to remain checked.
+      const isCycling = type === 'outdoor' || type === 'indoor';
+      const wantingToRemove = prev.includes(type);
+      if (wantingToRemove && isCycling) {
+        const cyclingLeft = prev.filter(t => t !== type && (t === 'outdoor' || t === 'indoor'));
+        if (cyclingLeft.length === 0) return prev; // refuse — must keep at least one ride type
+      }
+      const next = wantingToRemove ? prev.filter(t => t !== type) : [...prev, type];
       setSessionCounts(sc => {
         const updated = { ...sc };
         if (!next.includes(type)) {
@@ -638,11 +653,20 @@ export default function PlanConfigScreen({ navigation, route }) {
     if (types.length > 0) crossTrainingDaysLegacy[day] = types[0];
   });
 
+  // Indoor-only plans don't need a long-ride day — the concept of a
+  // "long ride" is an outdoor / endurance one. Trainer sessions are
+  // structured intervals or steady efforts of 30-90 min, never the
+  // 3-5h Saturday long ride that justifies dedicated-day picking.
+  // When the user only has indoor selected, we skip step 4 entirely
+  // and let getChosenStartDate / the prompt builder pick a sensible
+  // default.
+  const skipLongRideDay = !trainingTypes.includes('outdoor');
+
   const canContinue = () => {
     if (step === 1) return !!fitnessLevel;
     if (step === 2) return trainingTypes.length > 0;
     if (step === 3) return true; // organised rides are optional
-    if (step === 4) return !!effectiveLongRideDay;
+    if (step === 4) return skipLongRideDay || !!effectiveLongRideDay;
     if (step === 5) return allPlaced;
     if (step === 6) {
       if (startDateChoice === 'custom' && !/^\d{4}-\d{2}-\d{2}$/.test(customStartDate)) return false;
@@ -681,6 +705,12 @@ export default function PlanConfigScreen({ navigation, route }) {
       // value pre-fills from the intake so it's a one-tap confirm,
       // and the user can still pick when they want the plan to
       // start.
+      // Indoor-only riders don't need to pick a long-ride day —
+      // step 4 is irrelevant for them. Jump from 3 → 5 in that case.
+      if (step === 3 && skipLongRideDay) {
+        setStep(5);
+        return;
+      }
       if (step === 6 && coachId) {
         // Coach already chosen during the OnboardingTour (which now
         // requires it). Skip the redundant step 7 picker entirely and
@@ -777,9 +807,10 @@ export default function PlanConfigScreen({ navigation, route }) {
       navigation.goBack();
       return;
     }
-    // Apr 27 evening: matching forward-skip removed (start-date picker
-    // was getting bypassed for prefillWeeks users), so the back path
-    // is plain step-1 again.
+    // Mirror the indoor-only forward skip: from step 5 going back,
+    // skip past step 4 (long-ride day) since it was never shown on
+    // the way in.
+    if (step === 5 && skipLongRideDay) { setStep(3); return; }
     setStep(step - 1);
   };
 
@@ -1190,9 +1221,17 @@ export default function PlanConfigScreen({ navigation, route }) {
       const rawWeeks = planWeeks || suggestWeeks(goal, fitnessLevel, getChosenStartDate());
       const effectiveWeeks = (typeof rawWeeks === 'number' && !isNaN(rawWeeks) && rawWeeks > 0) ? rawWeeks : 8;
 
+      // Apr 27 evening: when prefillWeeks is set (user came through
+      // PlanPicker intake which already asked duration) we no longer
+      // re-ask. Surface the chosen duration as a small read-only
+      // confirmation pill instead of the full grid, so the user knows
+      // we remembered. They can still go back to PlanPicker to change
+      // it via the Back button. Date picker stays visible as the only
+      // active control on this step.
+      const lockWeeks = !!prefillWeeks && !!planWeeks;
       return (
         <ScrollView showsVerticalScrollIndicator={false}>
-          {!hasTargetDate && !beginnerDefaults && (
+          {!hasTargetDate && !beginnerDefaults && !lockWeeks && (
             <>
               <Text style={s.durationHeading}>How long for?</Text>
               <Text style={s.durationHint}>Choose a plan duration in weeks</Text>
@@ -1209,6 +1248,14 @@ export default function PlanConfigScreen({ navigation, route }) {
                     </Text>
                   </TouchableOpacity>
                 ))}
+              </View>
+              <View style={s.divider} />
+            </>
+          )}
+          {lockWeeks && (
+            <>
+              <View style={s.beginnerDurationBadge}>
+                <Text style={s.beginnerDurationText}>{effectiveWeeks}-week plan</Text>
               </View>
               <View style={s.divider} />
             </>
@@ -1401,13 +1448,17 @@ export default function PlanConfigScreen({ navigation, route }) {
     },
   ];
 
+  // When weeks were locked-in via the intake, the step 6 copy drops
+  // any reference to duration — duration is settled, the only thing
+  // left to do is pick a start date.
+  const lockWeeksForTitle = !!prefillWeeks && !!planWeeks;
   const titles = {
     1: 'What\'s your current level?',
     2: 'What types of training?',
     3: 'Any regular rides?',
     4: 'Your longest ride day',
     5: 'Build your week',
-    6: goal.targetDate ? 'When should it start?' : 'Duration & start date',
+    6: (goal.targetDate || lockWeeksForTitle) ? 'When should it start?' : 'Duration & start date',
     7: 'Choose your coach',
   };
 
@@ -1417,7 +1468,7 @@ export default function PlanConfigScreen({ navigation, route }) {
     3: 'Group ride, club session, or anything else you do every week',
     4: 'Your coach will schedule your longest ride here each week',
     5: 'Tap a day to place sessions. Stack as many as you like.',
-    6: goal.targetDate ? 'Pick a start date for your training plan' : 'How long and when to begin',
+    6: (goal.targetDate || lockWeeksForTitle) ? 'Pick a start date for your training plan' : 'How long and when to begin',
     7: 'Pick a coaching personality that fits your style',
   };
 
