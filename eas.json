@@ -7,6 +7,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "development",
       "env": {
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
@@ -17,12 +18,14 @@
     "preview": {
       "distribution": "store",
       "autoIncrement": true,
+      "channel": "preview",
       "ios": {
         "image": "sdk-55"
       }
     },
     "production": {
       "autoIncrement": true,
+      "channel": "production",
       "ios": {
         "image": "sdk-55"
       }

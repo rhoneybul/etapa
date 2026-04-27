@@ -47,6 +47,7 @@ import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 import { useFonts, Poppins_300Light, Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold } from '@expo-google-fonts/poppins';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Updates from 'expo-updates';
 import { getSession, getCurrentUser, signOut, onAuthStateChange } from './src/services/authService';
 import { ensureUserData, hydrateFromServer, getUserPrefs } from './src/services/storageService';
 // Stripe removed — all payments go through Apple IAP via RevenueCat
@@ -151,6 +152,34 @@ function App() {
   });
 
   useEffect(() => {
+    // ── OTA update check ─────────────────────────────────────────────
+    // Fetches any pending JS bundle pushed via `eas update --branch
+    // <channel>` and reloads the app silently to apply it. Lets us
+    // ship UI / non-native fixes without going through TestFlight or
+    // the App Store. Runs once on mount, fires-and-forgets — never
+    // blocks app boot. Skipped in dev (Updates.isEnabled is false in
+    // Expo Go / dev clients without the runtime), so this is a no-op
+    // there.
+    if (Updates.isEnabled && !__DEV__) {
+      (async () => {
+        try {
+          const result = await Updates.checkForUpdateAsync();
+          if (result.isAvailable) {
+            await Updates.fetchUpdateAsync();
+            // reloadAsync replaces the JS bundle with the freshly
+            // downloaded one. The user sees a brief native splash
+            // and the app comes back on the new code. We deliberately
+            // don't gate this behind a confirm dialog — at this scale
+            // a silent update is the right default.
+            await Updates.reloadAsync();
+          }
+        } catch {
+          // Update server unreachable / network down / etc. Stay on
+          // the bundle we have.
+        }
+      })();
+    }
+
     // Boot the remote config service — loads cache, fires background refresh.
     // Non-blocking: the app renders immediately with cached / default values.
     remoteConfig.init().catch(() => {});

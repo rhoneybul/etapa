@@ -3351,7 +3351,13 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
     // now reach ~5 minutes if needed; the reaper still kicks any job
     // that exceeds the absolute hard cap further up the chain.
     const IDLE_TIMEOUT_MS = 45 * 1000;
-    const ABSOLUTE_TIMEOUT_MS = 5 * 60 * 1000; // Hard ceiling.
+    // Hard ceiling. Apr 27 2026: bumped 5min → 10min after Sonnet 4.6
+    // + 32K cap + verbose output started producing legitimate 6-7
+    // minute generations on 12-week × 9-session plans. The reaper
+    // (planGenReaper.js STALE_AFTER_MS) must always be larger than
+    // this — keep it at 15min — so streaming jobs aren't killed by
+    // the reaper while they're still successfully producing tokens.
+    const ABSOLUTE_TIMEOUT_MS = 10 * 60 * 1000;
     const abortCtrl = new AbortController();
     let lastChunkAt = Date.now();
     const idleTimer = setInterval(() => {

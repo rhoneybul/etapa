@@ -99,6 +99,59 @@ export default function PlanLoadingScreen({ navigation, route }) {
   // Record when generation started so we can log how long the user waited
   // before bailing.
   const generationStartedAtRef = useRef(Date.now());
+  // ── Live elapsed counter + size-aware ETA ─────────────────────────
+  // Plan-gen wall-clock scales with plan size. Empirically (Apr 27
+  // 2026) on Sonnet 4.6 with the 32K cap and the extended-output
+  // beta header:
+  //   - ~30s base overhead (TTFT, post-processing, DB writes)
+  //   - ~3s per activity (output token rate plus structure blocks
+  //     for hard sessions)
+  // Floor at 90s so very small plans don't show an unrealistically
+  // optimistic "ready in 30 seconds" that we then blow through.
+  // Ceiling at 9 min so even the biggest plan stays under the 10
+  // min absolute timeout on the server.
+  const estimatedActivities = (() => {
+    const w = (config?.weeks) || 8;
+    const d = (config?.daysPerWeek) || 3;
+    return w * d;
+  })();
+  const ETA_TARGET_MS = (() => {
+    const sec = Math.max(90, Math.min(540, 30 + estimatedActivities * 3));
+    return sec * 1000;
+  })();
+  const [elapsedSecs, setElapsedSecs] = useState(0);
+  const estimatedReadyAt = useRef(new Date(Date.now() + ETA_TARGET_MS));
+  useEffect(() => {
+    if (failure) return; // freeze counter on the failure screen
+    const tick = () => {
+      setElapsedSecs(Math.floor((Date.now() - generationStartedAtRef.current) / 1000));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [failure]);
+  const formatElapsed = (s) => {
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${String(r).padStart(2, '0')}`;
+  };
+  // Smart status copy — keeps the user grounded as the wall-clock
+  // approaches and crosses the 5-minute estimate. Without this, a
+  // 5:30 elapsed counter against a "Ready by 11:09" clock that's
+  // already passed feels broken even when the plan IS still being
+  // built.
+  const etaLabel = (() => {
+    const totalSec = ETA_TARGET_MS / 1000;
+    if (elapsedSecs >= totalSec + 30) return 'Just finishing up\u2026';
+    if (elapsedSecs >= totalSec - 30) return 'Almost ready\u2026';
+    return `~${estimatedReadyAt.current.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  })();
+  const etaSub = (() => {
+    const totalSec = ETA_TARGET_MS / 1000;
+    if (elapsedSecs >= totalSec) return 'Any moment now';
+    const remainingMin = Math.max(0, Math.ceil((totalSec - elapsedSecs) / 60));
+    return remainingMin <= 1 ? 'in under a minute' : `in about ${remainingMin} min`;
+  })();
 
   // Plan-generation abandon: user left before the plan finished generating.
   // This is its own important funnel stage — plan generation takes 10-30s
@@ -565,7 +618,14 @@ export default function PlanLoadingScreen({ navigation, route }) {
             </Animated.View>
 
             <Text style={s.title}>Building your plan</Text>
-            <Text style={s.subtitle}>Takes between 1 and 2 minutes.</Text>
+            <Text style={s.subtitle}>{(() => {
+              // Size-aware copy: a 30-activity plan reads "about 2 min",
+              // a 108-activity plan reads "about 6 min". Plain English,
+              // no precision-creep ("5 min 24 sec" is hostile).
+              const m = Math.round(ETA_TARGET_MS / 1000 / 60);
+              const word = m <= 1 ? 'a minute or two' : `about ${m} minutes`;
+              return `Takes ${word} — your AI coach is structuring your weeks around your goals.`;
+            })()}</Text>
             <Text style={s.message}>{message}</Text>
 
             <View style={s.progressTrack}>
@@ -573,7 +633,32 @@ export default function PlanLoadingScreen({ navigation, route }) {
             </View>
           </Animated.View>
 
-          {/* Activity preview intentionally removed — keep loading UI calm. */}
+          {/* Live elapsed + estimated-ready stats. Sits between the
+              progress bar and the tip card so it's the first thing
+              the user sees after the headline. Two equal columns, each
+              with a small uppercase key + a large value + a short sub.
+              Updated every second by the elapsedSecs interval above. */}
+          <View style={s.etaStats}>
+            <View style={s.etaStat}>
+              <Text style={s.etaStatKey}>ELAPSED</Text>
+              <Text style={s.etaStatVal}>{formatElapsed(elapsedSecs)}</Text>
+              <Text style={s.etaStatSub}>since {new Date(generationStartedAtRef.current).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+            </View>
+            <View style={s.etaStat}>
+              <Text style={s.etaStatKey}>READY BY</Text>
+              <Text style={[s.etaStatVal, s.etaStatValAccent]}>{etaLabel}</Text>
+              <Text style={s.etaStatSub}>{etaSub}</Text>
+            </View>
+          </View>
+
+          {/* Step-away callout — pink-rail block makes the "you can
+              close the app" message unmissable. Previously this lived
+              as quiet grey text at the bottom of the screen and users
+              kept staring at the loader thinking they had to wait. */}
+          <View style={s.stepAwayCallout}>
+            <Text style={s.stepAwayStrong}>Step away if you want.</Text>
+            <Text style={s.stepAwaySub}>We'll send you a notification the moment your plan is ready. You don't need to keep the app open.</Text>
+          </View>
 
           {/* Marketing tip card */}
           <Animated.View style={[s.tipCard, { opacity: tipFade }]}>
@@ -644,6 +729,57 @@ const s = StyleSheet.create({
   message: { fontSize: 14, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center', lineHeight: 20, minHeight: 20 },
   progressTrack: { width: '100%', height: 3, backgroundColor: colors.border, borderRadius: 1.5, overflow: 'hidden', marginTop: 20 },
   progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 1.5 },
+  // ── Live ETA + elapsed stat block ─────────────────────────────────
+  // Two-column grid below the progress bar. Each column is a quiet
+  // surface card with a small uppercase key, a large value, and a
+  // sub-line. Read-only — no user interaction.
+  etaStats: {
+    flexDirection: 'row', gap: 10,
+    paddingHorizontal: 4, marginTop: 18,
+  },
+  etaStat: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.border,
+    borderRadius: 12,
+    paddingVertical: 12, paddingHorizontal: 12,
+  },
+  etaStatKey: {
+    fontSize: 9, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.textMuted, letterSpacing: 1.4, textTransform: 'uppercase',
+  },
+  etaStatVal: {
+    fontSize: 22, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.text, marginTop: 4, letterSpacing: -0.4,
+    fontVariant: ['tabular-nums'],
+  },
+  etaStatValAccent: {
+    color: colors.primary,
+  },
+  etaStatSub: {
+    fontSize: 10, fontFamily: FF.regular,
+    color: colors.textFaint, marginTop: 1,
+  },
+  // ── Step-away callout ─────────────────────────────────────────────
+  // Pink-rail block making the "feel free to close the app" message
+  // unmissable. The grey bgNote at the bottom stays as a redundant
+  // backup but the primary read happens here, near the top.
+  stepAwayCallout: {
+    marginTop: 14, marginHorizontal: 4,
+    backgroundColor: 'rgba(232,69,139,0.07)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.22)',
+    borderLeftWidth: 3, borderLeftColor: colors.primary,
+    borderRadius: 10,
+    paddingVertical: 11, paddingHorizontal: 14,
+  },
+  stepAwayStrong: {
+    fontSize: 13, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.text,
+  },
+  stepAwaySub: {
+    fontSize: 12, fontFamily: FF.regular,
+    color: colors.textMid, lineHeight: 17, marginTop: 3,
+  },
 
   // ── Activity preview ───────────────────────────────────────────────────────
   previewSection: {

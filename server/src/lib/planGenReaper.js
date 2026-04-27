@@ -24,10 +24,15 @@
 
 const { supabase } = require('./supabase');
 
-// Matches the Claude call timeout in runAsyncGeneration (90s) plus a comfortable
-// buffer for post-processing, retry, and DB writes. If a job has been running
-// longer than this, something's wrong — it's not coming back.
-const STALE_AFTER_MS = 5 * 60 * 1000;  // 5 minutes
+// Belt-and-braces safety net for jobs that genuinely won't return.
+// Must always be larger than runAsyncGeneration's ABSOLUTE_TIMEOUT_MS
+// (10 min) by enough margin to cover post-processing, retry, and DB
+// writes — otherwise we kill streaming jobs that are still producing
+// tokens correctly. Apr 27 2026: bumped 5min → 15min to track the
+// new 10min Claude call ceiling. Sonnet 4.6 + 32K cap takes 6-7 min
+// on 12-week × 9-session plans; the streaming call's own absolute
+// abort fires first if anything ACTUALLY hangs.
+const STALE_AFTER_MS = 15 * 60 * 1000;  // 15 minutes
 const SWEEP_INTERVAL_MS = 2 * 60 * 1000;  // every 2 minutes
 
 let sweepTimer = null;
