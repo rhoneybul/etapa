@@ -438,148 +438,104 @@ a:hover { color: var(--accent-hover); }
 
   <!-- ============================================================
        RELEASE · 27 April 2026
-       Quality-of-life round on top of the big 24 April release: tighter
-       onboarding, smarter setup-flow recommendations, a compressed home
-       screen, drag-from-the-grid on Calendar, and a coach chat that
-       never drops a message. Add newer entries ABOVE this block.
+       Combined, current-state release. Older 24 April content has been
+       folded into the relevant features below so there's a single up-to-
+       date page rather than two stacked changelogs. Add newer entries
+       ABOVE this block.
        ============================================================ -->
   <section class="release">
     <div class="release-head">
       <div class="release-date"><span class="dot"></span>27 April 2026</div>
-      <h2 class="release-headline">A new coach, more languages, faster setup, nothing lost in transit.</h2>
+      <h2 class="release-headline">A clearer way to pick your plan, drag-and-drop sessions, a chat that never drops a message — and a brand-new coach.</h2>
     </div>
 
-    <!-- ───── Feature 1: New coach — Kai Donovan, Australian, hybrid sport ───── -->
+    <!-- ───── Feature 1: Choosing your plan ───── -->
     <div class="feature">
       <div class="feature-copy">
-        <div class="eyebrow">New coach</div>
-        <h3>Meet Kai Donovan — your Australian, surf-coast hybrid coach</h3>
-        <p>Kai's a new face in the coach roster: a Cycling Australia Level 2 coach out of New South Wales who treats the bike as one part of a bigger picture. He'll talk swim sets, surf reports, and the test cricket score in the same breath as your interval session — for him it's all the same engine.</p>
-        <p>He's chill, properly cross-trained, and brings a relaxed Australian voice that takes the pressure off without dropping the standards. "Yeah nah, today's a swim day — wind's up, legs are cooked. Back on the bike tomorrow."</p>
+        <div class="eyebrow">Choosing your plan</div>
+        <h3>A plan built around where you actually are — in under a minute</h3>
+        <p>Three quick questions: what are you training for, how long is your current longest ride, and when's your event. That's it. No FTP test, no jargon, no "beginner / intermediate / advanced" guesswork. Your actual longest ride becomes the anchor for Week 1, so your plan starts at a distance you can genuinely complete and builds up from there.</p>
+        <p>On the training-types and build-your-week steps you'll see a small "we typically recommend" card — and the recommendation adapts to your fitness level and the session types you've already chosen. After your answers, a review screen lays out every choice as a tap-to-edit row — no scrolling back through the flow, no starting over, and going back from any later step actually goes back.</p>
       </div>
       <div class="feature-shot"
            data-placeholder="1"
-           data-caption="Change Coach screen — Kai Donovan card selected, showing the Australian flag, 'Hybrid athlete, surf-coast energy' tagline, and his sample quote.">
-        <!-- <img src="/whats-new-assets/screens/coach-kai.png" alt="Kai Donovan coach card on the Change Coach screen" /> -->
+           data-caption="Plan picker — review step with one tap-to-edit row per answer; or the 'we typically recommend' card on the training-types step.">
+        <!-- <img src="/whats-new-assets/screens/plan-picker-review.png" alt="Plan picker review step with one tap-to-edit row per answer" /> -->
       </div>
     </div>
 
-    <!-- ───── Feature 2: Coaches now have nationalities + languages ───── -->
+    <!-- ───── Feature 2: Drag and drop sessions ───── -->
     <div class="feature">
       <div class="feature-copy">
-        <div class="eyebrow">Languages</div>
-        <h3>Your coach speaks more than English — and you can switch any time</h3>
-        <p>Every coach now has a nationality and a list of languages they speak. Clara reads in English, Spanish, and Catalan. Lars in English, Danish, and German. Sophie in French. Matteo in Italian. Elena across English, Spanish, and Italian. You'll see the full list right on each coach card before you pick.</p>
-        <p>Inside the chat, a small language pill sits next to your coach's name. Tap it to switch — pick Spanish and Clara drops a quick welcome in Spanish straight away ("¡Genial! A partir de ahora seguimos en español…"), then keeps replying in Spanish from there, in the same warm voice you know her by. Switch back to English, or over to Catalan, whenever you like. We remember your pick per coach, so if you swap coaches and come back, your last language with each one is still there.</p>
+        <div class="eyebrow">Drag and drop</div>
+        <h3>Move a session straight from home or the calendar</h3>
+        <p>Press-and-hold any session on Home and drag it to a new day. Or open Calendar, press-and-hold any cell that already has a ride on it, and drag the session right out of the grid — no need to scroll down to the day list to pick it up first.</p>
+        <p>Same gesture, same press-and-hold timing in both places. If you move a session to a day before Week 1 starts, we honour the move without re-generating the rest of the plan around it.</p>
       </div>
       <div class="feature-shot"
            data-placeholder="1"
-           data-caption="Coach chat — header with the coach name, scope ('Your plan'), and the pink language pill ('Español ▾') next to it; below, a coach reply rendered in Spanish.">
-        <!-- <img src="/whats-new-assets/screens/chat-language-pill.png" alt="Coach chat header with language switcher pill" /> -->
+           data-caption="Calendar — a session being dragged directly out of a grid cell, mid-gesture, with the drop-target day highlighted.">
+        <!-- <img src="/whats-new-assets/screens/calendar-drag.png" alt="Dragging a session directly from the calendar grid" /> -->
       </div>
     </div>
 
-    <!-- ───── Feature 3: Onboarding fires immediately, requires coach + units ───── -->
+    <!-- ───── Feature 3: Messaging — chat persistence + push + structured replies ───── -->
     <div class="feature">
       <div class="feature-copy">
-        <div class="eyebrow">First open</div>
-        <h3>You meet your coach the second you arrive — not three screens later</h3>
-        <p>The onboarding tour now fires the moment you finish signing in, before you see an empty home screen wondering what to do. Three steps, then you're in.</p>
-        <p>Picking a coach and choosing km or miles aren't optional any more — those two answers shape the rest of the app, so we ask once and remember forever. Skip is gone from those steps; the Continue button stays disabled with a clear "Pick a coach to continue" hint until you've chosen.</p>
+        <div class="eyebrow">Messaging</div>
+        <h3>A chat that opens instantly and never loses a reply</h3>
+        <p>We rewrote how coach chat is stored end-to-end. Open the screen and your conversation is right there from the cache, then quietly reconciles with the server in the background. Send a message and close the app mid-reply — when you come back, your message and the coach's reply are both intact. If a send fails, a small inline resend arrow appears inside the bubble, exactly where you'd expect to tap.</p>
+        <p>Push notifications now drop you on the exact message that triggered them, not the top of the chat. Plan-ready taps go straight into the new plan overview. And ask "what does today's session look like?" — your coach now answers with a proper structured breakdown: warm-up, main set, cool-down, with the effort target for each block.</p>
+      </div>
+      <div class="feature-shot"
+           data-placeholder="1"
+           data-caption="Coach chat — coach reply with a structured warm-up / main set / cool-down breakdown, plus a failed user message above showing the inline resend arrow icon.">
+        <!-- <img src="/whats-new-assets/screens/chat-messaging.png" alt="Coach chat with structured session reply and inline resend icon" /> -->
+      </div>
+    </div>
+
+    <!-- ───── Feature 4: New coach + languages ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">New coach &amp; languages</div>
+        <h3>Meet Kai — and chat with your coach in their language</h3>
+        <p>Kai Donovan is the new face on the roster: a Cycling Australia Level 2 coach out of New South Wales who treats the bike as one part of a bigger picture. Surf reports, swim sets, and the test cricket score sit alongside your interval session — for him it's all the same engine. Sun-warm, easy-going, no parody Aussie-isms.</p>
+        <p>Every coach now has a nationality and a list of languages they speak. Clara reads in English, Spanish, and Catalan. Lars in English, Danish, German. Sophie in French. Matteo in Italian. Elena across English, Spanish, Italian. A small language pill sits in the chat header — tap it, pick a language, and the coach drops a short welcome in the new language straight away ("¡Genial! A partir de ahora seguimos en español…") and keeps replying in that language from there. Per-coach memory, so swapping coaches doesn't lose your settings.</p>
+      </div>
+      <div class="feature-shot"
+           data-placeholder="1"
+           data-caption="Coach chat — header with the coach name and the pink language pill ('Español ▾'); below, an in-language welcome bubble from the coach.">
+        <!-- <img src="/whats-new-assets/screens/chat-language-pill.png" alt="Coach chat header with language switcher pill and Spanish welcome bubble" /> -->
+      </div>
+    </div>
+
+    <!-- ───── Feature 5: New home screen ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">Home screen</div>
+        <h3>Today, tomorrow, and your week — one screen, no scrolling</h3>
+        <p>Your today's session is the first thing you see — name, distance, duration, effort, and a one-tap "View details" button. Tomorrow sits right beneath it. Below those, the next five days run in a compact horizontal scroll with session-type tags (Endurance, Intervals, Long Ride…) so the week reads as a real week, not two looming hero cards.</p>
+        <p>Your coach chat lives at the top of the screen so you're never more than a tap from a question. The "+ New plan" button shrunk to a small circle in the YOUR PLANS header — only the full pill version shows up when you don't have a plan yet, where it actually belongs.</p>
+      </div>
+      <div class="feature-shot"
+           data-placeholder="1"
+           data-caption="Home — Today / Tomorrow horizontal scroll up top, YOUR PLANS header with the small + circle, week strip with session-type tags beneath.">
+        <!-- <img src="/whats-new-assets/screens/home-compressed.png" alt="Compressed home screen with horizontal Today/Tomorrow scroll" /> -->
+      </div>
+    </div>
+
+    <!-- ───── Feature 6: Onboarding ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">Onboarding</div>
+        <h3>You meet your coach the second you arrive</h3>
+        <p>The onboarding tour fires the moment you finish signing in, before you see an empty home screen wondering what to do. Three steps, then you're in.</p>
+        <p>Picking a coach and choosing km or miles aren't optional any more — those two answers shape the rest of the app, so we ask once and remember forever. The Continue button stays disabled with a clear "Pick a coach to continue" hint until you've chosen.</p>
       </div>
       <div class="feature-shot"
            data-placeholder="1"
            data-caption="Onboarding — the coach picker step with the disabled Continue state showing 'Pick a coach to continue' under it.">
         <!-- <img src="/whats-new-assets/screens/onboarding-coach.png" alt="Onboarding coach picker, required step" /> -->
-      </div>
-    </div>
-
-    <!-- ───── Feature 4: Smarter plan setup flow ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Plan setup</div>
-        <h3>Recommendations that adapt to where you are and what you picked</h3>
-        <p>On the training-types and build-your-week steps you now get a small "we typically recommend" card — and the recommendation actually changes based on your fitness level and the session types you've chosen so far. Conservative for beginners, with the right tail extras when you've added intervals or hills.</p>
-        <p>We've also stopped asking the same thing twice. If you picked a coach in onboarding, you don't have to pick again here. If your plan picker review was final, we don't bounce you through a second confirm screen. Going back from a later step actually goes back, instead of dropping you on Home.</p>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Plan config — training-types step with the 'we typically recommend' card sitting flush with the option list and matching its width.">
-        <!-- <img src="/whats-new-assets/screens/planconfig-recommendation.png" alt="PlanConfig recommendation card matching CheckCard width" /> -->
-      </div>
-    </div>
-
-    <!-- ───── Feature 5: Home screen compressed ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Home screen</div>
-        <h3>More of your week, on one screen, without scrolling</h3>
-        <p>Today and Tomorrow used to take a full vertical column each. They now sit in a compact horizontal scroll showing the next five days, so the week feels like a real week instead of two looming hero cards.</p>
-        <p>"+ New plan" shrunk too — it's a small circular button in the YOUR PLANS header now, not a chunky pill that pushed everything down. The full pill only appears when you have no plans yet, where it actually belongs.</p>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Home — Today / Tomorrow horizontal scroll up top, YOUR PLANS header with the small + circle, week strip beneath.">
-        <!-- <img src="/whats-new-assets/screens/home-compressed.png" alt="Compressed home screen with horizontal Today/Tomorrow scroll" /> -->
-      </div>
-    </div>
-
-    <!-- ───── Feature 6: Drag from the calendar grid ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Calendar</div>
-        <h3>Drag a session right from the calendar grid</h3>
-        <p>Press-and-hold any day in the calendar grid that has a ride on it and you can drag the session straight to a new date — no need to scroll down to the day list and pick it up from there.</p>
-        <p>Same gesture, same press-and-hold timing as Home. Works on any cell that has a draggable activity (we pick the first ride if there are multiple).</p>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Calendar — a session being dragged directly out of a grid cell, mid-gesture, with the drop target highlighted.">
-        <!-- <img src="/whats-new-assets/screens/calendar-drag.png" alt="Dragging a session directly from the calendar grid" /> -->
-      </div>
-    </div>
-
-    <!-- ───── Feature 7: Coach chat — never-miss-a-message rewrite ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Coach chat</div>
-        <h3>Nothing you send goes missing — even if you close the app mid-reply</h3>
-        <p>We rewrote how chat is stored end-to-end. Every message — sent, received, in flight, or failed — lives in your local cache so the conversation re-opens instantly and looks the way you left it.</p>
-        <p>If a coach reply is still being generated when you switch away, we pick it back up when you return. And if a message of yours fails to send, the resend icon is now a small circular arrow inside the message bubble itself — exactly where you'd expect to tap.</p>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Coach chat — a failed user message bubble showing the small inline resend arrow icon at its corner.">
-        <!-- <img src="/whats-new-assets/screens/chat-resend.png" alt="Coach chat with inline resend icon inside the user message bubble" /> -->
-      </div>
-    </div>
-
-    <!-- ───── Feature 8: Coach explains the session, zone by zone ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Coach chat</div>
-        <h3>Ask your coach about a session and get a proper breakdown back</h3>
-        <p>Ask "what does today's session look like?" and instead of a one-line paraphrase, your coach now walks you through it the way a real coach would — block by block, by activity type and zone.</p>
-        <p>You'll see the warm-up, the main set, and the cool-down laid out in turn, each with its own effort target — the heart-rate or power range if you have those set, and a plain-English perceived-effort cue if you don't. No more guessing what "tempo with surges" actually means in practice.</p>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Coach chat — coach reply explaining today's session as a structured breakdown: warm-up, main set, and cool-down blocks each with their own zone and effort cue.">
-        <!-- <img src="/whats-new-assets/screens/chat-session-breakdown.png" alt="Coach chat reply with a structured session breakdown by zone and activity type" /> -->
-      </div>
-    </div>
-
-    <!-- ───── Feature 9: Notifications open the right place ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Notifications</div>
-        <h3>Tap a notification, land exactly where it points</h3>
-        <p>A coach-reply or coach check-in tap now opens the chat scrolled to the exact message that triggered it — no hunting through history. Plan-ready taps drop you straight into the new plan overview.</p>
-        <p>The Notifications screen also reads from cache first, so it pops open instantly with the latest list and refreshes in the background — a small "Refreshing…" hint sits in the header while we check.</p>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Notifications screen — cached list visible immediately on open, with the small 'Refreshing…' header hint while a background fetch runs.">
       </div>
     </div>
 
@@ -590,12 +546,25 @@ a:hover { color: var(--accent-hover); }
       <p>A round of quiet improvements that don't fit a feature card but make the app feel more cared-for end to end.</p>
       <ul class="touches">
         <li><strong>Faster plan generation</strong>We swapped the model behind plan creation — same plan quality, noticeably less waiting. The "building your plan" screen wraps up much sooner than it used to.</li>
-        <li><strong>Minimal splash screen</strong>Just the icon and a soft pink halo on launch — no more big "ETAPA / train with purpose" text. The native splash now matches the in-app loader exactly.</li>
-        <li><strong>Settings doesn't jump on load</strong>The skeleton holds the same shape as the loaded screen, so rows don't pop into existence — they just fill in.</li>
+        <li><strong>Hard sessions, three ways</strong>Every interval or tempo session shows the target by feel, by heart rate, and by watts. Pick whichever works for you — we render the same number three ways.</li>
+        <li><strong>Coach reads the whole conversation</strong>Short answers to your coach's own questions ("Recreational swim") no longer trip the off-topic guard.</li>
+        <li><strong>Coach can schedule non-cycling sessions</strong>Swim, run, physio, mobility, stretching, yoga and 20+ more — each one shows on your week with the right activity icon.</li>
+        <li><strong>Coach chat, now async</strong>Send a message and leave — you'll get a push when your coach replies.</li>
         <li><strong>Coach commits to changes properly</strong>If your coach says "I'll move that long ride to Sunday", the plan actually moves. We hardened the prompt so commitment language has to come with a structured update.</li>
-        <li><strong>Onboarding tour visible to brand-new accounts</strong>The tour used to hide behind the empty-state Welcome screen on day one. Now it fires immediately, every time.</li>
-        <li><strong>Calendar keyboard avoidance</strong>The chat input above the keyboard properly lifts on Calendar now, instead of disappearing behind it.</li>
-        <li><strong>Plan picker review goes straight to setup</strong>Confirming the review takes you directly into the plan-config flow — the redundant in-between screen is gone.</li>
+        <li><strong>Notifications open the right place</strong>The Notifications screen reads from cache first so it pops open instantly, with a small "Refreshing…" hint while we check the latest in the background.</li>
+        <li><strong>Beginner target-distance ceiling</strong>No training ride exceeds your target distance until graduation day, so the final ride feels like the milestone it should.</li>
+        <li><strong>Max HR and FTP support</strong>Add yours in Settings to see real bpm / watts on every session.</li>
+        <li><strong>Pre-plan-start home screen</strong>A clear "Plan starts Mon 27 April · 3 days" card before Week 1 kicks off.</li>
+        <li><strong>Pink "1" on the coach card</strong>When your coach has replied, a small badge appears on their avatar on Home. Clears the moment you open the chat.</li>
+        <li><strong>Test push button in Settings</strong>New row in Settings → Notifications to verify pushes are actually reaching your device.</li>
+        <li><strong>Un-check a completed session</strong>Tapped it by mistake? Tap again to undo.</li>
+        <li><strong>Settings doesn't jump on load</strong>The skeleton holds the same shape as the loaded screen, so rows don't pop into existence.</li>
+        <li><strong>Minimal splash screen</strong>Just the icon and a soft pink halo on launch — no more "ETAPA / train with purpose" text. The native splash matches the in-app loader exactly.</li>
+        <li><strong>Calendar keyboard avoidance</strong>The chat input above the keyboard properly lifts on Calendar.</li>
+        <li><strong>Plan picker review goes straight to setup</strong>Confirming the review takes you directly into plan-config — the redundant in-between screen is gone.</li>
+        <li><strong>Loading spinner when you complete a session</strong>No more "did that tap even register?" moments.</li>
+        <li><strong>Plan overview palette refresh</strong>Bar chart uses brand pinks and slate blues. Peak-week flag went from alarming red to a warmer pink.</li>
+        <li><strong>Km or miles, honestly</strong>Asked on first launch, saved once, used everywhere.</li>
       </ul>
     </div>
 
@@ -604,167 +573,15 @@ a:hover { color: var(--accent-hover); }
       <div class="bugs-label">Bugs squashed</div>
       <ul>
         <li>User messages no longer disappear after a follow-up — server now uses the live conversation as the baseline before appending the coach's reply.</li>
+        <li>Coach replies no longer vanish on return — a server/client race that overwrote the completed reply with an empty one is fixed on both sides.</li>
         <li>Coach replies stop arriving as bare commitments — "I'll change that" without an actual change is now blocked.</li>
+        <li>Coach no longer answers its own questions with a boilerplate refusal — context of the prior turn is included in the on-topic check.</li>
         <li>Onboarding tour now fires for genuinely new accounts, not just ones with at least one plan.</li>
         <li>Trial banner now appears for both <em>trialing</em> and <em>starter</em> states, with a sensible fallback when the period-end date is missing.</li>
         <li>Tapping a day on Home reliably scrolls the matching row into view — we measure at click time now instead of relying on stale layout values.</li>
+        <li>Android keyboard no longer hides the coach chat input.</li>
         <li>Calendar chat input lifts above the keyboard on Android, instead of being hidden by it.</li>
         <li>Splash screen on iOS and Android no longer shows the old "ETAPA / train with purpose" text — both now match the minimal in-app loader.</li>
-      </ul>
-    </div>
-  </section>
-
-  <!-- ============================================================
-       RELEASE · 24 April 2026
-       The big one — new home screen, new plan picker, structured session
-       breakdowns. Add newer entries ABOVE this block; add older entries
-       BELOW. Keep the markup pattern identical so the release rhythm
-       reads consistently down the page.
-       ============================================================ -->
-  <section class="release">
-    <div class="release-head">
-      <div class="release-date"><span class="dot"></span>24 April 2026</div>
-      <h2 class="release-headline">A smarter home screen, clearer sessions, better plans.</h2>
-    </div>
-
-    <!-- ───── Feature 1: New home screen ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Home screen</div>
-        <h3>Answers "what am I doing today?" the moment you open the app</h3>
-        <p>Your today's session is now the first thing you see — with the ride name, distance, duration, effort, and a one-tap "View details" button. Tomorrow's session sits right beneath it so you can plan your evening.</p>
-        <p>Below that, the week strip shows every day at a glance with session-type tags (Endurance, Intervals, Long Ride…). Your coach chat lives at the top of the screen so you're never more than a tap away from a question.</p>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Home screen — Today hero, Tomorrow preview, week strip with session tags, coach card at the top.">
-        <!-- Drop a real screenshot here once captured:
-             <img src="/whats-new-assets/screens/home-screen.png" alt="Etapa home screen showing today's session and the week ahead" />
-             — and remove the data-placeholder attribute to hide the placeholder state. -->
-      </div>
-    </div>
-
-    <!-- ───── Feature 2: Session breakdown ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Hard sessions</div>
-        <h3>Know exactly what to do — in plain English, heart rate, or watts</h3>
-        <p>"4×4 minutes hard" used to leave a lot of room for guessing. Now every interval or tempo session comes with a proper breakdown: warm-up, main set, cool-down — and the target effort is shown three ways.</p>
-        <p>Feel it by breathing and legs if you ride by perceived effort. Hit a heart-rate zone if you wear a strap. Match a watt range if you have a power meter. We render whichever you've set — and you always get a plain-English sensory cue so beginners aren't left out.</p>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Activity detail — hard interval session showing the 'How to do this session' panel with warm-up, main set, and cool-down plus triple-intensity targets.">
-        <!-- <img src="/whats-new-assets/screens/session-breakdown.png" alt="Structured interval breakdown with RPE, heart rate, and power targets" /> -->
-      </div>
-    </div>
-
-    <!-- ───── Feature 3: Guided plan picker ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Pick the right plan</div>
-        <h3>A plan built for where you actually are — in under a minute</h3>
-        <p>Three quick questions: what are you training for, how long is your current longest ride, and when's your event? That's it. No FTP test, no jargon, no "beginner / intermediate / advanced" guesswork.</p>
-        <p>Your actual longest ride becomes the anchor for Week 1, so your plan starts at a distance you can genuinely complete — and builds up from there.</p>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Plan picker intake — one of the three questions (&quot;What's your longest recent ride?&quot;) with distance input and the pink Continue CTA.">
-        <!-- <img src="/whats-new-assets/screens/plan-picker.png" alt="Guided plan picker asking for longest recent ride" /> -->
-      </div>
-    </div>
-
-    <!-- ───── Feature 4: Onboarding rewrite ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">First open</div>
-        <h3>Meet your coach before you meet your plan</h3>
-        <p>The first time you open Etapa, you'll pick from six coach personalities — from Clara (warm and patient) to Lars (no-nonsense and direct) — and hear a sample of each one's voice before you commit.</p>
-        <p>We also ask km or miles once, remember it, and show every distance in your preferred unit from then on. About 30 seconds, four taps, done.</p>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Onboarding — the 'Pick your coach' step, with the 6-coach grid + a live sample quote from the currently-selected coach.">
-        <!-- <img src="/whats-new-assets/screens/onboarding-coach.png" alt="Onboarding coach picker with 6 coach personalities" /> -->
-      </div>
-    </div>
-
-    <!-- ───── Feature 5: Review before you build ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Plan picker</div>
-        <h3>Review every answer before the plan is built</h3>
-        <p>After the plan picker's questions you get a summary screen: what you're training for, the kind of cycling you do, your event details, your longest ride, and how long you want to train. Tap any row to change just that one answer — no scrolling back through the flow, no starting over.</p>
-        <p>Going back from any later screen now returns you to the previous step instead of dumping you on Home. If you notice a mistyped race distance three screens later, one tap gets you back to fix it.</p>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Plan picker review step — one tap-to-edit row per answer, with a pink Confirm button at the bottom.">
-      </div>
-    </div>
-
-    <!-- ───── Feature 6: Smarter coach ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Coach chat</div>
-        <h3>Your coach reads the whole conversation, not just your last line</h3>
-        <p>If your coach asked "recreational swim or something specific?" and you replied "Recreational swim", the old guardrail sometimes flagged that as off-topic. The coach now reads the last few turns of context before deciding, so short answers to its own questions stop getting blocked.</p>
-        <p>It can also schedule non-cycling sessions — swim, run, physio, mobility, stretching, yoga, and 20+ more — and each one shows with a proper activity icon on your week.</p>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Coach chat — a swim session slotted into the week with its swim icon, plus a physio session with the hand-heart glyph.">
-      </div>
-    </div>
-
-    <!-- ───── Plans improvements (prose block) ───── -->
-    <div class="subsection">
-      <div class="subsection-label"><span class="dot"></span>Plans</div>
-      <h4>Plans that match your reality</h4>
-      <p>Beginner plans now properly build toward your target distance without exceeding it before graduation day — so the final ride feels like the milestone it should. We've also tightened progression and added a few guardrails so the AI produces more consistent, more achievable weeks.</p>
-      <ul class="touches">
-        <li><strong>Your longest ride is now the anchor</strong>Plans start where you are, not at a generic benchmark.</li>
-        <li><strong>Beginner target-distance ceiling</strong>No training ride exceeds your target until graduation.</li>
-        <li><strong>Warm-up + cool-down built in</strong>Every hard session comes with a structured breakdown.</li>
-        <li><strong>Max HR and FTP support</strong>Add yours in Settings to see real bpm / watts on sessions.</li>
-        <li><strong>Shorter plan creation</strong>We stopped asking the same thing twice. Cycling type once on the first question; beginners skip the old pre-quiz entirely.</li>
-      </ul>
-    </div>
-
-    <!-- ───── Little touches ───── -->
-    <div class="subsection">
-      <div class="subsection-label"><span class="dot"></span>Little touches</div>
-      <ul class="touches">
-        <li><strong>Drag to reschedule</strong>Press-and-hold any session on Home or Calendar to drag it to another day.</li>
-        <li><strong>Move sessions before your plan starts</strong>Moved an activity to a day before Week 1? We'll honour it without re-generating everything.</li>
-        <li><strong>Coach chat, now async</strong>Send a message and leave — you'll get a push when your coach replies.</li>
-        <li><strong>Km or miles, honestly</strong>Asked on first launch, saved once, used everywhere.</li>
-        <li><strong>Session-type tags on the weekly list</strong>Endurance, Intervals, Long Ride — see your week at a glance.</li>
-        <li><strong>Un-check a completed session</strong>Tapped it by mistake? Tap again to undo.</li>
-        <li><strong>Pre-plan-start home screen</strong>A clear "Plan starts Mon 27 April · 3 days" card before Week 1 kicks off.</li>
-        <li><strong>Calendar quick-access on Home</strong>The small calendar icon takes you to the full monthly view.</li>
-        <li><strong>Your coach follows you through</strong>The coach you pick in onboarding is pre-selected when you create a plan — no re-picking.</li>
-        <li><strong>Cycling type is its own question</strong>Road / gravel / MTB / e-bike / mixed got its own step in the plan picker instead of being an afterthought at the bottom of question one.</li>
-        <li><strong>Tap feedback on every intake option</strong>Small spinner on the card you just tapped so the transition never feels dead.</li>
-        <li><strong>Race lookup calls out the date</strong>When we find your race, we say whether we filled in the date too — not just distance and elevation.</li>
-        <li><strong>Duration options respect your event date</strong>16-week plan greys out when your race is 6 weeks away. The "Recommended" flag moves to the longest plan that actually fits.</li>
-        <li><strong>Event path stops asking twice</strong>If you filled in race details in the plan picker, we don't ask you again on the next screen.</li>
-        <li><strong>Calendar session actions on the card</strong>Tap any session and Open / Move / Delete appear right inside it. The drag hint moved onto each card too.</li>
-        <li><strong>Pink "1" on the coach card</strong>When your coach has replied, a small badge appears on their avatar on Home. Clears the moment you open the chat.</li>
-        <li><strong>Cleaner selected day on Home</strong>Just the pink circle now — no heavy rectangle behind the whole day column.</li>
-        <li><strong>Plan overview palette refresh</strong>Bar chart uses brand pinks and slate blues now. Peak-week flag went from alarming red to a warmer pink.</li>
-        <li><strong>Loading spinner when you complete a session</strong>No more "did that tap even register?" moments.</li>
-        <li><strong>Ask coach card unified</strong>The coach entry-point on Plan Overview now uses the same card style as Home.</li>
-        <li><strong>Test push button in Settings</strong>New row in Settings → Notifications to verify pushes are actually reaching your device.</li>
-      </ul>
-    </div>
-
-    <!-- ───── Bugs squashed ───── -->
-    <div class="bugs">
-      <div class="bugs-label">Bugs squashed</div>
-      <ul>
-        <li>Android keyboard no longer hides the coach chat input.</li>
-        <li>Coach replies no longer vanish on return — a server/client race was overwriting the completed reply with an empty one. Fixed on both sides.</li>
         <li>Race lookup keeps the correct distance when you change the event.</li>
         <li>The Delete Plan crash (black screen) is fixed — now shows a proper loading overlay.</li>
         <li>Plan Overview chart uses distinct colours for endurance vs tempo.</li>
@@ -773,7 +590,6 @@ a:hover { color: var(--accent-hover); }
         <li>Back from plan config returns to your previous step instead of dropping you on Home.</li>
         <li>Bottom buttons no longer get clipped by the Android 3-button nav bar on Welcome / plan picker / onboarding screens.</li>
         <li>The "tap a session" hint moved under the divider so it clearly refers to the day list, not the week strip above it.</li>
-        <li>Coach no longer answers its own questions with a boilerplate refusal — context of the prior turn is now included in the on-topic check.</li>
       </ul>
     </div>
   </section>
@@ -784,8 +600,8 @@ a:hover { color: var(--accent-hover); }
        feature cards as needed. Older entries can be shorter — they're
        for reference rather than promotion.
 
-       EXAMPLE SKELETON (paste below the 24 April block when adding
-       the next round):
+       EXAMPLE SKELETON (paste below the current release block when
+       adding the next round):
 
        <section class="release">
          <div class="release-head">
