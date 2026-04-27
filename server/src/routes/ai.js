@@ -1779,6 +1779,31 @@ Return ONLY the JSON object, no other text.`;
 // turns INCLUDING the latest user message so Claude can see the
 // question-and-answer together. Short conversational replies (<5 chars)
 // still short-circuit to allowed.
+// ── Off-topic rejection text, per language ──────────────────────────────
+// When the topic guard blocks a message, we want the rejection to come back
+// in the language the user picked for the conversation — otherwise a
+// Spanish-speaking user gets an English wall, which feels more rude than
+// the rejection itself. Coverage matches the languages the bundled coaches
+// can speak (see src/data/coaches.js). Anything we don't have a translation
+// for falls back to English.
+const OFF_TOPIC_REPLY = {
+  English:    "Sorry, I can only help with questions about your training plan, cycling, nutrition, gear, and fitness. If you think this was a mistake, let us know and we'll look into it.",
+  Spanish:    "Lo siento, solo puedo ayudarte con preguntas sobre tu plan de entrenamiento, ciclismo, nutrición, equipamiento y forma física. Si crees que esto es un error, avísanos y lo revisaremos.",
+  Catalan:    "Ho sento, només et puc ajudar amb preguntes sobre el teu pla d'entrenament, ciclisme, nutrició, equipament i forma física. Si creus que és un error, fes-nos-ho saber i ho revisarem.",
+  French:     "Désolée, je ne peux t'aider qu'avec des questions concernant ton plan d'entraînement, le cyclisme, la nutrition, le matériel et la forme physique. Si tu penses qu'il s'agit d'une erreur, fais-le nous savoir et on jettera un œil.",
+  Italian:    "Mi dispiace, posso aiutarti solo con domande sul tuo piano di allenamento, ciclismo, nutrizione, attrezzatura e forma fisica. Se pensi che sia un errore, faccelo sapere e daremo un'occhiata.",
+  German:     "Tut mir leid, ich kann nur bei Fragen zu deinem Trainingsplan, Radfahren, Ernährung, Ausrüstung und Fitness helfen. Wenn du denkst, dass das ein Fehler ist, sag uns Bescheid und wir schauen es uns an.",
+  Danish:     "Beklager, jeg kan kun hjælpe med spørgsmål om din træningsplan, cykling, ernæring, udstyr og fitness. Hvis du tror, det er en fejl, så lad os det vide, så ser vi på det.",
+  Portuguese: "Desculpa, só posso ajudar com perguntas sobre o teu plano de treino, ciclismo, nutrição, equipamento e forma física. Se achas que isto é um erro, avisa-nos e vamos verificar.",
+  Dutch:      "Sorry, ik kan alleen helpen met vragen over je trainingsplan, fietsen, voeding, materiaal en fitness. Als je denkt dat dit een vergissing is, laat het ons weten, dan kijken we ernaar.",
+  Swedish:    "Tyvärr, jag kan bara hjälpa med frågor om din träningsplan, cykling, kost, utrustning och kondition. Om du tror att detta är ett misstag, säg till oss så tittar vi på det.",
+  Norwegian:  "Beklager, jeg kan bare hjelpe med spørsmål om treningsplanen din, sykling, ernæring, utstyr og kondisjon. Hvis du tror dette er en feil, gi oss beskjed så ser vi på det.",
+};
+function getOffTopicReply(language) {
+  if (!language) return OFF_TOPIC_REPLY.English;
+  return OFF_TOPIC_REPLY[language] || OFF_TOPIC_REPLY.English;
+}
+
 async function checkTopicGuard(apiKey, userMessage, userId = null, priorMessages = []) {
   // Short messages that are clearly conversational greetings — allow through
   if (userMessage.length < 5) return { allowed: true };
@@ -1818,7 +1843,9 @@ async function checkTopicGuard(apiKey, userMessage, userId = null, priorMessages
 
 You will see the last few turns of the conversation. Classify ONLY the FINAL user message, but use the preceding turns as context — a short reply that looks off-topic in isolation (e.g. "Recreational swim") is on-topic if the coach's previous message offered it as an option or asked about it.
 
-Respond with ONLY "yes" or "no".
+LANGUAGE: The user message may be in any language (English, Spanish, French, Italian, German, Catalan, Danish, Portuguese, Dutch, etc.). Translate mentally, then classify on meaning. A question like "¿Qué necesito preparar para mi salida larga esta semana?" is asking about ride preparation — that's on-topic.
+
+Respond with ONLY the literal English word "yes" or "no". Do NOT translate your answer into the user's language. The string "yes" or "no" must be in English regardless of the input language.
 
 Answer "yes" if the final user message is about ANY of these topics, OR is a direct answer to a question the coach just asked:
 - Cycling, riding, biking (road, gravel, MTB, indoor)
@@ -1897,7 +1924,7 @@ router.post('/coach-chat', async (req, res) => {
       const guard = await checkTopicGuard(apiKey, latestUserMsg.content, req.user?.id, messages);
       if (!guard.allowed) {
         return res.json({
-          reply: "Sorry, I can only help with questions about your training plan, cycling, nutrition, gear, and fitness. If you think this was a mistake, let us know and we'll look into it.",
+          reply: getOffTopicReply(req.body?.context?.language),
           blocked: true,
           blockedMessage: latestUserMsg.content,
         });
@@ -2921,7 +2948,7 @@ router.post('/coach-chat-async', async (req, res) => {
       if (!guard.allowed) {
         return res.json({
           blocked: true,
-          reply: "Sorry, I can only help with questions about your training plan, cycling, nutrition, gear, and fitness. If you think this was a mistake, let us know and we'll look into it.",
+          reply: getOffTopicReply(req.body?.context?.language),
           blockedMessage: latestUserMsg.content,
         });
       }

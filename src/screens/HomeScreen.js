@@ -1308,12 +1308,17 @@ export default function HomeScreen({ navigation, route }) {
         `This will use 1 of your ${planLimits.limit} plans this week. You'll have ${after} left after this.`,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Create plan', onPress: () => navigation.navigate('PlanSelection') },
+          // Apr 27 evening: route through PlanPicker (full intake) so the
+          // recommended path on PlanSelection is grounded in fresh
+          // answers, not just the existing 3-card menu. Previously
+          // dropped users straight onto the picker which felt like a
+          // shortcut that bypassed the value of asking what they want.
+          { text: 'Create plan', onPress: () => navigation.navigate('PlanPicker') },
         ],
       );
       return;
     }
-    navigation.navigate('PlanSelection');
+    navigation.navigate('PlanPicker');
   };
 
   const handlePlanLongPress = (targetPlan, targetGoal) => {

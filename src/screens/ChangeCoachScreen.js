@@ -64,6 +64,11 @@ export default function ChangeCoachScreen({ navigation }) {
   if (loading) return <View style={s.container} />;
 
   if (!configId) {
+    // Empty-state preview — show the first three bundled coaches as
+    // overlapping avatars so the user has a visual hint of what's
+    // waiting for them once they create a plan. Pulls from COACHES so
+    // the preview always reflects whatever's currently bundled.
+    const teaserCoaches = (COACHES || []).slice(0, 3);
     return (
       <View style={s.container}>
         <SafeAreaView style={s.safe}>
@@ -75,7 +80,33 @@ export default function ChangeCoachScreen({ navigation }) {
             <View style={{ width: 32 }} />
           </View>
           <View style={s.emptyContainer}>
-            <Text style={s.emptyText}>Create a plan first to choose a coach.</Text>
+            {teaserCoaches.length > 0 && (
+              <View style={s.emptyAvatarStack}>
+                {teaserCoaches.map((c, i) => (
+                  <View
+                    key={c.id}
+                    style={[
+                      s.emptyAvatar,
+                      { backgroundColor: c.avatarColor || '#2563A0', marginLeft: i === 0 ? 0 : -14, zIndex: teaserCoaches.length - i },
+                    ]}
+                  >
+                    <Text style={s.emptyAvatarText}>{c.avatarInitials || c.name?.[0] || '?'}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            <Text style={s.emptyTitle}>Pick a coach once you've got a plan</Text>
+            <Text style={s.emptyBody}>
+              Seven personalities are waiting — warm and patient, no-nonsense, science-led, race-focused. Build your plan first and we'll show you who fits best.
+            </Text>
+            <TouchableOpacity
+              style={s.emptyCta}
+              onPress={() => navigation.navigate('PlanSelection')}
+              activeOpacity={0.85}
+            >
+              <Text style={s.emptyCtaText}>Create a plan</Text>
+              <MaterialCommunityIcons name="arrow-right" size={18} color="#fff" />
+            </TouchableOpacity>
           </View>
         </SafeAreaView>
       </View>
@@ -223,8 +254,46 @@ const s = StyleSheet.create({
 
   subtitle: { fontSize: 14, fontFamily: FF.regular, color: colors.textMid, paddingHorizontal: 20, marginBottom: 16, lineHeight: 20 },
 
-  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
-  emptyText: { fontSize: 15, fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center' },
+  // Empty state — replaces what used to be a single 15pt grey line in
+  // a vast black void. Now leads with overlapping coach avatars (so
+  // the user sees the personalities they're being teased about),
+  // followed by a friendly two-line explainer and a primary CTA that
+  // routes straight into the create-a-plan flow.
+  emptyContainer: {
+    flex: 1, justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  emptyAvatarStack: {
+    flexDirection: 'row', alignItems: 'center',
+    marginBottom: 22,
+  },
+  emptyAvatar: {
+    width: 56, height: 56, borderRadius: 28,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: colors.bg,
+  },
+  emptyAvatarText: {
+    fontSize: 16, fontWeight: '700', fontFamily: FF.semibold,
+    color: '#fff', letterSpacing: 0.4,
+  },
+  emptyTitle: {
+    fontSize: 20, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.text, textAlign: 'center', marginBottom: 8,
+  },
+  emptyBody: {
+    fontSize: 14, fontFamily: FF.regular,
+    color: colors.textMid, textAlign: 'center',
+    lineHeight: 20, marginBottom: 28,
+  },
+  emptyCta: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: colors.primary, borderRadius: 999,
+    paddingHorizontal: 22, paddingVertical: 13,
+  },
+  emptyCtaText: {
+    fontSize: 15, fontWeight: '600', fontFamily: FF.semibold,
+    color: '#fff',
+  },
 
   // Coach cards — matches PlanConfigScreen styles
   coachCard: {

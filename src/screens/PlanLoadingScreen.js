@@ -102,21 +102,22 @@ export default function PlanLoadingScreen({ navigation, route }) {
   // ── Live elapsed counter + size-aware ETA ─────────────────────────
   // Plan-gen wall-clock scales with plan size. Empirically (Apr 27
   // 2026) on Sonnet 4.6 with the 32K cap and the extended-output
-  // beta header:
-  //   - ~30s base overhead (TTFT, post-processing, DB writes)
-  //   - ~3s per activity (output token rate plus structure blocks
-  //     for hard sessions)
-  // Floor at 90s so very small plans don't show an unrealistically
-  // optimistic "ready in 30 seconds" that we then blow through.
-  // Ceiling at 9 min so even the biggest plan stays under the 10
-  // min absolute timeout on the server.
+  // beta header. Apr 27 evening: bumped the multipliers after Rob
+  // flagged we were under-promising — better to slightly overshoot
+  // and surprise on the upside than show "Almost ready" for 90+
+  // seconds while the user watches their phone.
+  //   - 60s base overhead (TTFT, post-processing, retry, DB writes)
+  //   - 4s per activity (Sonnet 4.6's verbose structure blocks +
+  //     post-processor passes are slower than first measured)
+  // Floor 120s so small plans get an honest "couple of minutes"
+  // estimate. Ceiling 9 min stays under the 10-min server cap.
   const estimatedActivities = (() => {
     const w = (config?.weeks) || 8;
     const d = (config?.daysPerWeek) || 3;
     return w * d;
   })();
   const ETA_TARGET_MS = (() => {
-    const sec = Math.max(90, Math.min(540, 30 + estimatedActivities * 3));
+    const sec = Math.max(120, Math.min(540, 60 + estimatedActivities * 4));
     return sec * 1000;
   })();
   const [elapsedSecs, setElapsedSecs] = useState(0);
@@ -136,14 +137,16 @@ export default function PlanLoadingScreen({ navigation, route }) {
     return `${m}:${String(r).padStart(2, '0')}`;
   };
   // Smart status copy — keeps the user grounded as the wall-clock
-  // approaches and crosses the 5-minute estimate. Without this, a
-  // 5:30 elapsed counter against a "Ready by 11:09" clock that's
-  // already passed feels broken even when the plan IS still being
-  // built.
+  // approaches and crosses the estimate. Apr 27 evening: tightened
+  // the 'Almost ready' window from 30s to 15s before estimated
+  // ready, so users don't spend 30+ seconds reading 'Almost ready'
+  // while the elapsed counter ticks. 'Just finishing up' kicks in
+  // 60s past the estimate — that's the point where we definitely
+  // overshot, so admit it gently.
   const etaLabel = (() => {
     const totalSec = ETA_TARGET_MS / 1000;
-    if (elapsedSecs >= totalSec + 30) return 'Just finishing up\u2026';
-    if (elapsedSecs >= totalSec - 30) return 'Almost ready\u2026';
+    if (elapsedSecs >= totalSec + 60) return 'Just finishing up\u2026';
+    if (elapsedSecs >= totalSec - 15) return 'Almost ready\u2026';
     return `~${estimatedReadyAt.current.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   })();
   const etaSub = (() => {
@@ -666,12 +669,10 @@ export default function PlanLoadingScreen({ navigation, route }) {
             <Text style={s.tipBody}>{tip.body}</Text>
           </Animated.View>
 
-          {/* Background note */}
-          <View style={s.bgNote}>
-            <Text style={s.bgNoteText}>
-              Feel free to step away — we'll send a notification when your plan is ready.
-            </Text>
-          </View>
+          {/* Old bgNote 'Feel free to step away…' removed — duplicates
+              the prominent stepAwayCallout block at the top of the
+              screen. Keeping the styles in the StyleSheet for any
+              future reuse but the visual is gone here. */}
 
           {/* ── Health & AI disclaimer ─────────────────────────────────────
               Visible legal notice shown every time a plan is built. This is
@@ -796,13 +797,19 @@ const s = StyleSheet.create({
   previewMore: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textFaint, marginTop: 8, textAlign: 'center' },
 
   // ── Marketing tip card ─────────────────────────────────────────────────────
+  // Padding bumped (Apr 27 redesign) — at 20pt the body text was
+  // hugging the card edges and reading cramped. 28pt vertical / 22pt
+  // horizontal lets the content breathe and matches the rest of the
+  // app's content-card density.
   tipCard: {
     backgroundColor: 'rgba(232,69,139,0.06)', borderRadius: 16, borderWidth: 1,
-    borderColor: 'rgba(232,69,139,0.15)', padding: 20, marginBottom: 20, alignItems: 'center',
+    borderColor: 'rgba(232,69,139,0.15)',
+    paddingVertical: 28, paddingHorizontal: 22,
+    marginBottom: 20, alignItems: 'center',
   },
   tipIcon: { fontSize: 28, marginBottom: 10, fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif' },
-  tipTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 6, textAlign: 'center' },
-  tipBody: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center', lineHeight: 19 },
+  tipTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 8, textAlign: 'center' },
+  tipBody: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, textAlign: 'center', lineHeight: 20 },
 
   // ── Background note ────────────────────────────────────────────────────────
   bgNote: {

@@ -33,6 +33,26 @@ import analytics from '../services/analyticsService';
 
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
+// ── "Was this wrong? Let us know" — per language ─────────────────────────
+// Shown beneath an off-topic-blocked message so a user can flag a false
+// rejection. Translated to match the rejection message itself (which the
+// server now returns in the user's chosen language). Coverage matches
+// the bundled coach languages (src/data/coaches.js).
+const WAS_THIS_WRONG = {
+  English:    'Was this wrong? Let us know',
+  Spanish:    '¿Fue un error? Avísanos',
+  Catalan:    "Ha estat un error? Fes-nos-ho saber",
+  French:     "C'était une erreur ? Fais-le nous savoir",
+  Italian:    "È stato un errore? Faccelo sapere",
+  German:     'War das ein Fehler? Sag uns Bescheid',
+  Danish:     'Var det en fejl? Lad os det vide',
+  Portuguese: 'Foi um erro? Avisa-nos',
+  Dutch:      'Was dit een vergissing? Laat het ons weten',
+  Swedish:    'Var det ett misstag? Säg till oss',
+  Norwegian:  'Var dette en feil? Gi oss beskjed',
+};
+const wasThisWrongLabel = (lang) => WAS_THIS_WRONG[lang] || WAS_THIS_WRONG.English;
+
 const FF = fontFamily;
 
 /**
@@ -1516,7 +1536,7 @@ export default function CoachChatScreen({ navigation, route }) {
                     onPress={() => handleReportBlock(msg.blockedMessage)}
                     activeOpacity={0.7}
                   >
-                    <Text style={s.reportText}>Was this wrong? Let us know</Text>
+                    <Text style={s.reportText}>{wasThisWrongLabel(chatLanguage)}</Text>
                   </TouchableOpacity>
                 )}
                 {msg.failed && i === messages.length - 1 && lastFailedMsg && (
@@ -1606,23 +1626,26 @@ export default function CoachChatScreen({ navigation, route }) {
               explicit Cancel that aborts the in-flight job + clears
               the pending bubble. Hidden when there's no pending bubble
               so the input area stays clean during normal use. */}
-          {messages.some(m => m.pending) && (
-            <View style={s.pendingStatusStrip}>
-              <View style={s.pendingStatusLeft}>
+          {messages.some(m => m.pending) && (() => {
+            const coachFirst = getCoach(planConfig?.coachId)?.name?.split(' ')[0] || 'your coach';
+            return (
+              <View style={s.pendingStatusStrip}>
                 <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={s.pendingStatusText} numberOfLines={2}>
-                  You can leave — we'll notify you when {getCoach(planConfig?.coachId)?.name?.split(' ')[0] || 'your coach'} replies.
-                </Text>
+                <View style={s.pendingStatusBody}>
+                  <Text style={s.pendingStatusTitle} numberOfLines={1}>{coachFirst} is replying\u2026</Text>
+                  <Text style={s.pendingStatusSub} numberOfLines={1}>You can leave \u2014 we'll send a notification.</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={handleCancelInflight}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  activeOpacity={0.6}
+                  style={s.pendingStatusCancelBtn}
+                >
+                  <Text style={s.pendingStatusCancel}>Cancel</Text>
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                onPress={handleCancelInflight}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                activeOpacity={0.6}
-              >
-                <Text style={s.pendingStatusCancel}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+            );
+          })()}
 
           {/* Input bar */}
           <View style={s.inputBar}>
@@ -1942,23 +1965,34 @@ const s = StyleSheet.create({
   // Combines the "you can leave, we'll notify you" reassurance with
   // an explicit Cancel for users who change their mind. Disappears
   // the second the reply lands.
+  // Apr 27 evening redesign — was a single 2-line wrap that read messy.
+  // Now a structured two-line block: bold title row ("Elena is
+  // replying…") + muted sub-line ("You can leave — we'll send a
+  // notification."). Both single-line via numberOfLines=1, so on a
+  // narrow phone the sub-line truncates rather than wrapping into a
+  // hard-to-read fourth row.
   pendingStatusStrip: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    gap: 10,
-    marginHorizontal: 16, marginBottom: 8,
-    paddingHorizontal: 12, paddingVertical: 9,
-    borderRadius: 10,
-    backgroundColor: 'rgba(232,69,139,0.06)',
-    borderWidth: 1, borderColor: 'rgba(232,69,139,0.20)',
-  },
-  pendingStatusLeft: {
     flexDirection: 'row', alignItems: 'center',
-    flex: 1, minWidth: 0, gap: 8,
+    gap: 12,
+    marginHorizontal: 16, marginBottom: 8,
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(232,69,139,0.06)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.22)',
   },
-  pendingStatusText: {
+  pendingStatusBody: {
     flex: 1, minWidth: 0,
+  },
+  pendingStatusTitle: {
+    fontSize: 13, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.text, lineHeight: 16,
+  },
+  pendingStatusSub: {
     fontSize: 11, fontFamily: FF.regular,
-    color: colors.textMid, lineHeight: 15,
+    color: colors.textMuted, lineHeight: 14, marginTop: 1,
+  },
+  pendingStatusCancelBtn: {
+    paddingHorizontal: 4,
   },
   pendingStatusCancel: {
     fontSize: 12, fontFamily: FF.semibold, fontWeight: '600',

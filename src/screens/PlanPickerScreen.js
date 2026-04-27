@@ -1205,10 +1205,7 @@ export default function PlanPickerScreen({ navigation, route }) {
           activeOpacity={0.85}
         >
           {submitting ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <ActivityIndicator size="small" color="#fff" />
-              <Text style={s.primaryBtnText}>Building your plan…</Text>
-            </View>
+            <ActivityIndicator size="small" color="#fff" />
           ) : (
             <Text style={s.primaryBtnText}>Sounds good — let's go</Text>
           )}
