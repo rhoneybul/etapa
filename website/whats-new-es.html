@@ -195,7 +195,14 @@ a:hover { color: var(--accent-hover); }
   .release-headline {
     font-size: clamp(28px, 4vw, 40px);
     line-height: 1.1;
-    max-width: 22ch;
+    max-width: 30ch;
+  }
+  .release-headline > span {
+    display: block;
+    margin-bottom: 4px;
+  }
+  .release-headline > span:last-child {
+    margin-bottom: 0;
   }
 
   .feature {
@@ -406,7 +413,12 @@ a:hover { color: var(--accent-hover); }
   <section class="release">
     <div class="release-head">
       <div class="release-date"><span class="dot"></span>27 de abril de 2026</div>
-      <h2 class="release-headline">Una forma más clara de elegir tu plan, sesiones que arrastras y sueltas, un chat que nunca pierde un mensaje — y un nuevo entrenador.</h2>
+      <h2 class="release-headline">
+        <span>Una forma más clara de elegir tu plan.</span>
+        <span>Sesiones que arrastras y sueltas.</span>
+        <span>Un chat que nunca pierde un mensaje.</span>
+        <span>Un nuevo entrenador.</span>
+      </h2>
     </div>
 
     <div class="feature">

@@ -219,7 +219,19 @@ a:hover { color: var(--accent-hover); }
   .release-headline {
     font-size: clamp(28px, 4vw, 40px);
     line-height: 1.1;
-    max-width: 22ch;
+    max-width: 30ch;
+  }
+  /* Each release-headline span is a beat — one statement per line.
+     Block layout with a small bottom margin so each line lands as a
+     distinct point rather than running into the next. The final span
+     drops the margin so the whole headline isn't trailed by empty
+     space. */
+  .release-headline > span {
+    display: block;
+    margin-bottom: 4px;
+  }
+  .release-headline > span:last-child {
+    margin-bottom: 0;
   }
 
   /* ───────── Feature card — screenshot + copy ─────────
@@ -468,7 +480,12 @@ a:hover { color: var(--accent-hover); }
   <section class="release">
     <div class="release-head">
       <div class="release-date"><span class="dot"></span>27 April 2026</div>
-      <h2 class="release-headline">A clearer way to pick your plan, drag-and-drop sessions, a chat that never drops a message — and a brand-new coach.</h2>
+      <h2 class="release-headline">
+        <span>A clearer way to pick your plan.</span>
+        <span>Drag-and-drop sessions.</span>
+        <span>A chat that never drops a message.</span>
+        <span>A brand-new coach.</span>
+      </h2>
     </div>
 
     <!-- ───── Feature 1: Choosing your plan ───── -->
