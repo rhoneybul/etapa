@@ -5,7 +5,7 @@
     "scheme": "etapa",
     "version": "1.0.0",
     "runtimeVersion": {
-      "policy": "appVersion"
+      "policy": "fingerprint"
     },
     "updates": {
       "url": "https://u.expo.dev/1f143dcb-8744-4f1e-8e39-9ac9389eae73",
