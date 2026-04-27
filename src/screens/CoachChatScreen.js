@@ -162,6 +162,33 @@ export default function CoachChatScreen({ navigation, route }) {
     }, 1000);
     return () => clearInterval(id);
   }, [messages]);
+
+  // ── Typing-dot animation ─────────────────────────────────────────
+  // Three Animated.Value refs that pulse opacity 0.3 → 1 → 0.3 on a
+  // staggered loop while a coach reply is in flight. Used by the
+  // in-thread typing bubble below the user's message. Native-driver
+  // ON so the loop runs on the UI thread and doesn't compete with
+  // the JS event loop during a slow reply.
+  const dot1Anim = useRef(new Animated.Value(0.3)).current;
+  const dot2Anim = useRef(new Animated.Value(0.3)).current;
+  const dot3Anim = useRef(new Animated.Value(0.3)).current;
+  useEffect(() => {
+    const hasPending = messages.some(m => m.pending);
+    if (!hasPending) return;
+    const buildLoop = (anim, delay) => Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(anim, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0.3, duration: 400, useNativeDriver: true }),
+        Animated.delay(Math.max(0, 600 - delay)),
+      ])
+    );
+    const a1 = buildLoop(dot1Anim, 0);
+    const a2 = buildLoop(dot2Anim, 150);
+    const a3 = buildLoop(dot3Anim, 300);
+    a1.start(); a2.start(); a3.start();
+    return () => { a1.stop(); a2.stop(); a3.stop(); };
+  }, [messages, dot1Anim, dot2Anim, dot3Anim]);
   // True while the mount effect is hydrating plan / goal / planConfig /
   // chat history. Without it, users see an empty scroll area with a
   // blinking cursor in the input for ~500ms–2s after opening the
@@ -1648,47 +1675,44 @@ export default function CoachChatScreen({ navigation, route }) {
               the pending bubble. Hidden when there's no pending bubble
               so the input area stays clean during normal use. */}
           {messages.some(m => m.pending) && (() => {
-            const coachFirst = getCoach(planConfig?.coachId)?.name?.split(' ')[0] || 'your coach';
-            // Progressive copy keyed off pendingElapsedSecs. The strong
-            // word stays scannable across all four phases while the sub
-            // line escalates to acknowledge the wait. Tuned against the
-            // 180s server timeout — by the time the user sees phase 4
-            // they've waited a full minute, so the message is honest
-            // ("this is a long one") rather than empty reassurance.
-            const phase = (() => {
+            const coach = getCoach(planConfig?.coachId);
+            const coachInitials = coach?.avatarInitials || (coach?.name?.[0] || '?');
+            const avatarColor = coach?.avatarColor || '#2563A0';
+            // Progressive sub-copy keyed off pendingElapsedSecs. The
+            // typing dots themselves carry the "she's typing" signal,
+            // so the sub-line below just adds reassurance + escalates
+            // as the wait grows. Tuned against the 180s server timeout
+            // — phase 4 acknowledges a long wait honestly rather than
+            // pretending it's still about to land.
+            const subCopy = (() => {
               const s = pendingElapsedSecs;
-              if (s >= 60) return {
-                strong: 'Working on it.',
-                sub: ' Hang tight or step away — we\'ll send a notification when it\'s ready.',
-              };
-              if (s >= 25) return {
-                strong: 'Still going.',
-                sub: ' Plan changes can take a minute — feel free to step away.',
-              };
-              if (s >= 8) return {
-                strong: `${coachFirst} is replying.`,
-                sub: ' Plan changes can take a moment.',
-              };
-              return {
-                strong: `${coachFirst} is replying.`,
-                sub: ' Feel free to step away.',
-              };
+              if (s >= 60) return 'Hang tight — we\'ll send a notification when ready';
+              if (s >= 25) return 'Plan changes can take a minute — feel free to step away';
+              if (s >= 8) return 'Plan changes can take a moment';
+              return 'Feel free to step away';
             })();
             return (
-              <View style={s.pendingStatusStrip}>
-                <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={s.pendingStatusInline} numberOfLines={2}>
-                  <Text style={s.pendingStatusInlineStrong}>{phase.strong}</Text>
-                  {phase.sub}
-                </Text>
-                <TouchableOpacity
-                  onPress={handleCancelInflight}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  activeOpacity={0.6}
-                  style={s.pendingStatusCancelBtn}
-                >
-                  <Text style={s.pendingStatusCancel}>Cancel</Text>
-                </TouchableOpacity>
+              <View style={s.typingBlock}>
+                <View style={s.typingRow}>
+                  <View style={[s.typingAvatar, { backgroundColor: avatarColor }]}>
+                    <Text style={s.typingAvatarText}>{coachInitials}</Text>
+                  </View>
+                  <View style={s.typingBubble}>
+                    <Animated.View style={[s.typingDot, { opacity: dot1Anim }]} />
+                    <Animated.View style={[s.typingDot, { opacity: dot2Anim }]} />
+                    <Animated.View style={[s.typingDot, { opacity: dot3Anim }]} />
+                  </View>
+                </View>
+                <View style={s.typingMeta}>
+                  <Text style={s.typingMetaText} numberOfLines={1}>{subCopy}</Text>
+                  <TouchableOpacity
+                    onPress={handleCancelInflight}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    activeOpacity={0.6}
+                  >
+                    <Text style={s.typingCancel}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             );
           })()}
@@ -2020,34 +2044,51 @@ const s = StyleSheet.create({
   // Combines the "you can leave, we'll notify you" reassurance with
   // an explicit Cancel for users who change their mind. Disappears
   // the second the reply lands.
-  // Apr 27 evening v2 — single-line inline banner. The earlier two-
-  // line block (title row + muted sub) read as "two messages" and
-  // felt duplicated. Now it's one continuous sentence with the
-  // strong word inline ("Elena is replying."), making it scannable
-  // in one read. Long-wait copy swap (after ~8s) softens the wait
-  // for plan-change replies that take 30-60s.
-  pendingStatusStrip: {
-    flexDirection: 'row', alignItems: 'center',
-    gap: 10,
-    marginHorizontal: 16, marginBottom: 8,
-    paddingHorizontal: 14, paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: 'rgba(232,69,139,0.07)',
-    borderWidth: 1, borderColor: 'rgba(232,69,139,0.22)',
+  // Apr 27 evening v3 — in-thread typing bubble (Option A from the
+  // mockups). Replaces the inline status strip with a chat-app-
+  // native pattern: coach avatar + bubble with three animated dots,
+  // anchored bottom-left like a real coach message. When the actual
+  // reply lands, the typing block is replaced by the real message
+  // bubble in the same column position so the transition is
+  // seamless. Sub-copy and Cancel sit beneath in muted grey.
+  typingBlock: {
+    marginHorizontal: 16, marginTop: 4, marginBottom: 8,
   },
-  pendingStatusInline: {
+  typingRow: {
+    flexDirection: 'row', alignItems: 'flex-end', gap: 8,
+  },
+  typingAvatar: {
+    width: 24, height: 24, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  typingAvatarText: {
+    fontSize: 9, fontFamily: FF.semibold, fontWeight: '700',
+    color: '#fff', letterSpacing: 0.4,
+  },
+  typingBubble: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14, borderBottomLeftRadius: 4,
+  },
+  typingDot: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: colors.primary,
+  },
+  typingMeta: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 6, paddingLeft: 32, paddingRight: 4,
+    gap: 12,
+  },
+  typingMetaText: {
     flex: 1, minWidth: 0,
-    fontSize: 12, fontFamily: FF.regular,
-    color: colors.textMid, lineHeight: 16,
+    fontSize: 11, fontFamily: FF.regular,
+    color: colors.textMuted, lineHeight: 14,
   },
-  pendingStatusInlineStrong: {
-    color: colors.text, fontFamily: FF.semibold, fontWeight: '600',
-  },
-  pendingStatusCancelBtn: {
-    paddingHorizontal: 4,
-  },
-  pendingStatusCancel: {
-    fontSize: 12, fontFamily: FF.semibold, fontWeight: '600',
+  typingCancel: {
+    fontSize: 11, fontFamily: FF.semibold, fontWeight: '600',
     color: colors.primary,
   },
 });
