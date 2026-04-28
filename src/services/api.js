@@ -21,6 +21,26 @@ async function getToken() {
   }
 }
 
+/**
+ * Mint a one-shot signed URL for exporting an activity as a workout file.
+ *
+ * Two hops:
+ *   1. POST to /api/plans/:planId/activities/:id/export-url with the
+ *      user's Bearer token. The server validates ownership and returns
+ *      a short-TTL HMAC-signed URL pointing at /api/exports/workout.
+ *   2. The client opens that signed URL via Linking.openURL — the OS
+ *      browser downloads the file. No auth header needed on the second
+ *      request because the URL itself is the authority.
+ *
+ * Returns null on failure (signed-out, network error, server config).
+ */
+export async function buildWorkoutExportUrl(planId, activityId, format = 'zwo') {
+  const fmt = String(format).toLowerCase();
+  const path = `/api/plans/${encodeURIComponent(planId)}/activities/${encodeURIComponent(activityId)}/export-url`;
+  const data = await request('POST', path, { format: fmt });
+  return data?.url || null;
+}
+
 async function request(method, path, body) {
   const token = await getToken();
   if (!token) return null; // Not authenticated — skip API call

@@ -186,6 +186,12 @@ export default function GoalSetupScreen({ navigation, route }) {
 
     const goal = await saveGoal({
       cyclingType,
+      // Pass the multi-bike list when the intake provides it — falls
+      // back to a one-element array around the legacy single value so
+      // existing flows keep working. Plan-gen prefers the array.
+      cyclingTypes: Array.isArray(intake?.cyclingTypes) && intake.cyclingTypes.length > 0
+        ? intake.cyclingTypes
+        : (cyclingType ? [cyclingType] : []),
       goalType,
       targetDistance: targetDistance ? parseFloat(targetDistance) : null,
       targetElevation: targetElevation ? parseFloat(targetElevation) : null,

@@ -58,6 +58,59 @@ app.get('/health', (_req, res) => {
 });
 
 // ── Public routes (no auth) ──────────────────────────────────────────────────
+// Workout export download — public-but-signature-validated. The mobile
+// client can't attach a Bearer header through Linking.openURL, so it
+// first hits the authed `POST /api/plans/.../export-url` endpoint which
+// mints a one-shot HMAC-signed URL pointing here. We re-validate the
+// signature, fetch the activity scoped to the embedded user id, and
+// stream the .zwo or .mrc file. See server/src/lib/exportSigning.js.
+const { verifyExportRequest } = require('./lib/exportSigning');
+const { toZwo: _toZwo, toMrc: _toMrc, suggestedFilename: _suggestedFilename } = require('./lib/workoutExport');
+const { supabase: _supabase } = require('./lib/supabase');
+app.get('/api/exports/workout', async (req, res) => {
+  const v = verifyExportRequest(req.query);
+  if (!v.ok) {
+    const status = (v.reason === 'expired' || v.reason === 'bad_sig') ? 403 : 400;
+    return res.status(status).json({ error: 'Invalid or expired export link', reason: v.reason });
+  }
+  try {
+    const { data: act, error } = await _supabase
+      .from('activities')
+      .select('*')
+      .eq('id', v.activityId)
+      .eq('plan_id', v.planId)
+      .eq('user_id', v.userId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!act) return res.status(404).json({ error: 'Activity not found' });
+    if (act.type !== 'ride') return res.status(400).json({ error: 'Only rides export.' });
+
+    const activity = {
+      title: act.title,
+      description: act.description,
+      notes: act.notes,
+      durationMins: act.duration_mins,
+      effort: act.effort,
+      subType: act.sub_type,
+      structure: act.structure || act.strava_data?.structure || null,
+    };
+    const filename = _suggestedFilename(activity, v.format);
+    const body = v.format === 'zwo' ? _toZwo(activity) : _toMrc(activity);
+    res.set({
+      'Content-Type': v.format === 'zwo'
+        ? 'application/xml; charset=utf-8'
+        : 'text/plain; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'private, max-age=0, must-revalidate',
+      'X-Etapa-Export': v.format,
+    });
+    res.send(body);
+  } catch (err) {
+    console.error('export download failed', err);
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
 // Account deletion request — must be public (user may not be able to log in)
 app.post('/api/account-deletion', async (req, res) => {
   const { email, reason, additionalInfo } = req.body;

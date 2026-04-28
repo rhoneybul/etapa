@@ -8,16 +8,21 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert,
   ActivityIndicator, KeyboardAvoidingView, Platform, StatusBar, Keyboard,
+  Linking, ActionSheetIOS,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import { getPlans, getGoals, getPlanConfig, getUserPrefs, markActivityComplete, updateActivity, savePlan } from '../services/storageService';
 import { editActivityWithAI, explainActivity as explainActivityApi } from '../services/llmPlanService';
+import { buildWorkoutExportUrl } from '../services/api';
 import { getSessionColor, getSessionLabel, SESSION_COLORS, EFFORT_LABELS as EFFORT_GUIDE_LABELS } from '../utils/sessionLabels';
 import { formatRpe, formatHeartRate, formatPower, shouldShowPower } from '../utils/intensity';
 import { useUnits } from '../utils/units';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import CoachChatCard from '../components/CoachChatCard';
+import BikeSwapModal from '../components/BikeSwapModal';
+import ExportInstructionsModal from '../components/ExportInstructionsModal';
+import { BIKE_LABELS as BIKE_LABEL_MAP } from '../utils/bikeSwap';
 import { getCoach } from '../data/coaches';
 import analytics from '../services/analyticsService';
 
@@ -116,6 +121,20 @@ export default function ActivityDetailScreen({ navigation, route }) {
   const [savingCompletion, setSavingCompletion] = useState(false);
   const [explainError, setExplainError] = useState('');
 
+  // Bike swap modal — opened when the rider taps a different bike chip
+  // in edit mode. Holds the *target* bike. The modal computes the
+  // suggested distance/duration adjustments via utils/bikeSwap.js.
+  const [pendingBikeSwap, setPendingBikeSwap] = useState(null);
+
+  // True briefly while we're building the export URL — keeps the share
+  // button from being double-tapped while the auth-token round trip is
+  // in flight.
+  const [exporting, setExporting] = useState(false);
+  // ExportInstructionsModal state. We hold the *pending format* here so
+  // tapping "Got it — export the file" inside the modal can fire the
+  // export with the format the user originally chose. Null = closed.
+  const [pendingExportFormat, setPendingExportFormat] = useState(null);
+
   const scrollRef = useRef(null);
 
   const loadActivity = async () => {
@@ -137,6 +156,9 @@ export default function ActivityDetailScreen({ navigation, route }) {
           durationMins: a.durationMins?.toString() || '',
           effort: a.effort || 'moderate',
           dayOfWeek: a.dayOfWeek ?? 0,
+          // Per-session bike override. Null = "rider's choice / matches
+          // plan default". Editable when the rider has > 1 bike type.
+          bikeType: a.bikeType || null,
         });
         return;
       }
@@ -199,6 +221,7 @@ export default function ActivityDetailScreen({ navigation, route }) {
       durationMins: newDur,
       effort: newEffort,
       dayOfWeek: newDay,
+      bikeType: editValues.bikeType || null,
     });
 
     if (plan && (oldDist !== newDist || oldDur !== newDur)) {
@@ -295,6 +318,113 @@ export default function ActivityDetailScreen({ navigation, route }) {
   const isRide = activity.type === 'ride';
   const isStrength = activity.type === 'strength';
   const effortColor = ACTIVITY_BLUE;
+
+  // Bike-type override: only meaningful when the rider configured > 1
+  // type at intake. Read from the new array field with a fall-back to
+  // wrapping the legacy single value, so existing single-bike goals
+  // simply hide the row.
+  const goalBikeOptions = (() => {
+    if (Array.isArray(goal?.cyclingTypes) && goal.cyclingTypes.length > 0) {
+      return goal.cyclingTypes;
+    }
+    if (goal?.cyclingType && goal.cyclingType !== 'mixed') return [goal.cyclingType];
+    return [];
+  })();
+  const showBikeRow = isRide && goalBikeOptions.length > 1;
+
+  // Indoor session detection — drives the "Send to trainer" card. We
+  // count a session as indoor if its subType is 'indoor', the rider
+  // chose 'indoor' as the bike for it, or the title/description make
+  // it obvious. Outdoor rides could theoretically be exported too but
+  // we deliberately scope this UI to indoor sessions where the export
+  // is genuinely useful.
+  const isIndoorSession =
+    isRide && (
+      activity.subType === 'indoor' ||
+      activity.bikeType === 'indoor' ||
+      /indoor|trainer|turbo|zwift/i.test(activity.title || '') ||
+      /indoor|trainer|turbo/i.test(activity.description || '')
+    );
+
+  // Format chosen — decide whether to show the instructions modal or
+  // skip straight to the export. We surface the modal by default and
+  // honour the rider's "don't show this again" pref. Power users tap
+  // it once, opt out, and never see it again.
+  const handleExportFormatChosen = (format) => {
+    if (userPrefs?.hideExportInstructions) {
+      runExport(format);
+    } else {
+      setPendingExportFormat(format);
+    }
+  };
+
+  // Actually fire the export. Mints a one-shot signed URL on the server
+  // (POST /export-url) and opens it via the OS browser. iOS will then
+  // offer an "Open with…" sheet for apps that registered .zwo / .mrc;
+  // Android browsers download the file and offer an Intent picker. We
+  // don't need a native share dependency for this.
+  const runExport = async (format) => {
+    if (!plan?.id || !activity?.id || exporting) return;
+    setExporting(true);
+    try {
+      const url = await buildWorkoutExportUrl(plan.id, activity.id, format);
+      if (!url) {
+        Alert.alert('Sign-in needed', 'Sign back in and try the export again.');
+        return;
+      }
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert('Couldn\'t open the link', 'Your device blocked the export URL.');
+        return;
+      }
+      analytics.events.activityExported?.({ activityId: activity.id, format });
+      await Linking.openURL(url);
+    } catch (err) {
+      Alert.alert('Export failed', 'We couldn\'t generate the workout file. Try again in a moment.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Kept around so existing call-sites that referenced the old name keep
+  // working. Just delegates to handleExportFormatChosen.
+  const handleExportWorkout = handleExportFormatChosen;
+
+  // Picker for which file format to export. iOS gets the native action
+  // sheet; Android falls back to an Alert. ZWO is the headline option
+  // (works in Zwift, Rouvy, MyWhoosh, Wahoo SYSTM, TrainerRoad import).
+  // MRC is the universal text-format fallback.
+  const showExportPicker = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: 'Send this session to your trainer',
+          message: 'Pick a file format. After you tap, choose your trainer app from the share sheet.',
+          options: ['Zwift / Wahoo SYSTM / Rouvy (.zwo)', 'Older trainer apps (.mrc)', 'Cancel'],
+          cancelButtonIndex: 2,
+        },
+        (idx) => {
+          if (idx === 0) handleExportWorkout('zwo');
+          else if (idx === 1) handleExportWorkout('mrc');
+        },
+      );
+    } else {
+      Alert.alert(
+        'Send this session to your trainer',
+        'Pick a file format.',
+        [
+          { text: 'Zwift / Wahoo / Rouvy (.zwo)', onPress: () => handleExportWorkout('zwo') },
+          { text: 'Older apps (.mrc)', onPress: () => handleExportWorkout('mrc') },
+          { text: 'Cancel', style: 'cancel' },
+        ],
+      );
+    }
+  };
+  // Plan default ("from-bike" for the swap calc): legacy goals only
+  // tell us a single type — use it as the baseline. New goals carry
+  // an array — pick the first as a sensible default.
+  const planDefaultBike = goalBikeOptions[0] || goal?.cyclingType || 'road';
+  const currentBike = activity.bikeType || editValues.bikeType || planDefaultBike;
 
   return (
     <View style={s.container}>
@@ -428,6 +558,46 @@ export default function ActivityDetailScreen({ navigation, route }) {
                   <Text style={[s.metricValue, { color: effortColor }]}>{activity.effort}</Text>
                 )}
               </View>
+            </View>
+          )}
+
+          {/* Bike-type override — only renders when the goal carries
+              more than one cyclingType. Tapping a chip in edit mode
+              opens the BikeSwapModal, which suggests adjusted distance
+              + duration via utils/bikeSwap.js (rules from the coach).
+              Outside edit mode the chosen bike is shown read-only. */}
+          {showBikeRow && (
+            <View style={s.bikeCard}>
+              <Text style={s.bikeCardLabel}>BIKE</Text>
+              <View style={s.bikeChipsRow}>
+                {goalBikeOptions.map(b => {
+                  const selected = currentBike === b;
+                  const label = BIKE_LABEL_MAP[b] || b;
+                  const onPress = () => {
+                    if (!isEditing) return;
+                    if (selected) return;
+                    // Open the swap-suggestion modal. The modal applies
+                    // the chosen values back via onApply / onApplyOriginal.
+                    setPendingBikeSwap({ from: currentBike, to: b });
+                  };
+                  return (
+                    <TouchableOpacity
+                      key={b}
+                      style={[s.bikeChip, selected && s.bikeChipSelected, !isEditing && { opacity: 0.7 }]}
+                      onPress={onPress}
+                      activeOpacity={isEditing ? 0.7 : 1}
+                      accessibilityLabel={`${label} bike`}
+                    >
+                      <Text style={[s.bikeChipText, selected && s.bikeChipTextSelected]}>
+                        {selected ? `${label} \u2713` : label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {!isEditing && (
+                <Text style={s.bikeHint}>Tap Edit to swap bikes — we'll suggest the right distance.</Text>
+              )}
             </View>
           )}
 
@@ -629,6 +799,30 @@ export default function ActivityDetailScreen({ navigation, route }) {
           <View style={{ height: 80 }} />
         </ScrollView>
 
+        {/* Send-to-trainer card — shown for indoor rides only. Generates
+            a structured workout file (.zwo / .mrc) on the server and
+            opens iOS's "Open with..." sheet so the rider can hand off
+            to Zwift, Wahoo SYSTM, Rouvy, etc. */}
+        {!isEditing && isIndoorSession && (
+          <TouchableOpacity
+            style={s.exportCard}
+            onPress={showExportPicker}
+            activeOpacity={0.85}
+            disabled={exporting}
+            accessibilityLabel="Send this indoor session to your trainer"
+          >
+            <View style={s.exportCardLeft}>
+              <Text style={s.exportCardTitle}>Send to your trainer</Text>
+              <Text style={s.exportCardSub}>
+                Export as a workout file for Zwift, Wahoo SYSTM, Rouvy and more.
+              </Text>
+            </View>
+            {exporting
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <Text style={s.exportCardArrow}>{'\u2192'}</Text>}
+          </TouchableOpacity>
+        )}
+
         {/* Coach chat entry-point — same CoachChatCard component used on
             Home and Week view, so the "ask your coach" action looks the
             same wherever it appears. Previously this screen had a small
@@ -645,6 +839,52 @@ export default function ActivityDetailScreen({ navigation, route }) {
         )}
         </KeyboardAvoidingView>
       </SafeAreaView>
+      {/* Bike swap suggestion sheet — opened from the Bike chip row above
+          when the rider taps a different bike in edit mode. */}
+      <BikeSwapModal
+        visible={!!pendingBikeSwap}
+        session={activity}
+        fromBike={pendingBikeSwap?.from}
+        toBike={pendingBikeSwap?.to}
+        onApply={({ bikeType, durationMins, distanceKm }) => {
+          setEditValues(prev => ({
+            ...prev,
+            bikeType,
+            durationMins: durationMins != null ? String(durationMins) : prev.durationMins,
+            distanceKm: distanceKm != null ? String(distanceKm) : '',
+          }));
+          analytics.events.activityEditedManual?.({
+            activityType: activity.type,
+            week: activity.week,
+            changedFields: ['bikeType', 'distance', 'duration'],
+          });
+          setPendingBikeSwap(null);
+        }}
+        onApplyOriginal={({ bikeType }) => {
+          setEditValues(prev => ({ ...prev, bikeType }));
+          analytics.events.activityEditedManual?.({
+            activityType: activity.type,
+            week: activity.week,
+            changedFields: ['bikeType'],
+          });
+          setPendingBikeSwap(null);
+        }}
+        onCancel={() => setPendingBikeSwap(null)}
+      />
+      {/* First-time export instructions. Suppressed by the "Don't show
+          this again" checkbox — handled inside the modal via setUserPrefs. */}
+      <ExportInstructionsModal
+        visible={!!pendingExportFormat}
+        onProceed={() => {
+          const fmt = pendingExportFormat;
+          setPendingExportFormat(null);
+          // Refresh prefs so subsequent exports honour the new "don't
+          // show again" pref without needing to refocus the screen.
+          getUserPrefs().then(setUserPrefs).catch(() => {});
+          runExport(fmt);
+        }}
+        onCancel={() => setPendingExportFormat(null)}
+      />
     </View>
   );
 }
@@ -920,6 +1160,38 @@ const s = StyleSheet.create({
     paddingVertical: 4, paddingHorizontal: 8,
   },
   metricUnit: { fontSize: 10, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 2, textAlign: 'center' },
+
+  // Bike-type override row. Hidden when the goal carries only one
+  // bike type. Tapping a chip in edit mode opens BikeSwapModal.
+  bikeCard: {
+    backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 12, borderRadius: 16,
+    padding: 14, borderWidth: 1, borderColor: colors.border,
+  },
+  bikeCardLabel: { fontSize: 10, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
+  bikeChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  bikeChip: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 0.5, borderColor: colors.border,
+  },
+  bikeChipSelected: { backgroundColor: colors.primary + '22', borderColor: colors.primary },
+  bikeChipText: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular },
+  bikeChipTextSelected: { color: colors.text, fontWeight: '600', fontFamily: FF.semibold },
+  bikeHint: { fontSize: 11, color: colors.textMuted, fontFamily: FF.regular, marginTop: 8 },
+
+  // Send-to-trainer entry-point. Only renders for indoor sessions. Pink
+  // ring distinguishes it from the muted Coach card below.
+  exportCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginHorizontal: 16, marginBottom: 12, padding: 14,
+    backgroundColor: colors.primary + '14',
+    borderRadius: 16,
+    borderWidth: 1, borderColor: colors.primary + '40',
+  },
+  exportCardLeft: { flex: 1 },
+  exportCardTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 3 },
+  exportCardSub: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, lineHeight: 17 },
+  exportCardArrow: { fontSize: 18, color: colors.primary, fontFamily: FF.semibold },
 
   daySelectorCard: {
     backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 12, borderRadius: 16, padding: 16,

@@ -1,6 +1,8 @@
 const { Router } = require('express');
 const { supabase } = require('../lib/supabase');
 const rateLimits = require('../lib/rateLimits');
+const { toZwo, toMrc, suggestedFilename } = require('../lib/workoutExport');
+const { signExportUrl } = require('../lib/exportSigning');
 const router = Router();
 
 // GET /api/plans — list user's plans with activities
@@ -143,6 +145,11 @@ router.patch('/:planId/activities/:activityId', async (req, res, next) => {
     if (b.dayOfWeek !== undefined)   updates.day_of_week = b.dayOfWeek;
     if (b.title !== undefined)       updates.title = b.title;
     if (b.description !== undefined) updates.description = b.description;
+    // Per-session bike override. Nullable. Set to null to clear.
+    if (b.bikeType !== undefined)    updates.bike_type = b.bikeType || null;
+    // Structure (warmup/main/cooldown breakdown). Persisted so the
+    // workout export endpoint can read it. Nullable.
+    if (b.structure !== undefined)   updates.structure = b.structure || null;
 
     const { error } = await supabase
       .from('activities')
@@ -151,6 +158,65 @@ router.patch('/:planId/activities/:activityId', async (req, res, next) => {
       .eq('user_id', req.user.id);
     if (error) throw error;
     res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ── Workout export (Path 1: share-sheet) ────────────────────────────────────
+// POST /api/plans/:planId/activities/:activityId/export-url
+//
+// Mints a one-shot signed URL the client opens via Linking.openURL. The
+// URL points at the public /api/exports/workout download endpoint, with
+// an HMAC signature, expiry, and the (uid, planId, activityId, format)
+// tuple it covers. Bearer auth required to mint; the resulting URL is
+// itself opaque and self-validating.
+//
+// Sport gate: only `type:'ride'` activities export. Strength sessions
+// return 400 here so we don't even mint a URL. The button on the client
+// is gated to indoor rides specifically; the API is permissive and will
+// happily mint a URL for any ride.
+router.post('/:planId/activities/:activityId/export-url', async (req, res, next) => {
+  try {
+    const format = String(req.body?.format || req.query?.format || 'zwo').toLowerCase();
+    if (format !== 'zwo' && format !== 'mrc') {
+      return res.status(400).json({ error: 'Unsupported format. Use zwo or mrc.' });
+    }
+
+    // Confirm the activity exists and belongs to this user. We don't return
+    // the body here — we just gatekeep, and only mint a URL if the rider
+    // is allowed to export this session. Single-row fetch.
+    const { data: act, error } = await supabase
+      .from('activities')
+      .select('id, plan_id, user_id, type')
+      .eq('id', req.params.activityId)
+      .eq('plan_id', req.params.planId)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!act) return res.status(404).json({ error: 'Activity not found' });
+    if (act.type !== 'ride') {
+      return res.status(400).json({ error: 'Only ride sessions can be exported as a workout file.' });
+    }
+
+    // Resolve the public base URL: prefer EXPORT_BASE_URL (set in prod),
+    // fall back to the incoming request's origin. Belt + braces: if the
+    // signing secret isn't set we surface that explicitly so the client
+    // can show a clean error rather than a generic 500.
+    const baseUrl = process.env.EXPORT_BASE_URL
+      || `${req.protocol}://${req.get('host')}`;
+
+    let signed;
+    try {
+      signed = signExportUrl({
+        baseUrl,
+        userId: req.user.id,
+        planId: req.params.planId,
+        activityId: req.params.activityId,
+        format,
+      });
+    } catch (err) {
+      return res.status(503).json({ error: 'Export not configured on this server.' });
+    }
+    res.json(signed);
   } catch (err) { next(err); }
 });
 
@@ -391,6 +457,12 @@ function activityToRow(a, userId, planId) {
     duration_mins: a.durationMins || null,
     distance_km: a.distanceKm || null,
     effort: a.effort || 'moderate',
+    // Per-session bike override (multi-bike rollout). Nullable; old activities
+    // simply don't set it.
+    bike_type: a.bikeType || null,
+    // Structure block — persisted so workout export and admin tools can
+    // read it without going back to the client cache. Nullable.
+    structure: a.structure || null,
     completed: a.completed || false,
     completed_at: a.completedAt || null,
     strava_activity_id: a.stravaActivityId || null,
@@ -412,6 +484,8 @@ function activityToClient(row) {
     durationMins: row.duration_mins,
     distanceKm: row.distance_km ? Number(row.distance_km) : null,
     effort: row.effort,
+    bikeType: row.bike_type || null,
+    structure: row.structure || null,
     completed: row.completed,
     completedAt: row.completed_at,
     stravaActivityId: row.strava_activity_id,

@@ -31,7 +31,7 @@
  * intake-recommended flow and the "+ New plan" (no recommendation) flow.
  */
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Keyboard, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Keyboard, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, useBottomInset } from '../theme';
 import DatePicker from '../components/DatePicker';
@@ -191,13 +191,32 @@ function Choice({ title, sub, highlighted, loading, disabled, unavailable, onPre
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
+// Cycling type is now multi-select — the rider taps every bike they ride
+// and Continue commits the selection. We dropped the "A bit of everything"
+// option because multi-select implies it. Indoor / trainer is included as
+// a bike option so structured indoor sessions can be scheduled by the
+// plan generator.
+//
+// Back-compat: the legacy single `cyclingType` field is still written
+// alongside the new `cyclingTypes` array — derived as the first selected
+// type (or 'mixed' when 2+). Existing goals with only `cyclingType` keep
+// working everywhere downstream.
 const CYCLING_TYPE_OPTIONS = [
-  { key: 'road',   label: 'Road',    description: 'Road cycling on tarmac' },
-  { key: 'gravel', label: 'Gravel',  description: 'Mixed surface and gravel riding' },
-  { key: 'mtb',    label: 'Mountain bike', description: 'Off-road and trail riding' },
-  { key: 'ebike',  label: 'E-bike',  description: 'Electric-assisted cycling' },
-  { key: 'mixed',  label: 'A bit of everything', description: 'Mixed — whatever the day calls for' },
+  { key: 'road',   label: 'Road',           description: 'Road cycling on tarmac' },
+  { key: 'gravel', label: 'Gravel',         description: 'Mixed surface and gravel riding' },
+  { key: 'mtb',    label: 'Mountain bike',  description: 'Off-road and trail riding' },
+  { key: 'ebike',  label: 'E-bike',         description: 'Electric-assisted cycling' },
+  { key: 'indoor', label: 'Indoor / trainer', description: 'Smart trainer or stationary bike' },
 ];
+
+// Derive a single legacy cyclingType from a list of selections. Used so
+// every downstream reader (server, BeginnerProgram, etc.) keeps reading
+// the old field. Single selection → that key. Multi → 'mixed'.
+function legacyCyclingTypeFromList(types) {
+  if (!Array.isArray(types) || types.length === 0) return null;
+  if (types.length === 1) return types[0];
+  return 'mixed';
+}
 
 // Human-readable labels for the review screen — kept close to the lookup
 // tables they summarise so any changes above show up here automatically.
@@ -254,14 +273,15 @@ export default function PlanPickerScreen({ navigation, route }) {
   const [longestRide, setLongestRide] = useState(null);
   const [customKm, setCustomKm]     = useState('');
   const [showCustomKm, setShowCustomKm] = useState(false);
-  // Cycling type captured on its own dedicated Step 2. Starts null so no
-  // option is pre-highlighted — we tried pre-selecting "Road" (the most
-  // common pick) but the highlight made the screen read as "already
-  // answered", pushing users past the question without considering it.
-  // Nothing downstream requires a non-null value mid-flow; pathways that
-  // need a default fall back to `cyclingType || 'mixed'` at the point of
-  // use (see `effectiveCyclingType` in renderReview and completeAndRoute).
-  const [cyclingType, setCyclingType] = useState(null);
+  // Cycling type captured on its own dedicated Step 2. Now multi-select —
+  // riders pick every bike they ride and Continue commits. Starts as an
+  // empty array so no option is pre-highlighted. Downstream still reads
+  // the legacy single `cyclingType` (derived via legacyCyclingTypeFromList)
+  // so existing flows continue to work; new code reads `cyclingTypes`.
+  const [cyclingTypes, setCyclingTypes] = useState([]);
+  // Legacy single value — kept as a derived for any downstream reader
+  // that hasn't been updated yet. Null until the rider picks at least one.
+  const cyclingType = legacyCyclingTypeFromList(cyclingTypes);
   // Real ISO date string (yyyy-mm-dd) when the user picks from the
   // DatePicker; null when they tap "Not sure yet". Either value advances.
   const [eventDate, setEventDate] = useState('');
@@ -389,10 +409,24 @@ export default function PlanPickerScreen({ navigation, route }) {
     });
   };
 
-  const onPickCyclingType = (key) => {
-    setCyclingType(key);
+  // Multi-select cycling type. Tapping a chip toggles it in/out of the
+  // selection array. Continue (footer button) advances. We deliberately
+  // don't auto-advance on first tap because most riders ride more than
+  // one bike type and we want them to add the others before moving on.
+  const onToggleCyclingType = (key) => {
+    setCyclingTypes(prev => {
+      const isSelected = prev.includes(key);
+      if (isSelected) return prev.filter(k => k !== key);
+      return [...prev, key];
+    });
     analytics.events.planPickerAnswered?.({ question: 'cycling_type', choice: key });
-    ackThen(key, () => advanceOrReturn(3));
+  };
+
+  // Footer Continue press from step 2 (cycling types). Kept separate from
+  // chip taps so the rider can build up the list before committing.
+  const onContinueCyclingTypes = () => {
+    if (cyclingTypes.length === 0) return;
+    advanceOrReturn(3);
   };
 
   // Longest ride lives at step 3 for non-event, step 5 for event. Either
@@ -404,6 +438,17 @@ export default function PlanPickerScreen({ navigation, route }) {
       // spinner. The highlight state is handled by showCustomKm.
       setShowCustomKm(true);
       setLongestRide(null);
+      // Scroll the newly-mounted custom-km input into view so the keyboard
+      // (which pops up immediately because the input has autoFocus) doesn't
+      // hide it. Wrapped in two RAFs to make sure the input is mounted and
+      // the layout has settled before we scroll. Combined with the
+      // KeyboardAvoidingView wrapping the screen, this keeps the input
+      // visible on every supported device.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollRef.current?.scrollToEnd({ animated: true });
+        });
+      });
       return;
     }
     setShowCustomKm(false);
@@ -538,7 +583,12 @@ export default function PlanPickerScreen({ navigation, route }) {
       // Step 2 of this screen; downstream pathways (event / beginner /
       // quick) all read this instead of re-asking on GoalSetup or
       // BeginnerProgram.
+      //
+      // We persist BOTH the new multi-select array and the legacy single
+      // string so old code paths keep working. Readers should prefer
+      // `cyclingTypes` and fall back to `cyclingType`.
       cyclingType,
+      cyclingTypes: cyclingTypes.length > 0 ? cyclingTypes : (cyclingType ? [cyclingType] : []),
     };
     const recommendedPath = computeRecommendation({ intent, longestRide: rideKey });
     intake.recommendedPath = recommendedPath;
@@ -579,6 +629,12 @@ export default function PlanPickerScreen({ navigation, route }) {
         try {
           const goal = await saveGoal({
             cyclingType: intake.cyclingType || 'mixed',
+            // Pass the full multi-select list so the goal carries every
+            // bike the rider configured. Back-compat: if the intake only
+            // has the legacy single field, wrap it as a one-element array.
+            cyclingTypes: Array.isArray(intake.cyclingTypes) && intake.cyclingTypes.length > 0
+              ? intake.cyclingTypes
+              : (intake.cyclingType ? [intake.cyclingType] : []),
             goalType: 'race',
             targetDistance: intake.targetDistance ?? null,
             targetElevation: intake.targetElevation ?? null,
@@ -666,7 +722,13 @@ export default function PlanPickerScreen({ navigation, route }) {
     if (!resumeIntake || resumedRef.current) return;
     resumedRef.current = true;
     if (resumeIntake.intent) setIntent(resumeIntake.intent);
-    if (resumeIntake.cyclingType) setCyclingType(resumeIntake.cyclingType);
+    // Hydrate cycling types from either the new array field or the legacy
+    // single field (existing intakes saved before the multi-select rollout).
+    if (Array.isArray(resumeIntake.cyclingTypes) && resumeIntake.cyclingTypes.length > 0) {
+      setCyclingTypes(resumeIntake.cyclingTypes);
+    } else if (resumeIntake.cyclingType) {
+      setCyclingTypes(resumeIntake.cyclingType === 'mixed' ? [] : [resumeIntake.cyclingType]);
+    }
     if (resumeIntake.longestRide) setLongestRide(resumeIntake.longestRide);
     if (resumeIntake.longestRideIsExact && resumeIntake.longestRideKm != null) {
       setCustomKm(String(resumeIntake.longestRideKm));
@@ -872,12 +934,22 @@ export default function PlanPickerScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.container} edges={['top']}>
+      {/* KeyboardAvoidingView wraps the whole question flow so any text input
+          (longest-ride custom km, event distance/elevation/time) stays above
+          the keyboard. iOS uses 'padding'; Android handles soft inputs via
+          the manifest by default but 'height' here keeps inset-aware screens
+          consistent. Matches the pattern used in ActivityDetailScreen. */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={[
           step === 0 ? s.landingScrollWrap : s.scrollWrap,
           { paddingBottom: step === 0 ? landingBottom : questionBottom },
         ]}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
 
@@ -930,27 +1002,45 @@ export default function PlanPickerScreen({ navigation, route }) {
           </>
         )}
 
-        {/* Q2 — cycling type. Dedicated step so it doesn't crowd the
-            intent question. Previously lived as an afterthought chip row
-            on Step 1, but it deserves its own question because it
-            changes how we describe sessions (road vs gravel vs MTB). */}
+        {/* Q2 — cycling type. Multi-select so a rider with both a road
+            and a gravel bike can tell us about both, and the plan can
+            schedule sessions across them. Indoor/trainer is included
+            here as a "bike" so structured indoor sessions appear when
+            relevant. Continue commits the selection. */}
         {step === 2 && (
           <>
             {renderQuestionHeader()}
             <Text style={s.title}>What kind of cycling?</Text>
-            <Text style={s.subtitle}>Pick whatever you ride most. Shapes how we describe your sessions.</Text>
+            <Text style={s.subtitle}>Pick everything you ride. We&apos;ll build a plan that uses them.</Text>
             <View style={s.choiceGroup}>
-              {CYCLING_TYPE_OPTIONS.map(o => (
-                <Choice
-                  key={o.key}
-                  title={o.label}
-                  sub={o.description}
-                  highlighted={cyclingType === o.key && pendingKey === null}
-                  loading={pendingKey === o.key}
-                  disabled={pendingKey !== null && pendingKey !== o.key}
-                  onPress={() => onPickCyclingType(o.key)}
-                />
-              ))}
+              {CYCLING_TYPE_OPTIONS.map(o => {
+                const selected = cyclingTypes.includes(o.key);
+                return (
+                  <Choice
+                    key={o.key}
+                    title={selected ? `${o.label}  \u2713` : o.label}
+                    sub={o.description}
+                    highlighted={selected}
+                    onPress={() => onToggleCyclingType(o.key)}
+                  />
+                );
+              })}
+            </View>
+            <View style={{ paddingHorizontal: 4, marginTop: 8 }}>
+              <TouchableOpacity
+                style={[s.primaryBtn, cyclingTypes.length === 0 && { opacity: 0.4 }]}
+                onPress={onContinueCyclingTypes}
+                disabled={cyclingTypes.length === 0}
+                activeOpacity={0.85}
+              >
+                <Text style={s.primaryBtnText}>
+                  {cyclingTypes.length === 0
+                    ? 'Pick at least one'
+                    : cyclingTypes.length === 1
+                      ? 'Continue'
+                      : `Continue with ${cyclingTypes.length} bikes`}
+                </Text>
+              </TouchableOpacity>
             </View>
           </>
         )}
@@ -1130,6 +1220,7 @@ export default function PlanPickerScreen({ navigation, route }) {
         {step === 6 && isEvent && renderReview()}
 
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 
@@ -1144,6 +1235,12 @@ export default function PlanPickerScreen({ navigation, route }) {
   function renderReview() {
     const pitch = getRecommendationPitch();
     const effectiveCyclingType = cyclingType || 'mixed';
+    // Multi-select label: join the selected types with " · ". Falls back
+    // to the legacy single-value label when the rider has only picked one
+    // (or hydrated from an old intake without `cyclingTypes`).
+    const cyclingLabel = cyclingTypes.length > 1
+      ? cyclingTypes.map(k => CYCLING_TYPE_LABEL[k] || k).join(' · ')
+      : (CYCLING_TYPE_LABEL[effectiveCyclingType] || 'Mixed');
     const longestKm = Number(String(customKm).trim());
     const longestLabel = isFinite(longestKm) && longestKm > 0
       ? `${Math.round(longestKm)} km`
@@ -1153,7 +1250,7 @@ export default function PlanPickerScreen({ navigation, route }) {
     // "kind of cycling" feels spatially close to where it was answered.
     const answerPills = [
       { field: 'intent',        label: INTENT_LABEL[intent] || 'Not set' },
-      { field: 'cyclingType',   label: CYCLING_TYPE_LABEL[effectiveCyclingType] || 'Mixed' },
+      { field: 'cyclingType',   label: cyclingLabel },
       ...(isEvent && (eventName.trim() || targetDistance || eventDate)
         ? [{
             field: 'event',

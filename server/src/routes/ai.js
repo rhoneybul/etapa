@@ -1080,6 +1080,19 @@ ${fewShotExemplar}
     ? `${longestRideKm} km (athlete told us this is their longest ride in the last 6 months — use this as the Week 1 long-ride anchor and ramp from here, rather than the generic benchmark)`
     : `~${benchmark.maxComfortableDistKm} km`}
 - Cycling type: ${goal.cyclingType || 'road'}${goal.cyclingType === 'ebike' ? ' (electric-assisted — focus on endurance and enjoyment rather than raw power. Adjust distances up since e-bikes allow longer rides at lower effort. Still include some sessions without motor assist for fitness building.)' : ''}
+${Array.isArray(goal.cyclingTypes) && goal.cyclingTypes.length > 1
+  ? `- Bike menu (athlete configured ${goal.cyclingTypes.length} bike types): ${goal.cyclingTypes.join(', ')}.
+  Tag each cycling session with a "bikeType" field that's the most appropriate
+  bike from this menu, considering surface and intensity:
+    • Long endurance / Z2 base — prefer "road" or "gravel"
+    • Threshold / VO2 / interval sessions — prefer "road" (consistent pacing)
+    • Recovery — any bike is fine; pick the one that gets the athlete out the door
+    • Bad-weather / busy-week structured sessions — prefer "indoor" if available
+    • Skill / off-road days — "mtb" or "gravel" if available
+  Aim for a healthy mix across the bike menu over a 4-week block. Don't put
+  every session on the same bike. If you can't pick confidently, leave bikeType
+  null (= rider's choice).`
+  : ''}
 - Goal: ${goal.goalType === 'race' ? 'Race preparation' : goal.goalType === 'distance' ? 'Hit a distance target' : 'General fitness improvement'}
 ${goal.eventName ? `- Event: ${goal.eventName}` : ''}
 ${goal.targetDistance ? `- Target distance: ${goal.targetDistance} km` : `- Target distance: NOT STATED. Since the athlete didn't specify, treat the implicit target as ${config.fitnessLevel === 'expert' ? 150 : config.fitnessLevel === 'advanced' ? 100 : config.fitnessLevel === 'intermediate' ? 60 : 30} km and build a plan that culminates with a ride around that distance. Title the final ride to reflect the achievement.`}
@@ -1249,6 +1262,9 @@ Field rules:
 - type: MUST be exactly "ride" or "strength". If the session involves weights, bodyweight exercises, core work, or gym work, type MUST be "strength".
 - subType: "endurance", "tempo", "intervals", "recovery", "indoor", or null for strength
 - effort: "easy", "moderate", "hard", "recovery", or "max"
+- bikeType: ${Array.isArray(goal.cyclingTypes) && goal.cyclingTypes.length > 1
+    ? `one of [${goal.cyclingTypes.map(t => `"${t}"`).join(', ')}] — pick the bike best suited to the session per the rules in the athlete profile, OR null for "rider's choice"`
+    : 'omit (athlete only configured one bike type)'}
 - distanceKm: calculated from duration × base speed × subType multiplier (see system prompt). Must be realistic — post-processing will clamp anything above the per-level hard cap. Set to null for strength sessions.
 - durationMins: appropriate for the rider's level. Beginners: 30–75 min. Intermediate: 45–120 min.
 - notes: include phase label, coaching context, and any cross-training considerations

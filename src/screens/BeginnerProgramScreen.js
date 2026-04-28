@@ -167,7 +167,16 @@ export default function BeginnerProgramScreen({ navigation, route }) {
   // was actually read by plan-gen as `cyclingType`, while the intake
   // value was being thrown away. Fall back to 'mixed' if somehow we
   // reach this screen without an intake.
-  const bikeType = intake?.cyclingType || 'mixed';
+  //
+  // Multi-bike awareness: prefer the new `cyclingTypes` array when
+  // present so the goal carries the full menu through to plan-gen. The
+  // legacy single `cyclingType` field is still derived for back-compat.
+  const cyclingTypesFromIntake = Array.isArray(intake?.cyclingTypes) && intake.cyclingTypes.length > 0
+    ? intake.cyclingTypes
+    : (intake?.cyclingType ? [intake.cyclingType] : []);
+  const bikeType = cyclingTypesFromIntake.length > 1
+    ? 'mixed'
+    : (cyclingTypesFromIntake[0] || intake?.cyclingType || 'mixed');
   const [showTips, setShowTips] = useState(false);
   const [continuing, setContinuing] = useState(false);
 
@@ -199,6 +208,10 @@ export default function BeginnerProgramScreen({ navigation, route }) {
       const chosen = GOAL_OPTIONS.find(g => g.key === goalOption) || GOAL_OPTIONS[1];
       const goal = await saveGoal({
         cyclingType: bikeType,
+        // Pass the full array so plan-gen and downstream readers can
+        // schedule across bikes. saveGoal ignores unknown fields so this
+        // is safe even before the server-side persistence lands.
+        cyclingTypes: cyclingTypesFromIntake,
         goalType: 'beginner',
         targetDistance: chosen.distance,
         targetElevation: null,

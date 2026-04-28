@@ -16,6 +16,7 @@ import { syncStravaActivities, getStravaActivitiesForWeek } from '../services/st
 import { isStravaConnected } from '../services/stravaService';
 import analytics from '../services/analyticsService';
 import CoachChatCard from '../components/CoachChatCard';
+import RecurringRideSheet from '../components/RecurringRideSheet';
 import { getCoach } from '../data/coaches';
 
 const DAY_LABELS = [
@@ -188,8 +189,10 @@ export default function PlanOverviewScreen({ navigation, route }) {
   const [goal, setGoal] = useState(null);
   const [planConfig, setPlanConfig] = useState(null);
   const [recurringRides, setRecurringRides] = useState([]);
-  const [showAddRecurring, setShowAddRecurring] = useState(false);
-  const [recurringForm, setRecurringForm] = useState({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' });
+  // RecurringRideSheet sheet state — replaces the old inline expanding
+  // form. Add: editingRide=null. Edit: editingRide=ride.
+  const [showRideSheet, setShowRideSheet] = useState(false);
+  const [editingRide, setEditingRide] = useState(null);
   const [stravaActivities, setStravaActivities] = useState([]);
   // Chart axis mode — 'km' shows weekly volume in kilometres,
   // 'time' shows weekly minutes. Toggled by the segmented control
@@ -220,28 +223,33 @@ export default function PlanOverviewScreen({ navigation, route }) {
     }
   }, [planId]);
 
-  const addRecurringRide = async () => {
-    if (!recurringForm.day) { Alert.alert('Select a day'); return; }
-    if (!recurringForm.durationMins && !recurringForm.distanceKm) { Alert.alert('Add details', 'Enter at least a duration or distance.'); return; }
-    const ride = {
-      id: Date.now().toString(36),
-      day: recurringForm.day,
-      durationMins: recurringForm.durationMins ? parseInt(recurringForm.durationMins, 10) : null,
-      distanceKm: recurringForm.distanceKm ? parseFloat(recurringForm.distanceKm) : null,
-      elevationM: recurringForm.elevationM ? parseInt(recurringForm.elevationM, 10) : null,
-      notes: recurringForm.notes || '',
-    };
-    const updated = [...recurringRides, ride];
+  const openAddRideSheet = () => { setEditingRide(null); setShowRideSheet(true); };
+  const openEditRideSheet = (ride) => { setEditingRide(ride); setShowRideSheet(true); };
+  const closeRideSheet = () => { setShowRideSheet(false); setEditingRide(null); };
+
+  // Save handler — handles both add (no id match) and edit (id match).
+  // The RecurringRideSheet has already validated the input.
+  const saveRecurringRide = async (ride) => {
+    const isNew = !recurringRides.some(r => r.id === ride.id);
+    const updated = isNew
+      ? [...recurringRides, ride]
+      : recurringRides.map(r => (r.id === ride.id ? ride : r));
     setRecurringRides(updated);
     if (planConfig) await updatePlanConfig(planConfig.id, { recurringRides: updated });
-    setRecurringForm({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' });
-    setShowAddRecurring(false);
+    closeRideSheet();
   };
 
   const removeRecurringRide = async (id) => {
     const updated = recurringRides.filter(r => r.id !== id);
     setRecurringRides(updated);
     if (planConfig) await updatePlanConfig(planConfig.id, { recurringRides: updated });
+  };
+
+  // Delete from inside the edit sheet — same as the × on the card, plus
+  // close the sheet.
+  const deleteRecurringRideFromSheet = async (id) => {
+    await removeRecurringRide(id);
+    closeRideSheet();
   };
 
   useEffect(() => { load(); }, [load]);
@@ -603,73 +611,39 @@ export default function PlanOverviewScreen({ navigation, route }) {
               </Text>
 
               {recurringRides.map(ride => (
-                <View key={ride.id} style={s.recurringCard}>
-                  <View style={s.recurringCardRow}>
-                    <View style={[s.recurringDayBadge, { backgroundColor: colors.primary + '18' }]}>
-                      <Text style={s.recurringDayBadgeText}>{DAY_LABELS.find(d => d.key === ride.day)?.short || ride.day}</Text>
+                <View key={ride.id} style={[s.recurringCard, { position: 'relative' }]}>
+                  <TouchableOpacity onPress={() => openEditRideSheet(ride)} activeOpacity={0.7}>
+                    <View style={[s.recurringCardRow, { paddingRight: 24 }]}>
+                      <View style={[s.recurringDayBadge, { backgroundColor: colors.primary + '18' }]}>
+                        <Text style={s.recurringDayBadgeText}>{DAY_LABELS.find(d => d.key === ride.day)?.short || ride.day}</Text>
+                      </View>
+                      <View style={s.recurringDetails}>
+                        {ride.durationMins && <Text style={s.recurringDetail}>{ride.durationMins} min</Text>}
+                        {ride.distanceKm && <Text style={s.recurringDetail}>{ride.distanceKm} km</Text>}
+                        {ride.elevationM && <Text style={s.recurringDetail}>{ride.elevationM}m elev</Text>}
+                      </View>
                     </View>
-                    <View style={s.recurringDetails}>
-                      {ride.durationMins && <Text style={s.recurringDetail}>{ride.durationMins} min</Text>}
-                      {ride.distanceKm && <Text style={s.recurringDetail}>{ride.distanceKm} km</Text>}
-                      {ride.elevationM && <Text style={s.recurringDetail}>{ride.elevationM}m elev</Text>}
-                    </View>
-                    <TouchableOpacity onPress={() => removeRecurringRide(ride.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Text style={s.recurringRemove}>{'\u00D7'}</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {ride.notes ? <Text style={s.recurringNotes}>{ride.notes}</Text> : null}
+                    {ride.notes ? <Text style={s.recurringNotes}>{ride.notes}</Text> : null}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ position: 'absolute', top: 8, right: 8, padding: 4 }}
+                    onPress={() => removeRecurringRide(ride.id)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityLabel="Remove this regular ride"
+                  >
+                    <Text style={s.recurringRemove}>{'\u00D7'}</Text>
+                  </TouchableOpacity>
                 </View>
               ))}
 
-              {recurringRides.length === 0 && !showAddRecurring && (
+              {recurringRides.length === 0 && (
                 <Text style={s.recurringEmpty}>No recurring rides set up yet.</Text>
               )}
 
-              {showAddRecurring ? (
-                <View style={s.recurringForm}>
-                  <Text style={s.recurringFormLabel}>Which day?</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.recurringDayScroll}>
-                    {DAY_LABELS.map(d => (
-                      <TouchableOpacity
-                        key={d.key}
-                        style={[s.recurringDayPill, recurringForm.day === d.key && s.recurringDayPillSel]}
-                        onPress={() => setRecurringForm(f => ({ ...f, day: d.key }))}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[s.recurringDayPillText, recurringForm.day === d.key && s.recurringDayPillTextSel]}>{d.short}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                  <View style={s.recurringInputRow}>
-                    <View style={s.recurringInputGroup}>
-                      <Text style={s.recurringInputLabel}>Duration</Text>
-                      <TextInput style={s.recurringInput} placeholder="mins" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={recurringForm.durationMins} onChangeText={v => setRecurringForm(f => ({ ...f, durationMins: v }))} />
-                    </View>
-                    <View style={s.recurringInputGroup}>
-                      <Text style={s.recurringInputLabel}>Distance</Text>
-                      <TextInput style={s.recurringInput} placeholder="km" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={recurringForm.distanceKm} onChangeText={v => setRecurringForm(f => ({ ...f, distanceKm: v }))} />
-                    </View>
-                    <View style={s.recurringInputGroup}>
-                      <Text style={s.recurringInputLabel}>Elevation</Text>
-                      <TextInput style={s.recurringInput} placeholder="m" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={recurringForm.elevationM} onChangeText={v => setRecurringForm(f => ({ ...f, elevationM: v }))} />
-                    </View>
-                  </View>
-                  <TextInput style={s.recurringNotesInput} placeholder="Notes (e.g. 'Friday club ride')" placeholderTextColor={colors.textFaint} value={recurringForm.notes} onChangeText={v => setRecurringForm(f => ({ ...f, notes: v }))} />
-                  <View style={s.recurringFormActions}>
-                    <TouchableOpacity style={s.recurringCancelBtn} onPress={() => { setShowAddRecurring(false); setRecurringForm({ day: null, durationMins: '', distanceKm: '', elevationM: '', notes: '' }); }}>
-                      <Text style={s.recurringCancelText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={s.recurringAddBtn} onPress={addRecurringRide}>
-                      <Text style={s.recurringAddBtnText}>Add ride</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <TouchableOpacity style={s.recurringAddTrigger} onPress={() => setShowAddRecurring(true)} activeOpacity={0.7}>
-                  <Text style={s.recurringAddTriggerPlus}>+</Text>
-                  <Text style={s.recurringAddTriggerText}>Add a recurring ride</Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity style={s.recurringAddTrigger} onPress={openAddRideSheet} activeOpacity={0.7}>
+                <Text style={s.recurringAddTriggerPlus}>+</Text>
+                <Text style={s.recurringAddTriggerText}>Add a recurring ride</Text>
+              </TouchableOpacity>
             </View>
 
             {/* Plan actions — regenerate / version history */}
@@ -709,6 +683,18 @@ export default function PlanOverviewScreen({ navigation, route }) {
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
+      <RecurringRideSheet
+        visible={showRideSheet}
+        initialValue={editingRide}
+        bikeOptions={(() => {
+          if (Array.isArray(goal?.cyclingTypes) && goal.cyclingTypes.length > 0) return goal.cyclingTypes;
+          if (goal?.cyclingType && goal.cyclingType !== 'mixed') return [goal.cyclingType];
+          return [];
+        })()}
+        onSave={saveRecurringRide}
+        onDelete={deleteRecurringRideFromSheet}
+        onCancel={closeRideSheet}
+      />
     </View>
   );
 }

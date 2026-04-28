@@ -457,7 +457,7 @@ a:hover { color: var(--accent-hover); }
     <dl class="meta">
       <div>
         <dt>Latest update</dt>
-        <dd class="accent">27 April 2026</dd>
+        <dd class="accent">28 April 2026</dd>
       </div>
       <div>
         <dt>Available on</dt>
@@ -469,6 +469,131 @@ a:hover { color: var(--accent-hover); }
       </div>
     </dl>
   </header>
+
+  <!-- ============================================================
+       RELEASE · 28 April 2026
+       Multi-bike awareness, kinder forms, and a fix for the keyboard
+       hiding the field you're typing into. Add newer entries ABOVE
+       this block.
+       ============================================================ -->
+  <section class="release">
+    <div class="release-head">
+      <div class="release-date"><span class="dot"></span>28 April 2026</div>
+      <h2 class="release-headline">
+        <span>Tell us about every bike you ride.</span>
+        <span>Swap a session onto a different one — we'll do the maths.</span>
+        <span>Add a club ride without fighting the keyboard.</span>
+      </h2>
+    </div>
+
+    <!-- ───── Feature 1: Multi-bike intake + per-session swap ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">Multi-bike training</div>
+        <h3>Road, gravel, MTB, e-bike, indoor — pick everything you ride</h3>
+        <p>The "what kind of cycling?" question used to make you pick one. Now you tap every bike in your shed — and your plan understands what each one's good for. Long endurance days lean road or gravel. Threshold intervals pick the bike that lets you hold a steady pace. Recovery rides go on whatever's easiest to get out the door on. Bad-weather day? An indoor option will already be in the rotation.</p>
+        <p>Inside any session, an Edit tap reveals a Bike row with chips for everything you set up. Tap a different chip and we suggest a sensible distance and duration adjustment — same effort, same time, different kilometres — so the workout still does what it's meant to. We held a quick coach Q&amp;A on the right multipliers (gravel ≈ 0.75× the distance, MTB ≈ 0.65×, indoor drops distance entirely, e-bike ≈ 1.05×) and baked them into the suggestion sheet. If you'd rather hold the original 45 km on gravel as a stretch goal, there's a one-tap "Keep original" escape hatch.</p>
+        <p>And for combos that just don't work — road threshold intervals onto an MTB, say — we say so. Surface noise breaks the stimulus. The sheet flips into a "this swap won't work well" mode with Reschedule / Pick another bike CTAs. Override is still right there if you really mean it; we just won't pretend it's the same session.</p>
+      </div>
+      <div class="feature-shot"
+           data-caption="Activity detail — Edit mode showing the BIKE chip row mid-tap, opening the swap-suggestion sheet that compares the original and adjusted numbers side by side.">
+        <img src="/whats-new-assets/screens/bike-swap-suggestion.png" alt="Bike swap confirmation sheet with adjusted distance and duration" />
+      </div>
+    </div>
+
+    <!-- ───── Feature 2: Recurring rides — bottom sheet + tap to edit ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">Regular rides</div>
+        <h3>Your weekly club ride deserves a kinder form</h3>
+        <p>Adding a Friday club ride used to mean fighting an inline form that scrolled itself off-screen the moment you tapped a field. We pulled that form out into a proper bottom sheet: one focused screen, sticky Save / Cancel buttons that never disappear behind the keyboard, and fields you can actually see while you're typing into them.</p>
+        <p>Tapping an already-added ride now opens the same sheet, pre-populated with that ride's details — so you can move a club ride from Friday to Saturday or bump the distance from 45 km to 50 km without deleting it and starting over. The little × on the card still removes a ride; the rest of the card is now a tap target for editing. A "Delete this ride" link sits inside the editor too for anyone who looked there first.</p>
+        <p>If you set up more than one bike type at intake, the sheet also lets you tag a regular ride with a specific bike — handy for "Friday is always the gravel ride."</p>
+      </div>
+      <div class="feature-shot"
+           data-caption="PlanConfig step 3 — the new bottom-sheet form open over the list of already-added regular rides, with the day pills, duration/distance fields, and the bike chip row visible.">
+        <img src="/whats-new-assets/screens/recurring-ride-sheet.png" alt="Bottom-sheet form for adding a regular ride" />
+      </div>
+    </div>
+
+    <!-- ───── Feature 3: Longest-ride keyboard fix ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">Plan picker</div>
+        <h3>The keyboard no longer hides the field you're typing into</h3>
+        <p>On the longest-ride question, picking "Enter exact" used to mount the input right where the keyboard was about to appear — so the field you needed to type into vanished behind it. The whole intake flow now lifts above the keyboard the way Activity Detail already does, and the custom-km field scrolls itself into view the moment it mounts. Same fix applied to the event-details step's distance, elevation, and time inputs.</p>
+      </div>
+      <div class="feature-shot"
+           data-caption="Plan picker — longest ride question with 'Enter exact' selected, the km input visible above an iOS keyboard, and the Continue button reachable.">
+        <img src="/whats-new-assets/screens/plan-picker-longest-ride.png" alt="Longest ride custom km input lifted above the keyboard" />
+      </div>
+    </div>
+
+    <!-- ───── Feature 4: Send indoor sessions to a smart trainer ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">Indoor sessions</div>
+        <h3>Take your indoor session to Zwift, Wahoo SYSTM, Rouvy or TrainerRoad</h3>
+        <p>Open any indoor session and you'll see a new pink "Send to your trainer" card above your coach. Tap it, pick a format, and we generate a real structured workout file — warm-up, intervals, cool-down, with power targets as a percentage of your FTP so the trainer drives resistance for you in ERG mode. We export the same shape the indoor app would have asked you to build by hand.</p>
+        <p>Two formats:</p>
+        <ul style="margin: 8px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
+          <li><strong style="color: var(--fg);">.zwo</strong> — the modern standard. Read by Zwift, Wahoo SYSTM, Rouvy, MyWhoosh, TrainerRoad, intervals.icu, and most others.</li>
+          <li><strong style="color: var(--fg);">.mrc</strong> — universal text-based fallback. Read by CompuTrainer / PerfPro / ErgVideo / GoldenCheetah, plus any other older app that doesn't take .zwo.</li>
+        </ul>
+
+        <p style="margin-top: 16px;">Two ways the file actually reaches your trainer app — which path you take depends on the app:</p>
+
+        <p><strong style="color: var(--fg);">Direct from the share sheet</strong> — works today on iOS for apps that registered .zwo as a file type:</p>
+        <ul style="margin: 4px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
+          <li><strong style="color: var(--fg);">Zwift (iPad / iPhone)</strong> — tap the card → "Zwift / Wahoo SYSTM / Rouvy (.zwo)" → on the share sheet pick <em>Copy to Zwift</em>. The workout appears under <em>Custom Workouts &gt; Etapa</em> next time you fire up Zwift on any device signed into the same account.</li>
+          <li><strong style="color: var(--fg);">MyWhoosh</strong> — same flow, "Open in MyWhoosh" lands it in your custom workouts.</li>
+        </ul>
+
+        <p style="margin-top: 14px;"><strong style="color: var(--fg);">Save to Files, then import on the web</strong> — the path for apps whose mobile clients don't take .zwo directly. Tap <em>Save to Files</em> in the share sheet, drop the file in iCloud Drive, then on the app's web dashboard:</p>
+        <ul style="margin: 4px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
+          <li><strong style="color: var(--fg);">Wahoo SYSTM</strong> — sign in at <em>systm.wahoofitness.com</em> → <em>Workouts</em> → <em>Import</em>. The session syncs to your phone the next time you open SYSTM.</li>
+          <li><strong style="color: var(--fg);">Rouvy</strong> — sign in at <em>my.rouvy.com</em> → <em>Workouts</em> → <em>Add</em> → upload the .zwo. Syncs to mobile / desktop on next launch.</li>
+          <li><strong style="color: var(--fg);">TrainerRoad</strong> — sign in at <em>trainerroad.com</em> → <em>Workouts &gt; Workout Creator &gt; Import</em>.</li>
+          <li><strong style="color: var(--fg);">intervals.icu</strong> — sign in at <em>intervals.icu</em> → <em>Workouts</em> → <em>Import</em> → drop the .zwo. Free, and it'll then push to a paired Garmin / Wahoo head unit on next sync.</li>
+          <li><strong style="color: var(--fg);">CompuTrainer / PerfPro / older apps</strong> — choose <em>.mrc</em> instead of <em>.zwo</em>. Same warm-up / main / cool-down shape, plain-text format every legacy app reads.</li>
+        </ul>
+
+        <p style="margin-top: 16px;"><strong style="color: var(--fg);">On Android the flow is "download then web import" for everyone.</strong> Most Android trainer apps don't register .zwo as a file type, so Android's share sheet won't usually offer "Open in Zwift" the way iOS does. Tap the export, your browser downloads the file to your phone, then sign in to the app's web dashboard (Zwift, SYSTM, Rouvy, TrainerRoad, intervals.icu) and import from there. Workouts sync to the mobile app on next launch. Etapa shows you a one-time popup explaining this when you first tap the export button — there's a "Don't show this again" checkbox if you'd rather not see it each time.</p>
+
+        <p style="margin-top: 16px;">A few more things worth knowing up front. ERG-mode resistance only works if your trainer app knows your FTP — set it once in the app you ride with, not in Etapa, and every imported workout will play back at the right watts. Garmin Edge and Wahoo ELEMNT head units don't read .zwo directly: route it via Zwift / SYSTM / intervals.icu and let one of those push to the head unit on next sync. Native Garmin Connect Workout export (.fit) and a TrainingPeaks bridge are next on the roadmap.</p>
+
+        <p style="margin-top: 16px;">Privacy note: the export URL is signed with a per-server secret and expires in five minutes. It's scoped to a single (rider, plan, session, format) tuple — it can't be re-used to fetch any other workout, and tampering with the URL (changing the activity id, the user, or the format) fails the signature check.</p>
+      </div>
+      <div class="feature-shot"
+           data-caption="Activity detail (indoor session) — pink 'Send to your trainer' card above the coach card; tapping it opens the format picker action sheet.">
+        <img src="/whats-new-assets/screens/send-to-trainer-card.png" alt="Send to trainer card on an indoor session" />
+      </div>
+    </div>
+
+    <!-- ───── Polish pass ───── -->
+    <div class="subsection">
+      <div class="subsection-label"><span class="dot"></span>Polish pass</div>
+      <h4>Smaller things you'll notice without quite noticing</h4>
+      <ul class="touches">
+        <li><strong>Bike menu in the review</strong>The plan-picker review screen now shows every bike you selected on one line ("Road · Gravel"), not just the first.</li>
+        <li><strong>Recurring rides on plan overview</strong>The same kinder bottom sheet replaces the inline form on Plan Overview's recurring-rides section, so editing your weekly group ride works the same way after your plan is built.</li>
+        <li><strong>Indoor as a first-class bike</strong>"Indoor / trainer" is now a real bike type, not a hidden afterthought. If you pick it at intake, your plan can schedule structured indoor sessions alongside your outdoor rides.</li>
+        <li><strong>Bike row hides when it isn't useful</strong>If you only set up one bike, you won't see a Bike chip row in your sessions — there's nothing to swap to.</li>
+        <li><strong>Session breakdowns now persist</strong>If you've tapped "Explain this session" on a hard ride, the warm-up / main / cool-down breakdown stays attached to that session — no more re-generating it on the next visit, and it powers the new workout export.</li>
+      </ul>
+    </div>
+
+    <!-- ───── Bugs squashed ───── -->
+    <div class="bugs">
+      <div class="bugs-label">Bugs squashed</div>
+      <ul>
+        <li>Adding a regular ride no longer auto-scrolls the form away from the field you're trying to fill in.</li>
+        <li>Custom-km input on the longest-ride question is no longer hidden by the keyboard on smaller iPhones.</li>
+        <li>Editing a regular ride's day correctly frees up the old day on the weekly grid and rebalances the new one — no more orphaned outdoor placements.</li>
+        <li>Activity-detail edit save now round-trips bike type through the server, so swaps stick on every device signed into the same account.</li>
+      </ul>
+    </div>
+  </section>
 
   <!-- ============================================================
        RELEASE · 27 April 2026

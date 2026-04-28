@@ -121,8 +121,12 @@ export default function PlanSelectionScreen({ navigation, route }) {
       const goal = await saveGoal({
         // Honour the cyclingType the user picked on PlanPicker Step 1.
         // Falls back to 'mixed' for the rare case they arrive here
-        // without an intake.
+        // without an intake. Multi-select rollout: also pass the array
+        // for back-compatible downstream reads.
         cyclingType: intake?.cyclingType || 'mixed',
+        cyclingTypes: Array.isArray(intake?.cyclingTypes) && intake.cyclingTypes.length > 0
+          ? intake.cyclingTypes
+          : (intake?.cyclingType ? [intake.cyclingType] : []),
         goalType: 'improve',
         planName: 'Keep improving',
         targetDistance: null,

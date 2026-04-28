@@ -13,9 +13,12 @@
     "release:build": "bash scripts/release.sh build",
     "release:minor": "bash scripts/release.sh minor",
     "release:major": "bash scripts/release.sh major",
-    "test": "npm --prefix server test && node tests/rideSpeedRules.test.js",
+    "test": "npm --prefix server test && node tests/rideSpeedRules.test.js && node tests/bikeSwap.test.js && node tests/workoutExport.test.js && node tests/exportSigning.test.js",
     "test:api": "npm --prefix server test",
     "test:speed": "node tests/rideSpeedRules.test.js",
+    "test:bike-swap": "node tests/bikeSwap.test.js",
+    "test:workout-export": "node tests/workoutExport.test.js",
+    "test:export-signing": "node tests/exportSigning.test.js",
     "test:plans": "node --import ./tests/loader.mjs tests/planGenerator.test.js",
     "test:e2e": "maestro test .maestro/",
     "postinstall": "patch-package"

@@ -43,7 +43,6 @@ async function authMiddleware(req, res, next) {
   if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Missing or invalid Authorization header' });
   }
-
   const token = authHeader.slice(7);
 
   const { data: { user }, error } = await supabase.auth.getUser(token);
