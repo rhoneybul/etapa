@@ -20,6 +20,8 @@ const { normaliseActivities } = require('../lib/rideSpeedRules');
 const planPostProcessors = require('../lib/planPostProcessors');
 const { buildStructureFor, isValidStructure, shouldHaveStructure } = require('../lib/sessionStructure');
 const planGenLogger = require('../lib/planGenLogger');
+const { notify: notifySlack } = require('../lib/slack');
+const { notifyNewUserOnce } = require('../lib/userLifecycle');
 const crypto = require('crypto');
 
 const getAnthropicKey = () => process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY || null;
@@ -615,6 +617,187 @@ Warmup + main total work + cooldown should roughly equal ${activity.durationMins
     const fallback = buildStructureFor(activity);
     if (fallback) return res.json({ structure: fallback, fallback: true });
     res.status(500).json({ error: 'Failed to explain activity', detail: err.message });
+  }
+});
+
+// ── POST /api/ai/explain-tips ──────────────────────────────────────────────
+// AI-generated, per-session ride tips. v1 was a deterministic JS
+// template (`generateRideTips` in ActivityDetailScreen) — fast and free
+// but the same six bullets every time, no awareness of session
+// structure, rider goal, or sub-type nuance.
+//
+// Flow:
+//   1. Look up the activity scoped to req.user.id.
+//   2. If activities.tips is already populated → return cached.
+//   3. Otherwise call Claude Haiku 4.5 with strict JSON-only output and
+//      a hard icon allowlist. Apply medical-drift sanitiser. Persist on
+//      the row. Return.
+//   4. On any failure path, fall back to the deterministic generator —
+//      every rider should still see a reasonable card.
+//
+// Auth: standard req.user middleware. The activity is fetched with the
+// user_id filter so we never explain someone else's session.
+//
+// Caching: the cached payload is keyed implicitly by activities.id, so
+// editing the activity (e.g. swapping bike type, changing duration) is
+// the rider's signal to regenerate — clients should null out
+// activity.tips when they save material changes. PATCH endpoints don't
+// auto-clear today; we'll add that as a follow-up if regenerations
+// prove stale in practice.
+const { sanitiseTips, buildDeterministicTips, buildTipsPrompt } = require('../lib/rideTips');
+
+router.post('/explain-tips', async (req, res) => {
+  if (await checkAndBlockIfOverCap(req, res, { feature: 'explain_tips' })) return;
+
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+  const { activityId, force } = req.body || {};
+  if (!activityId) return res.status(400).json({ error: 'Missing activityId' });
+
+  try {
+    // 1. Fetch the activity, scoped to this user. Pull the goal too so
+    //    the prompt has rider context — we read it via the plan row to
+    //    avoid an extra round-trip on every request.
+    const { data: activityRow, error: actErr } = await supabase
+      .from('activities')
+      .select('*')
+      .eq('id', activityId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (actErr) throw actErr;
+    if (!activityRow) return res.status(404).json({ error: 'Activity not found' });
+
+    // 2. Cache hit? Skip Claude entirely. `force=true` lets the client
+    //    bust the cache (used when the rider edits the activity).
+    if (!force && Array.isArray(activityRow.tips) && activityRow.tips.length > 0) {
+      return res.json({ tips: activityRow.tips, cached: true });
+    }
+
+    // 3. Sanity gate — same as workout export. If the session has
+    //    neither structure nor a duration, there's nothing concrete to
+    //    tip on; fall back to the deterministic generator and don't
+    //    burn tokens. (Most rides have at least durationMins.)
+    const activityForPrompt = {
+      id: activityRow.id,
+      title: activityRow.title,
+      description: activityRow.description,
+      subType: activityRow.sub_type,
+      durationMins: activityRow.duration_mins,
+      distanceKm: activityRow.distance_km ? Number(activityRow.distance_km) : null,
+      effort: activityRow.effort,
+      bikeType: activityRow.bike_type,
+      structure: activityRow.structure,
+    };
+
+    if (!activityForPrompt.structure && !activityForPrompt.durationMins) {
+      const fallback = buildDeterministicTips(activityForPrompt);
+      return res.json({ tips: fallback, fallback: true, reason: 'no_structure_or_duration' });
+    }
+
+    // Pull the goal off the plan for prompt context (best-effort —
+    // missing goal is fine).
+    let goal = null;
+    if (activityRow.plan_id) {
+      const { data: planRow } = await supabase
+        .from('plans')
+        .select('goal')
+        .eq('id', activityRow.plan_id)
+        .eq('user_id', userId)
+        .maybeSingle();
+      goal = planRow?.goal || null;
+    }
+
+    const apiKey = getAnthropicKey();
+    if (!apiKey) {
+      const fallback = buildDeterministicTips(activityForPrompt);
+      return res.json({ tips: fallback, fallback: true, reason: 'ai_not_configured' });
+    }
+
+    const prompt = buildTipsPrompt(activityForPrompt, goal, null);
+    const _claudeModel = 'claude-haiku-4-5-20251001';
+    const _claudeStartedAt = Date.now();
+
+    let response;
+    try {
+      response = await _fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: _claudeModel,
+          max_tokens: 1500,
+          system: cachedSystem(COACH_SYSTEM_PROMPT),
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+    } catch (err) {
+      console.error('[explain-tips] fetch failed:', err);
+      const fallback = buildDeterministicTips(activityForPrompt);
+      return res.json({ tips: fallback, fallback: true, reason: 'fetch_error' });
+    }
+
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => '');
+      console.error('Anthropic API error (explain-tips):', response.status, errBody);
+      logClaudeUsage({
+        userId, feature: 'explain_tips', model: _claudeModel,
+        data: {}, response, durationMs: Date.now() - _claudeStartedAt,
+        status: 'api_error', metadata: { activityId, http: response.status },
+      });
+      const fallback = buildDeterministicTips(activityForPrompt);
+      return res.json({ tips: fallback, fallback: true, reason: 'ai_api_error' });
+    }
+
+    const data = await response.json();
+    logClaudeUsage({
+      userId, feature: 'explain_tips', model: _claudeModel,
+      data, response, durationMs: Date.now() - _claudeStartedAt,
+      metadata: { activityId },
+    });
+
+    const text = data?.content?.[0]?.text || '';
+    // Be forgiving with parsing — the model occasionally wraps the array
+    // in prose or a code fence even when told not to.
+    const arrayMatch = text.match(/\[[\s\S]*\]/);
+    if (!arrayMatch) {
+      const fallback = buildDeterministicTips(activityForPrompt);
+      return res.json({ tips: fallback, fallback: true, reason: 'no_json_array' });
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(arrayMatch[0]);
+    } catch {
+      const fallback = buildDeterministicTips(activityForPrompt);
+      return res.json({ tips: fallback, fallback: true, reason: 'json_parse_failed' });
+    }
+
+    const tips = sanitiseTips(parsed);
+    if (!tips.length) {
+      const fallback = buildDeterministicTips(activityForPrompt);
+      return res.json({ tips: fallback, fallback: true, reason: 'empty_after_sanitise' });
+    }
+
+    // 4. Cache on the row. Best-effort — if the write fails we still
+    //    return the tips; the next view will just regenerate.
+    const { error: updErr } = await supabase
+      .from('activities')
+      .update({ tips })
+      .eq('id', activityId)
+      .eq('user_id', userId);
+    if (updErr) {
+      console.warn('[explain-tips] cache write failed:', updErr.message);
+    }
+
+    res.json({ tips, cached: false, sanitised: !!tips._sanitised });
+  } catch (err) {
+    console.error('[explain-tips] unexpected error:', err);
+    res.status(500).json({ error: 'Failed to generate tips', detail: err.message });
   }
 });
 
@@ -2125,7 +2308,19 @@ Never, ever write "I'll" / "I've" / "I'm" + a verb of change ("shift", "move", "
           title: a.title, description: a.description, notes: a.notes,
           durationMins: a.durationMins, distanceKm: a.distanceKm, effort: a.effort,
           bikeType: a.bikeType, completed: a.completed,
+          structure: a.structure || null,
         }, null, 2)}\n`;
+
+        // Cached ride tips. These are the AI-generated bullets the
+        // rider has already seen on the activity detail screen
+        // (warm-up / hydration / fuelling / pacing / cool-down /
+        // recovery / injury). Surface them so the coach can build on
+        // them rather than re-issue identical advice when asked
+        // generic questions like "how should I fuel this?"
+        if (Array.isArray(a.tips) && a.tips.length > 0) {
+          systemPrompt += `\nThe rider has already seen these ride tips for this session. Build on them — answer follow-ups, adjust them to the rider's specific question, or expand them with detail. Don't restate the whole list verbatim if the rider hasn't asked for it.\n`;
+          systemPrompt += `Tips already shown: ${JSON.stringify(a.tips, null, 2)}\n`;
+        }
       }
 
       // Full activities with IDs for modification capability
@@ -2423,7 +2618,17 @@ Never, ever write "I'll" / "I've" / "I'm" + a verb of change ("shift", "move", "
       title: a.title, description: a.description, notes: a.notes,
       durationMins: a.durationMins, distanceKm: a.distanceKm, effort: a.effort,
       bikeType: a.bikeType, completed: a.completed,
+      structure: a.structure || null,
     }, null, 2)}\n`;
+
+    // Cached AI ride tips already shown to the rider on the activity
+    // detail screen. Surface them so the coach builds on them rather
+    // than restating them. See the matching block in the v1 sync
+    // coach-chat handler above.
+    if (Array.isArray(a.tips) && a.tips.length > 0) {
+      systemPrompt += `\nThe rider has already seen these ride tips for this session. Build on them — answer follow-ups, adjust them to the rider's specific question, or expand them with detail. Don't restate the whole list verbatim if the rider hasn't asked for it.\n`;
+      systemPrompt += `Tips already shown: ${JSON.stringify(a.tips, null, 2)}\n`;
+    }
   }
   if (context.allActivities && context.allActivities.length > 0) {
     systemPrompt += `\n## All plan activities (with IDs — use these when modifying)\n`;
@@ -4098,6 +4303,36 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
         type: 'plan_ready',
       }).catch(err => console.error(`[async-gen] Push notification error:`, err));
     }
+
+    // ── Slack: plan creation success ───────────────────────────────────
+    // Fires once per generated plan. Gives the team a real-time signal
+    // for adoption + a sanity check that generation isn't silently
+    // failing somewhere. Includes the rider identity, plan shape,
+    // model used, and duration so it's actionable not just noise.
+    // notifyNewUserOnce is also called here as a belt-and-braces signup
+    // ping — if the rider somehow got this far without hitting any of
+    // the other touchpoints, this catches them.
+    try {
+      let riderEmail = null;
+      let riderName = null;
+      try {
+        const { data } = await supabase.auth.admin.getUserById(userId);
+        riderEmail = data?.user?.email || null;
+        riderName = data?.user?.user_metadata?.full_name || data?.user?.user_metadata?.name || null;
+      } catch {}
+      const durationSec = Math.round((Date.now() - job.createdAt) / 1000);
+      const summary = [
+        `*Plan ready* — ${riderName || riderEmail || `user ${userId.slice(0, 8)}…`}`,
+        `${plan?.name || 'training plan'}`,
+        `${activities.length} sessions / ${plan?.weeks || '?'} wks`,
+        `${durationSec}s · \`${(job.modelOverride || 'claude-sonnet-4-6').replace('claude-', '')}\``,
+        job.retryAttempted ? '· retried' : null,
+      ].filter(Boolean).join(' — ');
+      notifySlack(summary, { channel: 'plans' }).catch(() => {});
+      notifyNewUserOnce(userId, riderEmail, 'plan_generated').catch(() => {});
+    } catch (e) {
+      console.warn('[async-gen] plan-success Slack failed:', e?.message);
+    }
   } catch (err) {
     clearInterval(progressInterval);
     console.error(`[async-gen] Job ${jobId} error:`, err);
@@ -4114,6 +4349,31 @@ async function runAsyncGeneration(jobId, apiKey, goal, config, userId, opts = {}
           progress: 'Something went wrong',
           duration_ms: Date.now() - job.createdAt,
         });
+      }
+
+      // ── Slack: plan creation failure ───────────────────────────────
+      // We deliberately notify on failures too — silent failures are
+      // the worst kind for an indie team. Include rider identity,
+      // failure reason (truncated), and the duration before failure
+      // so we can spot patterns (e.g. "always fails at 30s = network
+      // timeout" vs "always fails immediately = bad config").
+      try {
+        let riderEmail = null;
+        try {
+          const { data } = await supabase.auth.admin.getUserById(userId);
+          riderEmail = data?.user?.email || null;
+        } catch {}
+        const durationSec = Math.round((Date.now() - job.createdAt) / 1000);
+        const errSnippet = String(err.message || 'unknown error').slice(0, 200);
+        const summary = [
+          `*Plan generation FAILED* — ${riderEmail || `user ${userId.slice(0, 8)}…`}`,
+          `\`${errSnippet}\``,
+          `after ${durationSec}s`,
+          job.retryAttempted ? '· retried' : null,
+        ].filter(Boolean).join(' — ');
+        notifySlack(summary, { channel: 'plans' }).catch(() => {});
+      } catch (e) {
+        console.warn('[async-gen] plan-failure Slack failed:', e?.message);
       }
     }
   }

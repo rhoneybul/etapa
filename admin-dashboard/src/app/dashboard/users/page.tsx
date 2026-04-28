@@ -95,6 +95,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [sendingCheckin, setSendingCheckin] = useState<string | null>(null);
+  const [sendingWeekly, setSendingWeekly] = useState<string | null>(null);
 
   const fetchUsers = () => {
     setLoading(true);
@@ -153,6 +154,39 @@ export default function UsersPage() {
       console.error(err);
     } finally {
       setSendingCheckin(null);
+    }
+  };
+
+  // Manually fire the structured weekly check-in (the questionnaire +
+  // AI-suggestions ritual). Distinct from handleSendCheckin which sends
+  // the older post-session coach ping. Server-side dedupe means hitting
+  // this twice in the same week won't pile up extra check-ins.
+  const handleSendWeeklyCheckin = async (user: User) => {
+    if (!window.confirm(
+      `Send a weekly check-in to ${user.name || user.email}?\n\nThis fires a push notification asking them to answer five quick questions. The coach will then propose changes for next week.`
+    )) return;
+    setSendingWeekly(user.id);
+    try {
+      const res = await fetch(`/api/users/${user.id}/weekly-checkin`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        if (data.deduped) {
+          alert(`Already a check-in for this week — push not re-sent.`);
+        } else {
+          alert(`Weekly check-in sent. Push notification on its way.`);
+        }
+      } else if (data.error === 'no_active_plan' || /no_active_plan/.test(data.error || '')) {
+        alert(`Can't send: this user has no active plan.`);
+      } else if (data.error === 'plan_complete' || /plan_complete/.test(data.error || '')) {
+        alert(`Can't send: this user's plan is already complete.`);
+      } else {
+        alert(`Failed: ${data.error || "Unknown error"}`);
+      }
+    } catch (err) {
+      alert("Failed to send weekly check-in. Check the console for details.");
+      console.error(err);
+    } finally {
+      setSendingWeekly(null);
     }
   };
 
@@ -233,12 +267,20 @@ export default function UsersPage() {
           { key: "actions", label: "", render: (u: User) => (
             <div className="flex items-center gap-3">
               <button
+                onClick={() => handleSendWeeklyCheckin(u)}
+                disabled={sendingWeekly === u.id}
+                className="text-xs text-etapa-primary hover:text-amber-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Send weekly check-in (questionnaire + AI suggestions)"
+              >
+                {sendingWeekly === u.id ? "Sending..." : "Weekly"}
+              </button>
+              <button
                 onClick={() => handleSendCheckin(u)}
                 disabled={sendingCheckin === u.id}
-                className="text-xs text-etapa-primary hover:text-amber-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                title="Send coach check-in"
+                className="text-xs text-etapa-textMid hover:text-etapa-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Send post-session coach ping (older check-in flow)"
               >
-                {sendingCheckin === u.id ? "Sending..." : "Check-in"}
+                {sendingCheckin === u.id ? "Sending..." : "Ping"}
               </button>
               <button
                 onClick={() => handleDelete(u)}

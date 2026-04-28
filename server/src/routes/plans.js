@@ -3,6 +3,8 @@ const { supabase } = require('../lib/supabase');
 const rateLimits = require('../lib/rateLimits');
 const { toZwo, toMrc, suggestedFilename } = require('../lib/workoutExport');
 const { signExportUrl } = require('../lib/exportSigning');
+const { notifyNewUserOnce } = require('../lib/userLifecycle');
+const { notify: notifySlack } = require('../lib/slack');
 const router = Router();
 
 // GET /api/plans — list user's plans with activities
@@ -74,6 +76,10 @@ router.post('/', async (req, res, next) => {
       const { error: actErr } = await supabase.from('activities').upsert(actRows, { onConflict: 'id' });
       if (actErr) throw actErr;
     }
+
+    // Belt-and-braces signup ping — riders who declined push and skipped
+    // settings still trigger the Slack on first plan creation. Idempotent.
+    notifyNewUserOnce(userId, req.user?.email, 'plan_created').catch(() => {});
 
     res.status(201).json({ id: plan.id });
   } catch (err) { next(err); }
@@ -150,6 +156,27 @@ router.patch('/:planId/activities/:activityId', async (req, res, next) => {
     // Structure (warmup/main/cooldown breakdown). Persisted so the
     // workout export endpoint can read it. Nullable.
     if (b.structure !== undefined)   updates.structure = b.structure || null;
+    // Cached AI ride tips. Two paths in:
+    //   - explicit { tips: [...] } from the client after a fresh
+    //     /api/ai/explain-tips call (we round-trip the cache so it
+    //     survives a normal updateActivity merge).
+    //   - explicit { tips: null } to bust the cache after a material
+    //     edit (duration / structure / bike).
+    if (b.tips !== undefined)        updates.tips = b.tips || null;
+
+    // Heuristic cache-bust: if any material field changes (duration /
+    // structure / bike type / effort) and the client didn't already
+    // null-out tips, clear them so the next view regenerates against
+    // the new shape. Otherwise riders see stale advice for a session
+    // that's been retuned.
+    const materialEdit =
+      b.durationMins !== undefined ||
+      b.structure !== undefined ||
+      b.bikeType !== undefined ||
+      b.effort !== undefined;
+    if (materialEdit && b.tips === undefined) {
+      updates.tips = null;
+    }
 
     const { error } = await supabase
       .from('activities')
@@ -463,6 +490,11 @@ function activityToRow(a, userId, planId) {
     // Structure block — persisted so workout export and admin tools can
     // read it without going back to the client cache. Nullable.
     structure: a.structure || null,
+    // Cached AI-generated ride tips (POST /api/ai/explain-tips). Nullable
+    // — populated lazily on first view, kept on the row so subsequent
+    // opens skip the Claude call. We pass it through round-tripping to
+    // avoid wiping the cache on a normal client save.
+    tips: a.tips || null,
     completed: a.completed || false,
     completed_at: a.completedAt || null,
     strava_activity_id: a.stravaActivityId || null,
@@ -486,6 +518,7 @@ function activityToClient(row) {
     effort: row.effort,
     bikeType: row.bike_type || null,
     structure: row.structure || null,
+    tips: row.tips || null,
     completed: row.completed,
     completedAt: row.completed_at,
     stravaActivityId: row.strava_activity_id,

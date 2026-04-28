@@ -627,6 +627,40 @@ export async function explainActivity(activity, goal) {
 }
 
 /**
+ * Fetch (or generate) AI-powered ride tips for a single activity.
+ *
+ * The server caches the tips array on activities.tips after first
+ * generation, so the second open is a fetch-from-DB, not a fresh Claude
+ * call. Returns the array on success, null on failure — caller should
+ * fall back to the deterministic generator on null so the rider always
+ * sees something.
+ *
+ * Pass `force: true` to bust the server-side cache (used after the
+ * rider edits the activity and the cached tips no longer match the
+ * session shape).
+ */
+export async function explainTips(activityId, { force } = {}) {
+  if (!activityId) return null;
+  const serverUrl = getServerUrl();
+  if (!serverUrl) return null;
+
+  try {
+    const authHeaders = await getAuthHeaders();
+    const response = await fetch(`${serverUrl}/api/ai/explain-tips`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ activityId, force: !!force }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return Array.isArray(data?.tips) ? data.tips : null;
+  } catch (err) {
+    console.warn('explainTips failed:', err);
+    return null;
+  }
+}
+
+/**
  * Adjust a week's existing activities when an organised ride is added.
  * Calls the server AI to decide what to reduce/shift; falls back to
  * a simple local heuristic (reduce the easiest ride's volume by ~20%).

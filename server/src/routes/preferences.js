@@ -3,6 +3,7 @@
  */
 const express = require('express');
 const { supabase } = require('../lib/supabase');
+const { notifyNewUserOnce } = require('../lib/userLifecycle');
 const router = express.Router();
 
 // ── GET /api/preferences ────────────────────────────────────────────────────
@@ -64,6 +65,13 @@ router.put('/', async (req, res) => {
       .single();
 
     if (error) throw error;
+
+    // First-touch Slack ping. Idempotent — fires once per user across
+    // all paths that call notifyNewUserOnce. Particularly useful for
+    // riders who declined push permissions and so never hit
+    // /api/notifications/register-token.
+    notifyNewUserOnce(userId, req.user?.email, 'preferences').catch(() => {});
+
     res.json(data);
   } catch (err) {
     console.error('[preferences] Update error:', err);

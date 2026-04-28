@@ -1242,6 +1242,37 @@ export default function SettingsScreen({ navigation }) {
           )}
         </View>
 
+        {/* Send-to-trainer / export prefs. Single toggle for the
+            "show export instructions next time" affordance, so a rider
+            who opted out of the modal can bring it back without
+            digging through the activity-detail edit flow. */}
+        <Text style={s.sectionLabel}>EXPORT TO TRAINER</Text>
+        <View style={s.card}>
+          <View style={s.row}>
+            <View style={s.rowLeft}>
+              <View>
+                <Text style={s.rowTitle}>Show export instructions</Text>
+                <Text style={s.rowSub}>
+                  {userPrefs?.hideExportInstructions
+                    ? 'Hidden — turn back on to see the per-app guide'
+                    : 'On — modal appears each time you export'}
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={!userPrefs?.hideExportInstructions}
+              onValueChange={async (v) => {
+                try {
+                  const updated = await setUserPrefs({ hideExportInstructions: !v });
+                  setUserPrefsState(updated || { ...userPrefs, hideExportInstructions: !v });
+                } catch {}
+              }}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#fff"
+            />
+          </View>
+        </View>
+
         {/* Support */}
         <Text style={s.sectionLabel}>SUPPORT</Text>
         <View style={s.card}>

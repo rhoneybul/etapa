@@ -809,6 +809,15 @@ export default function CoachChatScreen({ navigation, route }) {
           title: a.title, description: a.description, notes: a.notes,
           durationMins: a.durationMins, distanceKm: a.distanceKm,
           effort: a.effort, bikeType: a.bikeType, completed: !!a.completed,
+          structure: a.structure || null,
+          // Cached AI-generated ride tips — if the rider has opened
+          // "Show ride tips" before, we ship those bullets through to
+          // the coach so it can build on them rather than repeat them
+          // verbatim. The server adds a directive in the system prompt
+          // ("you've already given the rider these tips for this
+          // session — answer follow-ups about them, don't restate the
+          // whole list").
+          tips: Array.isArray(a.tips) && a.tips.length > 0 ? a.tips : null,
         };
       })(),
       calendarMapping: week1Days,

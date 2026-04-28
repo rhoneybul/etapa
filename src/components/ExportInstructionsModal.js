@@ -1,94 +1,169 @@
 /**
  * ExportInstructionsModal — first-time popup explaining how to actually
- * land a Send-to-trainer .zwo / .mrc file inside Zwift / Wahoo SYSTM /
- * Rouvy / TrainerRoad / etc.
+ * land a Send-to-trainer .zwo / .mrc file inside the rider's chosen
+ * trainer app.
  *
- * Why it exists: the share-sheet "Open in Zwift" magic only works for
- * apps that registered .zwo as a document type. On iOS that's Zwift
- * and MyWhoosh. Everything else (Wahoo SYSTM, Rouvy, TrainerRoad,
- * intervals.icu) needs the rider to Save the file then import via the
- * web dashboard. On Android the share-sheet "Open in" rarely works for
- * any of these apps — Android riders should always plan to download
- * first, then import via the app's web dashboard or in-app file picker.
+ * Why it exists in this shape: the previous version stacked every app's
+ * instructions on one long screen — riders trying to get a workout into
+ * Zwift had to scroll past Wahoo, Rouvy, TrainerRoad, intervals.icu,
+ * and a CompuTrainer mention before finding their bit. Now we ask once
+ * — "I use:" — and reveal only that app's specific path.
  *
- * The modal explains the realistic flow, and offers a "Don't show this
- * again" checkbox so power users aren't nagged. The pref is stored via
- * setUserPrefs({ hideExportInstructions: true }) so it persists across
- * launches and devices (we sync display-name-style local prefs).
+ * Two-step universal flow up top so a rider who just wants the gist
+ * gets it in 12 seconds:
+ *   1. Save the file to your phone.
+ *   2. Upload it on the app's web dashboard.
+ *
+ * iOS specifically pre-empts the "Copy to Zwift" share-sheet illusion —
+ * it sometimes appears even though Zwift's mobile app doesn't actually
+ * import the file. Better to call it out before the rider tries.
+ *
+ * MRC fallback exposed as a small link at the bottom — most riders never
+ * see it; legacy-trainer-software users can find it.
  *
  * Props:
- *   visible      boolean
- *   onProceed()  user is ready — fire the actual export
- *   onCancel()   dismissed without exporting
+ *   visible       boolean
+ *   onProceed(format)  fires the actual export with the chosen format
+ *                      ('zwo' | 'mrc'). 'zwo' is the default; the modal
+ *                      flips to 'mrc' if the rider taps the legacy link.
+ *   onCancel()    dismissed without exporting
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, Platform,
 } from 'react-native';
 import { colors, fontFamily } from '../theme';
 import { setUserPrefs } from '../services/storageService';
+import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
 
-// Per-app instructions describe what ACTUALLY works in practice.
-// The earlier copy claimed "Pick Copy to Zwift" on the share sheet —
-// that doesn't reliably work because Zwift mobile doesn't register
-// .zwo as an importable document type on iOS or Android. The honest
-// path for Zwift is: send the .zwo to a desktop and drop it into the
-// Zwift workouts folder, OR use intervals.icu / TrainingPeaks as a
-// sync bridge (they push workouts into Zwift on next launch). For
-// everything else (Wahoo SYSTM, Rouvy, TrainerRoad), the import lives
-// on the web dashboard.
-const PER_APP_INSTRUCTIONS = [
+// Apps the rider can pick. Each entry knows: badge colour + initial,
+// the iOS-specific path, and the Android-specific path. Both paths are
+// kept short — 2-3 numbered steps. Long-form context lives below in a
+// "Why this is the path" footer the rider can ignore.
+const APP_OPTIONS = [
   {
+    key: 'zwift',
     name: 'Zwift',
     badgeColor: '#FC6719',
     badgeLetter: 'Z',
-    iosFlow: 'Pick "Save to Files" → iCloud Drive. On a desktop or laptop, open the file and drag it into Documents/Zwift/Workouts/{your-id}/ — it appears under Custom Workouts on next Zwift launch. Quicker route: connect intervals.icu (free) to Zwift, then upload the .zwo to intervals.icu and it syncs.',
-    androidFlow: 'File saves to Downloads. Move it to a computer (USB / Drive / email) and drop it into Documents/Zwift/Workouts/{your-id}/ — it appears under Custom Workouts. Or upload to intervals.icu (free), which has a Zwift sync that pushes workouts in for you.',
+    iosSteps: [
+      'Save to Files → iCloud Drive.',
+      'On a desktop, open the file and drag it into Documents/Zwift/Workouts/{your-id}/.',
+      'Open Zwift on any device — appears under Custom Workouts → Etapa.',
+    ],
+    androidSteps: [
+      'File saves to your Downloads folder.',
+      'Move it to a desktop (USB / Drive / email).',
+      'Drop into Documents/Zwift/Workouts/{your-id}/. Appears in Zwift on next launch.',
+    ],
+    iosWarning: '"Copy to Zwift" sometimes appears in the share sheet — ignore it. Zwift\'s mobile app doesn\'t actually import the file.',
+    fasterPath: 'Phone-only? Use intervals.icu — it\'s free, takes mobile uploads, and has built-in Zwift sync.',
   },
   {
+    key: 'wahoo',
     name: 'Wahoo SYSTM',
     badgeColor: '#0066B3',
     badgeLetter: 'W',
-    iosFlow: 'Pick "Save to Files" → iCloud Drive. Then on a laptop sign in at systm.wahoofitness.com → Workouts → Custom → Import. Workout syncs to the SYSTM app on next launch.',
-    androidFlow: 'File saves to Downloads. Sign in at systm.wahoofitness.com → Workouts → Custom → Import. Syncs to the SYSTM app on next launch.',
+    iosSteps: [
+      'Save to Files → iCloud Drive.',
+      'On a laptop, sign in at systm.wahoofitness.com → Workouts → Custom → Import.',
+      'Syncs to the SYSTM app on next launch.',
+    ],
+    androidSteps: [
+      'File saves to Downloads.',
+      'Sign in at systm.wahoofitness.com → Workouts → Custom → Import.',
+      'Syncs to SYSTM on next launch.',
+    ],
   },
   {
+    key: 'rouvy',
     name: 'Rouvy',
     badgeColor: '#0F1F19',
     badgeLetter: 'R',
-    iosFlow: 'Pick "Save to Files". On a laptop sign in at my.rouvy.com → Workouts → Add → upload the .zwo. Syncs to your mobile and desktop Rouvy apps.',
-    androidFlow: 'File saves to Downloads. Sign in at my.rouvy.com → Workouts → Add → upload the .zwo. Syncs to mobile and desktop.',
+    iosSteps: [
+      'Save to Files.',
+      'On a laptop, sign in at my.rouvy.com → Workouts → Add → upload the .zwo.',
+      'Syncs to mobile and desktop.',
+    ],
+    androidSteps: [
+      'File saves to Downloads.',
+      'Sign in at my.rouvy.com → Workouts → Add → upload the .zwo.',
+      'Syncs to mobile and desktop.',
+    ],
   },
   {
+    key: 'trainerroad',
     name: 'TrainerRoad',
     badgeColor: '#E73B3F',
     badgeLetter: 'TR',
-    iosFlow: 'Pick "Save to Files". On a laptop sign in at trainerroad.com → Workouts → Workout Creator → Import.',
-    androidFlow: 'File saves to Downloads. Sign in at trainerroad.com → Workouts → Workout Creator → Import.',
+    iosSteps: [
+      'Save to Files.',
+      'On a laptop, sign in at trainerroad.com → Workouts → Workout Creator → Import.',
+    ],
+    androidSteps: [
+      'File saves to Downloads.',
+      'Sign in at trainerroad.com → Workouts → Workout Creator → Import.',
+    ],
   },
   {
+    key: 'intervals',
     name: 'intervals.icu',
     badgeColor: '#3478F6',
     badgeLetter: 'i',
-    iosFlow: 'Pick "Save to Files". Sign in at intervals.icu → Workouts → Calendar → drop the .zwo onto a date. Free. Has built-in sync to Zwift, Garmin, and Wahoo head units — workouts you upload here appear inside those apps automatically.',
-    androidFlow: 'File saves to Downloads. Sign in at intervals.icu → Workouts → Calendar → upload the .zwo. Free, and syncs to Zwift, Garmin, and Wahoo head units. The fastest way to get a workout into Zwift on Android.',
+    iosSteps: [
+      'Save to Files.',
+      'Sign in at intervals.icu → Workouts → Calendar → drag the .zwo onto a date.',
+      'Optional: connect intervals.icu → Zwift / Garmin / Wahoo for automatic sync.',
+    ],
+    androidSteps: [
+      'File saves to Downloads.',
+      'Sign in at intervals.icu → Workouts → Calendar → upload the .zwo.',
+      'Free — and the only path that works mobile-only with sync to Zwift / Garmin / Wahoo.',
+    ],
+    badge: 'Recommended for mobile-only riders',
+  },
+  {
+    key: 'other',
+    name: 'Other / not sure',
+    badgeColor: '#5F5E5A',
+    badgeLetter: '?',
+    iosSteps: [
+      'Save to Files.',
+      'Open your trainer app\'s web dashboard from a laptop.',
+      'Look for "Workouts → Import" or similar.',
+    ],
+    androidSteps: [
+      'File saves to Downloads.',
+      'Open your trainer app\'s web dashboard from a laptop.',
+      'Look for "Workouts → Import" or similar.',
+    ],
   },
 ];
 
 export default function ExportInstructionsModal({ visible, onProceed, onCancel }) {
+  const [selectedApp, setSelectedApp] = useState(null);
   const [dontShowAgain, setDontShowAgain] = useState(false);
+  const [useMrc, setUseMrc] = useState(false);
+
+  // Reset selection when the modal opens — fresh start each time.
+  useEffect(() => { if (visible) { setSelectedApp(null); setDontShowAgain(false); setUseMrc(false); } }, [visible]);
 
   if (!visible) return null;
 
   const isAndroid = Platform.OS === 'android';
+  const app = APP_OPTIONS.find(a => a.key === selectedApp) || null;
+  const steps = app ? (isAndroid ? app.androidSteps : app.iosSteps) : null;
+  const showZwiftWarning = app?.key === 'zwift' && !isAndroid && app.iosWarning;
 
   const handleProceed = async () => {
     if (dontShowAgain) {
       try { await setUserPrefs({ hideExportInstructions: true }); } catch {}
+      analytics.events.exportInstructionsOptedOut?.();
     }
-    onProceed?.();
+    if (selectedApp) analytics.events.exportAppPicked?.({ app: selectedApp });
+    onProceed?.(useMrc ? 'mrc' : 'zwo');
   };
 
   return (
@@ -99,9 +174,9 @@ export default function ExportInstructionsModal({ visible, onProceed, onCancel }
 
           <View style={s.headerRow}>
             <View style={{ flex: 1 }}>
-              <Text style={s.title}>Sending this to your trainer</Text>
+              <Text style={s.title}>Save for your trainer app</Text>
               <Text style={s.subtitle}>
-                We generate a real workout file. Getting it into Zwift / SYSTM / Rouvy is a quick web-dashboard upload — not a share-sheet handoff. Here's the realistic path per app.
+                Two steps: save the file, then upload it on your trainer app's web dashboard. Pick which app you ride with for the specific path.
               </Text>
             </View>
             <TouchableOpacity onPress={onCancel} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -110,48 +185,95 @@ export default function ExportInstructionsModal({ visible, onProceed, onCancel }
           </View>
 
           <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 12 }} showsVerticalScrollIndicator={false}>
-            {/* Platform banners — phone-only riders need to know the
-                reliable path is via a web dashboard, not a share-sheet
-                handoff. Zwift in particular doesn't read .zwo from
-                mobile share sheets. The fastest mobile-only path is
-                intervals.icu (free, syncs to Zwift). Everything else
-                needs a web import on a laptop or other device. */}
-            {isAndroid && (
-              <View style={s.androidBanner}>
-                <Text style={s.androidBannerTitle}>You're on Android</Text>
-                <Text style={s.androidBannerBody}>
-                  Trainer apps on Android don't accept .zwo files from the share sheet. Tap export, the file lands in your Downloads folder, then upload it via the app's web dashboard from a laptop. Phone-only? Use intervals.icu — free, takes uploads on mobile, syncs to Zwift / Garmin / Wahoo automatically.
-                </Text>
+            {/* App picker grid — selecting an app reveals only that app's
+                specific steps below. Less wall-of-text, more useful per
+                rider. */}
+            <Text style={s.sectionLabel}>I use</Text>
+            <View style={s.appGrid}>
+              {APP_OPTIONS.map(a => {
+                const sel = a.key === selectedApp;
+                return (
+                  <TouchableOpacity
+                    key={a.key}
+                    style={[s.appOption, sel && s.appOptionSelected]}
+                    onPress={() => setSelectedApp(a.key)}
+                    activeOpacity={0.7}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: sel }}
+                  >
+                    <View style={[s.appBadge, { backgroundColor: a.badgeColor }]}>
+                      <Text style={s.appBadgeText}>{a.badgeLetter}</Text>
+                    </View>
+                    <Text style={[s.appName, sel && s.appNameSelected]} numberOfLines={1}>{a.name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {app?.badge && (
+              <View style={s.recommendedBadge}>
+                <Text style={s.recommendedBadgeText}>{app.badge}</Text>
               </View>
             )}
 
-            {!isAndroid && (
-              <View style={s.iosNote}>
-                <Text style={s.iosNoteTitle}>Heads-up</Text>
-                <Text style={s.iosNoteBody}>
-                  Zwift's mobile app doesn't pick up .zwo files from the iOS share sheet — even though "Copy to Zwift" sometimes appears, it doesn't reliably import. The dependable paths are: (1) Save to Files → iCloud Drive → drop into Zwift's desktop workouts folder, or (2) use intervals.icu (free) as a sync bridge — upload there on iOS and it pushes the workout into Zwift for you.
-                </Text>
+            {/* iOS-only Zwift gotcha — surfaces BEFORE the steps so a
+                rider following them doesn't get tripped up by the
+                share-sheet illusion. */}
+            {showZwiftWarning && (
+              <View style={s.warning}>
+                <Text style={s.warningTitle}>Heads-up</Text>
+                <Text style={s.warningBody}>{app.iosWarning}</Text>
               </View>
             )}
 
-            <Text style={s.sectionLabel}>Per app</Text>
-            {PER_APP_INSTRUCTIONS.map(app => (
-              <View key={app.name} style={s.appCard}>
-                <View style={[s.appBadge, { backgroundColor: app.badgeColor }]}>
-                  <Text style={s.appBadgeText}>{app.badgeLetter}</Text>
+            {/* Per-app numbered steps. Replaces the old single-screen
+                wall of every app's path stacked. */}
+            {steps ? (
+              <View style={s.stepsCard}>
+                {steps.map((step, i) => (
+                  <View key={i} style={s.stepRow}>
+                    <View style={s.stepNum}><Text style={s.stepNumText}>{i + 1}</Text></View>
+                    <Text style={s.stepText}>{step}</Text>
+                  </View>
+                ))}
+                {app?.fasterPath && (
+                  <View style={s.fasterPathRow}>
+                    <Text style={s.fasterPathText}>{app.fasterPath}</Text>
+                  </View>
+                )}
+              </View>
+            ) : (
+              <Text style={s.pickPrompt}>Pick an app above to see the specific steps.</Text>
+            )}
+
+            {/* Universal footnote — same for every app. Kept short. */}
+            {selectedApp && (
+              <Text style={s.footnote}>
+                Power targets are a percentage of your FTP, so set your FTP inside the trainer app once and every imported workout plays back at the right watts. Garmin Edge / Wahoo ELEMNT head units don't read .zwo directly — route through intervals.icu.
+              </Text>
+            )}
+
+            {/* MRC fallback — discovered, not in-the-way. */}
+            {selectedApp && (
+              <TouchableOpacity
+                style={s.mrcRow}
+                onPress={() => setUseMrc(v => !v)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: useMrc }}
+              >
+                <View style={[s.checkBox, useMrc && s.checkBoxOn]}>
+                  {useMrc && <Text style={s.checkTick}>{'\u2713'}</Text>}
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.appName}>{app.name}</Text>
-                  <Text style={s.appFlow}>{isAndroid ? app.androidFlow : app.iosFlow}</Text>
+                  <Text style={s.mrcLabel}>Use the older .mrc format instead</Text>
+                  <Text style={s.mrcSub}>For CompuTrainer, PerfPro, ErgVideo, GoldenCheetah and other legacy software.</Text>
                 </View>
-              </View>
-            ))}
-
-            <Text style={s.footnote}>
-              Your trainer app needs your FTP set for ERG mode to drive the right watts — set it once inside the app you ride with. Garmin Edge / Wahoo ELEMNT head units don't read .zwo directly; route through Zwift or intervals.icu and let those push to the head unit.
-            </Text>
+              </TouchableOpacity>
+            )}
           </ScrollView>
 
+          {/* Footer pinned at bottom */}
           <View style={s.footer}>
             <TouchableOpacity
               style={s.checkRow}
@@ -159,15 +281,23 @@ export default function ExportInstructionsModal({ visible, onProceed, onCancel }
               activeOpacity={0.7}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: dontShowAgain }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <View style={[s.checkBox, dontShowAgain && s.checkBoxOn]}>
                 {dontShowAgain && <Text style={s.checkTick}>{'\u2713'}</Text>}
               </View>
-              <Text style={s.checkLabel}>Don't show this again</Text>
+              <Text style={s.checkLabel}>Don't show this again. (You can re-enable in Settings.)</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={s.primaryBtn} onPress={handleProceed} activeOpacity={0.85}>
-              <Text style={s.primaryBtnText}>Got it — export the file</Text>
+            <TouchableOpacity
+              style={[s.primaryBtn, !selectedApp && s.primaryBtnDisabled]}
+              onPress={handleProceed}
+              disabled={!selectedApp}
+              activeOpacity={0.85}
+            >
+              <Text style={s.primaryBtnText}>
+                {selectedApp ? `Got it — export ${useMrc ? '.mrc' : '.zwo'}` : 'Pick an app first'}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.cancelBtn} onPress={onCancel} activeOpacity={0.7}>
               <Text style={s.cancelText}>Cancel</Text>
@@ -183,9 +313,8 @@ const s = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    paddingHorizontal: 0, paddingTop: 6, paddingBottom: 24,
+    borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    paddingTop: 6, paddingBottom: 24,
     borderTopWidth: 0.5, borderColor: colors.border,
     maxHeight: '92%',
   },
@@ -193,7 +322,7 @@ const s = StyleSheet.create({
 
   headerRow: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-    paddingHorizontal: 18, paddingTop: 10, paddingBottom: 8,
+    paddingHorizontal: 18, paddingTop: 10, paddingBottom: 10,
     borderBottomWidth: 0.5, borderBottomColor: colors.borderLight,
   },
   title: { fontSize: 17, fontWeight: '600', color: colors.text, fontFamily: FF.semibold, marginBottom: 4 },
@@ -202,63 +331,109 @@ const s = StyleSheet.create({
 
   scroll: { flexGrow: 0 },
 
-  androidBanner: {
-    marginHorizontal: 18, marginTop: 14, marginBottom: 4,
-    padding: 12,
-    backgroundColor: colors.secondary + '14',
-    borderWidth: 0.5, borderColor: colors.secondary + '50',
-    borderRadius: 12,
-  },
-  androidBannerTitle: {
-    fontSize: 11, fontWeight: '600', color: colors.secondary,
-    textTransform: 'uppercase', letterSpacing: 0.5,
-    fontFamily: FF.semibold, marginBottom: 6,
-  },
-  androidBannerBody: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, lineHeight: 18 },
-
-  iosNote: {
-    marginHorizontal: 18, marginTop: 14, marginBottom: 4,
-    padding: 12,
-    backgroundColor: colors.primary + '12',
-    borderWidth: 0.5, borderColor: colors.primary + '40',
-    borderRadius: 12,
-  },
-  iosNoteTitle: {
-    fontSize: 11, fontWeight: '600', color: colors.primary,
-    textTransform: 'uppercase', letterSpacing: 0.5,
-    fontFamily: FF.semibold, marginBottom: 6,
-  },
-  iosNoteBody: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, lineHeight: 18 },
-
   sectionLabel: {
     fontSize: 10, fontWeight: '600', color: colors.textMuted,
     textTransform: 'uppercase', letterSpacing: 0.6,
     fontFamily: FF.medium,
-    marginHorizontal: 18, marginTop: 18, marginBottom: 8,
+    marginHorizontal: 18, marginTop: 16, marginBottom: 8,
   },
 
-  appCard: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-    paddingHorizontal: 18, paddingVertical: 10,
-    borderBottomWidth: 0.5, borderBottomColor: colors.borderLight,
+  // Three-column app grid. 2 rows of 3 → all six options visible
+  // without scrolling on standard phones.
+  appGrid: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    paddingHorizontal: 14, gap: 8,
   },
+  appOption: {
+    width: '31%',
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1, borderColor: colors.border, borderRadius: 12,
+    padding: 10,
+    alignItems: 'center', gap: 6,
+    minHeight: 66,
+  },
+  appOptionSelected: { backgroundColor: colors.primary + '14', borderColor: colors.primary, borderWidth: 1.5 },
   appBadge: {
-    width: 32, height: 32, borderRadius: 8,
+    width: 28, height: 28, borderRadius: 8,
     alignItems: 'center', justifyContent: 'center',
-    marginTop: 2,
   },
-  appBadgeText: {
-    color: '#fff', fontWeight: '700', fontSize: 12,
+  appBadgeText: { color: '#fff', fontWeight: '700', fontSize: 11, letterSpacing: 0.4 },
+  appName: { fontSize: 11, fontWeight: '500', color: colors.textMid, fontFamily: FF.medium, textAlign: 'center' },
+  appNameSelected: { color: colors.text, fontWeight: '600', fontFamily: FF.semibold },
+
+  recommendedBadge: {
+    alignSelf: 'flex-start',
+    marginHorizontal: 18, marginTop: 12,
+    paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: colors.primary + '14',
+    borderRadius: 999,
+    borderWidth: 0.5, borderColor: colors.primary + '50',
+  },
+  recommendedBadgeText: {
+    fontSize: 10, fontWeight: '600', color: colors.primary,
     fontFamily: FF.semibold, letterSpacing: 0.4,
   },
-  appName: { fontSize: 13, fontWeight: '600', color: colors.text, fontFamily: FF.semibold, marginBottom: 4 },
-  appFlow: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, lineHeight: 17 },
+
+  warning: {
+    marginHorizontal: 18, marginTop: 12,
+    padding: 12,
+    backgroundColor: 'rgba(240, 183, 47, 0.08)',
+    borderWidth: 0.5, borderColor: 'rgba(240, 183, 47, 0.4)',
+    borderLeftWidth: 2, borderLeftColor: '#F0B72F',
+    borderRadius: 0,
+  },
+  warningTitle: {
+    fontSize: 11, fontWeight: '600', color: '#F0B72F',
+    fontFamily: FF.semibold, letterSpacing: 0.4,
+    textTransform: 'uppercase', marginBottom: 4,
+  },
+  warningBody: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, lineHeight: 17 },
+
+  stepsCard: {
+    marginHorizontal: 18, marginTop: 14,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: 12, padding: 14,
+    borderWidth: 0.5, borderColor: colors.border,
+  },
+  stepRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
+  stepNum: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+    marginTop: 1,
+  },
+  stepNumText: { color: '#fff', fontWeight: '700', fontSize: 11, fontFamily: FF.semibold },
+  stepText: { flex: 1, fontSize: 13, color: colors.text, fontFamily: FF.regular, lineHeight: 19 },
+  fasterPathRow: {
+    marginTop: 6, paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border,
+  },
+  fasterPathText: {
+    fontSize: 11, fontStyle: 'italic',
+    color: colors.textMid, fontFamily: FF.regular, lineHeight: 16,
+  },
+
+  pickPrompt: {
+    fontSize: 13, color: colors.textMuted, fontFamily: FF.regular,
+    textAlign: 'center', paddingVertical: 24, paddingHorizontal: 18,
+  },
 
   footnote: {
     marginHorizontal: 18, marginTop: 14,
-    fontSize: 11, color: colors.textMuted, fontFamily: FF.regular, lineHeight: 16,
-    fontStyle: 'italic',
+    fontSize: 11, color: colors.textMuted, fontFamily: FF.regular,
+    lineHeight: 16, fontStyle: 'italic',
   },
+
+  mrcRow: {
+    marginHorizontal: 18, marginTop: 14,
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    paddingVertical: 10, paddingHorizontal: 12,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 0.5, borderColor: colors.border,
+    borderRadius: 10,
+  },
+  mrcLabel: { fontSize: 12, fontWeight: '500', color: colors.text, fontFamily: FF.medium },
+  mrcSub: { fontSize: 11, color: colors.textMuted, fontFamily: FF.regular, lineHeight: 15, marginTop: 3 },
 
   footer: {
     paddingHorizontal: 18, paddingTop: 12,
@@ -274,9 +449,10 @@ const s = StyleSheet.create({
   },
   checkBoxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   checkTick: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  checkLabel: { fontSize: 13, color: colors.textMid, fontFamily: FF.regular },
+  checkLabel: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, flex: 1, lineHeight: 16 },
 
   primaryBtn: { backgroundColor: colors.primary, paddingVertical: 13, borderRadius: 12, alignItems: 'center', marginBottom: 8 },
+  primaryBtnDisabled: { opacity: 0.45 },
   primaryBtnText: { fontSize: 14, fontWeight: '600', color: '#fff', fontFamily: FF.semibold },
   cancelBtn: { paddingVertical: 10, alignItems: 'center' },
   cancelText: { fontSize: 13, color: colors.textMuted, fontFamily: FF.regular },

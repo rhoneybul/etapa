@@ -8,12 +8,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert,
   ActivityIndicator, KeyboardAvoidingView, Platform, StatusBar, Keyboard,
-  Linking, ActionSheetIOS,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import { getPlans, getGoals, getPlanConfig, getUserPrefs, markActivityComplete, updateActivity, savePlan } from '../services/storageService';
-import { editActivityWithAI, explainActivity as explainActivityApi } from '../services/llmPlanService';
+import { editActivityWithAI, explainActivity as explainActivityApi, explainTips as explainTipsApi } from '../services/llmPlanService';
 import { buildWorkoutExportUrl } from '../services/api';
 import { getSessionColor, getSessionLabel, SESSION_COLORS, EFFORT_LABELS as EFFORT_GUIDE_LABELS } from '../utils/sessionLabels';
 import { formatRpe, formatHeartRate, formatPower, shouldShowPower } from '../utils/intensity';
@@ -43,42 +43,169 @@ const EFFORT_LIST = ['easy', 'moderate', 'hard', 'recovery', 'max'];
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 // ── Ride tips generator ──────────────────────────────────────────────────────
+//
+// Each tip carries an `icon` (MaterialCommunityIcons glyph name — never an
+// emoji), a category, a title, and the body text. The render layer pulls
+// the icon directly so we have visual hierarchy without the cartoonish
+// quality emoji can lend to safety / injury copy.
+//
+// Categories are deliberately explicit so future iteration (say, an
+// admin-side "tips library" or a Claude-rewrite of any one bullet) can
+// target a single bullet without touching the others:
+//   warmup     — what to do in the 5–15 min before the ride
+//   hydration  — what to bring + sipping cadence
+//   fuel       — what to eat before / during
+//   pacing     — how the effort should feel mid-ride
+//   cooldown   — immediate post-ride recovery
+//   injury     — session-specific things to watch for, with a
+//                non-medical "if it hurts, stop" floor
+//
+// The `injury` bullets are the part the user explicitly called out: no
+// emoji icons, just MCI glyphs that read as informational, not playful.
+// Wording is conservative — we never prescribe rest periods, suggest
+// medication, or claim diagnoses. Anything sharper than "stop and book
+// a physio" is out of bounds.
 function generateRideTips(activity) {
   const tips = [];
   const dur = activity.durationMins || 60;
-  const effort = activity.effort || 'moderate';
-  const subType = activity.subType || 'endurance';
+  const effort = (activity.effort || 'moderate').toLowerCase();
+  const subType = (activity.subType || 'endurance').toLowerCase();
+  const isHard = effort === 'hard' || effort === 'max' || subType === 'intervals' || subType === 'tempo';
+  const isLong = dur >= 120;
+  const isRecovery = subType === 'recovery' || effort === 'recovery';
 
+  // ── Warm-up ──────────────────────────────────────────────────────────────
+  if (isHard) {
+    tips.push({
+      category: 'warmup', icon: 'arm-flex-outline', title: 'Warm-up',
+      text: 'At least 10 min easy spinning, then 2\u20133 short openers (30 s gradual ramps to about 90 % of the target effort, with full recovery between). Cold legs at threshold blow up the first interval.',
+    });
+  } else if (isRecovery) {
+    tips.push({
+      category: 'warmup', icon: 'arm-flex-outline', title: 'Warm-up',
+      text: 'Start the ride at the effort you\u2019ll hold all the way through. No need to ramp \u2014 the whole session is the warm-up.',
+    });
+  } else {
+    tips.push({
+      category: 'warmup', icon: 'arm-flex-outline', title: 'Warm-up',
+      text: 'First 5\u201310 min in an easy gear, sitting in the saddle, cadence around 90 rpm. Open the legs gradually rather than launching into the working effort.',
+    });
+  }
+
+  // ── Hydration ────────────────────────────────────────────────────────────
   if (dur <= 45) {
-    tips.push({ title: 'Hydration', text: 'A single bottle of water should be enough. Sip regularly rather than waiting until you feel thirsty.' });
+    tips.push({
+      category: 'hydration', icon: 'cup-water', title: 'Hydration',
+      text: 'A single bottle of water is plenty. Sip on a regular cadence rather than waiting until you feel thirsty.',
+    });
   } else if (dur <= 90) {
-    tips.push({ title: 'Hydration', text: 'Bring one full bottle (500\u2013750 ml). Aim for a few sips every 15 minutes. Add an electrolyte tab if it\'s warm.' });
+    tips.push({
+      category: 'hydration', icon: 'cup-water', title: 'Hydration',
+      text: 'One full bottle (500\u2013750 ml). A few sips every 15 min. Add an electrolyte tab if it\u2019s warm.',
+    });
   } else {
-    tips.push({ title: 'Hydration', text: `For a ${dur}-minute ride, bring two bottles or plan a refill stop. Drink 500\u2013750 ml per hour and use electrolytes.` });
+    tips.push({
+      category: 'hydration', icon: 'cup-water', title: 'Hydration',
+      text: `For a ${dur}-minute ride, bring two bottles or plan a refill stop. Aim for 500\u2013750 ml per hour. Electrolytes from the start \u2014 don\u2019t wait until you\u2019re cramping.`,
+    });
   }
 
+  // ── Fuelling ─────────────────────────────────────────────────────────────
   if (dur <= 60) {
-    tips.push({ title: 'Fueling', text: 'You shouldn\'t need to eat during the ride. Make sure you\'ve had a light meal 1\u20132 hours beforehand.' });
+    tips.push({
+      category: 'fuel', icon: 'food-apple-outline', title: 'Fuelling',
+      text: 'You shouldn\u2019t need to eat during the ride. A light meal 1\u20132 hours beforehand sets you up cleanly.',
+    });
   } else if (dur <= 120) {
-    tips.push({ title: 'Fueling', text: 'Pack a banana or energy bar. Start eating around the 45-minute mark \u2014 aim for 30\u201360g of carbs per hour.' });
+    tips.push({
+      category: 'fuel', icon: 'food-apple-outline', title: 'Fuelling',
+      text: 'Pack a banana or an energy bar. Start eating around the 45-minute mark \u2014 30\u201360 g of carbs per hour keeps the legs honest.',
+    });
   } else {
-    tips.push({ title: 'Fueling', text: `Long ride! Aim for 60\u201390g carbs per hour. Pack gels, bars, or real food. Start fueling early \u2014 don't wait until you feel depleted.` });
+    tips.push({
+      category: 'fuel', icon: 'food-apple-outline', title: 'Fuelling',
+      text: 'Long ride. Aim for 60\u201390 g carbs per hour \u2014 mix gels, bars, and real food. Start eating in the first 30 minutes; don\u2019t wait until you feel depleted, by then it\u2019s too late.',
+    });
   }
 
-  tips.push({ title: 'Before the ride', text: 'Do 5 minutes of dynamic stretching: leg swings, hip circles, and gentle squats. Skip static stretches \u2014 save those for after.' });
-
-  if (effort === 'hard' || effort === 'max' || dur > 90) {
-    tips.push({ title: 'After the ride', text: 'This is a tough session \u2014 spend 10\u201315 minutes stretching afterwards. Focus on quads, hamstrings, hip flexors, and lower back.' });
-  } else {
-    tips.push({ title: 'After the ride', text: 'Cool down with 5\u201310 minutes of gentle stretching. Hit your quads, hamstrings, and calves while they\'re still warm.' });
-  }
-
-  if (subType === 'intervals' || effort === 'hard' || effort === 'max') {
-    tips.push({ title: 'Interval tip', text: 'Warm up for at least 10 minutes before hitting any hard efforts. Cool down with easy spinning afterwards.' });
+  // ── Pacing (mid-ride) ────────────────────────────────────────────────────
+  if (subType === 'intervals' || effort === 'max') {
+    tips.push({
+      category: 'pacing', icon: 'speedometer', title: 'Pacing',
+      text: 'Pace each interval to be sustainable for the full duration. If rep 1 leaves you gasping, you\u2019ve gone too hard \u2014 ease off and aim to make every rep look the same.',
+    });
+  } else if (subType === 'tempo' || effort === 'hard') {
+    tips.push({
+      category: 'pacing', icon: 'speedometer', title: 'Pacing',
+      text: 'Tempo / threshold should feel "comfortably uncomfortable" \u2014 sustainable for the block, but you\u2019d struggle to hold a full conversation.',
+    });
   } else if (subType === 'endurance' || effort === 'easy') {
-    tips.push({ title: 'Pacing tip', text: 'Keep it conversational \u2014 you should be able to talk in full sentences. If you can\'t, ease off.' });
-  } else if (subType === 'recovery') {
-    tips.push({ title: 'Recovery tip', text: 'Keep the effort genuinely easy \u2014 resist the temptation to push. Your legs are rebuilding from harder efforts.' });
+    tips.push({
+      category: 'pacing', icon: 'speedometer', title: 'Pacing',
+      text: 'Keep it conversational \u2014 you should be able to talk in full sentences. If you can\u2019t, ease off. This is the pace where the aerobic engine actually grows.',
+    });
+  } else if (isRecovery) {
+    tips.push({
+      category: 'pacing', icon: 'speedometer-slow', title: 'Pacing',
+      text: 'Genuinely easy. If you\u2019re overtaking other riders, you\u2019re going too hard. The point is to clear yesterday\u2019s fatigue, not add to it.',
+    });
+  }
+
+  // ── Cool-down ────────────────────────────────────────────────────────────
+  if (isHard || isLong) {
+    tips.push({
+      category: 'cooldown', icon: 'snowflake', title: 'Cool down',
+      text: 'Last 5\u201310 min of the ride should be properly easy spinning to flush the legs. Off the bike: 10\u201315 min stretching while still warm \u2014 quads, hamstrings, hip flexors, lower back.',
+    });
+  } else {
+    tips.push({
+      category: 'cooldown', icon: 'snowflake', title: 'Cool down',
+      text: '5\u201310 min of gentle stretching after the ride while you\u2019re still warm. Quads, hamstrings, calves are the big three.',
+    });
+  }
+
+  // ── Post-ride recovery (hard / long sessions only) ──────────────────────
+  // Three things in one bullet — food, hydration, rest — because hard
+  // sessions only "land" if recovery is real. Numbers are conservative
+  // sport-science consensus (20\u201325 g protein, 1 g/kg carbs in the
+  // first hour, ~150 % of fluid lost). Tomorrow-easy guidance keeps us
+  // in training-advice territory rather than medical territory.
+  if (isLong) {
+    tips.push({
+      category: 'recovery', icon: 'silverware-fork-knife', title: 'Recovery — eat, drink, sleep',
+      text: 'Long rides drain glycogen hard. Eat a proper meal within 30 min \u2014 carbs, protein, and some salt. Rehydrate gradually: 500\u2013750 ml in the first hour, more if it was hot. Get to bed earlier than usual \u2014 most of the repair happens in deep sleep, not on the foam roller.',
+    });
+  } else if (isHard) {
+    tips.push({
+      category: 'recovery', icon: 'silverware-fork-knife', title: 'Recovery — eat, drink, sleep',
+      text: 'Within 30 min, eat 20\u201325 g of protein with carbs (smoothie, eggs on toast, or a recovery drink). Sip steadily through the afternoon \u2014 salt or an electrolyte tab if you sweated heavily. Prioritise sleep tonight, and make tomorrow\u2019s ride genuinely easy or rest. Hard back-to-back days dig the hole deeper than they fill it.',
+    });
+  }
+
+  // ── Injury prevention — session-specific ────────────────────────────────
+  // No emoji, no medical advice. Concrete things to watch for during this
+  // session type, plus the universal "if it hurts, stop and book a physio"
+  // floor on hard / long sessions.
+  if (isHard) {
+    tips.push({
+      category: 'injury', icon: 'shield-check-outline', title: 'Watch for',
+      text: 'Cadence dropping below 80 rpm under load grinds the knees. Keep the gear light enough that the legs spin, not stamp. If a knee or hip starts a sharp pain mid-effort, stop the session \u2014 don\u2019t train through it.',
+    });
+  } else if (isLong) {
+    tips.push({
+      category: 'injury', icon: 'shield-check-outline', title: 'Watch for',
+      text: 'Long rides surface bike-fit issues. Numb hands or feet \u2192 change hand position / loosen shoes. Lower-back tightness \u2192 stand up and pedal for 30 s every 20 min. Saddle soreness on a new bike or new shorts \u2192 stop early rather than push through.',
+    });
+  } else if (isRecovery) {
+    tips.push({
+      category: 'injury', icon: 'heart-pulse', title: 'Stay easy',
+      text: 'The session only works if you keep the effort genuinely easy. If your heart rate creeps above your easy zone, soft-pedal until it drops. Hard recovery rides are just extra fatigue with extra steps.',
+    });
+  } else {
+    tips.push({
+      category: 'injury', icon: 'shield-check-outline', title: 'Watch for',
+      text: 'A new niggle in a knee, hip, or back this week \u2192 ease back today, and book a physio if it\u2019s still there next ride. Etapa isn\u2019t a medical service \u2014 we won\u2019t diagnose, but a physio can.',
+    });
   }
 
   return tips;
@@ -98,6 +225,17 @@ export default function ActivityDetailScreen({ navigation, route }) {
   const [isEditing, setIsEditing] = useState(!!initialEditing);
   const [editValues, setEditValues] = useState({});
   const [showTips, setShowTips] = useState(false);
+
+  // AI ride tips. Three states:
+  //   undefined  — not yet attempted (deterministic placeholder shown)
+  //   array      — loaded (cache hit OR fresh Claude render OR fallback)
+  //   null       — explicit failure path (we still fall back to local)
+  // Fetched lazily on first "Show ride tips" tap so we don't burn tokens
+  // on activities the rider never opens. Cached on the activity row
+  // server-side; on subsequent opens the server returns the cached array
+  // instantly without calling Claude.
+  const [aiTips, setAiTips] = useState(undefined);
+  const [tipsLoading, setTipsLoading] = useState(false);
 
   // AI chat state
   const [chatText, setChatText] = useState('');
@@ -135,6 +273,31 @@ export default function ActivityDetailScreen({ navigation, route }) {
   // export with the format the user originally chose. Null = closed.
   const [pendingExportFormat, setPendingExportFormat] = useState(null);
 
+  // Last-minted export URL — cached so re-tapping export within the
+  // 5-minute TTL re-opens the same URL instead of round-tripping the
+  // server. mintedAt drives the "Re-mint link?" affordance after 4
+  // minutes (we mint a fresh one to be safe). Cleared when the activity
+  // changes (so swaps invalidate the cache).
+  const [recentExport, setRecentExport] = useState(null); // { url, format, mintedAt, opened }
+  useEffect(() => { setRecentExport(null); }, [activity?.id]);
+  // Show a "File saved — need help?" toast on focus return after the
+  // rider's been to the browser. Six seconds, dismissible by tapping.
+  const [exportToast, setExportToast] = useState(false);
+  const exportToastTimerRef = useRef(null);
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', () => {
+      // Only show the toast if the rider just opened a URL (recentExport
+      // exists with opened=true). Stops the toast firing on the very
+      // first navigation to the screen.
+      if (recentExport?.opened) {
+        setExportToast(true);
+        if (exportToastTimerRef.current) clearTimeout(exportToastTimerRef.current);
+        exportToastTimerRef.current = setTimeout(() => setExportToast(false), 6000);
+      }
+    });
+    return unsub;
+  }, [navigation, recentExport]);
+
   const scrollRef = useRef(null);
 
   const loadActivity = async () => {
@@ -167,6 +330,49 @@ export default function ActivityDetailScreen({ navigation, route }) {
 
   useEffect(() => { loadActivity(); }, [activityId]);
   useEffect(() => { getUserPrefs().then(setUserPrefs).catch(() => {}); }, []);
+
+  // Reset cached AI tips when the activity id changes (deep-linked open)
+  // or material fields change (duration / structure / bike). The server
+  // also caches; the client clear here just stops a stale array
+  // outliving an edit until the next mount.
+  useEffect(() => {
+    setAiTips(undefined);
+    setTipsLoading(false);
+  }, [activityId]);
+
+  // Pre-seed from the cached server column so a rider who's opened the
+  // tips before sees them instantly without a network round-trip on
+  // re-mount.
+  useEffect(() => {
+    if (Array.isArray(activity?.tips) && activity.tips.length > 0 && aiTips === undefined) {
+      setAiTips(activity.tips);
+    }
+  }, [activity, aiTips]);
+
+  // Lazy AI tip fetch. Fires the first time the rider taps "Show ride
+  // tips" — cache hit on the server makes subsequent taps instant.
+  // Always fall back to the deterministic generator on failure so the
+  // card never shows empty.
+  const ensureAiTips = async () => {
+    if (Array.isArray(aiTips) && aiTips.length > 0) return;
+    if (tipsLoading || !activity?.id) return;
+    setTipsLoading(true);
+    try {
+      const tips = await explainTipsApi(activity.id);
+      if (Array.isArray(tips) && tips.length > 0) {
+        setAiTips(tips);
+        // Persist back onto the activity so subsequent loads (and the
+        // coach chat context) see them without another network hop.
+        try { await updateActivity(activity.id, { tips }); } catch {}
+      } else {
+        setAiTips(null); // signal failure → render falls back to local
+      }
+    } catch {
+      setAiTips(null);
+    } finally {
+      setTipsLoading(false);
+    }
+  };
 
   // "Explain this session" handler — fills in the structure block for
   // legacy activities by calling the server. Caches the result back onto
@@ -329,19 +535,18 @@ export default function ActivityDetailScreen({ navigation, route }) {
   const allBikeOptions = BIKE_KEYS; // ['road','gravel','mtb','ebike','indoor']
   const showBikeRow = isRide;
 
-  // Indoor session detection — drives the "Send to trainer" card. We
-  // count a session as indoor if its subType is 'indoor', the rider
-  // chose 'indoor' as the bike for it, or the title/description make
-  // it obvious. Outdoor rides could theoretically be exported too but
-  // we deliberately scope this UI to indoor sessions where the export
-  // is genuinely useful.
-  const isIndoorSession =
-    isRide && (
-      activity.subType === 'indoor' ||
-      activity.bikeType === 'indoor' ||
-      /indoor|trainer|turbo|zwift/i.test(activity.title || '') ||
-      /indoor|trainer|turbo/i.test(activity.description || '')
-    );
+  // Export is available on every ride that has enough metadata to
+  // generate a workout file — either a `structure` block (intervals
+  // / threshold / tempo with explicit warmup/main/cooldown) OR at
+  // minimum a duration so we can produce a steady-state file. This
+  // replaces the previous "indoor session detection" heuristic
+  // (subType matching + title regex) which mis-classified outdoor
+  // sessions a rider wanted to take indoors today, AND blocked
+  // genuinely indoor sessions that didn't happen to mention "indoor"
+  // in their title. Now: every ride exports if it can; the rider
+  // decides whether they're riding indoors or out.
+  const canExport = isRide
+    && (!!activity?.structure || (typeof activity?.durationMins === 'number' && activity.durationMins > 0));
 
   // Format chosen — decide whether to show the instructions modal or
   // skip straight to the export. We surface the modal by default and
@@ -360,13 +565,35 @@ export default function ActivityDetailScreen({ navigation, route }) {
   // offer an "Open with…" sheet for apps that registered .zwo / .mrc;
   // Android browsers download the file and offer an Intent picker. We
   // don't need a native share dependency for this.
+  //
+  // URL caching: the signed URL is valid for 5 minutes. If the rider
+  // re-taps export within ~4 minutes (we leave a 1-minute safety
+  // buffer) AND the format matches, we re-open the cached URL instead
+  // of round-tripping to /export-url. Saves 200ms and a tiny bit of
+  // server load; mostly it just makes "I want to send the same file
+  // to a different app" a one-tap action.
+  const URL_REUSE_WINDOW_MS = 4 * 60 * 1000;
   const runExport = async (format) => {
     if (!plan?.id || !activity?.id || exporting) return;
     setExporting(true);
     try {
-      const url = await buildWorkoutExportUrl(plan.id, activity.id, format);
+      // Reuse cached URL when fresh + same format.
+      let url = null;
+      if (
+        recentExport
+        && recentExport.format === format
+        && Date.now() - recentExport.mintedAt < URL_REUSE_WINDOW_MS
+      ) {
+        url = recentExport.url;
+        analytics.events.exportRecentReused?.({ activityId: activity.id, format });
+      } else {
+        url = await buildWorkoutExportUrl(plan.id, activity.id, format);
+      }
       if (!url) {
-        Alert.alert('Sign-in needed', 'Sign back in and try the export again.');
+        Alert.alert(
+          'Sign-in needed',
+          'Your sign-in expired. Pull-to-refresh on Home, then try the export again.',
+        );
         return;
       }
       const supported = await Linking.canOpenURL(url);
@@ -374,7 +601,11 @@ export default function ActivityDetailScreen({ navigation, route }) {
         Alert.alert('Couldn\'t open the link', 'Your device blocked the export URL.');
         return;
       }
-      analytics.events.activityExported?.({ activityId: activity.id, format });
+      analytics.events.activityExported?.({ activityId: activity.id, format, reused: url === recentExport?.url });
+      // Stash the URL so a subsequent tap can reuse it. opened=true
+      // tells the focus-listener above to surface the success toast
+      // when the rider returns from the browser.
+      setRecentExport({ url, format, mintedAt: Date.now(), opened: true });
       await Linking.openURL(url);
     } catch (err) {
       Alert.alert('Export failed', 'We couldn\'t generate the workout file. Try again in a moment.');
@@ -383,40 +614,11 @@ export default function ActivityDetailScreen({ navigation, route }) {
     }
   };
 
-  // Kept around so existing call-sites that referenced the old name keep
-  // working. Just delegates to handleExportFormatChosen.
-  const handleExportWorkout = handleExportFormatChosen;
-
-  // Picker for which file format to export. iOS gets the native action
-  // sheet; Android falls back to an Alert. ZWO is the headline option
-  // (works in Zwift, Rouvy, MyWhoosh, Wahoo SYSTM, TrainerRoad import).
-  // MRC is the universal text-format fallback.
-  const showExportPicker = () => {
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          title: 'Send this session to your trainer',
-          message: 'Pick a file format. After you tap, choose your trainer app from the share sheet.',
-          options: ['Zwift / Wahoo SYSTM / Rouvy (.zwo)', 'Older trainer apps (.mrc)', 'Cancel'],
-          cancelButtonIndex: 2,
-        },
-        (idx) => {
-          if (idx === 0) handleExportWorkout('zwo');
-          else if (idx === 1) handleExportWorkout('mrc');
-        },
-      );
-    } else {
-      Alert.alert(
-        'Send this session to your trainer',
-        'Pick a file format.',
-        [
-          { text: 'Zwift / Wahoo / Rouvy (.zwo)', onPress: () => handleExportWorkout('zwo') },
-          { text: 'Older apps (.mrc)', onPress: () => handleExportWorkout('mrc') },
-          { text: 'Cancel', style: 'cancel' },
-        ],
-      );
-    }
-  };
+  // The format picker step is gone — .zwo is the right format for 99%
+  // of riders (Zwift, SYSTM, Rouvy, MyWhoosh, TrainerRoad, intervals.icu
+  // all read it). Riders who specifically need .mrc can pick that path
+  // from inside ExportInstructionsModal, which surfaces it as a
+  // secondary "Need MRC?" link. One less decision in the main flow.
   // Plan default ("from-bike" for the swap calc). Order of preference:
   // (1) the activity's own bikeType (set by the plan generator or a
   // previous swap), (2) anything in editValues mid-edit, (3) the goal's
@@ -727,13 +929,18 @@ export default function ActivityDetailScreen({ navigation, route }) {
               : renderExplainCta({ onPress: handleExplainSession, loading: explaining, error: explainError });
           })()}
 
-          {/* Tips — rides only */}
+          {/* Tips — rides only.
+              First tap kicks off the AI generation; the deterministic
+              generator is shown as the placeholder while the network
+              call is in flight (so the card never reveals empty), and
+              also as the fallback if the call fails. Subsequent taps
+              hit the server-side cache. */}
           {isRide && !isEditing && (
             <>
               {!showTips ? (
                 <TouchableOpacity
                   style={s.tipsBtn}
-                  onPress={() => setShowTips(true)}
+                  onPress={() => { setShowTips(true); ensureAiTips(); }}
                   activeOpacity={0.8}
                 >
                   <Text style={s.tipsBtnText}>Show ride tips</Text>
@@ -747,15 +954,43 @@ export default function ActivityDetailScreen({ navigation, route }) {
                       <Text style={s.tipsHide}>Hide</Text>
                     </TouchableOpacity>
                   </View>
-                  {generateRideTips(activity).map((tip, idx) => (
+                  {(Array.isArray(aiTips) && aiTips.length > 0
+                    ? aiTips
+                    : generateRideTips(activity)
+                  ).map((tip, idx) => (
                     <View key={idx} style={s.tipRow}>
-                      <View style={s.tipDot} />
+                      {/* Per-tip icon — MaterialCommunityIcons glyph,
+                          never an emoji. Injury bullets get an extra
+                          colour treatment via tipIconInjury so they
+                          read as "informational" not "decorative." */}
+                      <View
+                        style={[
+                          s.tipIconWrap,
+                          tip.category === 'injury' && s.tipIconWrapInjury,
+                        ]}
+                      >
+                        <MaterialCommunityIcons
+                          name={tip.icon || 'circle-small'}
+                          size={16}
+                          color={tip.category === 'injury' ? '#F0B72F' : colors.primary}
+                        />
+                      </View>
                       <View style={s.tipContent}>
-                        <Text style={s.tipTitle}>{tip.title}</Text>
+                        <Text
+                          style={[
+                            s.tipTitle,
+                            tip.category === 'injury' && s.tipTitleInjury,
+                          ]}
+                        >
+                          {tip.title}
+                        </Text>
                         <Text style={s.tipText}>{tip.text}</Text>
                       </View>
                     </View>
                   ))}
+                  {tipsLoading && !Array.isArray(aiTips) && (
+                    <Text style={s.tipsRefreshing}>Personalising for this session…</Text>
+                  )}
                 </View>
               )}
             </>
@@ -801,35 +1036,43 @@ export default function ActivityDetailScreen({ navigation, route }) {
           <View style={{ height: 80 }} />
         </ScrollView>
 
-        {/* Send-to-trainer button — shown for indoor rides only.
-            Compact, button-like styling to read as an action rather
-            than another notes-style card (the previous treatment was
-            too close in size and shape to the "What to do" prose card
-            above and confused testers). Leading export icon, single-
-            line label, trailing chevron. */}
-        {!isEditing && isIndoorSession && (
+        {/* Export this session — available on every ride that has
+            either a structure block or a duration we can generate a
+            steady-state file from. Visible in edit mode too (a rider
+            mid-edit might still want to export the new numbers). The
+            row is intentionally muted (neutral surface, no pink
+            border) so it doesn't compete with the magenta Bike chip
+            row above. Beta chip + "Save for your trainer app" framing
+            sets honest expectations: this is an export action, not a
+            cloud sync. */}
+        {canExport && (
           <TouchableOpacity
-            style={s.exportRow}
-            onPress={showExportPicker}
+            style={[s.exportRow, exporting && s.exportRowExporting]}
+            onPress={() => handleExportFormatChosen('zwo')}
             activeOpacity={0.85}
             disabled={exporting}
-            accessibilityLabel="Send this indoor session to your trainer"
+            accessibilityLabel="Save this session as a workout file for your trainer app"
           >
             <View style={s.exportRowIcon}>
               <MaterialCommunityIcons
                 name="export-variant"
                 size={16}
-                color={colors.primary}
+                color={colors.textMid}
               />
             </View>
             <View style={s.exportRowText}>
-              <Text style={s.exportRowTitle}>Send to your trainer</Text>
+              <View style={s.exportRowTitleRow}>
+                <Text style={s.exportRowTitle}>Save for your trainer app</Text>
+                <View style={s.betaChip}>
+                  <Text style={s.betaChipText}>BETA</Text>
+                </View>
+              </View>
               <Text style={s.exportRowSub} numberOfLines={1}>
-                Zwift, Wahoo SYSTM, Rouvy &amp; more
+                Zwift, Wahoo SYSTM, Rouvy, intervals.icu &amp; more
               </Text>
             </View>
             {exporting
-              ? <ActivityIndicator size="small" color={colors.primary} />
+              ? <ActivityIndicator size="small" color={colors.textMid} />
               : <Text style={s.exportRowArrow}>{'\u203A'}</Text>}
           </TouchableOpacity>
         )}
@@ -907,20 +1150,40 @@ export default function ActivityDetailScreen({ navigation, route }) {
         }}
         onCancel={() => setPendingBikeSwap(null)}
       />
-      {/* First-time export instructions. Suppressed by the "Don't show
-          this again" checkbox — handled inside the modal via setUserPrefs. */}
+      {/* First-time export instructions. The rider picks their app
+          inside the modal and (optionally) the .mrc fallback. Modal
+          calls onProceed with the chosen format (.zwo by default). */}
       <ExportInstructionsModal
         visible={!!pendingExportFormat}
-        onProceed={() => {
-          const fmt = pendingExportFormat;
+        onProceed={(format) => {
           setPendingExportFormat(null);
           // Refresh prefs so subsequent exports honour the new "don't
           // show again" pref without needing to refocus the screen.
           getUserPrefs().then(setUserPrefs).catch(() => {});
-          runExport(fmt);
+          runExport(format || 'zwo');
         }}
         onCancel={() => setPendingExportFormat(null)}
       />
+      {/* Success toast — appears 6s after the rider returns from the
+          browser. Tapping "Need help?" reopens the instructions modal
+          even if they had previously opted out. */}
+      {exportToast && (
+        <View style={s.exportToast} pointerEvents="box-none">
+          <View style={s.exportToastInner}>
+            <Text style={s.exportToastText}>File ready in your downloads.</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setExportToast(false);
+                setPendingExportFormat('zwo');
+                analytics.events.exportInstructionsReopened?.();
+              }}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={s.exportToastBtn}>Need help?</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -1241,26 +1504,59 @@ const s = StyleSheet.create({
     color: colors.primary, letterSpacing: 0.2,
   },
 
-  // Send-to-trainer button — compact single-line action row with a
-  // leading icon. Smaller scale than the prose "What to do" card above
-  // it so the two read as different element types (notes vs action).
+  // Export row — neutral utility surface (no pink border) so it
+  // visually subordinates to the magenta Bike chip row above it.
+  // Different shape, different colour, different action — riders
+  // scanning quickly won't tap the wrong thing.
   exportRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     marginHorizontal: 16, marginBottom: 12,
-    paddingVertical: 10, paddingHorizontal: 12,
+    paddingVertical: 12, paddingHorizontal: 14,
     backgroundColor: colors.surface,
     borderRadius: 12,
-    borderWidth: 0.5, borderColor: colors.primary + '55',
+    borderWidth: 0.5, borderColor: colors.border,
   },
+  exportRowExporting: { opacity: 0.6 },
   exportRowIcon: {
     width: 32, height: 32, borderRadius: 16,
-    backgroundColor: colors.primary + '1A',
+    backgroundColor: colors.surfaceLight,
     alignItems: 'center', justifyContent: 'center',
   },
   exportRowText: { flex: 1, flexDirection: 'column' },
+  exportRowTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   exportRowTitle: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
-  exportRowSub: { fontSize: 11, color: colors.textMuted, fontFamily: FF.regular, marginTop: 1 },
+  exportRowSub: { fontSize: 11, color: colors.textMuted, fontFamily: FF.regular, marginTop: 2 },
   exportRowArrow: { fontSize: 22, color: colors.textMuted, fontFamily: FF.regular, lineHeight: 22 },
+
+  // Beta chip — amber / yellow tint, distinct from brand magenta so
+  // it reads as a status badge ("this is provisional") rather than a
+  // primary affordance. Same colour as the experimental tags on the
+  // What's New page so the language is consistent across surfaces.
+  betaChip: {
+    paddingHorizontal: 6, paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(240, 183, 47, 0.12)',
+    borderWidth: 0.5, borderColor: 'rgba(240, 183, 47, 0.4)',
+  },
+  betaChipText: {
+    fontSize: 9, fontWeight: '700', color: '#F0B72F',
+    fontFamily: FF.semibold, letterSpacing: 0.5,
+  },
+
+  // Export-success toast — pinned to the bottom of the screen, fades
+  // out after 6s. "Need help?" reopens the instructions modal.
+  exportToast: {
+    position: 'absolute', left: 16, right: 16, bottom: 24,
+    alignItems: 'center', pointerEvents: 'box-none',
+  },
+  exportToastInner: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    backgroundColor: colors.text,
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderRadius: 10,
+  },
+  exportToastText: { color: colors.bg, fontSize: 13, fontFamily: FF.regular, flex: 1 },
+  exportToastBtn: { color: colors.primary, fontSize: 13, fontWeight: '600', fontFamily: FF.semibold },
 
   daySelectorCard: {
     backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 12, borderRadius: 16, padding: 16,
@@ -1323,11 +1619,32 @@ const s = StyleSheet.create({
   tipsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
   tipsTitle: { fontSize: 16, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
   tipsHide: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted },
+  // Surfaced briefly while the AI generation is in flight on first
+  // open. Sits below the deterministic placeholder tips so the rider
+  // sees content immediately and gets the upgrade once the call lands.
+  tipsRefreshing: {
+    marginTop: 4,
+    fontSize: 12,
+    fontFamily: FF.medium,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+  },
 
-  tipRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
-  tipDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary, marginTop: 7 },
+  tipRow: { flexDirection: 'row', gap: 12, marginBottom: 14 },
+  // Icon wrap — circular surface holding the MCI glyph for each tip.
+  // Slightly larger neutral surface so the icon sits cleanly above the
+  // body text. Injury bullets switch to an amber wrap so the eye picks
+  // them up at a glance without the cartoonish quality of an emoji.
+  tipIconWrap: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: colors.primary + '14',
+    alignItems: 'center', justifyContent: 'center',
+    marginTop: 1,
+  },
+  tipIconWrapInjury: { backgroundColor: 'rgba(240, 183, 47, 0.12)' },
   tipContent: { flex: 1 },
   tipTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, marginBottom: 3 },
+  tipTitleInjury: { color: '#F0B72F' },
   tipText: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMid, lineHeight: 19 },
 
   notesCard: {

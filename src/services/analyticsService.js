@@ -229,6 +229,25 @@ const events = {
   // Pair with chat_plan_update_applied to compute suggestion accept rate.
   chatPlanSuggestionReceived: (props = {}) => track('chat_plan_suggestion_received', props),
 
+  // ── Weekly check-in ────────────────────────────────────────────────────────
+  // Funnel events for the check-in feature. Tells us responses-per-fire,
+  // dismiss-rate by surface (banner vs in-screen), and how many of the
+  // AI suggestions actually get applied. Critical for tuning cadence
+  // and the system prompt.
+  weeklyCheckinOpened:            (props = {}) => track('weekly_checkin_opened', props),
+  weeklyCheckinResponded:         (props = {}) => track('weekly_checkin_responded', props),
+  weeklyCheckinDismissed:         (props = {}) => track('weekly_checkin_dismissed', props),
+  weeklyCheckinSuggestionApplied: (props = {}) => track('weekly_checkin_suggestion_applied', props),
+  weeklyCheckinSuggestionSkipped: (props = {}) => track('weekly_checkin_suggestion_skipped', props),
+  weeklyCheckinCrisisRouted:      (props = {}) => track('weekly_checkin_crisis_routed', props),
+
+  // Workout export (Send-to-trainer) tracking.
+  activityExported:               (props = {}) => track('activity_exported', props),
+  exportAppPicked:                (props = {}) => track('export_app_picked', props),
+  exportInstructionsOptedOut:     (props = {}) => track('export_instructions_opted_out', props),
+  exportInstructionsReopened:     (props = {}) => track('export_instructions_reopened', props),
+  exportRecentReused:             (props = {}) => track('export_recent_reused', props),
+
   // ── Paywall ────────────────────────────────────────────────────────────────
   // Fired when the paywall screen mounts (someone saw the paywall).
   paywallViewed: (props = {})            => track('paywall_viewed', props),

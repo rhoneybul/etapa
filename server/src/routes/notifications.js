@@ -3,34 +3,8 @@
  */
 const express = require('express');
 const { supabase } = require('../lib/supabase');
+const { notifyNewUserOnce } = require('../lib/userLifecycle');
 const router = express.Router();
-
-// ── Slack helper ──────────────────────────────────────────────────────────────
-const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || process.env.SLACK_SUBSCRIPTIONS_WEBHOOK_URL;
-
-async function notifySlack(text) {
-  if (!SLACK_WEBHOOK_URL) {
-    console.warn('[notifications slack] No SLACK_WEBHOOK_URL configured — skipping notification');
-    return;
-  }
-  try {
-    const _fetch = typeof globalThis.fetch === 'function'
-      ? globalThis.fetch
-      : (() => { const f = require('node-fetch'); return f.default || f; })();
-    const resp = await _fetch(SLACK_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    });
-    if (!resp.ok) {
-      console.error('[notifications slack] Webhook returned', resp.status, await resp.text().catch(() => ''));
-    } else {
-      console.log('[notifications slack] Sent:', text.slice(0, 80));
-    }
-  } catch (err) {
-    console.error('[notifications slack] Failed to notify:', err.message);
-  }
-}
 
 // ── POST /api/notifications/register-token ──────────────────────────────────
 // Register or refresh an Expo push token for the authenticated user
@@ -41,30 +15,6 @@ router.post('/register-token', async (req, res) => {
 
     const { token, platform } = req.body;
     if (!token) return res.status(400).json({ error: 'token is required' });
-
-    // Check if this user has registered any tokens before — if not, it's a new signup
-    const { count: existingCount, error: countError } = await supabase
-      .from('push_tokens')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId);
-    if (countError) console.error('[notifications] push_tokens count error:', countError);
-
-    // Primary check: no existing push tokens
-    let isNewUser = (existingCount || 0) === 0;
-
-    // Fallback: if the user's auth account was created within the last 5 minutes,
-    // treat as new even if push_tokens check was unreliable
-    if (!isNewUser) {
-      try {
-        const { data: { user } } = await supabase.auth.admin.getUserById(userId);
-        if (user?.created_at) {
-          const ageMs = Date.now() - new Date(user.created_at).getTime();
-          if (ageMs < 5 * 60 * 1000) isNewUser = true; // created < 5 min ago
-        }
-      } catch {}
-    }
-
-    console.log(`[notifications] register-token userId=${userId.slice(0, 8)}… existingCount=${existingCount} isNewUser=${isNewUser}`);
 
     const tokenId = `pt_${userId.slice(0, 8)}_${Buffer.from(token).toString('base64').slice(0, 12)}`;
 
@@ -96,12 +46,11 @@ router.post('/register-token', async (req, res) => {
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id' });
 
-    // Notify Slack about the new signup (fire-and-forget, don't block response)
-    if (isNewUser) {
-      const email = req.user?.email || userId;
-      const platformLabel = (platform || 'ios').toUpperCase();
-      notifySlack(`🎉 *New sign-up* — ${email} just joined on ${platformLabel}`);
-    }
+    // Idempotent first-signup Slack ping. Decoupled from push-permission
+    // status — the helper sets a stamp on user_preferences and noops on
+    // subsequent calls, so paths that DON'T involve push (preferences
+    // POST, plans POST, plan-gen) all share the same Slack-once contract.
+    notifyNewUserOnce(userId, req.user?.email, `push_token_${(platform || 'ios').toLowerCase()}`).catch(() => {});
 
     res.json({ ok: true });
   } catch (err) {

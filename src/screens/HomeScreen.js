@@ -753,21 +753,42 @@ export default function HomeScreen({ navigation, route }) {
   // first render so a long-ignored check-in can't be missed forever.
   // Tappable banner navigates to CheckInScreen; × dismisses.
   const [pendingCheckin, setPendingCheckin] = useState(null);
+  // Track which check-in id we already showed the 48h Alert for in this
+  // session, plus the last-shown timestamp from user prefs. Together they
+  // stop the Alert from re-firing on every screen focus and keep at
+  // least 6h between successive shows for the same check-in.
+  const popupShownRef = useRef(null);
   const refreshPendingCheckin = useCallback(async () => {
     try {
       const res = await api.checkins.pending();
       setPendingCheckin(res?.checkin || null);
-      // 48h+ unresponded → show a one-shot Alert so it can't be silently missed
-      if (res?.checkin?.inAppPopupDue && res.checkin.status !== 'responded') {
-        Alert.alert(
-          'Your weekly check-in',
-          'Five quick questions to shape next week. Two minutes — promise.',
-          [
-            { text: 'Skip this week', style: 'cancel', onPress: () => api.checkins.dismiss(res.checkin.id) },
-            { text: 'Open', onPress: () => navigation.navigate('CheckIn', { checkinId: res.checkin.id }) },
-          ],
-        );
-      }
+      const ci = res?.checkin;
+      if (!ci || ci.status === 'responded' || !ci.inAppPopupDue) return;
+      // De-dupe: skip if we've already alerted for this check-in id in
+      // this app session, or if user prefs say we showed it recently.
+      if (popupShownRef.current === ci.id) return;
+      try {
+        const prefs = await getUserPrefs();
+        const lastAt = prefs?.lastCheckinPopupAt ? new Date(prefs.lastCheckinPopupAt).getTime() : 0;
+        const lastId = prefs?.lastCheckinPopupId || null;
+        // Same check-in, shown within the last 6h → don't pile on.
+        if (lastId === ci.id && Date.now() - lastAt < 6 * 60 * 60 * 1000) return;
+      } catch {}
+      popupShownRef.current = ci.id;
+      try {
+        await setUserPrefs({
+          lastCheckinPopupAt: new Date().toISOString(),
+          lastCheckinPopupId: ci.id,
+        });
+      } catch {}
+      Alert.alert(
+        'Your weekly check-in',
+        'Five quick questions to shape next week. Two minutes — promise.',
+        [
+          { text: 'Skip this week', style: 'cancel', onPress: () => api.checkins.dismiss(ci.id) },
+          { text: 'Open', onPress: () => navigation.navigate('CheckIn', { checkinId: ci.id }) },
+        ],
+      );
     } catch {}
   }, [navigation]);
   useEffect(() => { refreshPendingCheckin(); }, [refreshPendingCheckin]);
@@ -778,8 +799,10 @@ export default function HomeScreen({ navigation, route }) {
 
   const dismissPendingCheckin = useCallback(async () => {
     if (!pendingCheckin?.id) return;
+    const id = pendingCheckin.id;
     setPendingCheckin(null);
-    try { await api.checkins.dismiss(pendingCheckin.id); } catch {}
+    try { await api.checkins.dismiss(id); } catch {}
+    analytics.events.weeklyCheckinDismissed?.({ checkinId: id, surface: 'home_banner' });
   }, [pendingCheckin]);
 
   const handleRefresh = useCallback(async () => {

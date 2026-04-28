@@ -2845,6 +2845,43 @@ Write a brief, friendly message (2-3 sentences max) welcoming a new rider and en
   } catch (err) { next(err); }
 });
 
+// ── POST /api/admin/users/:id/weekly-checkin ────────────────────────────────
+// Manually fire the structured weekly check-in for a single user. Same code
+// path the cron uses — calls checkins.sendCheckin which itself dedupes on
+// "already a check-in this week" so an admin tap can't blow away a fresh
+// pending one. Distinct from /coach-checkin above which sends the older
+// post-session encouragement message.
+//
+// 200 { ok, id }              — fired (or returned the existing same-week id)
+// 400 { error: 'no_active_plan' } — user has no plan, nothing to check in on
+// 400 { error: 'plan_complete' }  — plan is past its final week
+router.post('/users/:id/weekly-checkin', async (req, res, next) => {
+  try {
+    const userId = req.params.id;
+    const checkinsRouter = require('./checkins');
+    const id = await checkinsRouter.sendCheckin(userId, { trigger: 'manual' });
+    if (!id) {
+      // sendCheckin returns null when it skips. Re-look at the user's
+      // plan to give the admin a useful reason rather than a silent OK.
+      const { data: plans } = await supabase
+        .from('plans')
+        .select('id, current_week, weeks')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      const plan = plans?.[0] || null;
+      if (!plan) return res.status(400).json({ error: 'no_active_plan' });
+      if (plan.weeks && plan.current_week && plan.current_week > plan.weeks) {
+        return res.status(400).json({ error: 'plan_complete' });
+      }
+      // Otherwise the user already has a same-week check-in pending —
+      // not really an error, the admin probably just wants to know.
+      return res.json({ ok: true, deduped: true });
+    }
+    res.json({ ok: true, id });
+  } catch (err) { next(err); }
+});
+
 // ── GET /api/admin/claude-usage ─────────────────────────────────────────────
 // Aggregated Claude usage for the admin dashboard. Three breakdowns over
 // a configurable window (default last 30 days):

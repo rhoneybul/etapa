@@ -20,6 +20,11 @@
 const express = require('express');
 const { supabase } = require('../lib/supabase');
 const { sendPushToUser } = require('../lib/pushService');
+const {
+  detectCrisisInput,
+  crisisResourcesPayload,
+  sanitiseSuggestions,
+} = require('../lib/checkinSafety');
 const router = express.Router();
 
 const _fetch = typeof globalThis.fetch === 'function'
@@ -255,6 +260,16 @@ router.post('/:id/physio-notes', async (req, res, next) => {
 // either (a) flag continuity in the summary or (b) shape the
 // suggestions accordingly.
 async function generateSuggestions(userId, checkin, responses) {
+  // ── Safety gate 1: input screening for crisis language ──────────────
+  // Runs BEFORE we burn a Claude call. If matched, we return crisis
+  // resources straight away and never invoke the model. The rider gets
+  // help, not a coach trying to optimise tempo intervals.
+  const crisis = detectCrisisInput(responses);
+  if (crisis.matched) {
+    console.warn('[checkins] crisis input detected for user', userId, '— skipping suggestions');
+    return crisisResourcesPayload();
+  }
+
   const apiKey = getAnthropicKey();
   if (!apiKey) {
     return { fallback: true, message: 'Coach unavailable — please review the plan manually.' };
@@ -306,6 +321,12 @@ Use the previous check-ins (when present) as context for pattern recognition:
 - Same life event derailing the same day each week → adapt the schedule, not just this week's load.
 - A clear improvement (e.g. they moved from missing two sessions to all completed) → acknowledge it. Brief, not gushing.
 - Don't repeat a suggestion you made last week unless the rider hasn't acted on it.
+
+ANCHOR EVERY SUGGESTION TO THE RIDER'S OWN WORDS:
+- Each change.reason MUST quote a short, distinctive phrase from what the rider actually wrote ("you said: 'bonked at km 60'", "you wrote: 'travelling Wed-Fri'"). One quoted phrase per reason, max 12 words. The quote must appear verbatim in the rider's responses (modifications, lifeEvents, sessionComments, or injury.description).
+- Do NOT invent reasons. If the rider didn't say something that justifies a change, don't suggest the change.
+- The summary should reference at least one quote when the rider provided meaningful free-text. If they answered tersely, keep the summary short and don't over-pattern-match.
+- This is non-negotiable. A suggestion without a grounding quote will be discarded server-side.
 
 Your task: review the rider's responses and propose concrete adjustments to NEXT WEEK'S plan.
 
@@ -372,28 +393,119 @@ Propose adjustments. Remember: training only — never medical advice. Refer inj
   let parsed;
   try { parsed = JSON.parse(cleaned); }
   catch { parsed = { summary: text.slice(0, 200), changes: [] }; }
+
+  // ── Safety gate 2: drop ungrounded suggestions ──────────────────────
+  // The system prompt requires every change.reason to quote the rider's
+  // words verbatim. Drop any change whose reason doesn't contain a
+  // substring from the rider's actual text — guards against the model
+  // hallucinating a reason and the rider then committing the change.
+  const riderText = collectRiderText(responses);
+  if (Array.isArray(parsed.changes) && riderText) {
+    parsed.changes = parsed.changes.filter(c => {
+      if (!c?.reason) return false;
+      // Allow the change through only if its reason quotes >= 4 consecutive
+      // words that appear in the rider's input. Cheap, conservative check
+      // — false negatives (dropping a valid change) are recoverable on
+      // the next check-in; false positives (keeping a hallucinated change)
+      // are not.
+      return reasonIsGrounded(c.reason, riderText);
+    });
+  }
+
+  // ── Safety gate 3: scrub medical drift from any surviving fields ────
+  parsed = sanitiseSuggestions(parsed);
   return parsed;
+}
+
+// Concatenate all rider free-text into one lowercased blob for grounding
+// checks. Includes per-session comments and the injury description.
+function collectRiderText(responses) {
+  const bits = [];
+  if (typeof responses?.modifications === 'string') bits.push(responses.modifications);
+  if (typeof responses?.lifeEvents === 'string') bits.push(responses.lifeEvents);
+  if (typeof responses?.injury?.description === 'string') bits.push(responses.injury.description);
+  if (responses?.sessionComments && typeof responses.sessionComments === 'object') {
+    for (const v of Object.values(responses.sessionComments)) {
+      if (typeof v === 'string') bits.push(v);
+    }
+  }
+  if (typeof responses?.physioNotes === 'string') bits.push(responses.physioNotes);
+  return bits.join(' \u00B7 ').toLowerCase();
+}
+
+// True if the reason quotes a 4+ word phrase from the rider's input.
+// We strip the reason of common punctuation, lowercase it, and slide a
+// 4-gram window across it looking for substring matches in riderText.
+function reasonIsGrounded(reason, riderText) {
+  if (typeof reason !== 'string' || !riderText) return false;
+  const norm = reason.toLowerCase().replace(/[^a-z0-9\s']/g, ' ').replace(/\s+/g, ' ').trim();
+  const tokens = norm.split(' ').filter(Boolean);
+  if (tokens.length < 4) return false;
+  for (let i = 0; i + 4 <= tokens.length; i++) {
+    const phrase = tokens.slice(i, i + 4).join(' ');
+    if (riderText.includes(phrase)) return true;
+  }
+  return false;
 }
 
 // ── Helper: create a check-in row + send the initial push ──────────────────
 // Exported for the cron job and the admin manual-send route.
+//
+// Skips (returns null) when:
+//   • the user has no active plan — there's nothing for the coach to suggest
+//     changes to, so a check-in would be wasted.
+//   • the user already has a responded/sent/pending check-in for the same
+//     plan + week — prevents same-week duplicates after a schedule change.
+//
+// scheduled_at is the time the check-in was MEANT to fire (now() is fine
+// when called from the cron at the rider's scheduled minute, but admin
+// manual sends use now() too — that's accurate either way).
 async function sendCheckin(userId, { trigger = 'scheduled' } = {}) {
-  // Look up the user's active plan + current week
+  // Look up the user's active plan. We require an active plan because
+  // suggestions are scoped to the next week of activities.
   const { data: plans } = await supabase
     .from('plans')
-    .select('*')
+    .select('id, current_week, weeks, status')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(1);
   const plan = plans?.[0] || null;
+  if (!plan) {
+    console.log('[checkins] sendCheckin skipped — no active plan for user', userId);
+    return null;
+  }
+  // Don't fire if the rider's plan is already complete (current_week past
+  // the plan's total weeks). Surface a different ritual for that ("plan
+  // complete, pick a new one") later.
+  if (plan.weeks && plan.current_week && plan.current_week > plan.weeks) {
+    console.log('[checkins] sendCheckin skipped — plan already complete for user', userId);
+    return null;
+  }
+
+  // Same-plan, same-week dedupe. Includes responded check-ins so a rider
+  // who already answered this week doesn't get a second one if they
+  // change their schedule.
+  const weekNum = plan.current_week || 1;
+  const { data: existing } = await supabase
+    .from('coach_checkins')
+    .select('id, status')
+    .eq('user_id', userId)
+    .eq('plan_id', plan.id)
+    .eq('week_num', weekNum)
+    .in('status', ['pending', 'sent', 'responded'])
+    .limit(1);
+  if (existing?.length) {
+    console.log('[checkins] sendCheckin skipped — already a check-in for week', weekNum, 'user', userId);
+    return existing[0].id;
+  }
 
   const id = uid();
   const now = new Date();
   const row = {
     id,
     user_id: userId,
-    plan_id: plan?.id || null,
-    week_num: plan?.current_week || 1,
+    plan_id: plan.id,
+    week_num: weekNum,
     status: 'sent',
     scheduled_at: now.toISOString(),
     sent_at: now.toISOString(),
@@ -406,7 +518,7 @@ async function sendCheckin(userId, { trigger = 'scheduled' } = {}) {
     title: 'Your weekly check-in',
     body: 'Five quick questions — your coach is ready to tweak next week\'s plan.',
     type: 'weekly_checkin',
-    data: { checkinId: id, planId: plan?.id || null, scope: 'checkin' },
+    data: { checkinId: id, planId: plan.id, scope: 'checkin' },
   });
 
   return id;
@@ -436,12 +548,20 @@ prefsRouter.get('/', async (req, res, next) => {
 prefsRouter.post('/', async (req, res, next) => {
   try {
     const b = req.body || {};
+    // Validate timezone against the IANA list. Falls back to UTC if the
+    // device sent something unexpected. The client passes the device's
+    // current timezone on every save (see SettingsScreen), so this row
+    // tracks the rider as they travel — fires at 18:00 local wherever
+    // they are, not where they originally configured.
+    let tz = String(b.timezone || 'UTC').slice(0, 64);
+    try { new Intl.DateTimeFormat('en-GB', { timeZone: tz }); }
+    catch { tz = 'UTC'; }
     const row = {
       user_id: req.user.id,
       enabled: !!b.enabled,
       day_of_week: Math.max(0, Math.min(6, Number(b.dayOfWeek ?? 0))),
       time_of_day: String(b.timeOfDay || '18:00').slice(0, 5),
-      timezone: String(b.timezone || 'UTC').slice(0, 64),
+      timezone: tz,
       updated_at: new Date().toISOString(),
     };
     const { error } = await supabase

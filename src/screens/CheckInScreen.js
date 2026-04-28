@@ -20,16 +20,23 @@
  * advice. Injuries always recommend physio. The screen surfaces that
  * recommendation prominently when the rider reports one.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, fontFamily } from '../theme';
 import { api } from '../services/api';
 import { getPlans, updateActivity } from '../services/storageService';
+import analytics from '../services/analyticsService';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+
+// Per-checkin draft key — answers persist across backgrounding so a rider
+// who started writing comments doesn't lose them on a notification tap or
+// app suspension. Cleared on submit / dismiss.
+const draftKey = (checkinId) => `@etapa_checkin_draft_${checkinId}`;
 
 const FF = fontFamily;
 
@@ -46,8 +53,35 @@ export default function CheckInScreen({ navigation, route }) {
   const [modifications, setModifications] = useState('');
   const [lifeEvents, setLifeEvents] = useState('');
   const [injuryReported, setInjuryReported] = useState(false);
+  // Two-step injury reveal: Yes shows the medical banner only; the rider
+  // then taps "Tell me more" to reveal the description input + physio
+  // opt-in. Less imposing than dumping every safety affordance at once.
+  const [injuryDetailsOpen, setInjuryDetailsOpen] = useState(false);
   const [injuryDescription, setInjuryDescription] = useState('');
   const [intentToSeePhysio, setIntentToSeePhysio] = useState(false);
+
+  // Submitting timer — drives the "Talking to your coach" elapsed-seconds
+  // copy so a slow Claude call doesn't read as "broken."
+  const [submittingSecs, setSubmittingSecs] = useState(0);
+  const submittingTimerRef = useRef(null);
+  useEffect(() => {
+    if (phase !== 'submitting') {
+      if (submittingTimerRef.current) clearInterval(submittingTimerRef.current);
+      submittingTimerRef.current = null;
+      setSubmittingSecs(0);
+      return;
+    }
+    const startedAt = Date.now();
+    submittingTimerRef.current = setInterval(() => {
+      setSubmittingSecs(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(submittingTimerRef.current);
+  }, [phase]);
+
+  // Track the resolved check-in id so the draft key is stable across
+  // re-renders even when route.params didn't carry one (the hydrator
+  // resolves it from /pending).
+  const resolvedIdRef = useRef(checkinId || null);
 
   useEffect(() => {
     (async () => {
@@ -64,11 +98,28 @@ export default function CheckInScreen({ navigation, route }) {
         }
         if (!ci) { setPhase('error'); return; }
         setCheckin(ci);
+        resolvedIdRef.current = ci.id;
         // If already responded, jump straight to review
         if (ci.status === 'responded' && ci.suggestions) {
           setPhase('review');
         } else {
           setPhase('form');
+          // Hydrate any saved draft for this check-in. Quietly swallow
+          // parse errors — a bad draft is better dropped than crashed on.
+          try {
+            const raw = await AsyncStorage.getItem(draftKey(ci.id));
+            if (raw) {
+              const draft = JSON.parse(raw);
+              if (draft.sessionsDone) setSessionsDone(draft.sessionsDone);
+              if (draft.sessionComments) setSessionComments(draft.sessionComments);
+              if (draft.modifications) setModifications(draft.modifications);
+              if (draft.lifeEvents) setLifeEvents(draft.lifeEvents);
+              if (draft.injuryReported) setInjuryReported(true);
+              if (draft.injuryDetailsOpen) setInjuryDetailsOpen(true);
+              if (draft.injuryDescription) setInjuryDescription(draft.injuryDescription);
+              if (draft.intentToSeePhysio) setIntentToSeePhysio(true);
+            }
+          } catch {}
         }
         // Load this week's activities for the multi-select
         const plans = await getPlans();
@@ -84,6 +135,23 @@ export default function CheckInScreen({ navigation, route }) {
     })();
   }, [checkinId]);
 
+  // Auto-save the draft as the rider types. Throttled by useEffect
+  // dependency change so we don't write every keystroke — React batches
+  // the state update; AsyncStorage write is fast enough that a per-render
+  // save is fine. Scoped to phase=form so review-mode interactions don't
+  // re-write a stale draft.
+  useEffect(() => {
+    if (phase !== 'form') return;
+    const id = resolvedIdRef.current;
+    if (!id) return;
+    const draft = {
+      sessionsDone, sessionComments, modifications, lifeEvents,
+      injuryReported, injuryDetailsOpen, injuryDescription, intentToSeePhysio,
+    };
+    AsyncStorage.setItem(draftKey(id), JSON.stringify(draft)).catch(() => {});
+  }, [phase, sessionsDone, sessionComments, modifications, lifeEvents,
+      injuryReported, injuryDetailsOpen, injuryDescription, intentToSeePhysio]);
+
   const toggleSessionDone = (id) => {
     setSessionsDone(prev => ({ ...prev, [id]: !prev[id] }));
   };
@@ -91,8 +159,33 @@ export default function CheckInScreen({ navigation, route }) {
     setSessionComments(prev => ({ ...prev, [id]: text }));
   };
 
+  // Pull together everything the rider has actually filled in. Used to
+  // detect empty submissions so we can prompt rather than fire a useless
+  // Claude call.
+  const hasMeaningfulInput = useMemo(() => {
+    const anySession = Object.values(sessionsDone).some(Boolean);
+    const anyComment = Object.values(sessionComments).some(c => (c || '').trim());
+    return anySession || anyComment
+      || modifications.trim().length > 0
+      || lifeEvents.trim().length > 0
+      || (injuryReported && injuryDescription.trim().length > 0);
+  }, [sessionsDone, sessionComments, modifications, lifeEvents, injuryReported, injuryDescription]);
+
   const submit = async () => {
     if (!checkin?.id) return;
+
+    if (!hasMeaningfulInput) {
+      Alert.alert(
+        'Nothing to send',
+        "You haven't filled anything in. Skip this week's check-in instead?",
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Skip this week', style: 'destructive', onPress: dismissCheckin },
+        ],
+      );
+      return;
+    }
+
     setPhase('submitting');
     const doneIds = Object.keys(sessionsDone).filter(k => sessionsDone[k]);
     const cleanComments = {};
@@ -112,17 +205,91 @@ export default function CheckInScreen({ navigation, route }) {
           intentToSeePhysio: injuryReported && intentToSeePhysio,
         },
       });
+      // Clear the draft on successful submit.
+      AsyncStorage.removeItem(draftKey(checkin.id)).catch(() => {});
+      analytics.events.weeklyCheckinResponded?.({ checkinId: checkin.id });
       setCheckin(res?.checkin || checkin);
       setPhase('review');
     } catch (err) {
-      Alert.alert('Couldn\'t submit', 'Try again in a moment.');
+      Alert.alert('Couldn\'t submit', 'We\'ll save your answers — try again in a moment when you have signal.');
       setPhase('form');
     }
   };
 
+  const dismissCheckin = async () => {
+    if (!checkin?.id) { navigation.goBack(); return; }
+    try { await api.checkins.dismiss(checkin.id); } catch {}
+    AsyncStorage.removeItem(draftKey(checkin.id)).catch(() => {});
+    analytics.events.weeklyCheckinDismissed?.({ checkinId: checkin.id });
+    navigation.goBack();
+  };
+
+  const confirmSkip = () => {
+    Alert.alert(
+      'Skip this week\'s check-in?',
+      'You can still tweak any session manually. The next check-in will arrive on schedule.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Skip', style: 'destructive', onPress: dismissCheckin },
+      ],
+    );
+  };
+
+  // Undo snackbar state — shows "Applied. Undo." for 6s after a change.
+  // Tap Undo within the window → activity reverts to the snapshot taken
+  // before the change.
+  const [undoToast, setUndoToast] = useState(null); // { activityId, kind, snapshot }
+  const undoTimerRef = useRef(null);
+  const showUndoToast = (activityId, kind, snapshot) => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoToast({ activityId, kind, snapshot });
+    undoTimerRef.current = setTimeout(() => setUndoToast(null), 6000);
+  };
+  const undoLastApply = async () => {
+    if (!undoToast) return;
+    const { activityId, kind, snapshot } = undoToast;
+    setUndoToast(null);
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    try {
+      await updateActivity(activityId, {
+        durationMins: snapshot.durationMins,
+        distanceKm: snapshot.distanceKm,
+        effort: snapshot.effort,
+        completed: snapshot.completed,
+        notes: snapshot.notes,
+      });
+      // Re-enable the suggestion locally so they can apply it again later
+      // if they want.
+      setCheckin(prev => prev ? {
+        ...prev,
+        suggestions: {
+          ...(prev.suggestions || {}),
+          changes: (prev.suggestions?.changes || []).map(c =>
+            c.activityId === activityId && c.kind === kind ? { ...c, _applied: false } : c
+          ),
+        },
+      } : prev);
+    } catch {
+      Alert.alert('Couldn\'t undo', 'Open the activity and edit it manually.');
+    }
+  };
+
   // Apply a single suggestion to the local plan + sync to server.
+  // Captures the activity's PRE-change state so the rider can Undo for
+  // ~6 seconds via the snackbar that appears at the bottom of the screen.
   const applySuggestion = async (change) => {
     if (!change?.activityId) return;
+    // Snapshot what we're overwriting so Undo can restore it. Pulls
+    // current values from this week's loaded activity list.
+    const prevAct = thisWeekActs.find(a => a.id === change.activityId) || null;
+    const prevSnapshot = prevAct ? {
+      durationMins: prevAct.durationMins ?? null,
+      distanceKm: prevAct.distanceKm ?? null,
+      effort: prevAct.effort ?? null,
+      completed: !!prevAct.completed,
+      notes: prevAct.notes ?? null,
+    } : null;
+
     const updates = {};
     if (change.kind === 'skip') {
       updates.completed = false;
@@ -135,6 +302,9 @@ export default function CheckInScreen({ navigation, route }) {
     }
     try {
       await updateActivity(change.activityId, updates);
+      analytics.events.weeklyCheckinSuggestionApplied?.({
+        checkinId: checkin?.id, activityId: change.activityId, kind: change.kind,
+      });
       // Mark this change locally so the UI can grey it out
       setCheckin(prev => prev ? {
         ...prev,
@@ -145,6 +315,7 @@ export default function CheckInScreen({ navigation, route }) {
           ),
         },
       } : prev);
+      if (prevSnapshot) showUndoToast(change.activityId, change.kind, prevSnapshot);
     } catch {
       Alert.alert('Couldn\'t apply', 'Try again or open the session and edit it manually.');
     }
@@ -270,32 +441,57 @@ export default function CheckInScreen({ navigation, route }) {
 
             {injuryReported && (
               <>
-                <View style={s.medicalBanner}>
+                {/* Two-step injury reveal — banner first, then on tap of
+                    "Tell me more" we expose the description input + the
+                    physio opt-in. Saves an apparent wall of pink for
+                    riders who tapped Yes meaning "minor twinge." */}
+                <View
+                  style={s.medicalBanner}
+                  accessibilityRole="alert"
+                  accessibilityLabel="A note before you continue. Etapa is a training app, not a medical service. We will not diagnose or suggest treatment. Please see a physiotherapist."
+                >
                   <Text style={s.medicalBannerTitle}>A note before you continue</Text>
                   <Text style={s.medicalBannerBody}>
                     Etapa is a training app, not a medical service. We won't try to diagnose anything or suggest treatment. If you're hurting, please see a physiotherapist — and we'll shape the plan around what they tell you.
                   </Text>
                 </View>
-                <TextInput
-                  style={s.bigInput}
-                  placeholder="Briefly describe what's bothering you (no need for detail — your physio will assess)"
-                  placeholderTextColor={colors.textFaint}
-                  value={injuryDescription}
-                  onChangeText={setInjuryDescription}
-                  multiline
-                />
-                <TouchableOpacity
-                  style={[s.physioOptIn, intentToSeePhysio && s.physioOptInOn]}
-                  onPress={() => setIntentToSeePhysio(!intentToSeePhysio)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[s.checkBox, intentToSeePhysio && s.checkBoxOn]}>
-                    {intentToSeePhysio ? <Text style={s.checkTick}>{'\u2713'}</Text> : null}
-                  </View>
-                  <Text style={s.physioOptInText}>
-                    I'll book a physio. Add a placeholder appointment to my plan so I remember.
-                  </Text>
-                </TouchableOpacity>
+                {!injuryDetailsOpen ? (
+                  <TouchableOpacity
+                    style={s.tellMoreRow}
+                    onPress={() => setInjuryDetailsOpen(true)}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityLabel="Tell me more about it"
+                  >
+                    <Text style={s.tellMoreText}>Tell me more about it →</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <>
+                    <TextInput
+                      style={s.bigInput}
+                      placeholder="Briefly describe what's bothering you (no need for detail — your physio will assess)"
+                      placeholderTextColor={colors.textFaint}
+                      value={injuryDescription}
+                      onChangeText={setInjuryDescription}
+                      multiline
+                    />
+                    <TouchableOpacity
+                      style={[s.physioOptIn, intentToSeePhysio && s.physioOptInOn]}
+                      onPress={() => setIntentToSeePhysio(!intentToSeePhysio)}
+                      activeOpacity={0.7}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: intentToSeePhysio }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <View style={[s.checkBox, intentToSeePhysio && s.checkBoxOn]}>
+                        {intentToSeePhysio ? <Text style={s.checkTick}>{'\u2713'}</Text> : null}
+                      </View>
+                      <Text style={s.physioOptInText}>
+                        I'll book a physio. Add a placeholder appointment to my plan so I remember.
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </>
             )}
 
@@ -305,35 +501,72 @@ export default function CheckInScreen({ navigation, route }) {
               disabled={phase === 'submitting'}
               activeOpacity={0.85}
             >
-              {phase === 'submitting'
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={s.primaryBtnText}>Submit to your coach</Text>}
+              {phase === 'submitting' ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <ActivityIndicator color="#fff" />
+                  <Text style={s.primaryBtnText}>
+                    {submittingSecs < 8
+                      ? 'Talking to your coach…'
+                      : submittingSecs < 20
+                        ? 'Still thinking — hold tight'
+                        : "Slower than usual — your answers are saved either way"}
+                  </Text>
+                </View>
+              ) : (
+                <Text style={s.primaryBtnText}>Submit to your coach</Text>
+              )}
             </TouchableOpacity>
 
+            {/* Surfaced more prominently than before — used to sit below
+                the primary button as a faint underlined link, easy to
+                miss. Now a proper ghost button right under Submit. */}
             <TouchableOpacity
-              style={s.dismissRow}
-              onPress={async () => {
-                await api.checkins.dismiss(checkin.id);
-                navigation.goBack();
-              }}
+              style={s.skipBtn}
+              onPress={confirmSkip}
               activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={s.dismissText}>Skip this week's check-in</Text>
+              <Text style={s.skipBtnText}>Skip this week's check-in</Text>
             </TouchableOpacity>
           </ScrollView>
         ) : null}
 
         {phase === 'review' && checkin?.suggestions ? (
           <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
-            <Text style={s.intro}>Here's what I'd change for next week.</Text>
+            {/* Crisis short-circuit — when the input screen matched a
+                crisis pattern the server returns crisisResources instead
+                of running suggestions. Show the resources prominently
+                and nothing else. */}
+            {checkin.suggestions.crisisResources ? (
+              <View style={s.crisisCard} accessibilityRole="alert">
+                <Text style={s.crisisTitle}>{checkin.suggestions.summary}</Text>
+                <View style={{ height: 12 }} />
+                {(checkin.suggestions.resources || []).map((r, i) => (
+                  <View key={i} style={s.crisisResource}>
+                    <Text style={s.crisisResourceLabel}>{r.label}</Text>
+                    <Text style={s.crisisResourceDetail}>{r.detail}</Text>
+                  </View>
+                ))}
+                <TouchableOpacity
+                  style={s.primaryBtn}
+                  onPress={() => navigation.goBack()}
+                >
+                  <Text style={s.primaryBtnText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
 
-            {checkin.suggestions.summary ? (
+            {!checkin.suggestions.crisisResources && (
+              <Text style={s.intro}>Here's what I'd change for next week.</Text>
+            )}
+
+            {!checkin.suggestions.crisisResources && checkin.suggestions.summary ? (
               <View style={s.summaryCard}>
                 <Text style={s.summaryText}>{checkin.suggestions.summary}</Text>
               </View>
             ) : null}
 
-            {checkin.suggestions.physioRecommended ? (
+            {!checkin.suggestions.crisisResources && checkin.suggestions.physioRecommended ? (
               <View style={s.physioBanner}>
                 <MaterialCommunityIcons name="hand-heart" size={18} color={colors.primary} />
                 <View style={{ flex: 1 }}>
@@ -345,9 +578,9 @@ export default function CheckInScreen({ navigation, route }) {
               </View>
             ) : null}
 
-            {(checkin.suggestions.changes || []).length === 0 ? (
+            {!checkin.suggestions.crisisResources && (checkin.suggestions.changes || []).length === 0 ? (
               <Text style={s.muted}>No changes — stick with the plan and ride well.</Text>
-            ) : (
+            ) : !checkin.suggestions.crisisResources ? (
               checkin.suggestions.changes.map((c, i) => (
                 <View key={i} style={[s.changeCard, c._applied && { opacity: 0.5 }]}>
                   <Text style={s.changeKind}>
@@ -385,17 +618,33 @@ export default function CheckInScreen({ navigation, route }) {
                   </View>
                 </View>
               ))
-            )}
+            ) : null}
 
-            <TouchableOpacity
-              style={s.primaryBtn}
-              onPress={() => navigation.goBack()}
-              activeOpacity={0.85}
-            >
-              <Text style={s.primaryBtnText}>Done</Text>
-            </TouchableOpacity>
+            {!checkin.suggestions.crisisResources && (
+              <TouchableOpacity
+                style={s.primaryBtn}
+                onPress={() => navigation.goBack()}
+                activeOpacity={0.85}
+              >
+                <Text style={s.primaryBtnText}>Done</Text>
+              </TouchableOpacity>
+            )}
           </ScrollView>
         ) : null}
+
+        {/* Undo snackbar — fades out after 6s. Sits above the bottom
+            edge in screen-space so it's visible whatever the rider is
+            reading on the review list. */}
+        {undoToast && (
+          <View style={s.undoToast} pointerEvents="box-none">
+            <View style={s.undoToastInner} accessibilityRole="alert">
+              <Text style={s.undoToastText}>Applied to your plan.</Text>
+              <TouchableOpacity onPress={undoLastApply} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <Text style={s.undoToastBtn}>Undo</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -482,8 +731,48 @@ const s = StyleSheet.create({
     borderRadius: 12, alignItems: 'center', marginTop: 24,
   },
   primaryBtnText: { color: '#fff', fontSize: 14, fontWeight: '600', fontFamily: FF.semibold },
-  dismissRow: { paddingVertical: 14, alignItems: 'center' },
-  dismissText: { color: colors.textMuted, fontSize: 13, fontFamily: FF.regular },
+
+  // Skip button — promoted from a faint underlined link to a proper
+  // ghost button right below Submit, so riders who genuinely don't have
+  // time can find it instantly.
+  skipBtn: {
+    paddingVertical: 13, borderRadius: 12,
+    borderWidth: 0.5, borderColor: colors.border,
+    alignItems: 'center', marginTop: 10,
+  },
+  skipBtnText: { color: colors.textMid, fontSize: 13, fontFamily: FF.regular },
+
+  // Two-step injury reveal — "Tell me more" affordance after the banner.
+  tellMoreRow: { paddingVertical: 12, alignItems: 'flex-start', marginTop: 4 },
+  tellMoreText: { fontSize: 13, fontWeight: '500', color: colors.primary, fontFamily: FF.medium },
+
+  // Undo toast — pinned to the bottom of the screen for 6s after Apply.
+  undoToast: {
+    position: 'absolute', left: 16, right: 16, bottom: 24,
+    alignItems: 'center', pointerEvents: 'box-none',
+  },
+  undoToastInner: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    backgroundColor: colors.text,
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderRadius: 10,
+  },
+  undoToastText: { color: colors.bg, fontSize: 13, fontFamily: FF.regular, flex: 1 },
+  undoToastBtn: { color: colors.primary, fontSize: 13, fontWeight: '600', fontFamily: FF.semibold },
+
+  // Crisis resources panel — shown when input screen matched.
+  crisisCard: {
+    backgroundColor: 'rgba(248,113,113,0.06)',
+    borderWidth: 0.5, borderColor: 'rgba(248,113,113,0.4)',
+    borderRadius: 12, padding: 18, marginBottom: 12,
+  },
+  crisisTitle: { fontSize: 14, fontWeight: '500', color: colors.text, fontFamily: FF.medium, lineHeight: 20 },
+  crisisResource: {
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(248,113,113,0.3)',
+  },
+  crisisResourceLabel: { fontSize: 13, fontWeight: '600', color: '#F87171', fontFamily: FF.semibold, marginBottom: 3 },
+  crisisResourceDetail: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, lineHeight: 17 },
 
   // Review phase
   summaryCard: {
