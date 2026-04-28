@@ -21,6 +21,7 @@ import { syncStravaActivities, getStravaActivitiesForWeek, getStravaActivitiesFo
 import { getSessionColor, getSessionLabel, getSessionTag, getMetricLabel, getCrossTrainingForDay, getActivityIcon, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
 import { BIKE_LABELS as BIKE_LABEL_MAP, BIKE_KEYS } from '../utils/bikeSwap';
 import BikeSwapModal from '../components/BikeSwapModal';
+import BikeTypePickerModal from '../components/BikeTypePickerModal';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { getCoach } from '../data/coaches';
@@ -133,6 +134,15 @@ export default function HomeScreen({ navigation, route }) {
   const [deleting, setDeleting] = useState(false);
   const [stravaActivities, setStravaActivities] = useState([]);
   const [selectedDayIdx, setSelectedDayIdx] = useState(null); // tapped day in the week strip
+  // Optimistic completion state — IDs of activities the rider has just
+  // ticked off. We flip them to "done" instantly so the tap feels
+  // responsive, then markActivityComplete + load() reconcile in the
+  // background. The set is cleared on load completion (the activity's
+  // own `completed` flag is now true, no need to keep overriding).
+  // Fixes the "tap doesn't seem to register" feel users were reporting.
+  // The completion handler itself is defined further down (after
+  // `load` is declared) so the useCallback deps line up.
+  const [optimisticDone, setOptimisticDone] = useState(() => new Set());
   // ── Week module display mode ──────────────────────────────────────────
   // Single source of truth for the week section. Was previously two
   // overlapping views (horizontal cards rail + a 7-day calendar strip
@@ -612,6 +622,34 @@ export default function HomeScreen({ navigation, route }) {
     if (isMounted.current) setLoading(false);
   }, [selectedPlanIdx, navigation]);
 
+  // Optimistic completion handler. Flips the rider's tap into a
+  // visible "done" state before the server round-trip lands so the
+  // UI doesn't feel laggy on slow networks. Used by both the home
+  // card circle and the week-list circle below.
+  const completeOptimistic = useCallback(async (activityId) => {
+    if (!activityId) return;
+    setOptimisticDone(prev => {
+      const next = new Set(prev);
+      next.add(activityId);
+      return next;
+    });
+    try {
+      await markActivityComplete(activityId);
+      // force:true bypasses load()'s plan-hash cache, which only
+      // tracks plan id / updatedAt / activity count — toggling
+      // `completed` on a single activity doesn't change any of those
+      // so a plain load() would short-circuit and the UI wouldn't
+      // catch up.
+      await load({ force: true });
+    } finally {
+      setOptimisticDone(prev => {
+        const next = new Set(prev);
+        next.delete(activityId);
+        return next;
+      });
+    }
+  }, [load]);
+
   useEffect(() => { load({ force: true }); }, [load]);
   useEffect(() => {
     const unsub = navigation.addListener('focus', () => load());
@@ -683,67 +721,91 @@ export default function HomeScreen({ navigation, route }) {
   useEffect(() => { setSelectedDayIdx(null); }, [currentWeek]);
 
   // ── Bike swap from the home card ────────────────────────────────────
-  // pendingSwap holds { activity, fromBike, toBike } while the
-  // BikeSwapModal is on-screen. The action-sheet → modal → updateActivity
-  // sequence stays inside HomeScreen so the rider doesn't have to drill
-  // into ActivityDetail just to flip Tuesday's ride from road to gravel.
-  const [pendingSwap, setPendingSwap] = useState(null);
+  // Two-stage flow:
+  //   1. pickerActivity — opens BikeTypePickerModal with the list of
+  //      target bikes. Branded modal (replaces the previous OS action
+  //      sheet) so iOS and Android riders see the same surface, in the
+  //      same vocabulary as the rest of the app's bottom sheets.
+  //   2. pendingSwap — once the rider picks a target bike, hand off to
+  //      BikeSwapModal which shows the coach's distance/duration
+  //      recommendation and the apply / keep-original / cancel CTAs.
+  //   3. applyToAllPrompt — after a successful swap on a recurring
+  //      weekday, ask if the rider wants the change to propagate to
+  //      every future occurrence of that day in the plan.
+  const [pickerActivity, setPickerActivity] = useState(null);     // { activity, currentBike }
+  const [pendingSwap, setPendingSwap] = useState(null);            // { activity, fromBike, toBike }
+  const [applyToAllPrompt, setApplyToAllPrompt] = useState(null);  // { activity, bikeType }
 
-  // Open the swap picker for an activity. Shows the OS-native action
-  // sheet listing all five bike types, skipping the one already
-  // selected. iOS gets the system sheet; Android gets the equivalent
-  // Alert with one button per type (lighter than a full-screen modal).
+  // Stage 1 — open the picker for a session. Replaces the iOS / Android
+  // action-sheet split with a single branded modal.
   const openBikeSwapForActivity = useCallback((activity, currentBike) => {
     if (!activity) return;
-    const choices = BIKE_KEYS.filter(b => b !== currentBike);
-    const labels = choices.map(b => `Swap to ${BIKE_LABEL_MAP[b]}`);
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          title: `${activity.title || 'This session'}`,
-          message: `Currently on ${BIKE_LABEL_MAP[currentBike] || currentBike}. Pick a different bike — we'll suggest the right distance.`,
-          options: [...labels, 'Cancel'],
-          cancelButtonIndex: labels.length,
-        },
-        (idx) => {
-          if (idx == null || idx >= labels.length) return;
-          setPendingSwap({ activity, fromBike: currentBike, toBike: choices[idx] });
-        },
+    setPickerActivity({ activity, currentBike });
+  }, []);
+
+  // Stage 1 → 2 — picker selection hands off to the swap modal.
+  const handlePickerPick = useCallback((toBike) => {
+    if (!pickerActivity?.activity) return;
+    const fromBike = pickerActivity.currentBike;
+    setPickerActivity(null);
+    setPendingSwap({ activity: pickerActivity.activity, fromBike, toBike });
+  }, [pickerActivity]);
+
+  // Propagate a bike change to every matching weekday from this week
+  // onward. Skips completed sessions (no point retconning yesterday's
+  // ride) and skips the activity we already updated. Best-effort —
+  // failures here aren't fatal, the prompt closes regardless.
+  const applyBikeToAllUpcoming = useCallback(async (sourceActivity, bikeType) => {
+    if (!sourceActivity || !bikeType) return;
+    const dayOfWeek = sourceActivity.dayOfWeek;
+    const fromWeek = sourceActivity.week ?? 1;
+    try {
+      const plans = await getPlans();
+      const myPlan = plans.find((p) => p.activities?.some((a) => a.id === sourceActivity.id));
+      if (!myPlan) return;
+      const targets = (myPlan.activities || []).filter((a) =>
+        a.id !== sourceActivity.id &&
+        a.type === 'ride' &&
+        a.dayOfWeek === dayOfWeek &&
+        (a.week ?? 0) >= fromWeek &&
+        !a.completed
       );
-    } else {
-      Alert.alert(
-        activity.title || 'This session',
-        `Currently on ${BIKE_LABEL_MAP[currentBike] || currentBike}. Pick a different bike.`,
-        [
-          ...choices.map((b, i) => ({
-            text: labels[i],
-            onPress: () => setPendingSwap({ activity, fromBike: currentBike, toBike: b }),
-          })),
-          { text: 'Cancel', style: 'cancel' },
-        ],
-      );
+      // Sequential to keep the local state coherent; each updateActivity
+      // round-trips through storageService → server. Bounded list so
+      // throughput cost is fine.
+      for (const a of targets) {
+        await updateActivity(a.id, { bikeType });
+      }
+    } catch (err) {
+      console.warn('[home] applyBikeToAllUpcoming failed:', err?.message);
     }
   }, []);
 
-  // Apply a swap chosen in the BikeSwapModal. Persists straight away
-  // via updateActivity (no edit-mode round trip), reloads the home
-  // screen so the chip shows the new bike. Same shape as ActivityDetail's
-  // outside-edit-mode apply path so the two surfaces stay consistent.
+  // Stage 2 — apply the coach's suggested numbers, then ask about
+  // propagation if this is a recurring weekday session.
   const applyBikeSwap = useCallback(async ({ bikeType, durationMins, distanceKm }) => {
     if (!pendingSwap?.activity?.id) return;
-    await updateActivity(pendingSwap.activity.id, {
+    const sourceActivity = pendingSwap.activity;
+    await updateActivity(sourceActivity.id, {
       bikeType,
-      durationMins: durationMins ?? pendingSwap.activity.durationMins,
+      durationMins: durationMins ?? sourceActivity.durationMins,
       distanceKm,
     });
     setPendingSwap(null);
+    if (sourceActivity.dayOfWeek != null) {
+      setApplyToAllPrompt({ activity: sourceActivity, bikeType });
+    }
     await load({ force: true });
   }, [pendingSwap, load]);
 
   const applyBikeSwapKeepOriginal = useCallback(async ({ bikeType }) => {
     if (!pendingSwap?.activity?.id) return;
-    await updateActivity(pendingSwap.activity.id, { bikeType });
+    const sourceActivity = pendingSwap.activity;
+    await updateActivity(sourceActivity.id, { bikeType });
     setPendingSwap(null);
+    if (sourceActivity.dayOfWeek != null) {
+      setApplyToAllPrompt({ activity: sourceActivity, bikeType });
+    }
     await load({ force: true });
   }, [pendingSwap, load]);
 
@@ -2189,11 +2251,14 @@ export default function HomeScreen({ navigation, route }) {
                       ? 'Recovery is training too.'
                       : meta}
                   </Text>
-                  {/* Bike chip — tappable. Shows the current bike for
-                      this session; tap → action sheet with all five
-                      types → BikeSwapModal → updateActivity. Visible
-                      on every ride session regardless of goal config. */}
-                  {!isRest && (() => {
+                  {/* Bike chip — rides only. Tappable: tap →
+                      BikeTypePickerModal → BikeSwapModal →
+                      updateActivity → optional "apply to all
+                      upcoming" prompt. Hidden on strength / rest /
+                      anything that's not a ride, since swapping a
+                      bike type for a strength session makes no
+                      sense. */}
+                  {!isRest && a?.type === 'ride' && (() => {
                     const bike = a?.bikeType || planDefaultBike;
                     const label = BIKE_LABEL_MAP[bike] || bike;
                     return (
@@ -2240,24 +2305,30 @@ export default function HomeScreen({ navigation, route }) {
                     >
                       <Text style={s.todayHeroCoachBtnText}>Ask?</Text>
                     </TouchableOpacity>
-                    {!isRest && (
-                      <TouchableOpacity
-                        onPress={async (e) => {
-                          e.stopPropagation?.();
-                          if (!a) return;
-                          await markActivityComplete(a.id);
-                          // force:true bypasses load()'s plan-hash cache
-                          // (matches the same pattern used by the weekList
-                          // mark-done at the bottom of this screen).
-                          await load({ force: true });
-                        }}
-                        style={[s.cardDoneCircle, isDone && s.cardDoneCircleDone]}
-                        hitSlop={HIT}
-                        activeOpacity={0.7}
-                      >
-                        {isDone ? <Text style={s.cardDoneTick}>{'\u2713'}</Text> : null}
-                      </TouchableOpacity>
-                    )}
+                    {!isRest && (() => {
+                      // Treat optimisticDone as a flip — the tap shows
+                      // the tick instantly, then the server round-trip
+                      // catches up via load(). Stops the "tap doesn't
+                      // register" feedback users were reporting.
+                      const optimistic = a && optimisticDone.has(a.id);
+                      const shownDone = isDone || optimistic;
+                      return (
+                        <TouchableOpacity
+                          onPress={(e) => {
+                            e.stopPropagation?.();
+                            if (!a) return;
+                            completeOptimistic(a.id);
+                          }}
+                          style={[s.cardDoneCircle, shownDone && s.cardDoneCircleDone]}
+                          hitSlop={HIT_LG}
+                          activeOpacity={0.7}
+                          accessibilityRole="button"
+                          accessibilityLabel={shownDone ? 'Mark as not done' : 'Mark as done'}
+                        >
+                          {shownDone ? <Text style={s.cardDoneTick}>{'\u2713'}</Text> : null}
+                        </TouchableOpacity>
+                      );
+                    })()}
                   </View>
 
                   {/* Drag handle hint — only on cards that have a real
@@ -2674,24 +2745,29 @@ export default function HomeScreen({ navigation, route }) {
                                 <Text style={s.weekListTodayPillText}>TODAY</Text>
                               </View>
                             )}
-                            <TouchableOpacity
-                              onPress={async (e) => {
-                                e.stopPropagation?.();
-                                await markActivityComplete(act.id);
-                                // force:true bypasses load()'s plan-hash
-                                // cache, which only tracks plan id / updatedAt
-                                // / activity count — toggling `completed` on
-                                // a single activity doesn't change any of
-                                // those so a plain load() would short-
-                                // circuit and the UI wouldn't update.
-                                await load({ force: true });
-                              }}
-                              style={[s.weekListDoneCircle, isDone && s.weekListDoneCircleDone]}
-                              hitSlop={HIT}
-                              activeOpacity={0.7}
-                            >
-                              {isDone ? <Text style={s.weekListDoneTick}>{'\u2713'}</Text> : null}
-                            </TouchableOpacity>
+                            {(() => {
+                              // Same optimistic flip used by the home
+                              // card above — tap shows the tick
+                              // instantly, server reconcile happens
+                              // in the background via load().
+                              const optimistic = optimisticDone.has(act.id);
+                              const shownDone = isDone || optimistic;
+                              return (
+                                <TouchableOpacity
+                                  onPress={(e) => {
+                                    e.stopPropagation?.();
+                                    completeOptimistic(act.id);
+                                  }}
+                                  style={[s.weekListDoneCircle, shownDone && s.weekListDoneCircleDone]}
+                                  hitSlop={HIT_LG}
+                                  activeOpacity={0.7}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={shownDone ? 'Mark as not done' : 'Mark as done'}
+                                >
+                                  {shownDone ? <Text style={s.weekListDoneTick}>{'\u2713'}</Text> : null}
+                                </TouchableOpacity>
+                              );
+                            })()}
                           </TouchableOpacity>
                           </GestureDetector>
                         );
@@ -2905,8 +2981,20 @@ export default function HomeScreen({ navigation, route }) {
         onUpgrade={handleUpgrade}
         upgrading={upgrading}
       />
-      {/* Bike-swap modal — opened from the bike chip on any home card.
-          Apply persists straight via updateActivity; cancel just closes. */}
+      {/* Three-stage bike-swap flow:
+            1. BikeTypePickerModal lists target bikes (replaces the
+               iOS / Android action-sheet split with one branded modal).
+            2. BikeSwapModal shows the coach's distance/duration
+               recommendation for the chosen target bike.
+            3. After apply, an Alert prompts whether to propagate to
+               every future occurrence of this weekday in the plan. */}
+      <BikeTypePickerModal
+        visible={!!pickerActivity}
+        activity={pickerActivity?.activity}
+        currentBike={pickerActivity?.currentBike}
+        onPick={handlePickerPick}
+        onCancel={() => setPickerActivity(null)}
+      />
       <BikeSwapModal
         visible={!!pendingSwap}
         session={pendingSwap?.activity}
@@ -2916,6 +3004,34 @@ export default function HomeScreen({ navigation, route }) {
         onApplyOriginal={applyBikeSwapKeepOriginal}
         onCancel={() => setPendingSwap(null)}
       />
+      {applyToAllPrompt ? (() => {
+        // Fire the propagation prompt once via a useEffect-ish render
+        // pattern: we drop the state immediately so the Alert doesn't
+        // re-fire on every re-render, and call applyBikeToAllUpcoming
+        // from the "Apply to all" handler.
+        setTimeout(() => {
+          if (!applyToAllPrompt) return;
+          const { activity, bikeType } = applyToAllPrompt;
+          setApplyToAllPrompt(null);
+          const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][activity.dayOfWeek] || 'this weekday';
+          const bikeName = (BIKE_LABEL_MAP[bikeType] || bikeType).toLowerCase();
+          Alert.alert(
+            'Apply to all upcoming?',
+            `Want every future ${dayName} ride to use the ${bikeName} too? We'll only touch upcoming sessions you haven't ticked off yet.`,
+            [
+              { text: 'Just this one', style: 'cancel' },
+              {
+                text: 'Apply to all',
+                onPress: async () => {
+                  await applyBikeToAllUpcoming(activity, bikeType);
+                  await load({ force: true });
+                },
+              },
+            ],
+          );
+        }, 0);
+        return null;
+      })() : null}
 
       {/* Onboarding tour — shown once on first launch for users who have
           no plan yet AND haven't seen it before. Was previously imported
@@ -2983,6 +3099,12 @@ function getDayDateStr(startDateStr, week, dayIdx) {
 }
 
 const HIT = { top: 8, bottom: 8, left: 8, right: 8 };
+// Larger hit slop for the "mark as done" circles. The visual circle
+// stays a small, unobtrusive 22px on the home cards (24px in week
+// list) but the actual tap target gets pushed out to a comfortable
+// 44pt-class surface so the rider doesn't have to aim. Fixes the
+// "tap doesn't register" feedback users were giving on completion.
+const HIT_LG = { top: 16, bottom: 16, left: 16, right: 16 };
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, maxWidth: 500, width: '100%', alignSelf: 'center' },
@@ -3390,8 +3512,9 @@ const s = StyleSheet.create({
   // (s.weekListDoneCircle) so users see the affordance is the same
   // control. Smaller because it lives on a compressed card.
   cardDoneCircle: {
-    width: 22, height: 22, borderRadius: 11,
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)',
+    width: 28, height: 28, borderRadius: 14,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.45)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center', justifyContent: 'center',
   },
   cardDoneCircleDone: {
@@ -3399,7 +3522,7 @@ const s = StyleSheet.create({
     borderColor: '#2bb673',
   },
   cardDoneTick: {
-    fontSize: 12, color: '#FFFFFF', fontWeight: '600',
+    fontSize: 14, color: '#FFFFFF', fontWeight: '700',
   },
 
   // ── Wrapper for the list-mode block ───────────────────────────────

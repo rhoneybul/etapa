@@ -13,7 +13,7 @@ import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '../theme';
 import { signOut, getCurrentUser } from '../services/authService';
-import { clearPlan, getPlans, clearUserData, getUserPrefs, setUserPrefs, shiftPlanStartDate } from '../services/storageService';
+import { clearPlan, getPlans, clearUserData, getUserPrefs, setUserPrefs, shiftPlanStartDate, getGoals, saveGoal } from '../services/storageService';
 import { openBillingPortal, getSubscriptionStatus, restorePurchases, getPrices } from '../services/subscriptionService';
 import { logoutRevenueCat, isRevenueCatAvailable } from '../services/revenueCatService';
 import { connectStrava, disconnectStrava, isStravaConnected, isStravaConfigured, getStravaTokens } from '../services/stravaService';
@@ -175,6 +175,18 @@ export default function SettingsScreen({ navigation }) {
   const [togglingNotif, setTogglingNotif] = useState(false);
   const [sendingTestPush, setSendingTestPush] = useState(false);
   const [userPrefs, setUserPrefsState] = useState({ units: 'km', displayName: '' });
+  // Active goal — surfaced so the rider can change the primary cycling
+  // type from Settings. Loaded once on mount; mutations re-load.
+  // Most riders only have one active goal at a time; if there are
+  // multiple we pick the first (matches the home screen's choice).
+  const [activeGoal, setActiveGoal] = useState(null);
+  const loadActiveGoal = useCallback(async () => {
+    try {
+      const goals = await getGoals();
+      setActiveGoal(goals?.[0] || null);
+    } catch {}
+  }, []);
+  useEffect(() => { loadActiveGoal(); }, [loadActiveGoal]);
   // Weekly check-in schedule. enabled defaults to false so existing users
   // aren't opted in without consent.
   const [checkinPrefs, setCheckinPrefs] = useState({
@@ -1068,6 +1080,58 @@ export default function SettingsScreen({ navigation }) {
             )}
           </View>
           <View style={s.divider} />
+          {/* Default cycling type — sets the primary type on the active
+              goal. Affects future plan-gen, coach vocabulary, and ride
+              tips. The rider can still swap individual sessions via
+              the bike chip on each ride. We don't auto-regenerate the
+              plan; the change applies to advice and any new plan the
+              rider asks for. */}
+          <TouchableOpacity
+            style={s.row}
+            onPress={() => {
+              if (!activeGoal) return;
+              const types = [
+                { key: 'road',   label: 'Road' },
+                { key: 'gravel', label: 'Gravel' },
+                { key: 'mtb',    label: 'MTB' },
+                { key: 'ebike',  label: 'E-bike' },
+                { key: 'indoor', label: 'Indoor' },
+              ];
+              Alert.alert(
+                'Default cycling type',
+                'Sets the primary type for your plan. You can still swap individual rides.',
+                [
+                  ...types.map(t => ({
+                    text: t.label,
+                    onPress: async () => {
+                      try {
+                        await saveGoal({ ...activeGoal, cyclingType: t.key, cyclingTypes: [t.key] });
+                        await loadActiveGoal();
+                      } catch (err) {
+                        console.warn('[settings] cyclingType update failed:', err?.message);
+                      }
+                    },
+                  })),
+                  { text: 'Cancel', style: 'cancel' },
+                ],
+              );
+            }}
+          >
+            <View style={s.rowLeft}>
+              <View>
+                <Text style={s.rowTitle}>Default cycling type</Text>
+                <Text style={s.rowSub}>
+                  {(() => {
+                    const t = activeGoal?.cyclingType;
+                    if (!t || t === 'mixed') return 'Road';
+                    return ({ road: 'Road', gravel: 'Gravel', mtb: 'MTB', ebike: 'E-bike', indoor: 'Indoor' }[t]) || t;
+                  })()}
+                </Text>
+              </View>
+            </View>
+            <Text style={s.chevron}>{'\u203A'}</Text>
+          </TouchableOpacity>
+          <View style={s.divider} />
           <TouchableOpacity
             style={s.row}
             onPress={() => {
@@ -1075,14 +1139,10 @@ export default function SettingsScreen({ navigation }) {
                 goPaywall({ fromHome: true, nextScreen: 'Home' });
                 return;
               }
+              // 'Daily' / after_session was retired — the structured
+              // weekly check-in replaces both the per-session push and
+              // the old Monday summary. We now offer just Weekly / Off.
               Alert.alert('Coach Check-ins', 'How often would you like check-ins from your coach?', [
-                {
-                  text: 'Daily',
-                  onPress: async () => {
-                    setPreferences(prev => ({ ...prev, coach_checkin: 'after_session' }));
-                    await api.preferences.update({ coach_checkin: 'after_session' });
-                  },
-                },
                 {
                   text: 'Weekly',
                   onPress: async () => {
@@ -1106,7 +1166,7 @@ export default function SettingsScreen({ navigation }) {
               <View>
                 <Text style={s.rowTitle}>Coach Check-ins</Text>
                 <Text style={s.rowSub}>
-                  {preferences?.coach_checkin === 'none' ? 'Off' : preferences?.coach_checkin === 'after_session' ? 'Daily' : 'Weekly'}
+                  {preferences?.coach_checkin === 'none' ? 'Off' : 'Weekly'}
                 </Text>
               </View>
             </View>

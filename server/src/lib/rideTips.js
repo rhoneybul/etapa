@@ -35,6 +35,30 @@
 
 const { MEDICAL_DRIFT_PATTERNS, PHYSIO_REFERRAL } = require('./checkinSafety');
 
+// ── Emoji stripping ─────────────────────────────────────────────────────────
+// The product asks: no emoji anywhere in the tip text. The system
+// prompt forbids them already, but Haiku occasionally still leaks one
+// (especially "🚴" / "💪" / "💧"). We do a defensive strip server-side
+// so a model slip doesn't reach the rider.
+//
+// The regex covers the major Unicode emoji ranges:
+//   - Basic emoticons (1F600-1F64F)
+//   - Misc symbols + pictographs (1F300-1F5FF)
+//   - Transport (1F680-1F6FF)
+//   - Supplemental symbols (1F900-1F9FF)
+//   - Symbols & pictographs extended (1FA70-1FAFF)
+//   - Misc symbols (2600-26FF)
+//   - Dingbats (2700-27BF)
+//   - Variation selectors / ZWJ (FE0F, 200D)
+//   - Regional indicators (1F1E6-1F1FF)
+// Trailing whitespace cleanup catches the orphaned spaces left behind.
+const EMOJI_REGEX = /[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}]/gu;
+
+function stripEmoji(text) {
+  if (typeof text !== 'string') return text;
+  return text.replace(EMOJI_REGEX, '').replace(/\s{2,}/g, ' ').trim();
+}
+
 // ── Icon allowlist (mirrors client) ─────────────────────────────────────────
 // Every glyph here has been verified to exist in MaterialCommunityIcons —
 // adding a new one should be paired with a quick sanity check on the
@@ -96,12 +120,26 @@ function sanitiseTips(tips) {
       sanitised = true;
     }
 
-    const title = typeof raw.title === 'string' && raw.title.trim()
+    let title = typeof raw.title === 'string' && raw.title.trim()
       ? raw.title.trim().slice(0, 60)
       : defaultTitleFor(category);
+    // Strip emoji from titles too — a model that puts 💧 in front of
+    // "Hydration" is breaking the same rule even if it's a single
+    // glyph. Re-default if stripping nukes the whole label.
+    const titleStripped = stripEmoji(title);
+    if (titleStripped !== title) sanitised = true;
+    title = titleStripped || defaultTitleFor(category);
 
     let text = typeof raw.text === 'string' ? raw.text.trim() : '';
     if (!text) continue; // empty tip is useless
+
+    // Strip emoji first, then run the medical-drift check. Doing it
+    // in this order means the medical regex doesn't have to worry
+    // about emoji in the middle of a phrase.
+    const textStripped = stripEmoji(text);
+    if (textStripped !== text) sanitised = true;
+    text = textStripped;
+    if (!text) continue;
 
     for (const re of MEDICAL_DRIFT_PATTERNS) {
       if (re.test(text)) {
@@ -248,7 +286,29 @@ function buildTipsPrompt(activity, goal, userPrefs) {
 
   const levelLine = userPrefs?.level ? `\nRider level: ${userPrefs.level}` : '';
 
-  return `Produce ride tips for the rider's NEXT session. The tips must be specific to this session — its duration, effort, sub-type, and (if present) interval structure — not generic cycling advice.
+  // Bike-type flavour. The actual bikeType on the activity wins (the
+  // rider may have swapped this single session); falls back to goal's
+  // primary cyclingType.
+  const bike = (activity?.bikeType || goal?.cyclingType || 'road').toLowerCase();
+  const typeGuidance = (() => {
+    switch (bike) {
+      case 'mtb':
+        return 'This is an MTB session. Think trail surface and terrain features, not road km. Pacing tips should reference fire-road climbs vs technical descents, not "tempo block on the flat". Cool-down stretches stay generic.';
+      case 'gravel':
+        return 'This is a gravel session. Mixed surface — assume the rider is on tarmac for warm-up and threshold work, gravel/cinder for the bulk of the ride. Slightly slower average than road.';
+      case 'ebike':
+        return 'This is an e-bike session. Frame pacing in heart rate / perceived effort, NOT power or speed. Encourage at least one mode lower than usual for fitness benefit.';
+      case 'indoor':
+        return 'This is an indoor / trainer session. No traffic-light cues. Pacing is by RPE / power / HR. Distance is irrelevant — duration is the anchor. Mention cooling (fan/towel) over hydration warnings.';
+      default:
+        return 'This is a road session. Standard road-cycling vocabulary applies.';
+    }
+  })();
+
+  return `Produce ride tips for the rider's NEXT session. The tips must be specific to this session — its duration, effort, sub-type, surface (bike type below), and (if present) interval structure — not generic cycling advice.
+
+Bike: ${bike}
+${typeGuidance}
 
 Session:
 ${JSON.stringify(summary, null, 2)}
@@ -280,7 +340,7 @@ Allowed icons (use the canonical category icon unless there's a strong reason no
   - injury → "shield-check-outline" (or "heart-pulse" for recovery sessions)
 
 HARD CONSTRAINTS:
-- No emoji of any kind in titles or text.
+- ABSOLUTELY NO EMOJI of any kind anywhere — not in titles, not in text, not as decoration. Any emoji will be stripped server-side. Communicate everything in plain words.
 - No medical advice. Never prescribe rest periods ("rest for 2 weeks"), medication, ice/heat, or diagnoses ("you have tendinitis"). For pain, only say "stop and book a physio".
 - Stay session-specific. Quote concrete numbers from the structure / duration where useful (e.g. "in your 4×5-min threshold blocks, …"). Don't repeat the duration as a generic figure.
 - Plain English. Beginners should understand it without a glossary.

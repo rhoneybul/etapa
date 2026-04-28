@@ -64,6 +64,7 @@ import PlanConfigScreen    from './src/screens/PlanConfigScreen';
 import WeekViewScreen      from './src/screens/WeekViewScreen';
 import ActivityDetailScreen from './src/screens/ActivityDetailScreen';
 import CheckInScreen       from './src/screens/CheckInScreen';
+import WeeklySummaryScreen from './src/screens/WeeklySummaryScreen';
 import SettingsScreen      from './src/screens/SettingsScreen';
 import PlanLoadingScreen   from './src/screens/PlanLoadingScreen';
 import CalendarScreen      from './src/screens/CalendarScreen';
@@ -453,6 +454,7 @@ function App() {
               <Stack.Screen name="CoachChat"      component={CoachChatScreen} />
               <Stack.Screen name="ActivityDetail" component={ActivityDetailScreen} />
               <Stack.Screen name="CheckIn"        component={CheckInScreen} />
+              <Stack.Screen name="WeeklySummary"  component={WeeklySummaryScreen} />
               <Stack.Screen name="Settings"       component={SettingsScreen} />
               <Stack.Screen name="Feedback"       component={FeedbackScreen} />
               <Stack.Screen name="SupportChat"    component={SupportChatScreen} />

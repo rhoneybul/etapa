@@ -1,14 +1,19 @@
 /**
- * Coach check-in routes — sends AI-generated post-session messages.
+ * RETIRED — coach check-in routes (post-session push variant).
  *
- * POST /api/coach-checkin/run — trigger a check-in run (called by cron or admin)
- *   Finds activities completed yesterday, generates personalised coach messages,
- *   and sends them as push notifications.
+ * This route family used to send AI-generated post-session push
+ * notifications under the `after_session` preference, plus a Monday
+ * weekly summary push under `weekly`. Both flows have been replaced
+ * by the structured weekly check-in (server/src/routes/checkins.js +
+ * src/screens/CheckInScreen.js), which gives the rider a real
+ * questionnaire + AI suggestions card instead of a one-shot push
+ * message.
  *
- * The user's notification preference (after_session | weekly | none) controls behaviour:
- *   - after_session: notified the day after each completed session
- *   - weekly: receives a single weekly summary (runs on Mondays)
- *   - none: no check-ins
+ * The router is kept mounted so external cron pingers don't 404, but
+ * the run-sweep handler is now a no-op that returns 200 immediately.
+ * Once we're confident no client/cron is leaning on the old path
+ * we'll delete this file. Anything still wanting a check-in cron
+ * should hit /api/checkins/cron in checkinsCron.js.
  */
 const express = require('express');
 const { supabase } = require('../lib/supabase');
@@ -104,9 +109,23 @@ Write a brief, personalised check-in message (3-4 sentences). First, ask specifi
     : `How did your ${activity.title || 'session'} go yesterday? Let me know if anything needs tweaking.`;
 }
 
-// ── POST /api/coach-checkin/run — trigger check-in processing ───────────────
-// Protected by CRON_SECRET or admin auth
+// ── POST /api/coach-checkin/run — RETIRED no-op ─────────────────────────────
+// Returns 200 with a message so external cron jobs don't break, but
+// performs no work. Migrate any caller to /api/checkins/cron (the
+// structured weekly check-in pipeline). After one release where this
+// noop has been stable in production we'll remove the route entirely.
 router.post('/run', async (req, res) => {
+  return res.status(200).json({
+    ok: true,
+    retired: true,
+    message: 'coach-checkin/run is retired. Use /api/checkins/cron for the weekly check-in pipeline.',
+  });
+
+  // ── Legacy implementation — unreached after the early return above. ──
+  // Left in place so the file diff shows the retirement cleanly and so
+  // the implementation can be revived for reference if the new flow
+  // ever falls back. Will be deleted in the follow-up release.
+  // eslint-disable-next-line no-unreachable
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = req.headers.authorization;
   const apiKey = process.env.ADMIN_API_KEY;

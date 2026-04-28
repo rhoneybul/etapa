@@ -20,10 +20,12 @@ router.get('/', async (req, res) => {
 
     if (error) throw error;
 
-    // Return defaults if no row exists yet
+    // Return defaults if no row exists yet. New users default to the
+    // weekly cadence — the per-session "after_session" check-in has
+    // been retired in favour of the structured weekly check-in flow.
     res.json(data || {
       user_id: userId,
-      coach_checkin: 'after_session',
+      coach_checkin: 'weekly',
       push_enabled: true,
     });
   } catch (err) {
@@ -42,11 +44,16 @@ router.put('/', async (req, res) => {
 
     const updates = { updated_at: new Date().toISOString() };
     if (coach_checkin !== undefined) {
-      const valid = ['after_session', 'weekly', 'none'];
-      if (!valid.includes(coach_checkin)) {
+      // 'after_session' is retired — old clients sending it get
+      // silently mapped to 'weekly' so a stale binary doesn't 400 on
+      // every settings save. Once enough users have updated, we can
+      // tighten this to a hard 400 again.
+      const incoming = coach_checkin === 'after_session' ? 'weekly' : coach_checkin;
+      const valid = ['weekly', 'none'];
+      if (!valid.includes(incoming)) {
         return res.status(400).json({ error: `coach_checkin must be one of: ${valid.join(', ')}` });
       }
-      updates.coach_checkin = coach_checkin;
+      updates.coach_checkin = incoming;
     }
     if (push_enabled !== undefined) {
       updates.push_enabled = !!push_enabled;

@@ -42,7 +42,33 @@ const FF = fontFamily;
 // the iOS-specific path, and the Android-specific path. Both paths are
 // kept short — 2-3 numbered steps. Long-form context lives below in a
 // "Why this is the path" footer the rider can ignore.
+//
+// intervals.icu sits FIRST, intentionally. It's the only path that
+// works mobile-only, it's free, and once connected it pushes
+// workouts straight into Zwift / Garmin / Wahoo. For most riders
+// (especially phone-first ones) this is the right answer; the other
+// apps below all require a desktop step we can't help with from the
+// phone. The hero card at the top of the modal also previews this
+// recommendation before the rider even reaches the picker.
 const APP_OPTIONS = [
+  {
+    key: 'intervals',
+    name: 'intervals.icu',
+    badgeColor: '#3478F6',
+    badgeLetter: 'i',
+    iosSteps: [
+      'Save to Files (or just tap the share sheet → upload).',
+      'Open intervals.icu on your phone → sign in (free) → Workouts → Calendar → drag the .zwo onto a date.',
+      'Connect intervals.icu to Zwift / Garmin / Wahoo once and every future workout you upload syncs through automatically.',
+    ],
+    androidSteps: [
+      'File saves to Downloads.',
+      'Open intervals.icu in your browser → sign in (free) → Workouts → Calendar → upload the .zwo onto a date.',
+      'Connect intervals.icu to Zwift / Garmin / Wahoo once and every future workout you upload syncs through automatically.',
+    ],
+    badge: 'Recommended — works phone-only',
+    fasterPath: 'Free forever. The fastest path on mobile, and the only one that puts workouts into a Garmin Edge / Wahoo ELEMNT head unit.',
+  },
   {
     key: 'zwift',
     name: 'Zwift',
@@ -59,7 +85,7 @@ const APP_OPTIONS = [
       'Drop into Documents/Zwift/Workouts/{your-id}/. Appears in Zwift on next launch.',
     ],
     iosWarning: '"Copy to Zwift" sometimes appears in the share sheet — ignore it. Zwift\'s mobile app doesn\'t actually import the file.',
-    fasterPath: 'Phone-only? Use intervals.icu — it\'s free, takes mobile uploads, and has built-in Zwift sync.',
+    fasterPath: 'Phone-only? Use intervals.icu (top of this list) — it\'s free, takes mobile uploads, and has built-in Zwift sync.',
   },
   {
     key: 'wahoo',
@@ -108,23 +134,6 @@ const APP_OPTIONS = [
     ],
   },
   {
-    key: 'intervals',
-    name: 'intervals.icu',
-    badgeColor: '#3478F6',
-    badgeLetter: 'i',
-    iosSteps: [
-      'Save to Files.',
-      'Sign in at intervals.icu → Workouts → Calendar → drag the .zwo onto a date.',
-      'Optional: connect intervals.icu → Zwift / Garmin / Wahoo for automatic sync.',
-    ],
-    androidSteps: [
-      'File saves to Downloads.',
-      'Sign in at intervals.icu → Workouts → Calendar → upload the .zwo.',
-      'Free — and the only path that works mobile-only with sync to Zwift / Garmin / Wahoo.',
-    ],
-    badge: 'Recommended for mobile-only riders',
-  },
-  {
     key: 'other',
     name: 'Other / not sure',
     badgeColor: '#5F5E5A',
@@ -143,12 +152,18 @@ const APP_OPTIONS = [
 ];
 
 export default function ExportInstructionsModal({ visible, onProceed, onCancel }) {
-  const [selectedApp, setSelectedApp] = useState(null);
+  // Default to intervals.icu — the recommended path for the vast
+  // majority of riders, and the only one that works phone-only. This
+  // means the modal opens with the steps already visible (no "pick
+  // an app first" empty state) and the rider sees the easy answer
+  // by default.
+  const [selectedApp, setSelectedApp] = useState('intervals');
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [useMrc, setUseMrc] = useState(false);
 
-  // Reset selection when the modal opens — fresh start each time.
-  useEffect(() => { if (visible) { setSelectedApp(null); setDontShowAgain(false); setUseMrc(false); } }, [visible]);
+  // Reset selection when the modal opens — fresh start each time,
+  // re-defaulting to the intervals.icu recommendation.
+  useEffect(() => { if (visible) { setSelectedApp('intervals'); setDontShowAgain(false); setUseMrc(false); } }, [visible]);
 
   if (!visible) return null;
 
@@ -174,9 +189,9 @@ export default function ExportInstructionsModal({ visible, onProceed, onCancel }
 
           <View style={s.headerRow}>
             <View style={{ flex: 1 }}>
-              <Text style={s.title}>Save for your trainer app</Text>
+              <Text style={s.title}>Send to your trainer</Text>
               <Text style={s.subtitle}>
-                Two steps: save the file, then upload it on your trainer app's web dashboard. Pick which app you ride with for the specific path.
+                The easiest path on a phone is intervals.icu. It's free, takes mobile uploads, and pushes workouts straight into Zwift / Garmin / Wahoo.
               </Text>
             </View>
             <TouchableOpacity onPress={onCancel} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -185,10 +200,37 @@ export default function ExportInstructionsModal({ visible, onProceed, onCancel }
           </View>
 
           <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 12 }} showsVerticalScrollIndicator={false}>
+            {/* Hero recommendation — pushes intervals.icu hard.
+                Most riders who land here are on a phone with no
+                desktop nearby; intervals.icu is the only path that
+                actually works in that setup. The card stays visible
+                even after the rider picks a different app, because
+                even Zwift / Wahoo / Rouvy users sometimes prefer
+                the intervals.icu bridge. */}
+            <View style={s.heroCard}>
+              <View style={s.heroBadge}>
+                <Text style={s.heroBadgeText}>RECOMMENDED</Text>
+              </View>
+              <Text style={s.heroTitle}>Use intervals.icu</Text>
+              <Text style={s.heroBody}>
+                Free forever. Upload .zwo straight from your phone. Connect once and your workouts auto-sync to Zwift, Garmin Edge, Wahoo ELEMNT — no laptop, no fiddling.
+              </Text>
+              <TouchableOpacity
+                style={s.heroBtn}
+                onPress={() => setSelectedApp('intervals')}
+                activeOpacity={0.85}
+              >
+                <Text style={s.heroBtnText}>
+                  {selectedApp === 'intervals' ? '✓ Selected — see the steps below' : 'Use intervals.icu'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             {/* App picker grid — selecting an app reveals only that app's
-                specific steps below. Less wall-of-text, more useful per
-                rider. */}
-            <Text style={s.sectionLabel}>I use</Text>
+                specific steps below. intervals.icu lives here too (and
+                first) so a rider who scrolled down keeps the
+                recommended option visible inline with the others. */}
+            <Text style={s.sectionLabel}>Or pick your specific app</Text>
             <View style={s.appGrid}>
               {APP_OPTIONS.map(a => {
                 const sel = a.key === selectedApp;
@@ -336,6 +378,44 @@ const s = StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.6,
     fontFamily: FF.medium,
     marginHorizontal: 18, marginTop: 16, marginBottom: 8,
+  },
+
+  // ── Hero recommendation card (intervals.icu) ──────────────────────
+  // Pink-tinted card sat at the top of the scroll. Strong visual
+  // pull so a rider who lands here just hits the CTA without thinking
+  // about which trainer app they use. Compact enough to coexist with
+  // the picker grid below for riders who want to override.
+  heroCard: {
+    marginHorizontal: 18, marginTop: 14,
+    backgroundColor: colors.primary + '14',
+    borderWidth: 1, borderColor: colors.primary + '50',
+    borderRadius: 14, padding: 16,
+  },
+  heroBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8, paddingVertical: 3,
+    backgroundColor: colors.primary,
+    borderRadius: 999, marginBottom: 8,
+  },
+  heroBadgeText: {
+    fontSize: 9, fontWeight: '700', color: '#FFFFFF',
+    fontFamily: FF.semibold, letterSpacing: 0.8,
+  },
+  heroTitle: {
+    fontSize: 17, fontWeight: '700', color: colors.text,
+    fontFamily: FF.bold, marginBottom: 6,
+  },
+  heroBody: {
+    fontSize: 13, color: colors.textMid, fontFamily: FF.regular,
+    lineHeight: 19, marginBottom: 12,
+  },
+  heroBtn: {
+    backgroundColor: colors.primary, paddingVertical: 11,
+    borderRadius: 10, alignItems: 'center',
+  },
+  heroBtnText: {
+    fontSize: 13, fontWeight: '600', color: '#FFFFFF',
+    fontFamily: FF.semibold,
   },
 
   // Three-column app grid. 2 rows of 3 → all six options visible

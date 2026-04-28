@@ -161,15 +161,15 @@ export default function CheckInScreen({ navigation, route }) {
 
   // Pull together everything the rider has actually filled in. Used to
   // detect empty submissions so we can prompt rather than fire a useless
-  // Claude call.
+  // Claude call. The per-session comments and the standalone life-events
+  // input were retired in favour of the single "Anything to flag for
+  // next week?" field — `modifications` is now the catch-all input.
   const hasMeaningfulInput = useMemo(() => {
     const anySession = Object.values(sessionsDone).some(Boolean);
-    const anyComment = Object.values(sessionComments).some(c => (c || '').trim());
-    return anySession || anyComment
+    return anySession
       || modifications.trim().length > 0
-      || lifeEvents.trim().length > 0
       || (injuryReported && injuryDescription.trim().length > 0);
-  }, [sessionsDone, sessionComments, modifications, lifeEvents, injuryReported, injuryDescription]);
+  }, [sessionsDone, modifications, injuryReported, injuryDescription]);
 
   const submit = async () => {
     if (!checkin?.id) return;
@@ -188,17 +188,16 @@ export default function CheckInScreen({ navigation, route }) {
 
     setPhase('submitting');
     const doneIds = Object.keys(sessionsDone).filter(k => sessionsDone[k]);
-    const cleanComments = {};
-    for (const id of doneIds) {
-      const c = (sessionComments[id] || '').trim();
-      if (c) cleanComments[id] = c;
-    }
     try {
       const res = await api.checkins.respond(checkin.id, {
         sessionsDone: doneIds,
-        sessionComments: cleanComments,
+        // Empty objects/strings preserved on the wire so the server
+        // doesn't have to handle a missing field. The new single
+        // `modifications` input is the rider's free-text — the
+        // server-side prompt builder uses it as the catch-all.
+        sessionComments: {},
         modifications: modifications.trim(),
-        lifeEvents: lifeEvents.trim(),
+        lifeEvents: '',
         injury: {
           reported: injuryReported,
           description: injuryReported ? injuryDescription.trim() : '',
@@ -384,41 +383,35 @@ export default function CheckInScreen({ navigation, route }) {
                       <Text style={s.sessionMeta}>
                         {[a.distanceKm ? `${Math.round(a.distanceKm)} km` : null, a.durationMins ? `${a.durationMins} min` : null, a.effort].filter(Boolean).join(' · ')}
                       </Text>
-                      {done && (
-                        <TextInput
-                          style={s.commentInput}
-                          placeholder="How did it feel? (optional)"
-                          placeholderTextColor={colors.textFaint}
-                          value={sessionComments[a.id] || ''}
-                          onChangeText={(t) => setComment(a.id, t)}
-                          multiline
-                        />
-                      )}
+                      {/* Per-session comment field used to live here.
+                          Riders rarely filled them in and the form
+                          read long; the single "Anything to flag?"
+                          input below now covers the same ground in
+                          one place, and the AI prompt builder is
+                          smart enough to attribute references to
+                          specific sessions ("can't ride Wednesday",
+                          "knee twinged on Tuesday's ride") without
+                          needing per-row inputs. */}
                     </View>
                   </View>
                 );
               })
             )}
 
-            {/* Modifications */}
-            <Text style={[s.qLabel, { marginTop: 18 }]}>Anything you'd like to change about the plan?</Text>
+            {/* Single freeform "anything to flag?" — replaces the old
+                per-session comments + the separate modifications +
+                life-events fields. The placeholder primes the rider
+                with concrete examples so they answer in plain words
+                instead of the formal/over-considered tone the old
+                "Anything you'd like to change about the plan?" prompt
+                used to draw out. */}
+            <Text style={[s.qLabel, { marginTop: 18 }]}>Anything to flag for next week? (optional)</Text>
             <TextInput
               style={s.bigInput}
-              placeholder="e.g. fewer hills, more indoor sessions, longer Sunday rides…"
+              placeholder="can't ride wednesday, knee twinging, off to barcelona thurs–sun"
               placeholderTextColor={colors.textFaint}
               value={modifications}
               onChangeText={setModifications}
-              multiline
-            />
-
-            {/* Life events */}
-            <Text style={[s.qLabel, { marginTop: 18 }]}>Anything coming up next week that affects training?</Text>
-            <TextInput
-              style={s.bigInput}
-              placeholder="e.g. travelling Wednesday–Friday, kid's birthday Saturday, work crunch Monday…"
-              placeholderTextColor={colors.textFaint}
-              value={lifeEvents}
-              onChangeText={setLifeEvents}
               multiline
             />
 
@@ -621,13 +614,28 @@ export default function CheckInScreen({ navigation, route }) {
             ) : null}
 
             {!checkin.suggestions.crisisResources && (
-              <TouchableOpacity
-                style={s.primaryBtn}
-                onPress={() => navigation.goBack()}
-                activeOpacity={0.85}
-              >
-                <Text style={s.primaryBtnText}>Done</Text>
-              </TouchableOpacity>
+              <>
+                {/* Hand-off to the shareable weekly summary card. The
+                    rider's just spent 90 seconds answering questions
+                    and reading suggestions — capture the moment with
+                    a punchy "this is your week" view they can post
+                    to a group chat or story. We `replace` so back
+                    doesn't drop them onto the now-stale review. */}
+                <TouchableOpacity
+                  style={s.primaryBtn}
+                  onPress={() => navigation.replace('WeeklySummary')}
+                  activeOpacity={0.85}
+                >
+                  <Text style={s.primaryBtnText}>See my week</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.primaryBtn, { backgroundColor: 'transparent', marginTop: 8 }]}
+                  onPress={() => navigation.goBack()}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[s.primaryBtnText, { color: colors.textMid, fontWeight: '500' }]}>Skip — back to home</Text>
+                </TouchableOpacity>
+              </>
             )}
           </ScrollView>
         ) : null}

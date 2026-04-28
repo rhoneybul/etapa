@@ -78,6 +78,19 @@ console.log('\n\u25B6 sanitiseTips — drops empty / malformed entries');
   ok(tips.length === 1, 'only the real one survived');
 }
 
+console.log('\n\u25B6 sanitiseTips — strips emoji');
+{
+  const tips = sanitiseTips([
+    { category: 'fuel',     icon: 'food-apple-outline',  title: 'Fuel \uD83C\uDF4E', text: 'Eat 60g carbs/hr \uD83D\uDCAA \uD83D\uDEB4' },
+    { category: 'pacing',   icon: 'speedometer',         title: 'Pacing',           text: 'Conversational pace \u2705 — full sentences.' },
+  ]);
+  ok(!/[\uD83C\uD83D\uD83E]/.test(tips[0].title), 'emoji stripped from title');
+  ok(!/[\uD83C\uD83D\uD83E]/.test(tips[0].text), 'emoji stripped from text');
+  ok(tips[0].text.includes('60g'), 'tip body still readable after strip');
+  ok(!/\u2705/.test(tips[1].text), 'check-mark emoji stripped too');
+  ok(tips[1].text.toLowerCase().includes('full sentences'), 'pacing tip body intact');
+}
+
 console.log('\n\u25B6 buildDeterministicTips — coverage');
 {
   const easy = buildDeterministicTips({ durationMins: 45, effort: 'easy', subType: 'endurance' });

@@ -349,9 +349,22 @@ export default function ActivityDetailScreen({ navigation, route }) {
     }
   }, [activity, aiTips]);
 
-  // Lazy AI tip fetch. Fires the first time the rider taps "Show ride
-  // tips" — cache hit on the server makes subsequent taps instant.
-  // Always fall back to the deterministic generator on failure so the
+  // Eager AI tip fetch — fires as soon as we know the activity id,
+  // so the tips card has real content by the time the rider scrolls
+  // to it. The deterministic placeholder shows in the meantime; the
+  // cache hit path on the server makes subsequent opens instant.
+  // (Was previously gated on a "Show ride tips" tap; the toggle has
+  // been retired so the rider doesn't have to opt in.)
+  useEffect(() => {
+    if (!activity?.id) return;
+    if (Array.isArray(aiTips) && aiTips.length > 0) return;
+    if (tipsLoading) return;
+    ensureAiTips();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activity?.id, activity?.tips]);
+
+  // Fetch handler — invoked from the eager effect above. Always
+  // falls back to the deterministic generator on failure so the
   // card never shows empty.
   const ensureAiTips = async () => {
     if (Array.isArray(aiTips) && aiTips.length > 0) return;
@@ -395,6 +408,47 @@ export default function ActivityDetailScreen({ navigation, route }) {
     } finally {
       setExplaining(false);
     }
+  };
+
+  // After a per-session bike swap, ask the rider whether to propagate
+  // the change to every future occurrence of the same weekday in the
+  // plan. Skips the source activity itself and any session already
+  // ticked off. Only fires for sessions that have a dayOfWeek (i.e.
+  // they sit on a recurring weekday).
+  const promptApplyBikeToAllUpcoming = (sourceActivity, bikeType) => {
+    if (!sourceActivity || sourceActivity.dayOfWeek == null) return;
+    const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][sourceActivity.dayOfWeek] || 'this weekday';
+    const bikeName = (BIKE_LABEL_MAP[bikeType] || bikeType).toLowerCase();
+    Alert.alert(
+      'Apply to all upcoming?',
+      `Want every future ${dayName} ride to use the ${bikeName} too? We'll only touch upcoming sessions you haven't ticked off yet.`,
+      [
+        { text: 'Just this one', style: 'cancel' },
+        {
+          text: 'Apply to all',
+          onPress: async () => {
+            try {
+              const plans = await getPlans();
+              const myPlan = plans.find((p) => p.activities?.some((a) => a.id === sourceActivity.id));
+              if (!myPlan) return;
+              const targets = (myPlan.activities || []).filter((a) =>
+                a.id !== sourceActivity.id &&
+                a.type === 'ride' &&
+                a.dayOfWeek === sourceActivity.dayOfWeek &&
+                (a.week ?? 0) >= (sourceActivity.week ?? 1) &&
+                !a.completed
+              );
+              for (const a of targets) {
+                await updateActivity(a.id, { bikeType });
+              }
+              await loadActivity();
+            } catch (err) {
+              console.warn('[activity-detail] applyBikeToAllUpcoming failed:', err?.message);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleComplete = async () => {
@@ -930,34 +984,21 @@ export default function ActivityDetailScreen({ navigation, route }) {
           })()}
 
           {/* Tips — rides only.
-              First tap kicks off the AI generation; the deterministic
-              generator is shown as the placeholder while the network
-              call is in flight (so the card never reveals empty), and
-              also as the fallback if the call fails. Subsequent taps
-              hit the server-side cache. */}
+              Always rendered (no toggle). The eager useEffect above
+              kicks off the AI generation when the activity id is
+              known; the deterministic generator stands in until the
+              real tips land, and remains as a fallback if the network
+              call fails. Subsequent opens hit the server-side cache. */}
           {isRide && !isEditing && (
             <>
-              {!showTips ? (
-                <TouchableOpacity
-                  style={s.tipsBtn}
-                  onPress={() => { setShowTips(true); ensureAiTips(); }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={s.tipsBtnText}>Show ride tips</Text>
-                  <Text style={s.tipsBtnArrow}>{'\u203A'}</Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={s.tipsCard}>
-                  <View style={s.tipsHeader}>
-                    <Text style={s.tipsTitle}>Ride tips</Text>
-                    <TouchableOpacity onPress={() => setShowTips(false)} hitSlop={HIT}>
-                      <Text style={s.tipsHide}>Hide</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {(Array.isArray(aiTips) && aiTips.length > 0
-                    ? aiTips
-                    : generateRideTips(activity)
-                  ).map((tip, idx) => (
+              <View style={s.tipsCard}>
+                <View style={s.tipsHeader}>
+                  <Text style={s.tipsTitle}>Ride tips</Text>
+                </View>
+                {(Array.isArray(aiTips) && aiTips.length > 0
+                  ? aiTips
+                  : generateRideTips(activity)
+                ).map((tip, idx) => (
                     <View key={idx} style={s.tipRow}>
                       {/* Per-tip icon — MaterialCommunityIcons glyph,
                           never an emoji. Injury bullets get an extra
@@ -988,11 +1029,10 @@ export default function ActivityDetailScreen({ navigation, route }) {
                       </View>
                     </View>
                   ))}
-                  {tipsLoading && !Array.isArray(aiTips) && (
-                    <Text style={s.tipsRefreshing}>Personalising for this session…</Text>
-                  )}
-                </View>
-              )}
+                {tipsLoading && !Array.isArray(aiTips) && (
+                  <Text style={s.tipsRefreshing}>Personalising for this session…</Text>
+                )}
+              </View>
             </>
           )}
 
@@ -1124,6 +1164,7 @@ export default function ActivityDetailScreen({ navigation, route }) {
               distanceKm: distanceKm,
             });
             await loadActivity();
+            promptApplyBikeToAllUpcoming(activity, bikeType);
           }
           analytics.events.activityEditedManual?.({
             activityType: activity.type,
@@ -1140,6 +1181,7 @@ export default function ActivityDetailScreen({ navigation, route }) {
           } else {
             await updateActivity(activityId, { bikeType });
             await loadActivity();
+            promptApplyBikeToAllUpcoming(activity, bikeType);
           }
           analytics.events.activityEditedManual?.({
             activityType: activity.type,

@@ -411,15 +411,14 @@ export default function PlanPickerScreen({ navigation, route }) {
   };
 
   // Multi-select cycling type. Tapping a chip toggles it in/out of the
-  // selection array. Continue (footer button) advances. We deliberately
-  // don't auto-advance on first tap because most riders ride more than
-  // one bike type and we want them to add the others before moving on.
+  // Cycling type is now SINGLE-SELECT. Earlier multi-select (so the
+  // plan could pick a different bike per session) was confusing for
+  // riders and produced "mixed" plans that didn't read native to any
+  // one type. The rider now picks one primary type during onboarding,
+  // can change it later in Settings, and can still swap the bike on
+  // any individual session via the bike chip + BikeTypePickerModal.
   const onToggleCyclingType = (key) => {
-    setCyclingTypes(prev => {
-      const isSelected = prev.includes(key);
-      if (isSelected) return prev.filter(k => k !== key);
-      return [...prev, key];
-    });
+    setCyclingTypes([key]); // single-element array preserves data shape
     analytics.events.planPickerAnswered?.({ question: 'cycling_type', choice: key });
   };
 
@@ -1017,26 +1016,24 @@ export default function PlanPickerScreen({ navigation, route }) {
           </>
         )}
 
-        {/* Q2 — cycling type. Multi-select. Uses CheckCard so the
-            checkbox affordance matches the training-types step over on
-            PlanConfig (where the same multi-select pattern is already
-            established). The "Pick all that apply" badge above the list
-            is the explicit signal that this isn't single-select. */}
+        {/* Q2 — cycling type. SINGLE-select (was multi-select). The
+            rider picks the bike that defines the plan's vocabulary
+            and pacing; per-session swaps stay available later via
+            the bike chip on every ride. Reuses CheckCard for visual
+            consistency with the training-types step but treats the
+            tap as a radio select (clears prior selection). */}
         {step === 2 && (
           <>
             {renderQuestionHeader()}
             <Text style={s.title}>What kind of cycling?</Text>
-            <Text style={s.subtitle}>We&apos;ll build a plan that uses every bike you ride.</Text>
-            <View style={s.multiHint}>
-              <Text style={s.multiHintText}>Pick all that apply</Text>
-            </View>
+            <Text style={s.subtitle}>Pick the one that fits most of your riding. You can change it in Settings later, and swap the bike on any single session if you ride mixed.</Text>
             <View style={s.cyclingTypeList}>
               {CYCLING_TYPE_OPTIONS.map(o => (
                 <CheckCard
                   key={o.key}
                   label={o.label}
                   description={o.description}
-                  checked={cyclingTypes.includes(o.key)}
+                  checked={cyclingTypes[0] === o.key}
                   onPress={() => onToggleCyclingType(o.key)}
                 />
               ))}
@@ -1049,11 +1046,7 @@ export default function PlanPickerScreen({ navigation, route }) {
                 activeOpacity={0.85}
               >
                 <Text style={s.primaryBtnText}>
-                  {cyclingTypes.length === 0
-                    ? 'Pick at least one'
-                    : cyclingTypes.length === 1
-                      ? 'Continue'
-                      : `Continue with ${cyclingTypes.length} bikes`}
+                  {cyclingTypes.length === 0 ? 'Pick one' : 'Continue'}
                 </Text>
               </TouchableOpacity>
             </View>

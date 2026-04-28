@@ -716,7 +716,12 @@ router.post('/explain-tips', async (req, res) => {
     }
 
     const prompt = buildTipsPrompt(activityForPrompt, goal, null);
-    const _claudeModel = 'claude-haiku-4-5-20251001';
+    // Haiku 3.5 — ~3x cheaper than 4.5 with output quality that's
+    // indistinguishable for tip generation (constrained-format
+    // bullets, no reasoning chain). The activity-tips card is shown
+    // on every detail-screen open now, so any per-call cost
+    // multiplies fast — keep it cheap.
+    const _claudeModel = 'claude-haiku-3-5-20241022';
     const _claudeStartedAt = Date.now();
 
     let response;
@@ -1262,20 +1267,25 @@ ${fewShotExemplar}
 - Max comfortable distance currently: ${longestRideKm != null
     ? `${longestRideKm} km (athlete told us this is their longest ride in the last 6 months — use this as the Week 1 long-ride anchor and ramp from here, rather than the generic benchmark)`
     : `~${benchmark.maxComfortableDistKm} km`}
-- Cycling type: ${goal.cyclingType || 'road'}${goal.cyclingType === 'ebike' ? ' (electric-assisted — focus on endurance and enjoyment rather than raw power. Adjust distances up since e-bikes allow longer rides at lower effort. Still include some sessions without motor assist for fitness building.)' : ''}
-${Array.isArray(goal.cyclingTypes) && goal.cyclingTypes.length > 1
-  ? `- Bike menu (athlete configured ${goal.cyclingTypes.length} bike types): ${goal.cyclingTypes.join(', ')}.
-  Tag each cycling session with a "bikeType" field that's the most appropriate
-  bike from this menu, considering surface and intensity:
-    • Long endurance / Z2 base — prefer "road" or "gravel"
-    • Threshold / VO2 / interval sessions — prefer "road" (consistent pacing)
-    • Recovery — any bike is fine; pick the one that gets the athlete out the door
-    • Bad-weather / busy-week structured sessions — prefer "indoor" if available
-    • Skill / off-road days — "mtb" or "gravel" if available
-  Aim for a healthy mix across the bike menu over a 4-week block. Don't put
-  every session on the same bike. If you can't pick confidently, leave bikeType
-  null (= rider's choice).`
-  : ''}
+- Cycling type: ${goal.cyclingType || 'road'} ${(() => {
+  // Each cycling type changes session shape, language, and what
+  // counts as a "long ride." The plan should *feel* native to the
+  // type the rider picked — a gravel rider doing a "long road
+  // endurance" reads as wrong even if the numbers are right.
+  const t = goal.cyclingType || 'road';
+  switch (t) {
+    case 'mtb':
+      return '— mountain biking. Long rides should mean trail time, not road km. Lower average speeds (~12–18 km/h). Replace road interval blocks with terrain-driven efforts ("punchy climbs", "technical descents to recover", "sustained fire-road climbs"). Skill sessions are training: include 1 short skills/handling ride per week (trail features, drops, switchbacks). Climbing matters more than threshold power.';
+    case 'gravel':
+      return '— gravel. Mixed surface — base most rides on road or gentle off-road, with one weekly mixed-surface long ride that gets onto fire roads / canal paths / cinder. Pace expectations are 5–15 % slower than road for the same effort. Threshold and VO2 work stay on road or smooth gravel for consistent pacing.';
+    case 'ebike':
+      return '— e-bike (electric-assisted). Focus on endurance and enjoyment rather than raw power. Distances can run longer than the unassisted equivalent at lower perceived effort. Include 1–2 sessions per week unassisted (or in eco/lowest mode) to actually build cardiovascular fitness. Frame intensity in HR / RPE rather than power.';
+    case 'indoor':
+      return '— indoor / trainer. Every session structured: warmup / main / cooldown. No "go ride 90 min easy outside" prompts. Long endurance still happens (90–150 min Z2) but framed as "stay in zone 2 on the trainer". Keep distance secondary (trainers under-report distance) — duration + intensity are the anchors.';
+    default:
+      return '— road cycling. Pavement, drop bars, faster average pace. Standard plan vocabulary applies (Z2 endurance, tempo, threshold, VO2max).';
+  }
+})()}
 - Goal: ${goal.goalType === 'race' ? 'Race preparation' : goal.goalType === 'distance' ? 'Hit a distance target' : 'General fitness improvement'}
 ${goal.eventName ? `- Event: ${goal.eventName}` : ''}
 ${goal.targetDistance ? `- Target distance: ${goal.targetDistance} km` : `- Target distance: NOT STATED. Since the athlete didn't specify, treat the implicit target as ${config.fitnessLevel === 'expert' ? 150 : config.fitnessLevel === 'advanced' ? 100 : config.fitnessLevel === 'intermediate' ? 60 : 30} km and build a plan that culminates with a ride around that distance. Title the final ride to reflect the achievement.`}
@@ -2271,7 +2281,23 @@ Never, ever write "I'll" / "I've" / "I'm" + a verb of change ("shift", "move", "
             systemPrompt += `- Event was ${Math.abs(daysUntilEvent)} days ago\n`;
           }
         }
-        if (context.goal.cyclingType) systemPrompt += `- Cycling type: ${context.goal.cyclingType}\n`;
+        if (context.goal.cyclingType) {
+          const t = context.goal.cyclingType;
+          // Type-aware coaching vocabulary so the coach's advice reads
+          // native to the bike the rider's actually on. MTB riders
+          // shouldn't get road-bike pacing advice; e-bike riders
+          // shouldn't be told to chase power numbers.
+          const typeFlavour = t === 'mtb'
+            ? ' (mountain biking — talk in terrain, climbing, technical features, not road km. Skill rides count as training.)'
+            : t === 'gravel'
+              ? ' (gravel — mixed surface; pacing 5–15% slower than road for the same effort.)'
+              : t === 'ebike'
+                ? ' (e-bike — frame intensity in HR / RPE not power; encourage some unassisted sessions for fitness.)'
+                : t === 'indoor'
+                  ? ' (indoor / trainer — every session structured; duration + intensity are the anchors, not distance.)'
+                  : '';
+          systemPrompt += `- Cycling type: ${t}${typeFlavour}\n`;
+        }
       }
 
       if (context.fitnessLevel) {

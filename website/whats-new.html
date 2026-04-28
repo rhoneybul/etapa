@@ -499,9 +499,10 @@ a:hover { color: var(--accent-hover); }
 
   <!-- ============================================================
        RELEASE · 28 April 2026
-       Weekly check-ins, indoor session export, multi-bike training,
-       plus a stack of smaller upgrades. Add newer entries ABOVE this
-       block.
+       Skim-first rewrite: each big-ticket feature gets one tight
+       paragraph, a screenshot, and a 2-3 bullet "how it works" list.
+       The walls-of-detail version lives in git history if anyone
+       needs the deep cuts.
        ============================================================ -->
   <section class="release">
     <div class="release-head">
@@ -509,7 +510,7 @@ a:hover { color: var(--accent-hover); }
       <h2 class="release-headline">
         <span>A weekly check-in that shapes next week's plan.</span>
         <span>Send any indoor session to your trainer.</span>
-        <span>Tell us about every bike you ride.</span>
+        <span>Pick the bike that fits your riding.</span>
       </h2>
     </div>
 
@@ -520,161 +521,79 @@ a:hover { color: var(--accent-hover); }
           <span>Weekly check-in</span>
           <span class="experimental">Experimental</span>
         </div>
-        <h3>Five quick questions, every week — and your coach reshapes the next one</h3>
-        <p>The biggest change in this update. At a time you choose, your coach pings you for a structured weekly check-in: a small set of questions about how the week actually went and what's coming up. You answer on the phone, the coach reads it, and proposes concrete adjustments to next week — which you can apply or skip individually. It's the bit that turns a static plan into a live, adaptive one.</p>
-        <div class="experimental-note">
-          <strong>This is experimental.</strong> Especially the injury / physio loop — that's the newest, most opinionated part. The coach's medical guardrails are strict, but a non-medical AI is the wrong tool for anything serious, so please treat the suggestions as conversation starters, not prescriptions. We're shipping it to learn — feedback on what was useful, what was off, and what the coach got wrong is the most valuable thing you can send us right now. Use the feedback button in Settings, or reply to your coach.
-        </div>
-
-        <h4 style="margin-top: 20px;">The questions</h4>
-        <p>Five, all designed to be answerable in two minutes:</p>
-        <ul style="margin: 8px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
-          <li><strong style="color: var(--fg);">Which sessions did you do?</strong> — multi-select pulled from this week's plan. Tick a session, optionally drop a one-line note ("felt strong, hit the targets" / "bonked at km 60, ran out of fuel"). The coach reads the notes, not just the boxes.</li>
-          <li><strong style="color: var(--fg);">Anything you'd like to change about the plan?</strong> — free text. Feedback the coach can act on next week.</li>
-          <li><strong style="color: var(--fg);">Anything coming up that affects training?</strong> — travelling Wed–Fri, family commitments Saturday morning, work crunch — whatever's going to bump rides.</li>
-          <li><strong style="color: var(--fg);">Any injuries or pain?</strong> — Yes / No, then a short description if Yes.</li>
-          <li><strong style="color: var(--fg);">Will you see a physio?</strong> — only when injury = Yes. If you tick yes, we add a placeholder physio appointment to your plan so it doesn't slip.</li>
+        <h3>Two minutes on Sunday — your plan reshapes itself for next week</h3>
+        <p>Once a week your coach asks how things actually went. You tick what you did, drop one line about anything coming up ("can't ride Wednesday"), and the coach proposes concrete tweaks to next week — apply or skip each one with a tap.</p>
+        <ul style="margin: 12px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
+          <li>Pick the day and time in <em>Settings → Weekly check-in</em>.</li>
+          <li>One freeform input, then injury yes/no — the whole thing fits in a couple of minutes.</li>
+          <li>Your coach <strong style="color: var(--fg);">never gives medical advice.</strong> Anything injury-related gets pointed at a physio, full stop.</li>
         </ul>
-
-        <h4 style="margin-top: 20px;">A line we won't cross</h4>
-        <p>Etapa is a training app. <strong style="color: var(--fg);">Your coach will never give medical advice.</strong> No diagnoses, no rest-period prescriptions for medical conditions, no exercises for healing, no medication suggestions. The system prompt enforces this; the in-form banner reminds you of it the moment you tick "Yes" to injury; and if any pain is reported, the only medical-side response from the coach is "please see a physiotherapist." We'll dial down next week's load while you're getting assessed, then adapt to whatever the physio says — but we won't pretend to be one.</p>
-
-        <h4 style="margin-top: 20px;">The physio loop</h4>
-        <p>If you opt in, a placeholder physio appointment lands on your plan in the next few days. Once you've been, you can paste the physio's notes back into the app from that activity — and the coach re-runs the suggestions filtered through the notes. So a "lay off heavy lateral movement for two weeks" line from your physio becomes specific session changes in your plan, with no further input from you needed.</p>
-
-        <h4 style="margin-top: 20px;">Coach has memory now</h4>
-        <p>Each check-in feeds the coach the last three weeks' responses too — so patterns get spotted. A recurring knee niggle gets escalated, not restarted from zero. A repeated Sunday bonk gets called out by name in the summary so you can see we're tracking it. Same life event derailing the same day every week? The schedule adapts, not just the load. And when you've genuinely improved — moved from missing two sessions a week to hitting all of them — the coach acknowledges it, briefly, no gushing.</p>
-
-        <h4 style="margin-top: 20px;">When and how it lands</h4>
-        <p>You pick the schedule in <em>Settings → Weekly check-in</em>: day of week, time of day, with the device's timezone resolved automatically. Default Sunday 18:00, opt-in only. At your scheduled time you get a push notification. If you don't respond:</p>
-        <ul style="margin: 8px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
-          <li><strong style="color: var(--fg);">+12 hours</strong> — gentle reminder push.</li>
-          <li><strong style="color: var(--fg);">+24 hours</strong> — second push, slightly more direct.</li>
-          <li><strong style="color: var(--fg);">+48 hours</strong> — next time you open the app, an in-app popup nudges you. (Once. Then it's just the home banner until you act on it.)</li>
-          <li><strong style="color: var(--fg);">+14 days</strong> — the check-in expires silently. We don't pile up unanswered ones.</li>
-        </ul>
-        <p style="margin-top: 12px;">A pending check-in shows up as a pink banner on Home between your coach card and the week module — tap to open, × to dismiss without answering. If life happened and you've got two unanswered, we only ever show the most recent — no guilt-piling.</p>
-
-        <h4 style="margin-top: 20px;">The suggestions step</h4>
-        <p>After you submit, the coach takes 10–20 seconds to read everything and writes back: a 1–2 sentence summary of what they noticed, then a list of concrete changes for next week — modify, skip, or switch-to-recovery. Each change has its own Apply / Skip button so you stay in control. Apply commits straight to the plan. Skip leaves it alone. Done when you're done.</p>
-
-        <p style="margin-top: 16px;">Privacy: the responses live on Etapa's server and are sent to Anthropic's Claude API to generate the suggestions, same as every other coach-AI interaction in the app. The medical guardrails apply server-side too — we explicitly tell Claude it's not a medical professional and to refer injuries to a physio. Nothing about your responses is shared with anyone other than you and the coach.</p>
       </div>
       <div class="feature-shot"
-           data-caption="Weekly check-in flow: pink Home banner → questionnaire (sessions multi-select with comments, modifications, life events, injury) → AI suggestions card with Apply / Skip per change.">
+           data-caption="Weekly check-in: home banner → questionnaire → AI suggestions card with Apply / Skip per change.">
         <img src="/whats-new-assets/screens/weekly-checkin.png" alt="Weekly check-in flow on iOS" />
       </div>
     </div>
 
-    <!-- ───── Feature 2: Send indoor sessions to a smart trainer ───── -->
+    <!-- ───── Feature 2: Send to your trainer ───── -->
     <div class="feature">
       <div class="feature-copy">
         <div class="eyebrow">
-          <span>Indoor sessions</span>
+          <span>Send to your trainer</span>
           <span class="experimental">Experimental</span>
         </div>
-        <h3>Get your indoor session into Zwift, Wahoo SYSTM, Rouvy or TrainerRoad</h3>
-        <p>Open any indoor session and you'll see a "Send to your trainer" button above your coach. Tap it and we generate a real structured workout file — warm-up, intervals, cool-down, with power targets as a percentage of your FTP so the trainer drives resistance in ERG mode. The file is exactly the shape the indoor app would have asked you to build by hand.</p>
-        <div class="experimental-note">
-          <strong>This is experimental.</strong> The file generator works and produces valid .zwo / .mrc — every receiving app accepts the file. Where it gets messy is the handoff: trainer apps don't accept .zwo via the iOS / Android share sheet, so the realistic workflow is a web upload (per-app instructions below). Tell us how you used it — which path actually worked, where the friction was, what felt obvious or weird — and we'll prioritise the next round of integrations from there. A direct TrainingPeaks bridge and native .fit are both candidates; we want to ship the one that removes the most friction for actual riders.
-        </div>
-        <p>Two formats:</p>
-        <ul style="margin: 8px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
-          <li><strong style="color: var(--fg);">.zwo</strong> — the modern standard. Read by Zwift, Wahoo SYSTM, Rouvy, MyWhoosh, TrainerRoad, intervals.icu, and most others.</li>
-          <li><strong style="color: var(--fg);">.mrc</strong> — universal text fallback for older software (CompuTrainer / PerfPro / ErgVideo / GoldenCheetah).</li>
+        <h3>Any indoor session, into your trainer app, in three taps</h3>
+        <p>Open an indoor session, tap <em>Send to your trainer</em>, and we generate a real structured workout file (.zwo). The fastest path on a phone is <strong style="color: var(--fg);">intervals.icu</strong> — free, takes mobile uploads, and pushes workouts straight into Zwift, Garmin Edge, and Wahoo ELEMNT.</p>
+        <ul style="margin: 12px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
+          <li>Save the .zwo, drop it on intervals.icu, ride.</li>
+          <li>Already on Zwift, Wahoo SYSTM, Rouvy, or TrainerRoad? The in-app modal walks you through the per-app web upload.</li>
+          <li>FTP set in your trainer app once → every workout plays back at the right watts.</li>
         </ul>
-
-        <h4 style="margin-top: 24px;">How the file actually gets into your trainer app</h4>
-        <p>To be straight with you: trainer apps on iOS and Android don't accept .zwo files via the share sheet. We tested it. "Copy to Zwift" sometimes appears in the share sheet but doesn't reliably import. The honest workflow is one of two paths.</p>
-
-        <p style="margin-top: 16px;"><strong style="color: var(--fg);">Path A — intervals.icu sync bridge (fastest, mobile-only)</strong></p>
-        <p style="margin-top: 4px;">intervals.icu is free, takes .zwo uploads on mobile, and has built-in sync to Zwift, Garmin Edge, and Wahoo ELEMNT. Connect it to Zwift once (intervals.icu → Settings → Zwift) and any workout you upload to intervals.icu appears inside Zwift's Custom Workouts on next launch. Same for Garmin and Wahoo head units. This is the only path that works phone-only without a laptop.</p>
-        <ol style="margin: 8px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
-          <li>In Etapa, tap "Send to your trainer" → ".zwo".</li>
-          <li>Pick "Save to Files" (iOS) or save to Downloads (Android).</li>
-          <li>Open intervals.icu in your phone browser → sign in → Workouts → Calendar → drag the .zwo onto a date.</li>
-          <li>Workout appears in Zwift / Garmin / Wahoo on next launch.</li>
-        </ol>
-
-        <p style="margin-top: 16px;"><strong style="color: var(--fg);">Path B — laptop-based web import (per app)</strong></p>
-        <p style="margin-top: 4px;">If you'd rather upload directly to your trainer app's account: save the .zwo, then sign in to the app's web dashboard from a laptop and import. Workouts sync to the mobile app on next launch.</p>
-        <ul style="margin: 8px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
-          <li><strong style="color: var(--fg);">Zwift</strong> — only via the desktop client. Save the .zwo, then on a Windows / Mac drop the file into <code>Documents/Zwift/Workouts/{your-id}/</code>. It appears under Custom Workouts on next Zwift launch on any device on the same account. Zwift currently has no web import.</li>
-          <li><strong style="color: var(--fg);">Wahoo SYSTM</strong> — <em>systm.wahoofitness.com</em> → Workouts → Custom → Import.</li>
-          <li><strong style="color: var(--fg);">Rouvy</strong> — <em>my.rouvy.com</em> → Workouts → Add → upload the .zwo.</li>
-          <li><strong style="color: var(--fg);">TrainerRoad</strong> — <em>trainerroad.com</em> → Workouts → Workout Creator → Import.</li>
-          <li><strong style="color: var(--fg);">CompuTrainer / PerfPro / older apps</strong> — choose <em>.mrc</em> instead of <em>.zwo</em> when you export.</li>
-        </ul>
-
-        <h4 style="margin-top: 24px;">Android specifically</h4>
-        <p>Same as iOS, just clearer end-to-end. Tapping export drops the .zwo into your phone's Downloads folder. From there you have two paths:</p>
-        <ul style="margin: 8px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
-          <li><strong style="color: var(--fg);">Phone-only:</strong> upload to intervals.icu (free, mobile-friendly), connect intervals.icu → Zwift / Garmin / Wahoo, and the workout flows through.</li>
-          <li><strong style="color: var(--fg);">Have a laptop:</strong> transfer the file (USB / Drive / email-to-self), then web-import via SYSTM / Rouvy / TrainerRoad, or drop into the desktop Zwift folder.</li>
-        </ul>
-        <p style="margin-top: 12px;">Etapa's first-time export popup walks through both paths in plain English; it has a "Don't show this again" checkbox once you've got a workflow that works for you.</p>
-
-        <p style="margin-top: 16px;">A few more things worth knowing. ERG-mode resistance only works if your trainer app knows your FTP — set it once inside the app, not in Etapa, and every imported workout plays back at the right watts. Garmin Edge and Wahoo ELEMNT head units don't read .zwo directly; the intervals.icu bridge is the easiest path there too. Native Garmin Connect Workout export (.fit) and a direct TrainingPeaks bridge are next on the roadmap.</p>
-
-        <p style="margin-top: 16px;">Privacy: the export URL is signed with a per-server secret and expires in five minutes. It's scoped to a single (rider, plan, session, format) tuple — it can't be re-used to fetch any other workout, and tampering with the URL (changing the activity id, the user, or the format) fails the signature check.</p>
       </div>
       <div class="feature-shot"
-           data-caption="Activity detail (indoor session) — 'Send to your trainer' button above the coach card; tapping it opens the format picker action sheet, then a one-time popup explaining the upload paths.">
+           data-caption="Activity detail — Send to your trainer card. Modal recommends intervals.icu as the easy path; per-app instructions live below.">
         <img src="/whats-new-assets/screens/send-to-trainer-card.png" alt="Send to trainer card on an indoor session" />
       </div>
     </div>
 
-    <!-- ───── Feature 3: Multi-bike training ───── -->
+    <!-- ───── Feature 3: Cycling type ───── -->
     <div class="feature">
       <div class="feature-copy">
-        <div class="eyebrow">Multi-bike training</div>
-        <h3>Pick every bike you ride — swap any session, any day</h3>
-        <p>The "what kind of cycling?" question is now multi-select. Tick every bike in your shed (road, gravel, MTB, e-bike, indoor) and your plan will use them all. On any session, the BIKE row shows all five chips — tap a different one and we suggest a sensible distance and duration adjustment to keep the training stimulus the same. Same effort, same time, different kilometres. Multipliers came from a coach Q&amp;A: gravel ≈ 0.75×, MTB ≈ 0.65×, indoor drops distance entirely, e-bike ≈ 1.05×. "Keep original" is one tap away if you'd rather hold the road numbers as a stretch goal on gravel.</p>
-        <p>For combos that just don't work — road threshold intervals onto an MTB — the sheet flips into a "this swap won't work well" mode and points you at a better choice or a reschedule. Override is still right there.</p>
-        <p>Bike chips show on every home card and every list-view row, with a chevron so you can tap-to-swap from anywhere without drilling into the activity detail.</p>
+        <div class="eyebrow">Cycling type</div>
+        <h3>Pick the bike that fits your riding — swap any session in one tap</h3>
+        <p>Road, gravel, MTB, e-bike, or indoor — pick the one that defines your training and the plan reads native to it (singletrack for MTB, mixed surface for gravel, structured indoor for trainer riders).</p>
+        <ul style="margin: 12px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
+          <li>Tap the bike chip on any ride to swap just that session — same effort, sensible distance.</li>
+          <li>Changing every Thursday to gravel? It'll offer to apply across all upcoming weeks.</li>
+          <li>Change your default any time in <em>Settings → Default cycling type</em>.</li>
+        </ul>
       </div>
       <div class="feature-shot"
-           data-caption="Activity detail — BIKE chip row with all five types, mid-tap on Gravel; the swap-suggestion sheet shows the original / adjusted numbers side by side.">
+           data-caption="Activity detail — bike chip swap → suggested distance for the new bike → optional 'apply to all upcoming Thursdays?' prompt.">
         <img src="/whats-new-assets/screens/bike-swap-suggestion.png" alt="Bike swap confirmation sheet with adjusted distance and duration" />
       </div>
     </div>
 
-    <!-- ───── Smaller upgrades — folded recurring rides + plan picker + session chat ───── -->
+    <!-- ───── Smaller upgrades — single tight list ───── -->
     <div class="subsection">
-      <div class="subsection-label"><span class="dot"></span>Smaller upgrades</div>
-      <h4>A few quieter improvements worth knowing about</h4>
+      <div class="subsection-label"><span class="dot"></span>Smaller things</div>
+      <h4>Quiet improvements worth a line</h4>
       <ul class="touches">
-        <li><strong>Session-scoped coach chat</strong>Tapping "Chat with your coach" from inside an activity now opens a private thread about that session only — separate from your main coach chat, and replies don't bump the home-screen coach badge. Tapping the matching push notification still routes you to the right session thread.</li>
-        <li><strong>Regular rides got a kinder form</strong>Adding a Friday club ride used to mean fighting an inline form that scrolled itself off-screen the moment you tapped a field. Pulled out into a proper bottom sheet now: one focused screen, sticky Save / Cancel buttons that stay above the keyboard, fields you can actually see while you type. Tapping an already-added ride opens the same sheet pre-populated, so editing day or distance no longer means delete-and-redo. Same fix on Plan Overview's recurring-rides section.</li>
-        <li><strong>Plan picker keyboard fix</strong>On the longest-ride question, picking "Enter exact" used to mount the input right where the keyboard was about to appear. The whole intake now lifts above the keyboard with the custom-km field scrolling into view as it mounts. Same fix applied to the event-details step's distance / elevation / time inputs.</li>
-        <li><strong>Plan picker step 2 — multi-bike checkboxes</strong>The cycling-types step now uses proper checkbox rows with a "Pick all that apply" badge, matching the training-types step on PlanConfig. No more single-select-looking radio cards on a question that is genuinely multi-select.</li>
-        <li><strong>Build-your-week edit affordances</strong>The summary pills on step 5 ("1 regular ride · THU", "Long ride · SAT") are now real tap-to-edit buttons with EDIT chips. Tap the regular-rides pill → step 3 to edit the underlying ride. Indoor session-type chip got its missing icon — turned out the canonical glyph wasn't shipped in our icon-font version, so we swapped to a working one.</li>
+        <li><strong>Ride tips, always loaded</strong>Every ride now opens with personalised warm-up, fuel, pacing, cool-down, and recovery tips — written for that exact session.</li>
+        <li><strong>Shareable weekly summary</strong>Right after the check-in, get a card of your week (km, sessions, longest ride) you can post to a group chat or story.</li>
+        <li><strong>Mark-as-done feels instant</strong>Bigger circle, optimistic update — your tap shows the tick before the server even hears about it.</li>
+        <li><strong>Per-session coach chat</strong>Open the coach from a ride and the conversation stays scoped to that session.</li>
+        <li><strong>Kinder forms</strong>Recurring rides, longest-ride input, and event details all behave properly above the keyboard now.</li>
       </ul>
     </div>
 
-    <!-- ───── Polish pass ───── -->
-    <div class="subsection">
-      <div class="subsection-label"><span class="dot"></span>Polish pass</div>
-      <h4>Smaller things you'll notice without quite noticing</h4>
-      <ul class="touches">
-        <li><strong>Bike menu in the review</strong>The plan-picker review screen now shows every bike you selected on one line ("Road · Gravel"), not just the first.</li>
-        <li><strong>Wider home cards</strong>The Today / Tomorrow cards are 35 % wider so titles and the meta line read without truncation. Next day still peeks on the right edge so the rail still feels like a rail.</li>
-        <li><strong>Bigger bike chips</strong>The Bike chip row on activity detail got bigger padding and a thicker selected border — the active bike pops at a glance and chips are easier to hit with a thumb.</li>
-        <li><strong>"12" no longer clipped</strong>The big number on the plan-picker review hero ("12 WEEK IMPROVER") was being cut off at the top because of a too-tight line-height. Fixed.</li>
-        <li><strong>More keyboard breathing room</strong>The longest-ride custom-km input now has a comfortable 24pt gap above the keyboard so the Continue button doesn't sit flush against it.</li>
-        <li><strong>Indoor as a first-class bike</strong>"Indoor / trainer" is now a real bike type, not a hidden afterthought. If you pick it at intake, your plan can schedule structured indoor sessions alongside your outdoor rides.</li>
-        <li><strong>Session breakdowns now persist</strong>If you've tapped "Explain this session" on a hard ride, the warm-up / main / cool-down breakdown stays attached to that session — no more re-generating it on the next visit, and it powers the new workout export.</li>
-      </ul>
-    </div>
-
-    <!-- ───── Bugs squashed ───── -->
+    <!-- ───── Bugs squashed — one or two lines, kept short ───── -->
     <div class="bugs">
       <div class="bugs-label">Bugs squashed</div>
       <ul>
-        <li>Adding a regular ride no longer auto-scrolls the form away from the field you're trying to fill in.</li>
-        <li>Custom-km input on the longest-ride question is no longer hidden by the keyboard on smaller iPhones.</li>
-        <li>Editing a regular ride's day correctly frees up the old day on the weekly grid and rebalances the new one — no more orphaned outdoor placements.</li>
-        <li>Activity-detail edit save now round-trips bike type through the server, so swaps stick on every device signed into the same account.</li>
+        <li>App opens no longer fire phantom "new signup" notifications for existing users.</li>
+        <li>Bike chip is hidden on strength sessions (where swapping a bike type makes no sense).</li>
+        <li>Activity-detail edits round-trip through the server, so swaps stick on every device.</li>
       </ul>
     </div>
   </section>
@@ -701,12 +620,11 @@ a:hover { color: var(--accent-hover); }
     <div class="feature">
       <div class="feature-copy">
         <div class="eyebrow">Choosing your plan</div>
-        <h3>A plan built around where you actually are — in under a minute</h3>
-        <p>Three quick questions: what are you training for, how long is your current longest ride, and when's your event. That's it. No FTP test, no jargon, no "beginner / intermediate / advanced" guesswork. Your actual longest ride becomes the anchor for Week 1, so your plan starts at a distance you can genuinely complete and builds up from there.</p>
-        <p>On the training-types and build-your-week steps you'll see a small "we typically recommend" card — and the recommendation adapts to your fitness level and the session types you've already chosen. After your answers, a review screen lays out every choice as a tap-to-edit row — no scrolling back through the flow, no starting over, and going back from any later step actually goes back.</p>
+        <h3>Three questions and you've got a plan</h3>
+        <p>What are you training for, what's your current longest ride, when's your event. No FTP test, no "beginner / intermediate / advanced" guess — your actual longest ride anchors Week 1 and we build from there.</p>
       </div>
       <div class="feature-shot"
-           data-caption="Plan picker — review step with one tap-to-edit row per answer; or the 'we typically recommend' card on the training-types step.">
+           data-caption="Plan picker — review step with one tap-to-edit row per answer.">
         <img src="/whats-new-assets/screens/plan-picker-review.png" alt="Plan picker review step with one tap-to-edit row per answer" />
       </div>
     </div>
@@ -715,26 +633,24 @@ a:hover { color: var(--accent-hover); }
     <div class="feature">
       <div class="feature-copy">
         <div class="eyebrow">Drag and drop</div>
-        <h3>Move a session straight from home or the calendar</h3>
-        <p>Press-and-hold any session on Home and drag it to a new day. Or open Calendar, press-and-hold any cell that already has a ride on it, and drag the session right out of the grid — no need to scroll down to the day list to pick it up first.</p>
-        <p>Same gesture, same press-and-hold timing in both places. If you move a session to a day before Week 1 starts, we honour the move without re-generating the rest of the plan around it.</p>
+        <h3>Move a session by dragging it</h3>
+        <p>Press-and-hold a session on Home or in Calendar and drag it to a new day. Same gesture in both places.</p>
       </div>
       <div class="feature-shot"
-           data-caption="Calendar — a session being dragged directly out of a grid cell, mid-gesture, with the drop-target day highlighted.">
+           data-caption="Calendar — a session being dragged directly out of a grid cell.">
         <img src="/whats-new-assets/screens/calendar-drag.png" alt="Dragging a session directly from the calendar grid" />
       </div>
     </div>
 
-    <!-- ───── Feature 3: Messaging — chat persistence + push + structured replies ───── -->
+    <!-- ───── Feature 3: Messaging ───── -->
     <div class="feature">
       <div class="feature-copy">
         <div class="eyebrow">Messaging</div>
-        <h3>A chat that opens instantly and never loses a reply</h3>
-        <p>We rewrote how coach chat is stored end-to-end. Open the screen and your conversation is right there from the cache, then quietly reconciles with the server in the background. Send a message and close the app mid-reply — when you come back, your message and the coach's reply are both intact. If a send fails, a small inline resend arrow appears inside the bubble, exactly where you'd expect to tap.</p>
-        <p>Push notifications now drop you on the exact message that triggered them, not the top of the chat. Plan-ready taps go straight into the new plan overview. And ask "what does today's session look like?" — your coach now answers with a proper structured breakdown: warm-up, main set, cool-down, with the effort target for each block.</p>
+        <h3>Coach chat that opens instantly and never loses a reply</h3>
+        <p>The conversation is there the moment the screen opens. Send and close — when you come back, your message and the coach's reply are both intact. Push notifications drop you on the exact message they're about.</p>
       </div>
       <div class="feature-shot"
-           data-caption="Coach chat — coach reply with a structured warm-up / main set / cool-down breakdown, plus a failed user message above showing the inline resend arrow icon.">
+           data-caption="Coach chat — structured session reply and an inline resend arrow on a failed message.">
         <img src="/whats-new-assets/screens/chat-messaging.png" alt="Coach chat with structured session reply and inline resend icon" />
       </div>
     </div>
@@ -744,25 +660,23 @@ a:hover { color: var(--accent-hover); }
       <div class="feature-copy">
         <div class="eyebrow">New coach &amp; languages</div>
         <h3>Meet Kai — and chat with your coach in their language</h3>
-        <p>Kai Donovan is the new face on the roster: a Cycling Australia Level 2 coach out of New South Wales who treats the bike as one part of a bigger picture. Surf reports, swim sets, and the test cricket score sit alongside your interval session — for him it's all the same engine. Sun-warm, easy-going, no parody Aussie-isms.</p>
-        <p>Every coach now has a nationality and a list of languages they speak. Clara reads in English, Spanish, and Catalan. Lars in English, Danish, German. Sophie in French. Matteo in Italian. Elena across English, Spanish, Italian. A small language pill sits in the chat header — tap it, pick a language, and the coach drops a short welcome in the new language straight away ("¡Genial! A partir de ahora seguimos en español…") and keeps replying in that language from there. Per-coach memory, so swapping coaches doesn't lose your settings.</p>
+        <p>Kai Donovan joins the roster — sun-warm, no-parody Aussie. And every coach now speaks multiple languages: tap the language pill in the chat header to switch (Spanish, Catalan, Danish, German, French, Italian — depending on the coach).</p>
       </div>
       <div class="feature-shot"
-           data-caption="Coach chat — header with the coach name and the pink language pill ('Español ▾'); below, an in-language welcome bubble from the coach.">
+           data-caption="Coach chat — language switcher pill and an in-language welcome bubble.">
         <img src="/whats-new-assets/screens/chat-language-pill.png" alt="Coach chat header with language switcher pill and Spanish welcome bubble" />
       </div>
     </div>
 
-    <!-- ───── Feature 5: New home screen ───── -->
+    <!-- ───── Feature 5: Home screen ───── -->
     <div class="feature">
       <div class="feature-copy">
         <div class="eyebrow">Home screen</div>
-        <h3>Today, tomorrow, and your week — one screen, no scrolling</h3>
-        <p>Your today's session is the first thing you see — name, distance, duration, effort, and a one-tap "View details" button. Tomorrow sits right beneath it. Below those, the next five days run in a compact horizontal scroll with session-type tags (Endurance, Intervals, Long Ride…) so the week reads as a real week, not two looming hero cards.</p>
-        <p>Your coach chat lives at the top of the screen so you're never more than a tap from a question. The "+ New plan" button shrunk to a small circle in the YOUR PLANS header — only the full pill version shows up when you don't have a plan yet, where it actually belongs.</p>
+        <h3>Today, tomorrow, and your week on one screen</h3>
+        <p>Today's session is the first thing you see. Tomorrow sits beneath it. The next five days run in a horizontal scroll with session-type tags so the week reads as a week. Coach chat sits at the top — never more than a tap away.</p>
       </div>
       <div class="feature-shot"
-           data-caption="Home — Today / Tomorrow horizontal scroll up top, YOUR PLANS header with the small + circle, week strip with session-type tags beneath.">
+           data-caption="Home — Today / Tomorrow horizontal scroll, week strip with session-type tags beneath.">
         <img src="/whats-new-assets/screens/home-compressed.png" alt="Compressed home screen with horizontal Today/Tomorrow scroll" />
       </div>
     </div>
@@ -772,66 +686,35 @@ a:hover { color: var(--accent-hover); }
       <div class="feature-copy">
         <div class="eyebrow">Onboarding</div>
         <h3>You meet your coach the second you arrive</h3>
-        <p>The onboarding tour fires the moment you finish signing in, before you see an empty home screen wondering what to do. Three steps, then you're in.</p>
-        <p>Picking a coach and choosing km or miles aren't optional any more — those two answers shape the rest of the app, so we ask once and remember forever. The Continue button stays disabled with a clear "Pick a coach to continue" hint until you've chosen.</p>
+        <p>Three quick steps right after sign-in: pick a coach, choose km or miles, then you're in. No empty-home-screen confusion.</p>
       </div>
       <div class="feature-shot"
-           data-caption="Onboarding — the coach picker step with the disabled Continue state showing 'Pick a coach to continue' under it.">
-        <img src="/whats-new-assets/screens/onboarding-coach.png" alt="Onboarding coach picker, required step" />
+           data-caption="Onboarding — the coach picker step.">
+        <img src="/whats-new-assets/screens/onboarding-coach.png" alt="Onboarding coach picker" />
       </div>
     </div>
 
-    <!-- ───── Polish pass ───── -->
+    <!-- ───── Smaller things — single tight list ───── -->
     <div class="subsection">
-      <div class="subsection-label"><span class="dot"></span>Polish pass</div>
-      <h4>Smaller things you'll notice without quite noticing</h4>
-      <p>A round of quiet improvements that don't fit a feature card but make the app feel more cared-for end to end.</p>
+      <div class="subsection-label"><span class="dot"></span>Smaller things</div>
+      <h4>Quiet improvements worth a line</h4>
       <ul class="touches">
-        <li><strong>Faster plan generation</strong>We swapped the model behind plan creation — same plan quality, noticeably less waiting. The "building your plan" screen wraps up much sooner than it used to.</li>
-        <li><strong>Hard sessions, three ways</strong>Every interval or tempo session shows the target by feel, by heart rate, and by watts. Pick whichever works for you — we render the same number three ways.</li>
-        <li><strong>Coach reads the whole conversation</strong>Short answers to your coach's own questions ("Recreational swim") no longer trip the off-topic guard.</li>
-        <li><strong>Coach can schedule non-cycling sessions</strong>Swim, run, physio, mobility, stretching, yoga and 20+ more — each one shows on your week with the right activity icon.</li>
-        <li><strong>Coach chat, now async</strong>Send a message and leave — you'll get a push when your coach replies.</li>
-        <li><strong>Coach commits to changes properly</strong>If your coach says "I'll move that long ride to Sunday", the plan actually moves. We hardened the prompt so commitment language has to come with a structured update.</li>
-        <li><strong>Notifications open the right place</strong>The Notifications screen reads from cache first so it pops open instantly, with a small "Refreshing…" hint while we check the latest in the background.</li>
-        <li><strong>Beginner target-distance ceiling</strong>No training ride exceeds your target distance until graduation day, so the final ride feels like the milestone it should.</li>
-        <li><strong>Max HR and FTP support</strong>Add yours in Settings to see real bpm / watts on every session.</li>
-        <li><strong>Pre-plan-start home screen</strong>A clear "Plan starts Mon 27 April · 3 days" card before Week 1 kicks off.</li>
-        <li><strong>Pink "1" on the coach card</strong>When your coach has replied, a small badge appears on their avatar on Home. Clears the moment you open the chat.</li>
-        <li><strong>Test push button in Settings</strong>New row in Settings → Notifications to verify pushes are actually reaching your device.</li>
-        <li><strong>Un-check a completed session</strong>Tapped it by mistake? Tap again to undo.</li>
-        <li><strong>Settings doesn't jump on load</strong>The skeleton holds the same shape as the loaded screen, so rows don't pop into existence.</li>
-        <li><strong>Minimal splash screen</strong>Just the icon and a soft pink halo on launch — no more "ETAPA / train with purpose" text. The native splash matches the in-app loader exactly.</li>
-        <li><strong>Calendar keyboard avoidance</strong>The chat input above the keyboard properly lifts on Calendar.</li>
-        <li><strong>Plan picker review goes straight to setup</strong>Confirming the review takes you directly into plan-config — the redundant in-between screen is gone.</li>
-        <li><strong>Loading spinner when you complete a session</strong>No more "did that tap even register?" moments.</li>
-        <li><strong>Plan overview palette refresh</strong>Bar chart uses brand pinks and slate blues. Peak-week flag went from alarming red to a warmer pink.</li>
-        <li><strong>Km or miles, honestly</strong>Asked on first launch, saved once, used everywhere.</li>
+        <li><strong>Faster plan generation</strong>Same quality, noticeably less waiting on the building screen.</li>
+        <li><strong>Hard sessions, three ways</strong>Targets shown by feel, heart rate, and watts — pick whichever works.</li>
+        <li><strong>Coach can schedule non-cycling sessions</strong>Swim, run, physio, mobility, yoga — they show on your week with the right icon.</li>
+        <li><strong>Async coach chat</strong>Send a message and leave — you'll get a push when the reply lands.</li>
+        <li><strong>Beginner target-distance ceiling</strong>No training ride exceeds your target until graduation day.</li>
       </ul>
     </div>
 
-    <!-- ───── Bugs squashed ───── -->
+    <!-- ───── Bugs squashed — kept short ───── -->
     <div class="bugs">
       <div class="bugs-label">Bugs squashed</div>
       <ul>
-        <li>User messages no longer disappear after a follow-up — server now uses the live conversation as the baseline before appending the coach's reply.</li>
-        <li>Coach replies no longer vanish on return — a server/client race that overwrote the completed reply with an empty one is fixed on both sides.</li>
-        <li>Coach replies stop arriving as bare commitments — "I'll change that" without an actual change is now blocked.</li>
-        <li>Coach no longer answers its own questions with a boilerplate refusal — context of the prior turn is included in the on-topic check.</li>
-        <li>Onboarding tour now fires for genuinely new accounts, not just ones with at least one plan.</li>
-        <li>Trial banner now appears for both <em>trialing</em> and <em>starter</em> states, with a sensible fallback when the period-end date is missing.</li>
-        <li>Tapping a day on Home reliably scrolls the matching row into view — we measure at click time now instead of relying on stale layout values.</li>
+        <li>Coach replies no longer vanish on return.</li>
         <li>Android keyboard no longer hides the coach chat input.</li>
-        <li>Calendar chat input lifts above the keyboard on Android, instead of being hidden by it.</li>
-        <li>Splash screen on iOS and Android no longer shows the old "ETAPA / train with purpose" text — both now match the minimal in-app loader.</li>
-        <li>Race lookup keeps the correct distance when you change the event.</li>
-        <li>The Delete Plan crash (black screen) is fixed — now shows a proper loading overlay.</li>
         <li>Plan Overview chart uses distinct colours for endurance vs tempo.</li>
-        <li>Generate Plan no longer crashes on the longest-ride step.</li>
-        <li>Plans with a Peak phase no longer flag three weeks in a row as "Peak week" — only the actual highest-volume week gets the label.</li>
-        <li>Back from plan config returns to your previous step instead of dropping you on Home.</li>
-        <li>Bottom buttons no longer get clipped by the Android 3-button nav bar on Welcome / plan picker / onboarding screens.</li>
-        <li>The "tap a session" hint moved under the divider so it clearly refers to the day list, not the week strip above it.</li>
+        <li>Plans with a Peak phase only flag the actual highest-volume week as "Peak".</li>
       </ul>
     </div>
   </section>
