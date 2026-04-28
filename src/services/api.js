@@ -84,6 +84,20 @@ export const api = {
     delete: (id)     => request('DELETE', `/api/goals/${id}`),
   },
 
+  // Weekly check-ins.
+  checkins: {
+    pending:      ()                 => request('GET', '/api/checkins/pending'),
+    list:         ()                 => request('GET', '/api/checkins'),
+    respond:      (id, body)         => request('POST', `/api/checkins/${id}/respond`, body),
+    dismiss:      (id)               => request('POST', `/api/checkins/${id}/dismiss`),
+    physioNotes:  (id, body)         => request('POST', `/api/checkins/${id}/physio-notes`, body),
+  },
+  // Per-user check-in schedule (day, time, timezone, enabled).
+  checkinPrefs: {
+    get:    () => request('GET', '/api/checkin-prefs'),
+    save:   (prefs) => request('POST', '/api/checkin-prefs', prefs),
+  },
+
   plans: {
     list:   ()         => request('GET', '/api/plans'),
     create: (plan)     => request('POST', '/api/plans', plan),
@@ -138,7 +152,15 @@ export const api = {
     markRead:      (id)   => request('PATCH', `/api/notifications/${id}/read`),
     markAllRead:   (type) => request('PATCH', `/api/notifications/read-all${type ? `?type=${encodeURIComponent(type)}` : ''}`),
     testPush:      ()     => request('POST', '/api/notifications/test'),
-    unreadCount:   (type) => request('GET', `/api/notifications/unread-count${type ? `?type=${encodeURIComponent(type)}` : ''}`),
+    // Optional `type` (e.g. 'coach_reply') and `excludeScope` (e.g.
+    // 'session') filters. Home screen passes excludeScope='session' so
+    // coach replies from a session-scoped chat don't bump the coach chip.
+    unreadCount:   (type, opts = {}) => {
+      const qs = [];
+      if (type) qs.push(`type=${encodeURIComponent(type)}`);
+      if (opts?.excludeScope) qs.push(`excludeScope=${encodeURIComponent(opts.excludeScope)}`);
+      return request('GET', `/api/notifications/unread-count${qs.length ? `?${qs.join('&')}` : ''}`);
+    },
   },
 
   preferences: {

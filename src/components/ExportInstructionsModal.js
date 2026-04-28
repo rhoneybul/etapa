@@ -30,41 +30,50 @@ import { setUserPrefs } from '../services/storageService';
 
 const FF = fontFamily;
 
+// Per-app instructions describe what ACTUALLY works in practice.
+// The earlier copy claimed "Pick Copy to Zwift" on the share sheet —
+// that doesn't reliably work because Zwift mobile doesn't register
+// .zwo as an importable document type on iOS or Android. The honest
+// path for Zwift is: send the .zwo to a desktop and drop it into the
+// Zwift workouts folder, OR use intervals.icu / TrainingPeaks as a
+// sync bridge (they push workouts into Zwift on next launch). For
+// everything else (Wahoo SYSTM, Rouvy, TrainerRoad), the import lives
+// on the web dashboard.
 const PER_APP_INSTRUCTIONS = [
   {
     name: 'Zwift',
     badgeColor: '#FC6719',
     badgeLetter: 'Z',
-    iosFlow: 'Pick "Copy to Zwift" on the share sheet. The workout shows up under Custom Workouts → Etapa next time you ride.',
-    androidFlow: 'Save the file, then sign in at zwift.com → My Workouts → drop the .zwo into your custom-workouts folder. Syncs to the app.',
+    iosFlow: 'Pick "Save to Files" → iCloud Drive. On a desktop or laptop, open the file and drag it into Documents/Zwift/Workouts/{your-id}/ — it appears under Custom Workouts on next Zwift launch. Quicker route: connect intervals.icu (free) to Zwift, then upload the .zwo to intervals.icu and it syncs.',
+    androidFlow: 'File saves to Downloads. Move it to a computer (USB / Drive / email) and drop it into Documents/Zwift/Workouts/{your-id}/ — it appears under Custom Workouts. Or upload to intervals.icu (free), which has a Zwift sync that pushes workouts in for you.',
   },
   {
     name: 'Wahoo SYSTM',
     badgeColor: '#0066B3',
     badgeLetter: 'W',
-    iosFlow: 'Pick "Save to Files" on the share sheet → iCloud Drive. Then sign in at systm.wahoofitness.com → Workouts → Import.',
-    androidFlow: 'File downloads to your phone. Sign in at systm.wahoofitness.com → Workouts → Import. Syncs to your phone next launch.',
+    iosFlow: 'Pick "Save to Files" → iCloud Drive. Then on a laptop sign in at systm.wahoofitness.com → Workouts → Custom → Import. Workout syncs to the SYSTM app on next launch.',
+    androidFlow: 'File saves to Downloads. Sign in at systm.wahoofitness.com → Workouts → Custom → Import. Syncs to the SYSTM app on next launch.',
   },
   {
     name: 'Rouvy',
     badgeColor: '#0F1F19',
     badgeLetter: 'R',
-    iosFlow: 'Pick "Save to Files". Sign in at my.rouvy.com → Workouts → Add → upload the .zwo. Syncs to mobile and desktop.',
-    androidFlow: 'File downloads. Sign in at my.rouvy.com → Workouts → Add → upload the .zwo. Syncs to mobile and desktop.',
+    iosFlow: 'Pick "Save to Files". On a laptop sign in at my.rouvy.com → Workouts → Add → upload the .zwo. Syncs to your mobile and desktop Rouvy apps.',
+    androidFlow: 'File saves to Downloads. Sign in at my.rouvy.com → Workouts → Add → upload the .zwo. Syncs to mobile and desktop.',
   },
   {
     name: 'TrainerRoad',
     badgeColor: '#E73B3F',
     badgeLetter: 'TR',
-    iosFlow: 'Pick "Save to Files". Sign in at trainerroad.com → Workouts → Workout Creator → Import.',
-    androidFlow: 'File downloads. Sign in at trainerroad.com → Workouts → Workout Creator → Import.',
+    iosFlow: 'Pick "Save to Files". On a laptop sign in at trainerroad.com → Workouts → Workout Creator → Import.',
+    androidFlow: 'File saves to Downloads. Sign in at trainerroad.com → Workouts → Workout Creator → Import.',
   },
   {
     name: 'intervals.icu',
     badgeColor: '#3478F6',
     badgeLetter: 'i',
-    iosFlow: 'Pick "Save to Files". Sign in at intervals.icu → Workouts → Import. Free, and syncs to a paired Garmin / Wahoo head unit.',
-    androidFlow: 'File downloads. Sign in at intervals.icu → Workouts → Import. Free, and syncs to Garmin / Wahoo head units.',
+    iosFlow: 'Pick "Save to Files". Sign in at intervals.icu → Workouts → Calendar → drop the .zwo onto a date. Free. Has built-in sync to Zwift, Garmin, and Wahoo head units — workouts you upload here appear inside those apps automatically.',
+    androidFlow: 'File saves to Downloads. Sign in at intervals.icu → Workouts → Calendar → upload the .zwo. Free, and syncs to Zwift, Garmin, and Wahoo head units. The fastest way to get a workout into Zwift on Android.',
   },
 ];
 
@@ -92,7 +101,7 @@ export default function ExportInstructionsModal({ visible, onProceed, onCancel }
             <View style={{ flex: 1 }}>
               <Text style={s.title}>Sending this to your trainer</Text>
               <Text style={s.subtitle}>
-                We'll generate a workout file, then your phone hands it to your trainer app. Two ways that works in practice.
+                We generate a real workout file. Getting it into Zwift / SYSTM / Rouvy is a quick web-dashboard upload — not a share-sheet handoff. Here's the realistic path per app.
               </Text>
             </View>
             <TouchableOpacity onPress={onCancel} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -101,21 +110,26 @@ export default function ExportInstructionsModal({ visible, onProceed, onCancel }
           </View>
 
           <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 12 }} showsVerticalScrollIndicator={false}>
-            {/* Platform banner — Android can't rely on the share-sheet magic */}
+            {/* Platform banners — phone-only riders need to know the
+                reliable path is via a web dashboard, not a share-sheet
+                handoff. Zwift in particular doesn't read .zwo from
+                mobile share sheets. The fastest mobile-only path is
+                intervals.icu (free, syncs to Zwift). Everything else
+                needs a web import on a laptop or other device. */}
             {isAndroid && (
               <View style={s.androidBanner}>
                 <Text style={s.androidBannerTitle}>You're on Android</Text>
                 <Text style={s.androidBannerBody}>
-                  Most trainer apps don't accept .zwo through Android's share sheet. The reliable flow is: tap export → file downloads → sign in to the app's web dashboard → import the file there. Workouts then sync to your phone on next launch.
+                  Trainer apps on Android don't accept .zwo files from the share sheet. Tap export, the file lands in your Downloads folder, then upload it via the app's web dashboard from a laptop. Phone-only? Use intervals.icu — free, takes uploads on mobile, syncs to Zwift / Garmin / Wahoo automatically.
                 </Text>
               </View>
             )}
 
             {!isAndroid && (
               <View style={s.iosNote}>
-                <Text style={s.iosNoteTitle}>Two flows on iOS</Text>
+                <Text style={s.iosNoteTitle}>Heads-up</Text>
                 <Text style={s.iosNoteBody}>
-                  Zwift and MyWhoosh accept the file directly from the share sheet — pick "Copy to Zwift" and you're done. For everything else (Wahoo SYSTM, Rouvy, TrainerRoad, intervals.icu), pick "Save to Files" and import on the app's web dashboard.
+                  Zwift's mobile app doesn't pick up .zwo files from the iOS share sheet — even though "Copy to Zwift" sometimes appears, it doesn't reliably import. The dependable paths are: (1) Save to Files → iCloud Drive → drop into Zwift's desktop workouts folder, or (2) use intervals.icu (free) as a sync bridge — upload there on iOS and it pushes the workout into Zwift for you.
                 </Text>
               </View>
             )}

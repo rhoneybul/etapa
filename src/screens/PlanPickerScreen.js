@@ -35,6 +35,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Keyboa
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, useBottomInset } from '../theme';
 import DatePicker from '../components/DatePicker';
+import { CheckCard } from '../components/WizardShell';
 import { setUserPrefs, saveGoal } from '../services/storageService';
 import { isSubscribed } from '../services/subscriptionService';
 import { lookupRace } from '../services/llmPlanService';
@@ -942,12 +943,26 @@ export default function PlanPickerScreen({ navigation, route }) {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        // Extra 24pt of breathing room above the keyboard when one of
+        // the question screens is showing a TextInput. Without this the
+        // custom-km input on the longest-ride question sits flush
+        // against the iOS keyboard top — visually correct (the input is
+        // visible) but cramped.
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
       >
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={[
           step === 0 ? s.landingScrollWrap : s.scrollWrap,
-          { paddingBottom: step === 0 ? landingBottom : questionBottom },
+          {
+            paddingBottom: step === 0
+              ? landingBottom
+              // When the custom-km input is open we need more bottom
+              // padding so the Continue button doesn't get crammed
+              // against the keyboard top. +80pt covers the input row +
+              // a comfortable spacer.
+              : (showCustomKm ? questionBottom + 80 : questionBottom),
+          },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -1002,33 +1017,33 @@ export default function PlanPickerScreen({ navigation, route }) {
           </>
         )}
 
-        {/* Q2 — cycling type. Multi-select so a rider with both a road
-            and a gravel bike can tell us about both, and the plan can
-            schedule sessions across them. Indoor/trainer is included
-            here as a "bike" so structured indoor sessions appear when
-            relevant. Continue commits the selection. */}
+        {/* Q2 — cycling type. Multi-select. Uses CheckCard so the
+            checkbox affordance matches the training-types step over on
+            PlanConfig (where the same multi-select pattern is already
+            established). The "Pick all that apply" badge above the list
+            is the explicit signal that this isn't single-select. */}
         {step === 2 && (
           <>
             {renderQuestionHeader()}
             <Text style={s.title}>What kind of cycling?</Text>
-            <Text style={s.subtitle}>Pick everything you ride. We&apos;ll build a plan that uses them.</Text>
-            <View style={s.choiceGroup}>
-              {CYCLING_TYPE_OPTIONS.map(o => {
-                const selected = cyclingTypes.includes(o.key);
-                return (
-                  <Choice
-                    key={o.key}
-                    title={selected ? `${o.label}  \u2713` : o.label}
-                    sub={o.description}
-                    highlighted={selected}
-                    onPress={() => onToggleCyclingType(o.key)}
-                  />
-                );
-              })}
+            <Text style={s.subtitle}>We&apos;ll build a plan that uses every bike you ride.</Text>
+            <View style={s.multiHint}>
+              <Text style={s.multiHintText}>Pick all that apply</Text>
             </View>
-            <View style={{ paddingHorizontal: 4, marginTop: 8 }}>
+            <View style={s.cyclingTypeList}>
+              {CYCLING_TYPE_OPTIONS.map(o => (
+                <CheckCard
+                  key={o.key}
+                  label={o.label}
+                  description={o.description}
+                  checked={cyclingTypes.includes(o.key)}
+                  onPress={() => onToggleCyclingType(o.key)}
+                />
+              ))}
+            </View>
+            <View style={s.cyclingTypeFooter}>
               <TouchableOpacity
-                style={[s.primaryBtn, cyclingTypes.length === 0 && { opacity: 0.4 }]}
+                style={[s.primaryBtn, cyclingTypes.length === 0 && s.primaryBtnDisabled]}
                 onPress={onContinueCyclingTypes}
                 disabled={cyclingTypes.length === 0}
                 activeOpacity={0.85}
@@ -1436,6 +1451,33 @@ const s = StyleSheet.create({
   },
 
   choiceGroup: { gap: 10 },
+
+  // Multi-select hint badge — sits above the cycling-types list to
+  // signal "tap as many as you want." Pink-tinted pill matching the
+  // accent ramp used elsewhere on this screen.
+  multiHint: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: colors.primary + '1F',
+    borderWidth: 0.5, borderColor: colors.primary + '55',
+    marginBottom: 14,
+  },
+  multiHintText: {
+    fontSize: 11, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.primary, letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+
+  // Cycling-types list — uses CheckCard to match the training-types
+  // step on PlanConfig. CheckCard already owns its own marginBottom:10
+  // for between-row spacing, so this wrapper is just a positional
+  // container — no gap or vertical padding needed here.
+  cyclingTypeList: {},
+  // Footer wraps the Continue button. CheckCard's bottom margin gives
+  // us 10px below the last card; an extra 8px keeps the button
+  // breathing while not floating away from the list.
+  cyclingTypeFooter: { marginTop: 8 },
   choiceCard: {
     backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
     borderRadius: 14, padding: 14,
@@ -1455,8 +1497,11 @@ const s = StyleSheet.create({
   choiceTitle: { fontSize: 15, color: colors.text, fontFamily: FF.semibold, fontWeight: '500' },
   choiceSub: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, marginTop: 2 },
 
-  // Custom km input
-  customKmWrap: { marginTop: 16 },
+  // Custom km input — sits below the longest-ride choice list when the
+  // rider taps "Enter exact". Top margin separates it from the option
+  // above; bottom margin keeps the input clear of the keyboard top
+  // even when the auto-scroll-into-view pushes the row up.
+  customKmWrap: { marginTop: 22, marginBottom: 24 },
   customKmLabel: {
     fontSize: 12, color: colors.textMid, fontFamily: FF.medium, fontWeight: '500',
     marginBottom: 8, letterSpacing: 0.3,
@@ -1527,7 +1572,11 @@ const s = StyleSheet.create({
   targetStatsRow: {
     flex: 1,
     flexDirection: 'row',
-    paddingVertical: 12,
+    // Bumped from 12 → 18 because Poppins-Semibold at 32pt has a tall
+    // ascender; the previous padding clipped the top of the "1" in
+    // "12 WEEK IMPROVER" on devices with the system font scale set to
+    // default. Reported via TestFlight screenshot, 28 Apr.
+    paddingVertical: 18,
     paddingHorizontal: 14,
   },
   targetStat: {
@@ -1548,7 +1597,10 @@ const s = StyleSheet.create({
     fontFamily: FF.semibold,
     fontWeight: '700',
     color: colors.text,
-    lineHeight: 34,
+    // 34 was too tight — Poppins-Semibold's bounding box at 32pt is ~38pt.
+    // Setting line-height to 40 gives the digit room above and below
+    // without making the row look stretched.
+    lineHeight: 40,
     letterSpacing: -0.5,
   },
   targetStatUnit: {

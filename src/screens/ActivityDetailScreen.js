@@ -22,7 +22,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import CoachChatCard from '../components/CoachChatCard';
 import BikeSwapModal from '../components/BikeSwapModal';
 import ExportInstructionsModal from '../components/ExportInstructionsModal';
-import { BIKE_LABELS as BIKE_LABEL_MAP } from '../utils/bikeSwap';
+import { BIKE_LABELS as BIKE_LABEL_MAP, BIKE_KEYS } from '../utils/bikeSwap';
 import { getCoach } from '../data/coaches';
 import analytics from '../services/analyticsService';
 
@@ -319,18 +319,15 @@ export default function ActivityDetailScreen({ navigation, route }) {
   const isStrength = activity.type === 'strength';
   const effortColor = ACTIVITY_BLUE;
 
-  // Bike-type override: only meaningful when the rider configured > 1
-  // type at intake. Read from the new array field with a fall-back to
-  // wrapping the legacy single value, so existing single-bike goals
-  // simply hide the row.
-  const goalBikeOptions = (() => {
-    if (Array.isArray(goal?.cyclingTypes) && goal.cyclingTypes.length > 0) {
-      return goal.cyclingTypes;
-    }
-    if (goal?.cyclingType && goal.cyclingType !== 'mixed') return [goal.cyclingType];
-    return [];
-  })();
-  const showBikeRow = isRide && goalBikeOptions.length > 1;
+  // Bike-type override: every ride session shows all five bike chips
+  // (Road / Gravel / MTB / E-bike / Indoor) regardless of what the
+  // rider configured at intake. Per-session swap is a "today only" call
+  // — they might have set up the plan as Road but actually be doing
+  // Tuesday on gravel because the road's icy. Goal-level cyclingTypes
+  // is no longer used to filter the chip list; it stays around as a
+  // defaulting hint for the plan generator only.
+  const allBikeOptions = BIKE_KEYS; // ['road','gravel','mtb','ebike','indoor']
+  const showBikeRow = isRide;
 
   // Indoor session detection — drives the "Send to trainer" card. We
   // count a session as indoor if its subType is 'indoor', the rider
@@ -420,10 +417,14 @@ export default function ActivityDetailScreen({ navigation, route }) {
       );
     }
   };
-  // Plan default ("from-bike" for the swap calc): legacy goals only
-  // tell us a single type — use it as the baseline. New goals carry
-  // an array — pick the first as a sensible default.
-  const planDefaultBike = goalBikeOptions[0] || goal?.cyclingType || 'road';
+  // Plan default ("from-bike" for the swap calc). Order of preference:
+  // (1) the activity's own bikeType (set by the plan generator or a
+  // previous swap), (2) anything in editValues mid-edit, (3) the goal's
+  // first configured bike, (4) the legacy single field, (5) road as a
+  // sensible last-resort default.
+  const planDefaultBike = (Array.isArray(goal?.cyclingTypes) && goal.cyclingTypes[0])
+    || goal?.cyclingType
+    || 'road';
   const currentBike = activity.bikeType || editValues.bikeType || planDefaultBike;
 
   return (
@@ -561,43 +562,44 @@ export default function ActivityDetailScreen({ navigation, route }) {
             </View>
           )}
 
-          {/* Bike-type override — only renders when the goal carries
-              more than one cyclingType. Tapping a chip in edit mode
-              opens the BikeSwapModal, which suggests adjusted distance
-              + duration via utils/bikeSwap.js (rules from the coach).
-              Outside edit mode the chosen bike is shown read-only. */}
+          {/* Bike-type swap — every ride shows all five bike chips so
+              the rider can swap to anything on the fly, regardless of
+              what they configured at intake. Selected chip is
+              highlighted by colour alone (no checkmark glyph — the fill
+              is the affordance). Tapping a different chip opens the
+              BikeSwapModal with the coach-derived distance/duration
+              adjustment. In edit mode the result lands in editValues;
+              outside edit mode it persists immediately via updateActivity
+              so swap-from-anywhere is one fluent interaction. */}
           {showBikeRow && (
             <View style={s.bikeCard}>
-              <Text style={s.bikeCardLabel}>BIKE</Text>
+              <View style={s.bikeCardHeader}>
+                <Text style={s.bikeCardLabel}>BIKE</Text>
+                <Text style={s.bikeCardHelp}>Tap to swap</Text>
+              </View>
               <View style={s.bikeChipsRow}>
-                {goalBikeOptions.map(b => {
+                {allBikeOptions.map(b => {
                   const selected = currentBike === b;
                   const label = BIKE_LABEL_MAP[b] || b;
                   const onPress = () => {
-                    if (!isEditing) return;
                     if (selected) return;
-                    // Open the swap-suggestion modal. The modal applies
-                    // the chosen values back via onApply / onApplyOriginal.
                     setPendingBikeSwap({ from: currentBike, to: b });
                   };
                   return (
                     <TouchableOpacity
                       key={b}
-                      style={[s.bikeChip, selected && s.bikeChipSelected, !isEditing && { opacity: 0.7 }]}
+                      style={[s.bikeChip, selected && s.bikeChipSelected]}
                       onPress={onPress}
-                      activeOpacity={isEditing ? 0.7 : 1}
-                      accessibilityLabel={`${label} bike`}
+                      activeOpacity={0.7}
+                      accessibilityLabel={selected ? `${label} bike, currently selected` : `Swap to ${label}`}
                     >
                       <Text style={[s.bikeChipText, selected && s.bikeChipTextSelected]}>
-                        {selected ? `${label} \u2713` : label}
+                        {label}
                       </Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
-              {!isEditing && (
-                <Text style={s.bikeHint}>Tap Edit to swap bikes — we'll suggest the right distance.</Text>
-              )}
             </View>
           )}
 
@@ -799,27 +801,36 @@ export default function ActivityDetailScreen({ navigation, route }) {
           <View style={{ height: 80 }} />
         </ScrollView>
 
-        {/* Send-to-trainer card — shown for indoor rides only. Generates
-            a structured workout file (.zwo / .mrc) on the server and
-            opens iOS's "Open with..." sheet so the rider can hand off
-            to Zwift, Wahoo SYSTM, Rouvy, etc. */}
+        {/* Send-to-trainer button — shown for indoor rides only.
+            Compact, button-like styling to read as an action rather
+            than another notes-style card (the previous treatment was
+            too close in size and shape to the "What to do" prose card
+            above and confused testers). Leading export icon, single-
+            line label, trailing chevron. */}
         {!isEditing && isIndoorSession && (
           <TouchableOpacity
-            style={s.exportCard}
+            style={s.exportRow}
             onPress={showExportPicker}
             activeOpacity={0.85}
             disabled={exporting}
             accessibilityLabel="Send this indoor session to your trainer"
           >
-            <View style={s.exportCardLeft}>
-              <Text style={s.exportCardTitle}>Send to your trainer</Text>
-              <Text style={s.exportCardSub}>
-                Export as a workout file for Zwift, Wahoo SYSTM, Rouvy and more.
+            <View style={s.exportRowIcon}>
+              <MaterialCommunityIcons
+                name="export-variant"
+                size={16}
+                color={colors.primary}
+              />
+            </View>
+            <View style={s.exportRowText}>
+              <Text style={s.exportRowTitle}>Send to your trainer</Text>
+              <Text style={s.exportRowSub} numberOfLines={1}>
+                Zwift, Wahoo SYSTM, Rouvy &amp; more
               </Text>
             </View>
             {exporting
               ? <ActivityIndicator size="small" color={colors.primary} />
-              : <Text style={s.exportCardArrow}>{'\u2192'}</Text>}
+              : <Text style={s.exportRowArrow}>{'\u203A'}</Text>}
           </TouchableOpacity>
         )}
 
@@ -832,7 +843,11 @@ export default function ActivityDetailScreen({ navigation, route }) {
           <View style={s.coachCardBar}>
             <CoachChatCard
               coach={getCoach(planConfig?.coachId)}
-              onPress={() => navigation.navigate('CoachChat', { planId: plan?.id, weekNum: activity.week })}
+              // Open the chat scoped to THIS session — the chat thread
+              // persists separately per activity (see CoachChatScreen
+              // chatKey) and the coach is grounded to discuss only this
+              // ride. Replies don't bump the home-screen coach chip.
+              onPress={() => navigation.navigate('CoachChat', { planId: plan?.id, activityId: activity.id })}
               subtitleOverride={`Ask about this ${isStrength ? 'strength session' : 'ride'} or tweak it with your coach`}
             />
           </View>
@@ -846,13 +861,27 @@ export default function ActivityDetailScreen({ navigation, route }) {
         session={activity}
         fromBike={pendingBikeSwap?.from}
         toBike={pendingBikeSwap?.to}
-        onApply={({ bikeType, durationMins, distanceKm }) => {
-          setEditValues(prev => ({
-            ...prev,
-            bikeType,
-            durationMins: durationMins != null ? String(durationMins) : prev.durationMins,
-            distanceKm: distanceKm != null ? String(distanceKm) : '',
-          }));
+        onApply={async ({ bikeType, durationMins, distanceKm }) => {
+          // In edit mode the swap stays in editValues until the user
+          // taps Save — keeps the standard "edit + commit" flow intact
+          // for users who want to adjust other fields too. Outside edit
+          // mode we persist directly via updateActivity so swap-from-
+          // anywhere is a single fluent interaction.
+          if (isEditing) {
+            setEditValues(prev => ({
+              ...prev,
+              bikeType,
+              durationMins: durationMins != null ? String(durationMins) : prev.durationMins,
+              distanceKm: distanceKm != null ? String(distanceKm) : '',
+            }));
+          } else {
+            await updateActivity(activityId, {
+              bikeType,
+              durationMins: durationMins ?? activity.durationMins,
+              distanceKm: distanceKm,
+            });
+            await loadActivity();
+          }
           analytics.events.activityEditedManual?.({
             activityType: activity.type,
             week: activity.week,
@@ -860,8 +889,15 @@ export default function ActivityDetailScreen({ navigation, route }) {
           });
           setPendingBikeSwap(null);
         }}
-        onApplyOriginal={({ bikeType }) => {
-          setEditValues(prev => ({ ...prev, bikeType }));
+        onApplyOriginal={async ({ bikeType }) => {
+          // "Keep original numbers" — only the bike changes. Same edit
+          // vs out-of-edit branching as above.
+          if (isEditing) {
+            setEditValues(prev => ({ ...prev, bikeType }));
+          } else {
+            await updateActivity(activityId, { bikeType });
+            await loadActivity();
+          }
           analytics.events.activityEditedManual?.({
             activityType: activity.type,
             week: activity.week,
@@ -1167,31 +1203,64 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 12, borderRadius: 16,
     padding: 14, borderWidth: 1, borderColor: colors.border,
   },
-  bikeCardLabel: { fontSize: 10, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
+  // Header row holds the BIKE label on the left and a "Tap to swap"
+  // hint on the right — makes the chips read as actionable without
+  // requiring the rider to enter edit mode first.
+  bikeCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  bikeCardLabel: { fontSize: 10, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  bikeCardHelp: { fontSize: 10, fontWeight: '500', fontFamily: FF.medium, color: colors.primary, letterSpacing: 0.4 },
+  // Bike chips — sized for fat fingers. 8 → 10pt vertical, 14 → 18pt
+  // horizontal, font 12 → 14pt. The selected state uses a stronger
+  // border (1.5pt) so the active chip pops at a glance from across
+  // the screen.
   bikeChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   bikeChip: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+    paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999,
     backgroundColor: colors.surfaceLight,
-    borderWidth: 0.5, borderColor: colors.border,
+    borderWidth: 1, borderColor: colors.border,
+    minWidth: 72, alignItems: 'center',
   },
-  bikeChipSelected: { backgroundColor: colors.primary + '22', borderColor: colors.primary },
-  bikeChipText: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular },
+  bikeChipSelected: {
+    backgroundColor: colors.primary + '22',
+    borderColor: colors.primary,
+    borderWidth: 1.5,
+  },
+  bikeChipText: { fontSize: 14, color: colors.textMid, fontFamily: FF.regular },
   bikeChipTextSelected: { color: colors.text, fontWeight: '600', fontFamily: FF.semibold },
   bikeHint: { fontSize: 11, color: colors.textMuted, fontFamily: FF.regular, marginTop: 8 },
-
-  // Send-to-trainer entry-point. Only renders for indoor sessions. Pink
-  // ring distinguishes it from the muted Coach card below.
-  exportCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    marginHorizontal: 16, marginBottom: 12, padding: 14,
-    backgroundColor: colors.primary + '14',
-    borderRadius: 16,
-    borderWidth: 1, borderColor: colors.primary + '40',
+  // Single-bike state — shown under the read-only chip with a CTA to
+  // PlanPicker so the rider can widen the bike menu without rebuilding
+  // the whole plan. Subtle so it doesn't pull focus from the session
+  // info.
+  bikeAddMoreRow: {
+    marginTop: 10, paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border,
   },
-  exportCardLeft: { flex: 1 },
-  exportCardTitle: { fontSize: 14, fontWeight: '600', fontFamily: FF.semibold, color: colors.text, marginBottom: 3 },
-  exportCardSub: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, lineHeight: 17 },
-  exportCardArrow: { fontSize: 18, color: colors.primary, fontFamily: FF.semibold },
+  bikeAddMoreText: {
+    fontSize: 12, fontFamily: FF.medium, fontWeight: '500',
+    color: colors.primary, letterSpacing: 0.2,
+  },
+
+  // Send-to-trainer button — compact single-line action row with a
+  // leading icon. Smaller scale than the prose "What to do" card above
+  // it so the two read as different element types (notes vs action).
+  exportRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginHorizontal: 16, marginBottom: 12,
+    paddingVertical: 10, paddingHorizontal: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 0.5, borderColor: colors.primary + '55',
+  },
+  exportRowIcon: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: colors.primary + '1A',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  exportRowText: { flex: 1, flexDirection: 'column' },
+  exportRowTitle: { fontSize: 13, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  exportRowSub: { fontSize: 11, color: colors.textMuted, fontFamily: FF.regular, marginTop: 1 },
+  exportRowArrow: { fontSize: 22, color: colors.textMuted, fontFamily: FF.regular, lineHeight: 22 },
 
   daySelectorCard: {
     backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 12, borderRadius: 16, padding: 16,

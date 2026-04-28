@@ -189,7 +189,14 @@ export function getActivityIcon(activityOrCtKey) {
   if (a.type === 'strength') return 'dumbbell';
   if (a.type === 'rest')     return 'sleep';
   if (a.type === 'ride') {
-    if (a.subType === 'indoor' || a.title?.toLowerCase().includes('indoor')) return 'bike-stationary';
+    // 'bike-stationary' would be the canonical Material Design Icons fit
+    // for an indoor turbo session, but the version of MaterialCommunityIcons
+    // shipped with @expo/vector-icons in this project doesn't include that
+    // glyph — it renders as a ?. Falling back to 'bike-fast' (bike with
+    // motion lines) reads as "stationary effort spinning" and stays
+    // visually distinct from the regular outdoor 'bike' icon and the
+    // 'dumbbell' used for strength.
+    if (a.subType === 'indoor' || a.title?.toLowerCase().includes('indoor')) return 'bike-fast';
     return 'bike';
   }
   // Cross-training activity types (run, swim, yoga, etc.) — use their dedicated icon

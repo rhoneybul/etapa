@@ -157,6 +157,20 @@ router.get('/unread-count', async (req, res) => {
       else if (types.length > 1) query = query.in('type', types);
     }
 
+    // Optional scope exclusion. The home-screen coach card asks for
+    // `?excludeScope=session` so coach replies from a session-scoped
+    // chat (i.e. the rider asked about one specific ride) don't bump
+    // the home chip — the notification still exists, just doesn't
+    // pull focus from the main coach thread. Stored under data->>scope
+    // by sendPushToUser when scope === 'session'.
+    if (req.query.excludeScope) {
+      const exclude = String(req.query.excludeScope).split(',').map(s => s.trim()).filter(Boolean);
+      // PostgREST `not` filter on a jsonb path
+      for (const s of exclude) {
+        query = query.or(`data->>scope.is.null,data->>scope.neq.${s}`);
+      }
+    }
+
     const { count, error } = await query;
 
     if (error) throw error;

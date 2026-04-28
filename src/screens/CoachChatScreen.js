@@ -107,26 +107,35 @@ function renderMarkdown(text, baseStyle, onWeekPress) {
   );
 }
 
-function chatKey(planId, weekNum) {
+function chatKey(planId, weekNum, activityId) {
+  // Per-activity scope wins: lets the rider keep a private "what I asked
+  // about this ride" thread separate from the main plan/week chat.
+  // Falls through to week scope, then plan scope (the original behaviour).
+  if (activityId) return `@etapa_coach_chat_${planId}_a${activityId}`;
   if (weekNum) return `@etapa_coach_chat_${planId}_w${weekNum}`;
   return `@etapa_coach_chat_${planId}`;
 }
 
-// Per-(plan, week, coach) chat language preference. Scoped to the coach
-// so that if the user switches coaches mid-plan we don't carry over a
-// language the new coach can't speak — each coach has its own remembered
-// language. Default is the coach's first listed language (English for
-// every persona today).
-function chatLangKey(planId, weekNum, coachId) {
-  const w = weekNum ? `_w${weekNum}` : '';
+// Per-(plan, week|activity, coach) chat language preference. Scoped to
+// the coach so that if the user switches coaches mid-plan we don't carry
+// over a language the new coach can't speak — each coach has its own
+// remembered language. Default is the coach's first listed language
+// (English for every persona today).
+function chatLangKey(planId, weekNum, coachId, activityId) {
+  const a = activityId ? `_a${activityId}` : '';
+  const w = !activityId && weekNum ? `_w${weekNum}` : '';
   const c = coachId ? `_${coachId}` : '';
-  return `@etapa_coach_chat_lang_${planId}${w}${c}`;
+  return `@etapa_coach_chat_lang_${planId}${a}${w}${c}`;
 }
 
 export default function CoachChatScreen({ navigation, route }) {
   const _screenGuard = useScreenGuard('CoachChatScreen', navigation);
   const planId = route.params?.planId;
   const weekNum = route.params?.weekNum || null; // null = full plan scope
+  // When set, the chat is scoped to a single activity. Drives the chat
+  // key so the thread is private per session, and feeds context.activityScope
+  // to the server so the coach stays on-topic.
+  const activityId = route.params?.activityId || null;
   // Set when the user opens this screen from a notification tap — the
   // `ts` of the specific assistant message that triggered the push. We
   // scroll to that message and briefly highlight it so the user lands
@@ -263,7 +272,7 @@ export default function CoachChatScreen({ navigation, route }) {
     const supported = getCoachLanguages(coach);
     (async () => {
       let saved = null;
-      try { saved = await AsyncStorage.getItem(chatLangKey(plan.id, weekNum, coachId)); } catch {}
+      try { saved = await AsyncStorage.getItem(chatLangKey(plan.id, weekNum, coachId, activityId)); } catch {}
       const next = saved && supported.includes(saved) ? saved : supported[0];
       setChatLanguage(next);
     })();
@@ -287,7 +296,7 @@ export default function CoachChatScreen({ navigation, route }) {
     const coach = getCoach(coachId);
     setChatLanguage(lang);
     try {
-      await AsyncStorage.setItem(chatLangKey(plan.id, weekNum, coachId), lang);
+      await AsyncStorage.setItem(chatLangKey(plan.id, weekNum, coachId, activityId), lang);
     } catch {}
     analytics.track('chat_language_changed', { coachId, language: lang, scope: weekNum ? 'week' : 'plan' });
 
@@ -308,7 +317,7 @@ export default function CoachChatScreen({ navigation, route }) {
       };
       setMessages(prev => {
         const next = [...prev, welcomeMsg];
-        AsyncStorage.setItem(chatKey(plan.id, weekNum), JSON.stringify(next)).catch(() => {});
+        AsyncStorage.setItem(chatKey(plan.id, weekNum, activityId), JSON.stringify(next)).catch(() => {});
         return next;
       });
     }
@@ -369,7 +378,7 @@ export default function CoachChatScreen({ navigation, route }) {
         setGoal(goals.find(g => g.id === p.goalId) || null);
         const cfg = await getPlanConfig(p.configId);
         setPlanConfig(cfg);
-        analytics.events.coachChatOpened(cfg?.coachId || null, weekNum ? 'week' : 'plan');
+        analytics.events.coachChatOpened(cfg?.coachId || null, activityId ? 'session' : (weekNum ? 'week' : 'plan'));
         // Sync Strava data for coach context
         isStravaConnected().then(connected => {
           if (connected) {
@@ -387,7 +396,7 @@ export default function CoachChatScreen({ navigation, route }) {
         // it a little bit" gets the user — opening the chat screen
         // feels instant on every visit after the first.
         let localMessages = [];
-        const saved = await AsyncStorage.getItem(chatKey(p.id, weekNum));
+        const saved = await AsyncStorage.getItem(chatKey(p.id, weekNum, activityId));
         if (saved) {
           try { localMessages = JSON.parse(saved); } catch {}
         }
@@ -481,7 +490,7 @@ export default function CoachChatScreen({ navigation, route }) {
             setMessages(repaired);
             // Mirror the repaired array to AsyncStorage so the same repair
             // doesn't have to happen on every subsequent mount.
-            AsyncStorage.setItem(chatKey(p.id, weekNum), JSON.stringify(repaired)).catch(() => {});
+            AsyncStorage.setItem(chatKey(p.id, weekNum, activityId), JSON.stringify(repaired)).catch(() => {});
             // If repair produced any failed bubble that came from an
             // orphaned send, surface its lastFailedMsg for the retry
             // affordance.
@@ -572,7 +581,7 @@ export default function CoachChatScreen({ navigation, route }) {
   useEffect(() => {
     if (plan && messages.length > 0) {
       // FULL state to AsyncStorage — pending bubbles included.
-      AsyncStorage.setItem(chatKey(plan.id, weekNum), JSON.stringify(messages)).catch(() => {});
+      AsyncStorage.setItem(chatKey(plan.id, weekNum, activityId), JSON.stringify(messages)).catch(() => {});
       const settled = messages.filter(m => !m.pending);
       const hasPending = messages.some(m => m.pending);
       if (!hasPending && settled.length > 0) {
@@ -786,6 +795,22 @@ export default function CoachChatScreen({ navigation, route }) {
       // job.context.weekNum where runCoachChatJob expects it.
       plan: { id: plan.id, name: plan.name, weeks: plan.weeks, startDate: plan.startDate, currentWeek },
       weekNum: weekNum || null,
+      // Session-scoped chat — attached when the rider opened this
+      // screen from the activity detail. Ground the coach to this
+      // session only; the server appends a "stay strictly on this
+      // session" instruction to the system prompt.
+      activityScope: (() => {
+        if (!activityId) return null;
+        const a = (plan?.activities || []).find(x => x.id === activityId);
+        if (!a) return { id: activityId };
+        return {
+          id: a.id, week: a.week, dayOfWeek: a.dayOfWeek,
+          type: a.type, subType: a.subType,
+          title: a.title, description: a.description, notes: a.notes,
+          durationMins: a.durationMins, distanceKm: a.distanceKm,
+          effort: a.effort, bikeType: a.bikeType, completed: !!a.completed,
+        };
+      })(),
       calendarMapping: week1Days,
       goal: goal ? {
         goalType: goal.goalType,
@@ -1063,7 +1088,7 @@ export default function CoachChatScreen({ navigation, route }) {
     activeJobsRef.current.clear();
 
     if (plan) {
-      await AsyncStorage.removeItem(chatKey(plan.id, weekNum));
+      await AsyncStorage.removeItem(chatKey(plan.id, weekNum, activityId));
       // Sync deletion to server
       api.chatSessions.delete(plan.id, weekNum).catch(() => {});
     }
@@ -1213,7 +1238,7 @@ export default function CoachChatScreen({ navigation, route }) {
       if (serverAssistants > localAssistants
           || (serverAssistants === localAssistants && serverMessages.length > messages.length)) {
         setMessages(serverMessages);
-        AsyncStorage.setItem(chatKey(plan.id, weekNum), JSON.stringify(serverMessages)).catch(() => {});
+        AsyncStorage.setItem(chatKey(plan.id, weekNum, activityId), JSON.stringify(serverMessages)).catch(() => {});
         // Re-hydrate the Apply/Dismiss UI from the last persisted
         // assistant message that carries updatedActivities — same
         // pattern as the mount effect.

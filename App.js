@@ -63,6 +63,7 @@ import GoalSetupScreen     from './src/screens/GoalSetupScreen';
 import PlanConfigScreen    from './src/screens/PlanConfigScreen';
 import WeekViewScreen      from './src/screens/WeekViewScreen';
 import ActivityDetailScreen from './src/screens/ActivityDetailScreen';
+import CheckInScreen       from './src/screens/CheckInScreen';
 import SettingsScreen      from './src/screens/SettingsScreen';
 import PlanLoadingScreen   from './src/screens/PlanLoadingScreen';
 import CalendarScreen      from './src/screens/CalendarScreen';
@@ -290,12 +291,18 @@ function App() {
         nav.navigate('SupportChat', { feedbackId: data.feedbackId, isNew: false });
       } else if (type === 'coach_checkin' && data?.planId) {
         nav.navigate('CoachChat', { planId: data.planId });
+      } else if (type === 'weekly_checkin' && data?.checkinId) {
+        // Weekly structured check-in — open the questionnaire screen.
+        nav.navigate('CheckIn', { checkinId: data.checkinId });
       } else if (type === 'coach_reply' && data?.planId) {
-        // Async coach-chat reply — deep link to the chat at the same scope
-        // (full plan / specific week) the user was in when they sent it.
+        // Async coach-chat reply — deep link to the chat at the same
+        // scope the user was in when they sent it. Session scope (asked
+        // from an activity detail) wins: route to the per-session
+        // thread via activityId. Otherwise fall back to week, then plan.
         nav.navigate('CoachChat', {
           planId: data.planId,
-          weekNum: data.weekNum || null,
+          activityId: data.activityId || null,
+          weekNum: data.activityId ? null : (data.weekNum || null),
         });
       } else {
         nav.navigate('Notifications');
@@ -445,6 +452,7 @@ function App() {
               <Stack.Screen name="PlanOverview"   component={PlanOverviewScreen} />
               <Stack.Screen name="CoachChat"      component={CoachChatScreen} />
               <Stack.Screen name="ActivityDetail" component={ActivityDetailScreen} />
+              <Stack.Screen name="CheckIn"        component={CheckInScreen} />
               <Stack.Screen name="Settings"       component={SettingsScreen} />
               <Stack.Screen name="Feedback"       component={FeedbackScreen} />
               <Stack.Screen name="SupportChat"    component={SupportChatScreen} />

@@ -5,20 +5,22 @@
  */
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image, Animated, RefreshControl, Platform, Dimensions, PanResponder,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, TextInput, Image, Animated, RefreshControl, Platform, Dimensions, PanResponder, ActionSheetIOS,
 } from 'react-native';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import useScreenGuard from '../hooks/useScreenGuard';
 import { getCurrentUser } from '../services/authService';
-import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig, getUserPrefs, setUserPrefs, isOnboardingDone, setOnboardingDone, saveGoal, markActivityComplete, getActivityDate } from '../services/storageService';
+import { getPlans, getGoals, getWeekProgress, getWeekActivities, getWeekMonthLabel, deletePlan, savePlan, getPlanConfig, getUserPrefs, setUserPrefs, isOnboardingDone, setOnboardingDone, saveGoal, markActivityComplete, getActivityDate, updateActivity } from '../services/storageService';
 import OnboardingTour from '../components/OnboardingTour';
 import { isSubscribed, getSubscriptionStatus, openCheckout, getPrices } from '../services/subscriptionService';
 import UpgradePrompt from '../components/UpgradePrompt';
 import { isStravaConnected } from '../services/stravaService';
 import { syncStravaActivities, getStravaActivitiesForWeek, getStravaActivitiesForDate } from '../services/stravaSyncService';
 import { getSessionColor, getSessionLabel, getSessionTag, getMetricLabel, getCrossTrainingForDay, getActivityIcon, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
+import { BIKE_LABELS as BIKE_LABEL_MAP, BIKE_KEYS } from '../utils/bikeSwap';
+import BikeSwapModal from '../components/BikeSwapModal';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { getCoach } from '../data/coaches';
@@ -662,7 +664,12 @@ export default function HomeScreen({ navigation, route }) {
   const [coachUnread, setCoachUnread] = useState(0);
   const refreshCoachUnread = useCallback(async () => {
     try {
-      const res = await api.notifications.unreadCount('coach_reply');
+      // Exclude session-scoped replies: those are answers to questions
+      // the rider asked from a single activity-detail screen. They live
+      // in a private per-session thread and shouldn't bump the home
+      // chip. Tapping the matching push still routes the rider to that
+      // session's chat (see App-level notification handler).
+      const res = await api.notifications.unreadCount('coach_reply', { excludeScope: 'session' });
       setCoachUnread(Number(res?.count) || 0);
     } catch {}
   }, []);
@@ -674,6 +681,106 @@ export default function HomeScreen({ navigation, route }) {
 
   // Deselect day when navigating to a different week
   useEffect(() => { setSelectedDayIdx(null); }, [currentWeek]);
+
+  // ── Bike swap from the home card ────────────────────────────────────
+  // pendingSwap holds { activity, fromBike, toBike } while the
+  // BikeSwapModal is on-screen. The action-sheet → modal → updateActivity
+  // sequence stays inside HomeScreen so the rider doesn't have to drill
+  // into ActivityDetail just to flip Tuesday's ride from road to gravel.
+  const [pendingSwap, setPendingSwap] = useState(null);
+
+  // Open the swap picker for an activity. Shows the OS-native action
+  // sheet listing all five bike types, skipping the one already
+  // selected. iOS gets the system sheet; Android gets the equivalent
+  // Alert with one button per type (lighter than a full-screen modal).
+  const openBikeSwapForActivity = useCallback((activity, currentBike) => {
+    if (!activity) return;
+    const choices = BIKE_KEYS.filter(b => b !== currentBike);
+    const labels = choices.map(b => `Swap to ${BIKE_LABEL_MAP[b]}`);
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: `${activity.title || 'This session'}`,
+          message: `Currently on ${BIKE_LABEL_MAP[currentBike] || currentBike}. Pick a different bike — we'll suggest the right distance.`,
+          options: [...labels, 'Cancel'],
+          cancelButtonIndex: labels.length,
+        },
+        (idx) => {
+          if (idx == null || idx >= labels.length) return;
+          setPendingSwap({ activity, fromBike: currentBike, toBike: choices[idx] });
+        },
+      );
+    } else {
+      Alert.alert(
+        activity.title || 'This session',
+        `Currently on ${BIKE_LABEL_MAP[currentBike] || currentBike}. Pick a different bike.`,
+        [
+          ...choices.map((b, i) => ({
+            text: labels[i],
+            onPress: () => setPendingSwap({ activity, fromBike: currentBike, toBike: b }),
+          })),
+          { text: 'Cancel', style: 'cancel' },
+        ],
+      );
+    }
+  }, []);
+
+  // Apply a swap chosen in the BikeSwapModal. Persists straight away
+  // via updateActivity (no edit-mode round trip), reloads the home
+  // screen so the chip shows the new bike. Same shape as ActivityDetail's
+  // outside-edit-mode apply path so the two surfaces stay consistent.
+  const applyBikeSwap = useCallback(async ({ bikeType, durationMins, distanceKm }) => {
+    if (!pendingSwap?.activity?.id) return;
+    await updateActivity(pendingSwap.activity.id, {
+      bikeType,
+      durationMins: durationMins ?? pendingSwap.activity.durationMins,
+      distanceKm,
+    });
+    setPendingSwap(null);
+    await load({ force: true });
+  }, [pendingSwap, load]);
+
+  const applyBikeSwapKeepOriginal = useCallback(async ({ bikeType }) => {
+    if (!pendingSwap?.activity?.id) return;
+    await updateActivity(pendingSwap.activity.id, { bikeType });
+    setPendingSwap(null);
+    await load({ force: true });
+  }, [pendingSwap, load]);
+
+  // ── Weekly check-in banner ──────────────────────────────────────────
+  // Shows the most recent pending or sent check-in. When in_app_popup_due
+  // is true (set by the cron at +48h post-send), surfaces an Alert on
+  // first render so a long-ignored check-in can't be missed forever.
+  // Tappable banner navigates to CheckInScreen; × dismisses.
+  const [pendingCheckin, setPendingCheckin] = useState(null);
+  const refreshPendingCheckin = useCallback(async () => {
+    try {
+      const res = await api.checkins.pending();
+      setPendingCheckin(res?.checkin || null);
+      // 48h+ unresponded → show a one-shot Alert so it can't be silently missed
+      if (res?.checkin?.inAppPopupDue && res.checkin.status !== 'responded') {
+        Alert.alert(
+          'Your weekly check-in',
+          'Five quick questions to shape next week. Two minutes — promise.',
+          [
+            { text: 'Skip this week', style: 'cancel', onPress: () => api.checkins.dismiss(res.checkin.id) },
+            { text: 'Open', onPress: () => navigation.navigate('CheckIn', { checkinId: res.checkin.id }) },
+          ],
+        );
+      }
+    } catch {}
+  }, [navigation]);
+  useEffect(() => { refreshPendingCheckin(); }, [refreshPendingCheckin]);
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', refreshPendingCheckin);
+    return unsub;
+  }, [navigation, refreshPendingCheckin]);
+
+  const dismissPendingCheckin = useCallback(async () => {
+    if (!pendingCheckin?.id) return;
+    setPendingCheckin(null);
+    try { await api.checkins.dismiss(pendingCheckin.id); } catch {}
+  }, [pendingCheckin]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -700,6 +807,14 @@ export default function HomeScreen({ navigation, route }) {
   const firstName = name?.split(' ')[0] ?? null;
   const activePlan = plans[selectedPlanIdx] || null;
   const activeGoal = activePlan ? goals.find(g => g.id === activePlan.goalId) : null;
+
+  // Plan-default bike — used wherever we render a bike chip on a session.
+  // Order: explicit goal cyclingTypes[0] → legacy cyclingType → 'road'.
+  // Lifted to screen scope so both the cards-mode renderer (renderUpcomingCard)
+  // and the list-mode renderer below can read it.
+  const planDefaultBike = (Array.isArray(activeGoal?.cyclingTypes) && activeGoal.cyclingTypes[0])
+    || activeGoal?.cyclingType
+    || 'road';
 
   // Enter the plan creation flow — paywall is shown after the plan is generated
   const handleMakePlan = async () => {
@@ -1752,6 +1867,36 @@ export default function HomeScreen({ navigation, route }) {
             />
           )}
 
+          {/* Weekly check-in banner — shows the most recent pending or
+              sent check-in. Tap → CheckInScreen. × dismisses without
+              answering. Hidden once responded/dismissed/expired. The
+              48h-overdue Alert popup is fired separately from
+              refreshPendingCheckin above. */}
+          {pendingCheckin && pendingCheckin.status !== 'responded' && (
+            <TouchableOpacity
+              style={s.checkinBanner}
+              onPress={() => navigation.navigate('CheckIn', { checkinId: pendingCheckin.id })}
+              activeOpacity={0.85}
+              accessibilityLabel="Open weekly check-in"
+            >
+              <View style={s.checkinBannerLeft}>
+                <Text style={s.checkinBannerEyebrow}>YOUR COACH</Text>
+                <Text style={s.checkinBannerTitle}>Quick weekly check-in</Text>
+                <Text style={s.checkinBannerBody}>
+                  Five questions, two minutes. We'll shape next week from your answers.
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={(e) => { e.stopPropagation?.(); dismissPendingCheckin(); }}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={s.checkinBannerDismiss}
+                accessibilityLabel="Dismiss check-in"
+              >
+                <Text style={s.checkinBannerX}>{'\u2715'}</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          )}
+
           {/* Goal summary merged into the active plan tab above — see
               goalLine in the plans.map block. The standalone "YOUR GOAL"
               card was removed April 2026 because it duplicated info the
@@ -1929,7 +2074,16 @@ export default function HomeScreen({ navigation, route }) {
             // pops via the pink border and TODAY eyebrow rather than
             // dimensional difference.
             const screenW = Dimensions.get('window').width;
-            const compactCardWidth = Math.min(screenW * 0.48, 200);
+            // Card width tuned so the title ("Melt Thursdays" etc.) and
+            // the meta row ("40 km · 60 min · moderate") read comfortably
+            // without truncating mid-word. 0.48 / 200pt was the previous
+            // value — testers reported titles wrapping and the meta line
+            // truncating mid-unit. 0.66 / 260pt fits two cards on screen
+            // at rest with the next day still peeking on the right edge.
+            const compactCardWidth = Math.min(screenW * 0.66, 260);
+
+            // (planDefaultBike is hoisted to screen scope above so the
+            // list-view renderer can use the same value.)
 
             const renderUpcomingCard = (day, idx) => {
               const isToday = day.isToday;
@@ -2012,6 +2166,33 @@ export default function HomeScreen({ navigation, route }) {
                       ? 'Recovery is training too.'
                       : meta}
                   </Text>
+                  {/* Bike chip — tappable. Shows the current bike for
+                      this session; tap → action sheet with all five
+                      types → BikeSwapModal → updateActivity. Visible
+                      on every ride session regardless of goal config. */}
+                  {!isRest && (() => {
+                    const bike = a?.bikeType || planDefaultBike;
+                    const label = BIKE_LABEL_MAP[bike] || bike;
+                    return (
+                      <TouchableOpacity
+                        style={s.upcomingCardBikeRow}
+                        onPress={(e) => {
+                          e.stopPropagation?.();
+                          openBikeSwapForActivity(a, bike);
+                        }}
+                        activeOpacity={0.7}
+                        accessibilityLabel={`Bike: ${label}. Tap to swap.`}
+                      >
+                        <MaterialCommunityIcons
+                          name={bike === 'indoor' ? 'bike-fast' : 'bike'}
+                          size={11}
+                          color={colors.primary}
+                        />
+                        <Text style={s.upcomingCardBikeLabel} numberOfLines={1}>{label}</Text>
+                        <Text style={s.upcomingCardBikeChevron}>{'\u203A'}</Text>
+                      </TouchableOpacity>
+                    );
+                  })()}
                   {/* Action row — single line on every card. View on the
                       left for non-rest, Ask? bridges to the coach (label
                       kept short and coach-agnostic so it doesn't wrap
@@ -2434,6 +2615,36 @@ export default function HomeScreen({ navigation, route }) {
                               {!!formatMeta(act) && (
                                 <Text style={s.weekListMeta} numberOfLines={1}>{formatMeta(act)}</Text>
                               )}
+                              {/* Bike chip on every ride row — same
+                                  tap-to-swap interaction as the home
+                                  cards, so the rider can flip a session
+                                  to gravel/MTB/etc. straight from the
+                                  list view without drilling in. Hidden
+                                  on strength / rest rows where bike
+                                  isn't a meaningful concept. */}
+                              {act.type === 'ride' && (() => {
+                                const bike = act.bikeType || planDefaultBike;
+                                const label = BIKE_LABEL_MAP[bike] || bike;
+                                return (
+                                  <TouchableOpacity
+                                    style={s.weekListBikeRow}
+                                    onPress={(e) => {
+                                      e.stopPropagation?.();
+                                      openBikeSwapForActivity(act, bike);
+                                    }}
+                                    activeOpacity={0.7}
+                                    accessibilityLabel={`Bike: ${label}. Tap to swap.`}
+                                  >
+                                    <MaterialCommunityIcons
+                                      name={bike === 'indoor' ? 'bike-fast' : 'bike'}
+                                      size={11}
+                                      color={colors.primary}
+                                    />
+                                    <Text style={s.weekListBikeLabel} numberOfLines={1}>{label}</Text>
+                                    <Text style={s.weekListBikeChevron}>{'\u203A'}</Text>
+                                  </TouchableOpacity>
+                                );
+                              })()}
                             </View>
                             {isTodayRow && sIdx === 0 && (
                               <View style={s.weekListTodayPill}>
@@ -2670,6 +2881,17 @@ export default function HomeScreen({ navigation, route }) {
         onClose={() => setShowUpgrade(false)}
         onUpgrade={handleUpgrade}
         upgrading={upgrading}
+      />
+      {/* Bike-swap modal — opened from the bike chip on any home card.
+          Apply persists straight via updateActivity; cancel just closes. */}
+      <BikeSwapModal
+        visible={!!pendingSwap}
+        session={pendingSwap?.activity}
+        fromBike={pendingSwap?.fromBike}
+        toBike={pendingSwap?.toBike}
+        onApply={applyBikeSwap}
+        onApplyOriginal={applyBikeSwapKeepOriginal}
+        onCancel={() => setPendingSwap(null)}
       />
 
       {/* Onboarding tour — shown once on first launch for users who have
@@ -3001,6 +3223,51 @@ const s = StyleSheet.create({
     fontSize: 10, fontFamily: FF.regular, color: colors.textMid, lineHeight: 14,
     marginBottom: 2,
   },
+  // Bike chip on the upcoming card — only rendered when the rider has
+  // more than one bike type configured. Shown read-only here; the swap
+  // interaction lives on ActivityDetail.
+  upcomingCardBikeRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 6, paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: colors.primary + '14',
+  },
+  upcomingCardBikeLabel: {
+    fontSize: 10, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.primary,
+  },
+  // Chevron at the right end of the bike chip — read as "tappable"
+  // signal so the rider knows the chip is a control, not a static badge.
+  upcomingCardBikeChevron: {
+    fontSize: 12, color: colors.primary, fontWeight: '600',
+    marginLeft: 2, lineHeight: 12,
+  },
+
+  // ── Weekly check-in banner ────────────────────────────────────────
+  checkinBanner: {
+    marginHorizontal: 16, marginTop: 12, marginBottom: 4,
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    backgroundColor: colors.primary + '14',
+    borderRadius: 14,
+    borderWidth: 0.5, borderColor: colors.primary + '55',
+    padding: 14,
+  },
+  checkinBannerLeft: { flex: 1 },
+  checkinBannerEyebrow: {
+    fontSize: 9, fontWeight: '600', color: colors.primary,
+    letterSpacing: 0.6, fontFamily: FF.semibold, marginBottom: 4,
+  },
+  checkinBannerTitle: {
+    fontSize: 14, fontWeight: '600', color: colors.text,
+    fontFamily: FF.semibold, marginBottom: 3,
+  },
+  checkinBannerBody: {
+    fontSize: 12, color: colors.textMid, fontFamily: FF.regular, lineHeight: 17,
+  },
+  checkinBannerDismiss: { padding: 4 },
+  checkinBannerX: { fontSize: 14, color: colors.textMuted },
   upcomingCardActions: {
     flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8,
   },
@@ -3522,6 +3789,24 @@ const s = StyleSheet.create({
   weekListMeta: {
     fontSize: 12, fontWeight: '400', fontFamily: FF.regular,
     color: colors.textFaint,
+  },
+  // Bike chip on a list-view session row. Sized like the home-card
+  // chip so the surfaces feel related, but a touch tighter horizontally
+  // so it sits alongside the title without overflowing on narrow rows.
+  weekListBikeRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    alignSelf: 'flex-start', marginTop: 4,
+    paddingHorizontal: 7, paddingVertical: 3,
+    borderRadius: 5,
+    backgroundColor: colors.primary + '14',
+  },
+  weekListBikeLabel: {
+    fontSize: 11, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.primary,
+  },
+  weekListBikeChevron: {
+    fontSize: 12, color: colors.primary, fontWeight: '700',
+    marginLeft: 1, lineHeight: 12,
   },
   weekListRest: {
     fontSize: 14, fontWeight: '400', fontFamily: FF.regular,

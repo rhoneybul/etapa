@@ -770,6 +770,11 @@ app.use('/api/app-config', appConfigRouter); // no auth — app checks before lo
 app.use('/api/public', unsubscribeRouter); // no auth — unsubscribe must work from email link
 app.use('/api/public', mailerliteWebhookRouter); // no auth — signature-verified
 app.use('/api/coach-checkin', coachCheckinRouter); // auth via CRON_SECRET or ADMIN_API_KEY
+const checkinsRouter = require('./routes/checkins');
+app.use('/api/checkins', authMiddleware, checkinsRouter);
+app.use('/api/checkin-prefs', authMiddleware, checkinsRouter.prefsRouter);
+const checkinsCronRouter = require('./routes/checkinsCron');
+app.use('/api/checkins-cron', checkinsCronRouter); // CRON_SECRET-guarded inside
 app.use('/api/admin', adminRouter); // admin router has its own auth (API key or Supabase JWT)
 app.use('/api/coupons', authMiddleware, couponsRouter);
 app.use('/api/strava', stravaRouter); // no auth — Strava redirects browser here directly

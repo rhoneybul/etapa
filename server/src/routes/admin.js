@@ -351,6 +351,20 @@ router.get('/users', async (req, res, next) => {
       feedbackCountByUser[f.user_id] = (feedbackCountByUser[f.user_id] || 0) + 1;
     }
 
+    // Display name per user — set by the rider during onboarding and
+    // editable in Settings. This is the human-readable name we want
+    // surfaced first in admin lists, with auth metadata as a fallback
+    // and email-localpart as a last resort. The dashboard prefers
+    // displayName → name → email-localpart in that order.
+    const { data: prefsRows } = await supabase
+      .from('user_preferences')
+      .select('user_id, display_name');
+    const displayNameByUser = {};
+    for (const p of (prefsRows || [])) {
+      const n = (p.display_name || '').trim();
+      if (n) displayNameByUser[p.user_id] = n;
+    }
+
     // Trial config from app_config (fall back to 7 days if not set)
     const { data: trialRow } = await supabase
       .from('app_config')
@@ -382,10 +396,16 @@ router.get('/users', async (req, res, next) => {
         };
       }
 
+      // Resolve the best human-readable name we have: rider-set
+      // displayName wins, auth metadata is a sensible fallback.
+      const metaName = u.user_metadata?.full_name || u.user_metadata?.name || null;
+      const resolvedName = displayNameByUser[u.id] || metaName || null;
       return {
         id: u.id,
         email: u.email,
-        name: u.user_metadata?.full_name || u.user_metadata?.name || null,
+        name: resolvedName,
+        displayName: displayNameByUser[u.id] || null,
+        metaName,
         isAdmin: u.user_metadata?.is_admin === true,
         createdAt: u.created_at,
         lastSignInAt: u.last_sign_in_at,
@@ -2822,6 +2842,253 @@ Write a brief, friendly message (2-3 sentences max) welcoming a new rider and en
     });
 
     res.json({ success: true, coachId, coachName: coachInfo.name, message: body });
+  } catch (err) { next(err); }
+});
+
+// ── GET /api/admin/claude-usage ─────────────────────────────────────────────
+// Aggregated Claude usage for the admin dashboard. Three breakdowns over
+// a configurable window (default last 30 days):
+//   • by feature   — sum cost + tokens per feature, ordered by cost
+//   • by user      — top spenders, joined to email + display name
+//   • by day       — daily total cost + call count for a trend chart
+//
+// Query: ?days=30 (cap at 365 to stop accidental full-table scans).
+router.get('/claude-usage', async (req, res, next) => {
+  try {
+    const days = Math.min(365, Math.max(1, Number(req.query.days) || 30));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    // Pull raw rows once — for the volumes we expect (a few thousand rows
+    // per month), one fetch + JS aggregation is faster than three SQL
+    // round-trips and avoids per-feature view definitions we'd then have
+    // to keep in sync with the feature enum.
+    const { data: rows, error } = await supabase
+      .from('claude_usage_log')
+      .select('user_id, feature, model, input_tokens, output_tokens, cache_read_tokens, cache_create_tokens, cost_usd, status, created_at')
+      .gte('created_at', since)
+      .limit(50000);
+    if (error) throw error;
+
+    // ── By feature ─────────────────────────────────────────────────
+    const byFeature = {};
+    for (const r of (rows || [])) {
+      const k = r.feature || 'other';
+      const f = byFeature[k] || (byFeature[k] = {
+        feature: k, calls: 0, costUsd: 0,
+        inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0,
+        errors: 0,
+      });
+      f.calls += 1;
+      f.costUsd += Number(r.cost_usd || 0);
+      f.inputTokens += r.input_tokens || 0;
+      f.outputTokens += r.output_tokens || 0;
+      f.cacheReadTokens += r.cache_read_tokens || 0;
+      f.cacheCreateTokens += r.cache_create_tokens || 0;
+      if (r.status && r.status !== 'ok') f.errors += 1;
+    }
+    const featuresArr = Object.values(byFeature)
+      .map(f => ({ ...f, costUsd: round6(f.costUsd) }))
+      .sort((a, b) => b.costUsd - a.costUsd);
+
+    // ── By user (top 50 spenders) ──────────────────────────────────
+    const byUser = {};
+    for (const r of (rows || [])) {
+      if (!r.user_id) continue;
+      const u = byUser[r.user_id] || (byUser[r.user_id] = {
+        userId: r.user_id, calls: 0, costUsd: 0,
+        inputTokens: 0, outputTokens: 0,
+        byFeature: {},
+      });
+      u.calls += 1;
+      u.costUsd += Number(r.cost_usd || 0);
+      u.inputTokens += r.input_tokens || 0;
+      u.outputTokens += r.output_tokens || 0;
+      const fk = r.feature || 'other';
+      u.byFeature[fk] = round6((u.byFeature[fk] || 0) + Number(r.cost_usd || 0));
+    }
+    const userIds = Object.keys(byUser);
+
+    // Join names + emails — same display-name precedence as /users
+    let usersByIdMap = {};
+    let displayNameMap = {};
+    if (userIds.length) {
+      try {
+        const { data: { users: authUsers } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+        for (const au of (authUsers || [])) {
+          if (byUser[au.id]) {
+            usersByIdMap[au.id] = {
+              email: au.email,
+              metaName: au.user_metadata?.full_name || au.user_metadata?.name || null,
+            };
+          }
+        }
+      } catch {}
+      try {
+        const { data: prefs } = await supabase
+          .from('user_preferences')
+          .select('user_id, display_name')
+          .in('user_id', userIds);
+        for (const p of (prefs || [])) {
+          if (p.display_name) displayNameMap[p.user_id] = p.display_name;
+        }
+      } catch {}
+    }
+
+    const usersArr = Object.values(byUser)
+      .map(u => {
+        const ident = usersByIdMap[u.userId] || {};
+        return {
+          ...u,
+          costUsd: round6(u.costUsd),
+          email: ident.email || null,
+          name: displayNameMap[u.userId] || ident.metaName || null,
+          displayName: displayNameMap[u.userId] || null,
+        };
+      })
+      .sort((a, b) => b.costUsd - a.costUsd)
+      .slice(0, 50);
+
+    // ── By day (for trend chart) ───────────────────────────────────
+    const byDay = {};
+    for (const r of (rows || [])) {
+      const day = String(r.created_at).slice(0, 10);
+      const d = byDay[day] || (byDay[day] = { date: day, calls: 0, costUsd: 0 });
+      d.calls += 1;
+      d.costUsd += Number(r.cost_usd || 0);
+    }
+    const daysArr = Object.values(byDay)
+      .map(d => ({ ...d, costUsd: round6(d.costUsd) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Totals across the window
+    const totalCost = featuresArr.reduce((s, f) => s + f.costUsd, 0);
+    const totalCalls = featuresArr.reduce((s, f) => s + f.calls, 0);
+    const totalErrors = featuresArr.reduce((s, f) => s + f.errors, 0);
+
+    res.json({
+      days,
+      since,
+      total: { calls: totalCalls, costUsd: round6(totalCost), errors: totalErrors },
+      byFeature: featuresArr,
+      byUser: usersArr,
+      byDay: daysArr,
+    });
+  } catch (err) { next(err); }
+});
+
+function round6(n) { return Math.round(n * 1_000_000) / 1_000_000; }
+
+// ── POST /api/admin/claude-usage/audit ──────────────────────────────────────
+// "Ask the auditor" — sends an aggregated usage summary to Claude Sonnet
+// with a meta-prompt asking for concrete cost-reduction ideas. Returns a
+// structured list of ranked suggestions: title, severity, est-savings %,
+// reason, action. The summary fed to Claude is the same shape the GET
+// endpoint above returns, but trimmed to the bits useful for spotting
+// optimisation opportunities (no per-user PII).
+router.post('/claude-usage/audit', async (req, res, next) => {
+  try {
+    const apiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'Auditor unavailable — CLAUDE_API_KEY not set.' });
+
+    const days = Math.min(90, Math.max(7, Number(req.body?.days) || 30));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const { data: rows } = await supabase
+      .from('claude_usage_log')
+      .select('feature, model, input_tokens, output_tokens, cache_read_tokens, cache_create_tokens, cost_usd, duration_ms, status, metadata')
+      .gte('created_at', since)
+      .limit(50000);
+
+    // Aggregate to a compact summary — never send raw rows to Claude.
+    const summary = {};
+    for (const r of (rows || [])) {
+      const k = `${r.feature || 'other'}|${r.model || '?'}`;
+      const s = summary[k] || (summary[k] = {
+        feature: r.feature, model: r.model, calls: 0, costUsd: 0,
+        avgInputTokens: 0, avgOutputTokens: 0, avgDurationMs: 0,
+        cacheReadTokens: 0, cacheCreateTokens: 0, errors: 0,
+        sumIn: 0, sumOut: 0, sumDur: 0, durSamples: 0,
+      });
+      s.calls += 1;
+      s.costUsd += Number(r.cost_usd || 0);
+      s.sumIn += r.input_tokens || 0;
+      s.sumOut += r.output_tokens || 0;
+      s.cacheReadTokens += r.cache_read_tokens || 0;
+      s.cacheCreateTokens += r.cache_create_tokens || 0;
+      if (r.duration_ms != null) { s.sumDur += r.duration_ms; s.durSamples += 1; }
+      if (r.status && r.status !== 'ok') s.errors += 1;
+    }
+    const aggregated = Object.values(summary).map(s => ({
+      feature: s.feature, model: s.model,
+      calls: s.calls, costUsd: round6(s.costUsd),
+      avgInputTokens: Math.round(s.sumIn / s.calls),
+      avgOutputTokens: Math.round(s.sumOut / s.calls),
+      avgDurationMs: s.durSamples ? Math.round(s.sumDur / s.durSamples) : null,
+      cacheReadTokens: s.cacheReadTokens,
+      cacheCreateTokens: s.cacheCreateTokens,
+      cachingActive: (s.cacheReadTokens + s.cacheCreateTokens) > 0,
+      errors: s.errors,
+      errorRate: s.calls ? round6(s.errors / s.calls) : 0,
+    })).sort((a, b) => b.costUsd - a.costUsd);
+
+    const totalCost = round6(aggregated.reduce((sum, a) => sum + a.costUsd, 0));
+
+    const systemPrompt = `You are a Claude API cost-optimisation auditor for an indie cycling-coach app.
+
+You'll get an aggregated summary of the app's Claude usage over the last ${days} days, broken down by (feature, model). Each row carries call count, total cost, avg input/output tokens per call, average latency, cache token totals, and error rate.
+
+Your job is to propose CONCRETE actions the team can take to reduce spend without harming user experience. For each suggestion include:
+
+- title         (short imperative, e.g. "Switch race-lookup to Haiku 4.5")
+- severity      ("high" | "medium" | "low") — based on potential savings
+- estSavingsPct (rough estimate as % of total cost)
+- reason        (1-2 sentences anchored to numbers in the data)
+- action        (concrete change in the codebase — be specific: feature name, what to modify)
+
+Look for:
+  • Features running on Sonnet that could plausibly use Haiku 4.5 (5x cheaper input, 3x cheaper output)
+  • High average input tokens with no cache activity → prompt-cache opportunity
+  • High call counts with low avg output → max_tokens too generous, model too capable
+  • Repeated near-identical inputs → response cache opportunity
+  • Long average duration on simple features → over-engineered prompt
+  • Features dominating cost share — prioritise by total spend, not severity-feel
+  • High error rate on a feature → wasted spend on retries
+
+Return ONLY a JSON object with this shape:
+{
+  "summary": "1-2 sentences on the overall picture and where the money is going",
+  "totalCostUsd": <number>,
+  "totalSavingsPctEstimate": <number, rough sum of suggested savings>,
+  "suggestions": [ ... ranked by estSavingsPct desc ]
+}
+
+Be specific and ruthless — don't hedge. Prefer fewer high-impact suggestions over a long list of minor ones. If the data shows nothing actionable, say so.`;
+
+    const _fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : null;
+    const response = await _fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: `Total cost over ${days} days: $${totalCost}\n\nPer (feature, model) breakdown:\n${JSON.stringify(aggregated, null, 2)}` }],
+      }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(502).json({ error: 'Auditor model returned ' + response.status, detail: text.slice(0, 500) });
+    }
+    const data = await response.json();
+    const text = data?.content?.[0]?.text || '{}';
+    const cleaned = text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
+    let parsed;
+    try { parsed = JSON.parse(cleaned); }
+    catch { parsed = { summary: text.slice(0, 200), suggestions: [], parseFailed: true }; }
+    res.json({ days, since, totalCostUsd: totalCost, audit: parsed });
   } catch (err) { next(err); }
 });
 

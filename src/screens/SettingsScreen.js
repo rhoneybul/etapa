@@ -175,6 +175,30 @@ export default function SettingsScreen({ navigation }) {
   const [togglingNotif, setTogglingNotif] = useState(false);
   const [sendingTestPush, setSendingTestPush] = useState(false);
   const [userPrefs, setUserPrefsState] = useState({ units: 'km', displayName: '' });
+  // Weekly check-in schedule. enabled defaults to false so existing users
+  // aren't opted in without consent.
+  const [checkinPrefs, setCheckinPrefs] = useState({
+    enabled: false, dayOfWeek: 0, timeOfDay: '18:00',
+  });
+  const [savingCheckin, setSavingCheckin] = useState(false);
+  useEffect(() => {
+    api.checkinPrefs.get().then(p => {
+      if (p) setCheckinPrefs({
+        enabled: !!p.enabled,
+        dayOfWeek: p.dayOfWeek ?? 0,
+        timeOfDay: p.timeOfDay || '18:00',
+      });
+    }).catch(() => {});
+  }, []);
+  const saveCheckinPrefs = useCallback(async (next) => {
+    setSavingCheckin(true);
+    setCheckinPrefs(next);
+    try {
+      const tz = Intl?.DateTimeFormat?.()?.resolvedOptions?.()?.timeZone || 'UTC';
+      await api.checkinPrefs.save({ ...next, timezone: tz });
+    } catch {}
+    setSavingCheckin(false);
+  }, []);
   const [editingName, setEditingName] = useState(false);
   // Optional training-intensity fields. When set, interval breakdowns on
   // ActivityDetail render actual bpm / watts instead of % ranges. Blank
@@ -1135,6 +1159,87 @@ export default function SettingsScreen({ navigation }) {
             </View>
             <Text style={s.chevron}>{'\u203A'}</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Weekly check-in schedule. Inline editor — toggle + day pill
+            row + HH:MM input. Timezone is auto-resolved from the device
+            on save. Defaults: Sunday 18:00, opt-in. */}
+        <Text style={s.sectionLabel}>WEEKLY CHECK-IN</Text>
+        <View style={s.card}>
+          <View style={s.row}>
+            <View style={s.rowLeft}>
+              <View>
+                <Text style={s.rowTitle}>Weekly check-in</Text>
+                <Text style={s.rowSub}>
+                  {checkinPrefs.enabled
+                    ? `Every ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][checkinPrefs.dayOfWeek]} at ${checkinPrefs.timeOfDay}`
+                    : 'Off — tap to enable'}
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={checkinPrefs.enabled}
+              onValueChange={(v) => saveCheckinPrefs({ ...checkinPrefs, enabled: v })}
+              disabled={savingCheckin}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#fff"
+            />
+          </View>
+          {checkinPrefs.enabled && (
+            <>
+              <View style={s.divider} />
+              <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+                <Text style={[s.rowSub, { marginBottom: 8 }]}>Day of week</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d, i) => {
+                    const sel = checkinPrefs.dayOfWeek === i;
+                    return (
+                      <TouchableOpacity
+                        key={d}
+                        onPress={() => saveCheckinPrefs({ ...checkinPrefs, dayOfWeek: i })}
+                        style={{
+                          width: 38, height: 38, borderRadius: 19,
+                          backgroundColor: sel ? colors.primary : colors.surfaceLight,
+                          borderWidth: 0.5, borderColor: sel ? colors.primary : colors.border,
+                          alignItems: 'center', justifyContent: 'center',
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={{
+                          fontSize: 12, fontWeight: '600',
+                          color: sel ? '#fff' : colors.textMid,
+                          fontFamily: fontFamily.semibold,
+                        }}>{d.slice(0, 1)}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text style={[s.rowSub, { marginTop: 16, marginBottom: 8 }]}>Time of day (HH:MM, 24h)</Text>
+                <TextInput
+                  style={{
+                    backgroundColor: colors.surfaceLight, borderWidth: 0.5, borderColor: colors.border,
+                    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10,
+                    fontSize: 15, color: colors.text, fontFamily: fontFamily.regular,
+                  }}
+                  value={checkinPrefs.timeOfDay}
+                  onChangeText={(t) => setCheckinPrefs({ ...checkinPrefs, timeOfDay: t })}
+                  onBlur={() => {
+                    // Light validation — accept "HH:MM" / "H:MM" / "HHMM"
+                    let t = String(checkinPrefs.timeOfDay || '').replace(/[^0-9:]/g, '');
+                    if (/^\d{4}$/.test(t)) t = `${t.slice(0, 2)}:${t.slice(2)}`;
+                    if (!/^\d{1,2}:\d{2}$/.test(t)) t = '18:00';
+                    const [hh, mm] = t.split(':').map(n => parseInt(n, 10) || 0);
+                    const clean = `${String(Math.min(23, hh)).padStart(2, '0')}:${String(Math.min(59, mm)).padStart(2, '0')}`;
+                    saveCheckinPrefs({ ...checkinPrefs, timeOfDay: clean });
+                  }}
+                  placeholder="18:00"
+                  placeholderTextColor={colors.textFaint}
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={5}
+                />
+              </View>
+            </>
+          )}
         </View>
 
         {/* Support */}

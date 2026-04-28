@@ -1061,20 +1061,42 @@ export default function PlanConfigScreen({ navigation, route }) {
             </View>
           </View>
 
-          {/* Show a summary of organised rides + long ride day already set */}
+          {/* Show a summary of organised rides + long ride day already set.
+              Each pill is tappable: regular-rides pill jumps back to
+              step 3 (where the rider can tap a card to open the edit
+              sheet), long-ride pill jumps back to step 4. The "Edit"
+              chevron makes the affordance visible — without it testers
+              didn't realise the pills did anything. */}
           {(recurringRides.length > 0 || effectiveLongRideDay) && (
             <View style={s.buildWeekSummary}>
               {recurringRides.length > 0 && (
-                <Text style={s.buildWeekSummaryText}>
-                  {recurringRides.length === 1
-                    ? `1 regular ride · ${DAYS.find(d => d.key === recurringRides[0].day)?.short}`
-                    : `${recurringRides.length} regular rides`}
-                </Text>
+                <TouchableOpacity
+                  style={s.buildWeekSummaryPill}
+                  onPress={() => setStep(3)}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Edit regular rides"
+                  accessibilityHint="Goes back to the regular-rides step where you can tap a ride to change it."
+                >
+                  <Text style={s.buildWeekSummaryText}>
+                    {recurringRides.length === 1
+                      ? `1 regular ride · ${DAYS.find(d => d.key === recurringRides[0].day)?.short}`
+                      : `${recurringRides.length} regular rides`}
+                  </Text>
+                  <Text style={s.buildWeekSummaryAction}>Edit</Text>
+                </TouchableOpacity>
               )}
               {effectiveLongRideDay && (
-                <Text style={s.buildWeekSummaryText}>
-                  Long ride · {DAYS.find(d => d.key === effectiveLongRideDay)?.short}
-                </Text>
+                <TouchableOpacity
+                  style={s.buildWeekSummaryPill}
+                  onPress={() => setStep(4)}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Change long-ride day"
+                >
+                  <Text style={s.buildWeekSummaryText}>
+                    Long ride · {DAYS.find(d => d.key === effectiveLongRideDay)?.short}
+                  </Text>
+                  <Text style={s.buildWeekSummaryAction}>Edit</Text>
+                </TouchableOpacity>
               )}
             </View>
           )}
@@ -1747,12 +1769,29 @@ const s = StyleSheet.create({
   longRideAutoTag: { fontSize: 9, fontWeight: '500', fontFamily: FF.medium, color: colors.textFaint, textAlign: 'center', marginTop: 2 },
   longRideDayHint: { fontSize: 12, fontFamily: FF.regular, color: colors.textMuted, marginTop: 12, lineHeight: 17 },
 
-  // Build week summary strip
+  // Build week summary strip — each pill is a tap-to-edit button now.
+  // Border + the trailing "Edit" chip make it clear the pill is
+  // actionable; without those signals testers thought the pills were
+  // just status badges.
   buildWeekSummary: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 16 },
+  buildWeekSummaryPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: colors.primary + '14',
+    borderRadius: 8,
+    borderWidth: 0.5,
+    borderColor: colors.primary + '40',
+    paddingHorizontal: 10, paddingVertical: 6,
+  },
   buildWeekSummaryText: {
     fontSize: 12, fontFamily: FF.medium, color: colors.primary,
-    backgroundColor: colors.primary + '14', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 4, overflow: 'hidden',
+  },
+  buildWeekSummaryAction: {
+    fontSize: 11, fontFamily: FF.semibold, fontWeight: '600',
+    color: colors.primary,
+    letterSpacing: 0.4,
+    paddingLeft: 8,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: colors.primary + '55',
   },
 
   // ── Organised rides ─────────────────────────────────────────────────

@@ -2110,6 +2110,24 @@ Never, ever write "I'll" / "I've" / "I'm" + a verb of change ("shift", "move", "
         systemPrompt += `\nThe athlete is asking about Week ${context.weekNum} specifically.\n`;
       }
 
+      // Session-scoped conversation. When the athlete opens the coach
+      // chat from an activity-detail screen, we pass `activityScope`
+      // with the session payload — focus the conversation strictly on
+      // that session. The chat thread is also persisted separately
+      // (per-activity key on the client) so the rider has a private
+      // log of "stuff I asked about this ride."
+      if (context.activityScope) {
+        const a = context.activityScope;
+        systemPrompt += `\n## Session-scoped conversation\n`;
+        systemPrompt += `The athlete opened this chat from a single session and is asking ONLY about that session. Stay strictly on this session — execution, structure, recovery, swap suggestions, on-the-day adjustments. Do NOT propose changes to other sessions or rebalance the broader plan from this thread; if the athlete needs a plan-wide change, suggest they switch to the full plan chat.\n`;
+        systemPrompt += `Session: ${JSON.stringify({
+          id: a.id, week: a.week, dayOfWeek: a.dayOfWeek, type: a.type, subType: a.subType,
+          title: a.title, description: a.description, notes: a.notes,
+          durationMins: a.durationMins, distanceKm: a.distanceKm, effort: a.effort,
+          bikeType: a.bikeType, completed: a.completed,
+        }, null, 2)}\n`;
+      }
+
       // Full activities with IDs for modification capability
       if (context.allActivities && context.allActivities.length > 0) {
         systemPrompt += `\n## All plan activities (with IDs — use these when modifying)\n`;
@@ -2396,6 +2414,17 @@ Never, ever write "I'll" / "I've" / "I'm" + a verb of change ("shift", "move", "
     }
   }
   if (context.weekNum) systemPrompt += `\nThe athlete is asking about Week ${context.weekNum} specifically.\n`;
+  if (context.activityScope) {
+    const a = context.activityScope;
+    systemPrompt += `\n## Session-scoped conversation\n`;
+    systemPrompt += `The athlete opened this chat from a single session and is asking ONLY about that session. Stay strictly on this session — execution, structure, recovery, swap suggestions, on-the-day adjustments. Do NOT propose changes to other sessions or rebalance the broader plan from this thread; if the athlete needs a plan-wide change, suggest they switch to the full plan chat.\n`;
+    systemPrompt += `Session: ${JSON.stringify({
+      id: a.id, week: a.week, dayOfWeek: a.dayOfWeek, type: a.type, subType: a.subType,
+      title: a.title, description: a.description, notes: a.notes,
+      durationMins: a.durationMins, distanceKm: a.distanceKm, effort: a.effort,
+      bikeType: a.bikeType, completed: a.completed,
+    }, null, 2)}\n`;
+  }
   if (context.allActivities && context.allActivities.length > 0) {
     systemPrompt += `\n## All plan activities (with IDs — use these when modifying)\n`;
     systemPrompt += JSON.stringify(context.allActivities, null, 2) + '\n';
@@ -2884,6 +2913,14 @@ async function runCoachChatJob(jobId) {
     //     multiple unread replies and taps an older one from the list
     try {
       const preview = reply.length > 80 ? reply.slice(0, 77) + '…' : reply;
+      // Scope flags the chat thread the rider was in. 'session' means
+      // they opened this from an activity-detail screen — the home
+      // unread chip filters those out so a side-thread about a single
+      // ride doesn't pull focus from the main coach card. The
+      // notification still appears in the Notifications tab and tapping
+      // it routes to the session-scoped chat via activityId.
+      const activityId = job.context?.activityScope?.id || null;
+      const scope = activityId ? 'session' : (job.context?.weekNum ? 'week' : 'plan');
       await sendPushToUser(job.userId, {
         title: (getCoachById(job.coachId)?.name || 'Your coach') + ' replied',
         body: preview,
@@ -2891,6 +2928,8 @@ async function runCoachChatJob(jobId) {
         data: {
           planId: job.context?.plan?.id || null,
           weekNum: job.context?.weekNum || null,
+          activityId,
+          scope,
           jobId,
           coachId: job.coachId || null,
           // Matches the assistantMsg.ts we wrote to chat_sessions above
