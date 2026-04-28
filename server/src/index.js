@@ -805,4 +805,32 @@ app.listen(PORT, () => {
   // polling. See server/src/lib/coachChatReaper.js.
   const { startCoachChatReaper } = require('./lib/coachChatReaper');
   startCoachChatReaper({ coachChatJobs: _coachChatJobs });
+
+  // ── Weekly check-in sweep — in-process schedule ────────────────────────
+  // Fires the same logic as POST /api/checkins-cron/sweep but runs inside
+  // the server process, so we don't need a separate Railway cron service
+  // or an external cron-job.org / Supabase scheduled function. Runs every
+  // 30 min, with a small initial delay so boot-time DB ops don't pile on.
+  // The HTTP route stays available for manual fires + external schedulers
+  // if you ever want belt-and-braces. Single-instance assumption — fine
+  // for Etapa's current Railway setup; if you scale horizontally, move
+  // this to a dedicated cron service.
+  if (process.env.DISABLE_INTERNAL_CRON === 'true') {
+    console.log('[checkins-cron] internal scheduler disabled by DISABLE_INTERNAL_CRON');
+  } else {
+    const { runSweep } = require('./routes/checkinsCron');
+    const SWEEP_EVERY_MS = 30 * 60 * 1000;
+    const fireSweep = async () => {
+      try {
+        const summary = await runSweep();
+        console.log('[checkins-cron] sweep ok:', summary);
+      } catch (err) {
+        console.error('[checkins-cron] sweep error:', err?.message || err);
+      }
+    };
+    // Initial fire 60s after boot so DB / supabase clients are warm.
+    setTimeout(fireSweep, 60 * 1000);
+    setInterval(fireSweep, SWEEP_EVERY_MS);
+    console.log(`[checkins-cron] internal scheduler running every ${SWEEP_EVERY_MS / 60000} min`);
+  }
 });

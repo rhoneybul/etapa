@@ -191,7 +191,7 @@ export default function ClaudeUsagePage() {
             <StatCard
               label="Errors"
               value={fmtNum(usage.total.errors)}
-              valueClassName={usage.total.errors > 0 ? "text-red-400" : "text-white"}
+              sub={usage.total.errors > 0 ? "needs attention" : undefined}
             />
           </div>
 

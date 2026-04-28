@@ -60,11 +60,13 @@ function isoMinutesAgo(min) {
   return new Date(Date.now() - min * 60 * 1000).toISOString();
 }
 
-router.post('/sweep', async (req, res) => {
-  if (!authed(req)) return res.status(401).json({ error: 'Unauthorised' });
-
+// ── Pure sweep function ──────────────────────────────────────────────────
+// Runs the same logic as POST /sweep but without an HTTP boundary. Called
+// directly by the in-process scheduler in server/src/index.js so we don't
+// need a separate Railway cron service. Returns the per-run summary so
+// the HTTP handler below can echo it back to admin / cron callers.
+async function runSweep() {
   const summary = { fired: 0, reminded12h: 0, reminded24h: 0, popupSet: 0, expired: 0 };
-
   try {
     // ── Fire scheduled check-ins ─────────────────────────────────────────
     const { data: prefs } = await supabase
@@ -164,9 +166,22 @@ router.post('/sweep', async (req, res) => {
       }
     }
 
-    res.json({ ok: true, summary });
+    return summary;
   } catch (err) {
     console.error('[checkins-cron] sweep failed:', err);
+    throw err;
+  }
+}
+
+// HTTP wrapper around runSweep. Kept around for admin / external cron
+// invocations (Railway cron service, cron-job.org, etc.) so the in-process
+// scheduler isn't the only path. Auth via CRON_SECRET, same as before.
+router.post('/sweep', async (req, res) => {
+  if (!authed(req)) return res.status(401).json({ error: 'Unauthorised' });
+  try {
+    const summary = await runSweep();
+    res.json({ ok: true, summary });
+  } catch (err) {
     res.status(500).json({ error: err?.message || 'Sweep failed' });
   }
 });
@@ -185,4 +200,5 @@ router.post('/admin-send', async (req, res) => {
   }
 });
 
+router.runSweep = runSweep;
 module.exports = router;
