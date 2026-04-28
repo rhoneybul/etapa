@@ -23,6 +23,8 @@
     "test:slack": "node tests/slack.test.js",
     "test:tips": "node tests/rideTips.test.js",
     "test:plans": "node --import ./tests/loader.mjs tests/planGenerator.test.js",
+    "test:mobile": "jest --config jest.config.js",
+    "test:mobile:watch": "jest --config jest.config.js --watch",
     "test:e2e": "maestro test .maestro/",
     "postinstall": "patch-package"
   },
@@ -66,9 +68,14 @@
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",
+    "@testing-library/jest-native": "^5.4.3",
+    "@testing-library/react-native": "^13.3.3",
     "@types/react": "~19.2.10",
     "babel-preset-expo": "^55.0.12",
+    "jest": "^29.7.0",
+    "jest-expo": "~55.0.0",
     "patch-package": "^8.0.1",
+    "react-test-renderer": "^19.2.0",
     "typescript": "~5.9.2"
   },
   "overrides": {
