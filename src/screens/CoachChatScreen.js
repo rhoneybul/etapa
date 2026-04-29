@@ -117,16 +117,24 @@ function chatKey(planId, weekNum, activityId) {
   return `@etapa_coach_chat_${planId}`;
 }
 
-// Per-(plan, week|activity, coach) chat language preference. Scoped to
-// the coach so that if the user switches coaches mid-plan we don't carry
-// over a language the new coach can't speak — each coach has its own
-// remembered language. Default is the coach's first listed language
-// (English for every persona today).
-function chatLangKey(planId, weekNum, coachId, activityId) {
-  const a = activityId ? `_a${activityId}` : '';
-  const w = !activityId && weekNum ? `_w${weekNum}` : '';
-  const c = coachId ? `_${coachId}` : '';
-  return `@etapa_coach_chat_lang_${planId}${a}${w}${c}`;
+// Per-coach chat language preference.
+//
+// Why coach-scoped (and not finer-grained): switching coaches mid-plan
+// shouldn't carry a language the new coach can't speak — each coach has
+// its own languages list — but switching from a plan-scope chat to a
+// week-scope or activity-scope chat with the SAME coach absolutely
+// should keep the rider's language choice. The previous implementation
+// keyed the cache by (plan, weekNum|activityId, coach), which meant
+// picking Spanish at plan-scope was lost the moment the rider tapped
+// into a week or activity chat — separate cache key, fallback to the
+// coach's primary language (English). This rescope (just coachId) keeps
+// the language sticky across every conversation with that coach.
+//
+// Legacy: pre-rescope keys looked like `@etapa_coach_chat_lang_<planId>`
+// with optional `_a<activityId>` / `_w<weekNum>` / `_<coachId>` suffixes.
+// We don't migrate those — orphaned. Affected riders re-pick once.
+function chatLangKey(coachId) {
+  return `@etapa_coach_chat_lang_${coachId || 'default'}`;
 }
 
 // Client-side hard cap on how long we'll wait for a coach reply before
@@ -282,23 +290,28 @@ export default function CoachChatScreen({ navigation, route }) {
     if (elapsedMs < 15000) return 'Getting this right — coaches don\'t rush…';
     return "Still going. You can leave the chat — we'll send you a notification when your coach replies.";
   };
-  // Hydrate the chat-language preference whenever the active plan or coach
+  // Hydrate the chat-language preference whenever the active coach
   // changes. Falls back to the coach's primary language (first entry in
   // their `languages` array, English by default) if no preference has
   // been saved yet, or if the saved one isn't supported by the current
-  // coach (can happen if the user switched coaches between sessions).
+  // coach (e.g. user switched coaches between sessions).
+  //
+  // The cache is now coach-scoped (was per-plan/week/activity/coach),
+  // so picking Spanish for Clara stays Spanish in every Clara chat —
+  // plan-level, week-level, activity-level — until the rider explicitly
+  // changes it.
   useEffect(() => {
-    if (!plan?.id) return;
     const coachId = planConfig?.coachId || null;
+    if (!coachId) return;
     const coach = getCoach(coachId);
     const supported = getCoachLanguages(coach);
     (async () => {
       let saved = null;
-      try { saved = await AsyncStorage.getItem(chatLangKey(plan.id, weekNum, coachId, activityId)); } catch {}
+      try { saved = await AsyncStorage.getItem(chatLangKey(coachId)); } catch {}
       const next = saved && supported.includes(saved) ? saved : supported[0];
       setChatLanguage(next);
     })();
-  }, [plan?.id, weekNum, planConfig?.coachId]);
+  }, [planConfig?.coachId]);
 
   // Persist language whenever it changes (debounced trivially by React's
   // own batching — the user only changes language by tapping the picker).
@@ -317,8 +330,11 @@ export default function CoachChatScreen({ navigation, route }) {
     const coachId = planConfig?.coachId || null;
     const coach = getCoach(coachId);
     setChatLanguage(lang);
+    // Persist per-coach (was per-plan/week/activity/coach — that meant
+    // switching scope dropped the language). Now picking Spanish for
+    // Clara stays Spanish in every Clara conversation.
     try {
-      await AsyncStorage.setItem(chatLangKey(plan.id, weekNum, coachId, activityId), lang);
+      await AsyncStorage.setItem(chatLangKey(coachId), lang);
     } catch {}
     analytics.track('chat_language_changed', { coachId, language: lang, scope: weekNum ? 'week' : 'plan' });
 
