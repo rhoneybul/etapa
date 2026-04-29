@@ -7,13 +7,14 @@
  * thing a rider posts to a WhatsApp group or Instagram story without
  * editing.
  *
- * Share path (v2): we capture the actual card view via
- * react-native-view-shot and pass the resulting PNG either to the OS
- * share sheet (`url` field — WhatsApp / iMessage / Instagram Stories
- * all accept image attachments via this) or directly into the photo
- * library via expo-media-library. The previous text-only fallback
- * (and the "screenshot the screen yourself" tip) lived here while the
- * native module was deferred — those are gone now.
+ * Share path: we capture the actual card view via react-native-view-shot
+ * and pass the resulting PNG to the OS share sheet (`url` field —
+ * WhatsApp / iMessage / Instagram Stories all accept image attachments
+ * via this). Riders who want the image in their camera roll tap Share
+ * → "Save Image" — the system sheet exposes that as a destination, so
+ * we don't need expo-media-library + the photo permission it pulls
+ * (and the Google Play Photo and Video Permissions Declaration form
+ * that comes with it). One Share button, every outcome.
  *
  * Stats computed locally from the active plan's activities — no
  * server round-trip, instant render. Stats covered:
@@ -39,21 +40,26 @@ import { getCoach } from '../data/coaches';
 import api from '../services/api';
 import analytics from '../services/analyticsService';
 
-// Lazy-imports — view-shot + media-library are native modules that
-// need a dev client / EAS build to actually work. Wrap the require
-// so this file doesn't fail to import when running in Expo Go (the
-// share-as-image path simply degrades to text-only there).
+// Lazy-imports — view-shot is a native module that needs a dev client /
+// EAS build to actually work. Wrap the require so this file doesn't
+// fail to import when running in Expo Go (the share-as-image path
+// simply degrades to text-only there).
+//
+// We previously also pulled in expo-media-library here so a "Save image"
+// button could write the PNG directly into the rider's photo library.
+// That dep was removed because Google Play now blocks AAB submissions
+// that request READ_MEDIA_IMAGES / READ_MEDIA_VIDEO without filling out
+// the Photo and Video Permissions Declaration form, and the same
+// outcome — image lands in Photos / Files / chat app — is reachable via
+// the OS share sheet ("Save Image" is one of its destinations) with
+// zero added permissions. The single Share button below now does both
+// "share to a friend" and "save to your camera roll" via that route.
 let ViewShot = null; let captureRef = null;
 try {
   // eslint-disable-next-line global-require
   const vs = require('react-native-view-shot');
   ViewShot = vs.default || vs.ViewShot;
   captureRef = vs.captureRef;
-} catch {}
-let MediaLibrary = null;
-try {
-  // eslint-disable-next-line global-require
-  MediaLibrary = require('expo-media-library');
 } catch {}
 
 const FF = fontFamily;
@@ -119,10 +125,10 @@ export default function WeeklySummaryScreen({ navigation }) {
   const [goal, setGoal] = useState(null);
   const [coachQuote, setCoachQuote] = useState(null);
   const [coach, setCoach] = useState(null);
-  const [savingImage, setSavingImage] = useState(false);
   // ViewShot ref for the card. captureRef(viewShotRef, {...}) returns
-  // a file URI we can hand to MediaLibrary.saveToLibraryAsync or
-  // Share.share's `url` field.
+  // a file URI we hand to Share.share's `url` field — the system share
+  // sheet then exposes "Save Image", "Save to Files", AirDrop, Messages,
+  // and any installed app that handles PNGs.
   const cardRef = useRef(null);
 
   useEffect(() => {
@@ -229,41 +235,11 @@ export default function WeeklySummaryScreen({ navigation }) {
     }
   };
 
-  // "Save image" — separate button for riders who want the PNG in their
-  // photo library to post manually (Instagram Stories etc. that don't
-  // accept share-sheet attachments). Asks for media-library permission
-  // once; if the rider denies, we fall back to a polite alert pointing
-  // them at Settings.
-  const onSaveImage = async () => {
-    if (savingImage) return;
-    setSavingImage(true);
-    try {
-      if (!MediaLibrary) {
-        Alert.alert('Update needed', 'Saving images needs the latest build of Etapa. Please update from the App Store.');
-        return;
-      }
-      const perm = await MediaLibrary.requestPermissionsAsync();
-      if (!perm?.granted) {
-        Alert.alert(
-          'Allow photo access',
-          'Etapa needs permission to save the card to your photo library. Enable it in Settings → Etapa → Photos.',
-        );
-        return;
-      }
-      const uri = await captureCard();
-      if (!uri) {
-        Alert.alert("Couldn't capture", 'Try again in a moment.');
-        return;
-      }
-      await MediaLibrary.saveToLibraryAsync(uri);
-      analytics.events.weeklySummarySavedImage?.({ km: stats.totalKm });
-      Alert.alert('Saved to Photos', 'Your week is in your camera roll — post it anywhere.');
-    } catch (err) {
-      Alert.alert("Couldn't save", err?.message || 'Try again in a moment.');
-    } finally {
-      setSavingImage(false);
-    }
-  };
+  // The previous "Save image" button (which wrote the PNG straight into
+  // the camera roll via MediaLibrary.saveToLibraryAsync) lived here.
+  // It's gone — see the comment at the top of this file. Riders who
+  // want the image in Photos hit Share → Save Image; same outcome, no
+  // photo-library permission, no Play Console declaration form.
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
@@ -388,21 +364,20 @@ export default function WeeklySummaryScreen({ navigation }) {
           maybe pulls a friend onto the bike.
         </Text>
 
-        <View style={s.btnRow}>
-          <TouchableOpacity style={[s.shareBtn, { flex: 1 }]} onPress={onShare} activeOpacity={0.85}>
-            <MaterialCommunityIcons name="share-variant" size={18} color="#FFFFFF" />
-            <Text style={s.shareBtnText}>Share my week</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[s.saveBtn, savingImage && { opacity: 0.6 }]}
-            onPress={onSaveImage}
-            disabled={savingImage}
-            activeOpacity={0.85}
-          >
-            <MaterialCommunityIcons name="image-outline" size={18} color={colors.text} />
-            <Text style={s.saveBtnText}>{savingImage ? 'Saving…' : 'Save image'}</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Single Share button. Used to be paired with a "Save image"
+            button that wrote straight to the camera roll via expo-
+            media-library; that dep was removed because it pulls Android
+            photo permissions Google Play now blocks without a Photos
+            Permissions Declaration. Riders who want the PNG in their
+            camera roll tap Share → "Save Image" — same outcome, no
+            permission, one less button on the screen. */}
+        <TouchableOpacity style={s.shareBtn} onPress={onShare} activeOpacity={0.85}>
+          <MaterialCommunityIcons name="share-variant" size={18} color="#FFFFFF" />
+          <Text style={s.shareBtnText}>Share my week</Text>
+        </TouchableOpacity>
+        <Text style={s.saveHint}>
+          Want it in your camera roll? Tap Share → Save Image.
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -520,18 +495,21 @@ const s = StyleSheet.create({
   // primary affordance (filled pink) since most riders want it on a
   // group chat directly; Save is the ghost variant for the "I'll
   // post this manually to Stories later" path.
-  btnRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+  // Single Share button. The previous version paired this with a ghost
+  // Save-image button via btnRow + saveBtn styles; both gone because
+  // the Save-image affordance now lives inside the OS share sheet
+  // (Save Image / Save to Files). One less style, one less button.
   shareBtn: {
     flexDirection: 'row', gap: 8,
     backgroundColor: colors.primary, paddingVertical: 14,
     borderRadius: 12, alignItems: 'center', justifyContent: 'center',
   },
   shareBtnText: { fontSize: 15, fontWeight: '600', color: '#FFFFFF', fontFamily: FF.semibold },
-  saveBtn: {
-    flex: 1, flexDirection: 'row', gap: 8,
-    paddingVertical: 14,
-    borderRadius: 12, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 0.5, borderColor: colors.border,
+  // Small caption under the Share button telling the rider the camera-
+  // roll path. Plain English, one line, no link — just primes them
+  // that the system sheet has Save Image as an option.
+  saveHint: {
+    fontSize: 12, color: colors.textMuted, fontFamily: FF.regular,
+    textAlign: 'center', marginTop: 10, lineHeight: 17,
   },
-  saveBtnText: { fontSize: 15, fontWeight: '600', color: colors.text, fontFamily: FF.semibold },
 });
