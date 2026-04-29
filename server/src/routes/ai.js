@@ -620,6 +620,329 @@ Warmup + main total work + cooldown should roughly equal ${activity.durationMins
   }
 });
 
+// ── POST /api/ai/ride-tip ──────────────────────────────────────────────────
+// One short coach-voiced sentence + a couple of pill chips for the
+// "tip from your coach" card on WeekViewScreen. Different from
+// /explain-tips: that endpoint produces the full multi-bullet card on the
+// activity detail screen and caches per-activity. THIS endpoint is the
+// glanceable one-liner the rider sees before they tap into the session,
+// generated fresh each time so it can react to the rider's reported
+// fatigue or future signal (weather, etc — currently absent).
+//
+// Body shape: { activity: { id, title, distanceKm, durationMins, effort,
+//                          type, subType }, fatigue: string|null }
+//
+// Response shape: { tip: string, chips: [{ label, value }] }
+//
+// Model: pinned to claude-haiku-4-5-20251001 (sub-second target). The
+// client used to send a `modelHint` field for forward-compat — we ignore
+// any inbound modelHint and always use the pinned model so cost-cap +
+// model-swap stays a server-side concern.
+//
+// Persona: pulls the active coach off plan_configs.coach_id (same lookup
+// pattern coachCheckin uses) so the tip's voice matches the picker. No
+// jargon in prose — FTP / Z2 / RPE values are surfaced via chips, not
+// woven into the sentence.
+router.post('/ride-tip', async (req, res) => {
+  if (await checkAndBlockIfOverCap(req, res, { feature: 'ride_tip' })) return;
+
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+  const { activity, fatigue } = req.body || {};
+  if (!activity || typeof activity !== 'object' || !activity.id) {
+    return res.status(400).json({ error: 'activity (with id) is required' });
+  }
+
+  // Resolve the active coach. Best-effort: we look up the most recent
+  // plan_configs row for this user, falling back to matteo (the calm/
+  // balanced default) if nothing is set. This mirrors the pattern in
+  // server/src/routes/coachCheckin.js.
+  let coachId = 'matteo';
+  try {
+    const { data: cfg } = await supabase
+      .from('plan_configs')
+      .select('coach_id, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (cfg?.coach_id && COACHES[cfg.coach_id]) coachId = cfg.coach_id;
+  } catch {
+    // Non-fatal — we just use the default persona.
+  }
+  const coach = COACHES[coachId] || COACHES.matteo;
+
+  const apiKey = getAnthropicKey();
+  if (!apiKey) {
+    return res.status(503).json({ error: 'AI not configured.' });
+  }
+
+  // Compose the system + user prompts.
+  // Voice rules are shared with the rest of Etapa: plain English,
+  // beginner-positive, no jargon in the prose. Jargon belongs in chips.
+  const systemPrompt = [
+    `You are ${coach.name}, a ${coach.nationality} cycling coach. Coaching style: ${coach.personality}`,
+    '',
+    'Output a single short tip (1-2 sentences max) for an upcoming session, plus 1-3 short pill chips with quick reference numbers.',
+    '',
+    'Voice rules — STRICT:',
+    '- Plain English. Beginner-friendly.',
+    '- DO NOT mention FTP, TSS, VO2max, Z1/Z2/Z3, W/kg, RPE, or training-zone numbers in the prose. Those go in the chips, not the sentence.',
+    '- No emojis. No exclamation marks. No "let\'s crush it" energy.',
+    '- Talk like a friend texting you before a ride. Warm, specific, useful.',
+    '- One concrete cue: pacing, hydration, posture, breathing, fuelling, mindset. Pick the one that fits this session.',
+    '',
+    'Chip rules:',
+    '- Each chip is { "label": short noun, "value": short qualifier }.',
+    '- Examples: { "label": "HR", "value": "easy" } / { "label": "effort", "value": "4/10" } / { "label": "duration", "value": "45 min" }.',
+    '- Max 3 chips. Don\'t pad. Skip a chip you can\'t answer concretely.',
+    '- Do NOT include a weather chip — there is no weather data on the server.',
+    '',
+    'Output ONLY a JSON object with this shape (no commentary, no markdown fence):',
+    '{ "tip": "1-2 short sentences", "chips": [{ "label": "...", "value": "..." }] }',
+  ].join('\n');
+
+  const userPrompt = [
+    `Today's session:`,
+    `- Title: ${activity.title || 'Ride'}`,
+    `- Type: ${activity.type || 'ride'}${activity.subType ? ' (' + activity.subType + ')' : ''}`,
+    activity.distanceKm ? `- Distance: ${Math.round(activity.distanceKm)} km` : null,
+    activity.durationMins ? `- Duration: ${activity.durationMins} min` : null,
+    activity.effort ? `- Effort: ${activity.effort}` : null,
+    fatigue ? `\nRider reports feeling: ${String(fatigue).slice(0, 120)}` : null,
+    '',
+    'Write the tip + chips now. JSON only.',
+  ].filter(Boolean).join('\n');
+
+  const _claudeModel = 'claude-haiku-4-5-20251001';
+  const _claudeStartedAt = Date.now();
+
+  try {
+    const response = await _fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: _claudeModel,
+        max_tokens: 400,
+        system: cachedSystem(systemPrompt),
+        messages: [{ role: 'user', content: userPrompt }],
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => '');
+      console.error('[ride-tip] Anthropic error:', response.status, errBody);
+      logClaudeUsage({
+        userId, feature: 'ride_tip', model: _claudeModel,
+        data: {}, response, durationMs: Date.now() - _claudeStartedAt,
+        status: 'api_error', metadata: { activityId: activity.id, http: response.status },
+      });
+      return res.status(502).json({ error: 'AI service error' });
+    }
+
+    const data = await response.json();
+    logClaudeUsage({
+      userId, feature: 'ride_tip', model: _claudeModel,
+      data, response, durationMs: Date.now() - _claudeStartedAt,
+      metadata: { activityId: activity.id, coachId },
+    });
+
+    const text = data?.content?.[0]?.text || '';
+    // Strip any code fence the model might still wrap around the JSON
+    // ("```json ... ```") before parsing.
+    const cleaned = text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      // Surface a generic 502 — the client renders a graceful empty state.
+      return res.status(502).json({ error: 'Could not parse AI response' });
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch {
+      return res.status(502).json({ error: 'Invalid JSON from AI' });
+    }
+
+    // Output shaping: clamp to the contract the client expects so a stray
+    // model output (extra fields, missing chips array, weather chip etc.)
+    // never reaches the UI.
+    const tip = typeof parsed.tip === 'string' ? parsed.tip.trim().slice(0, 280) : '';
+    const chips = Array.isArray(parsed.chips)
+      ? parsed.chips
+          .filter(c => c && typeof c === 'object')
+          .map(c => ({
+            label: typeof c.label === 'string' ? c.label.trim().slice(0, 24) : '',
+            value: typeof c.value === 'string' ? c.value.trim().slice(0, 24) : '',
+          }))
+          .filter(c => c.label || c.value)
+          // Drop weather chips defensively even if the model ignored the
+          // system instruction. Cheap belt-and-braces.
+          .filter(c => !/weather|°c|degrees|breeze|wind|rain|sun/i.test(c.label + ' ' + c.value))
+          .slice(0, 3)
+      : [];
+
+    if (!tip) return res.status(502).json({ error: 'Empty tip from AI' });
+    res.json({ tip, chips });
+  } catch (err) {
+    console.error('[ride-tip] error:', err);
+    res.status(500).json({ error: 'Failed to generate tip', detail: err.message });
+  }
+});
+
+// ── POST /api/ai/post-ride-reaction ────────────────────────────────────────
+// Single coach-voiced reaction shown right after the rider saves
+// post-ride feedback via ActivityFeedbackSheet. Same pattern as
+// /ride-tip: snappy Haiku call, persona-aware, JSON-only output, hard
+// length cap. The point is to close the loop on the moment ("you said
+// way too hard — got it, I'll bring Tuesday down a notch") without
+// committing to actual plan changes (those happen in the weekly
+// check-in). The rider can then tap "Chat with <coach>" to dig in
+// further on CoachChatScreen.
+//
+// Body: { activity: { id, title, distanceKm, durationMins, effort,
+//                     type, subType },
+//         feedback: { effort?, rpe?, feel?, note? } }
+//
+// Response: { message: string, coachName: string, coachId: string }
+router.post('/post-ride-reaction', async (req, res) => {
+  if (await checkAndBlockIfOverCap(req, res, { feature: 'post_ride_reaction' })) return;
+
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+  const { activity, feedback } = req.body || {};
+  if (!activity || typeof activity !== 'object' || !activity.id) {
+    return res.status(400).json({ error: 'activity (with id) is required' });
+  }
+  if (!feedback || typeof feedback !== 'object') {
+    return res.status(400).json({ error: 'feedback object is required' });
+  }
+
+  // Resolve the active coach. Same fallback logic as /ride-tip — if the
+  // user hasn't picked one, we use Matteo (calm/balanced default).
+  let coachId = 'matteo';
+  try {
+    const { data: cfg } = await supabase
+      .from('plan_configs')
+      .select('coach_id, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (cfg?.coach_id && COACHES[cfg.coach_id]) coachId = cfg.coach_id;
+  } catch {}
+  const coach = COACHES[coachId] || COACHES.matteo;
+
+  const apiKey = getAnthropicKey();
+  if (!apiKey) return res.status(503).json({ error: 'AI not configured.' });
+
+  // Voice rules mirror /ride-tip — keep tone consistent across both
+  // coach-voiced surfaces. The "hold off on plan changes" line is
+  // important: the weekly check-in is where the coach actually moves
+  // sessions; here we just acknowledge the moment.
+  const systemPrompt = [
+    `You are ${coach.name}, a ${coach.nationality} cycling coach. Coaching style: ${coach.personality}`,
+    '',
+    'A rider just finished a session and saved post-ride feedback. Write ONE short coach-voiced reaction (1-2 sentences max, ~28 words max).',
+    '',
+    'Voice rules — STRICT:',
+    '- Plain English. Beginner-positive. Talk like a friend texting them right after the ride.',
+    '- DO NOT mention FTP, TSS, Z1/Z2, W/kg, RPE numbers, training-zone numbers.',
+    '- No emojis. No exclamation marks. No "let\'s crush it" energy.',
+    '- React to what they specifically said. Quote one short distinctive phrase from their note if they wrote one.',
+    '- DO NOT promise plan changes. The weekly check-in is where you actually move sessions. You can hint that you\'ll factor this in next week, no more.',
+    '- DO NOT diagnose pain, injury, or fatigue. If they mentioned pain, recommend they see a physio.',
+    '',
+    'Output ONLY a JSON object: { "message": "your 1-2 sentence reaction" }',
+  ].join('\n');
+
+  const effortHumanise = {
+    way_too_easy: 'way too easy',
+    easy: 'easy',
+    just_right: 'just right',
+    hard: 'hard',
+    way_too_hard: 'way too hard',
+  };
+  const feelHumanise = { strong: 'strong', ok: 'ok', off: 'off' };
+
+  const userPrompt = [
+    `Session they just did:`,
+    `- Title: ${activity.title || 'Ride'}`,
+    `- Type: ${activity.type || 'ride'}${activity.subType ? ' (' + activity.subType + ')' : ''}`,
+    activity.distanceKm ? `- Distance: ${Math.round(activity.distanceKm)} km` : null,
+    activity.durationMins ? `- Duration: ${activity.durationMins} min` : null,
+    activity.effort ? `- Planned effort: ${activity.effort}` : null,
+    '',
+    `Their feedback:`,
+    feedback.effort && effortHumanise[feedback.effort] ? `- Effort felt: ${effortHumanise[feedback.effort]}` : null,
+    feedback.feel && feelHumanise[feedback.feel] ? `- Feel: ${feelHumanise[feedback.feel]}` : null,
+    feedback.note ? `- Note (their words): "${String(feedback.note).slice(0, 240)}"` : null,
+    '',
+    'Write the reaction now. JSON only.',
+  ].filter(Boolean).join('\n');
+
+  const _claudeModel = 'claude-haiku-4-5-20251001';
+  const _claudeStartedAt = Date.now();
+
+  try {
+    const response = await _fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: _claudeModel,
+        max_tokens: 220,
+        system: cachedSystem(systemPrompt),
+        messages: [{ role: 'user', content: userPrompt }],
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => '');
+      console.error('[post-ride-reaction] Anthropic error:', response.status, errBody);
+      logClaudeUsage({
+        userId, feature: 'post_ride_reaction', model: _claudeModel,
+        data: {}, response, durationMs: Date.now() - _claudeStartedAt,
+        status: 'api_error', metadata: { activityId: activity.id, http: response.status },
+      });
+      return res.status(502).json({ error: 'AI service error' });
+    }
+
+    const data = await response.json();
+    logClaudeUsage({
+      userId, feature: 'post_ride_reaction', model: _claudeModel,
+      data, response, durationMs: Date.now() - _claudeStartedAt,
+      metadata: { activityId: activity.id, coachId },
+    });
+
+    const text = data?.content?.[0]?.text || '';
+    const cleaned = text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.status(502).json({ error: 'Could not parse AI response' });
+
+    let parsed;
+    try { parsed = JSON.parse(jsonMatch[0]); }
+    catch { return res.status(502).json({ error: 'Invalid JSON from AI' }); }
+
+    const message = typeof parsed.message === 'string' ? parsed.message.trim().slice(0, 320) : '';
+    if (!message) return res.status(502).json({ error: 'Empty message from AI' });
+
+    res.json({ message, coachName: coach.name, coachId });
+  } catch (err) {
+    console.error('[post-ride-reaction] error:', err);
+    res.status(500).json({ error: 'Failed to generate reaction', detail: err.message });
+  }
+});
+
 // ── POST /api/ai/explain-tips ──────────────────────────────────────────────
 // AI-generated, per-session ride tips. v1 was a deterministic JS
 // template (`generateRideTips` in ActivityDetailScreen) — fast and free

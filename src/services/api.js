@@ -91,6 +91,11 @@ export const api = {
     respond:      (id, body)         => request('POST', `/api/checkins/${id}/respond`, body),
     dismiss:      (id)               => request('POST', `/api/checkins/${id}/dismiss`),
     physioNotes:  (id, body)         => request('POST', `/api/checkins/${id}/physio-notes`, body),
+    // Push the check-in's scheduled_at to a future date. `isoDate` may
+    // be a YYYY-MM-DD or a full ISO timestamp; the server validates it.
+    // The CheckInScreen header pill calls this directly — no AsyncStorage
+    // fallback any more, the server is the source of truth.
+    reschedule:   (id, isoDate)      => request('POST', `/api/checkins/${id}/reschedule`, { isoDate }),
   },
   // Per-user check-in schedule (day, time, timezone, enabled).
   checkinPrefs: {

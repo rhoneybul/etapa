@@ -29,9 +29,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, fontFamily } from '../theme';
 import { api } from '../services/api';
-import { getPlans, updateActivity } from '../services/storageService';
+import { getPlans, updateActivity, getActivityDate } from '../services/storageService';
 import analytics from '../services/analyticsService';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import RescheduleCheckInSheet from '../components/RescheduleCheckInSheet';
 
 // Per-checkin draft key — answers persist across backgrounding so a rider
 // who started writing comments doesn't lose them on a notification tap or
@@ -46,6 +47,14 @@ export default function CheckInScreen({ navigation, route }) {
 
   const [checkin, setCheckin] = useState(null);
   const [thisWeekActs, setThisWeekActs] = useState([]);
+  // Captured so the per-session date pill below each session title can
+  // resolve a calendar date via getActivityDate(plan.startDate, w, dow).
+  // We don't need the full plan object beyond that, so this stays a
+  // single string instead of duplicating the plan into local state.
+  const [planStartDate, setPlanStartDate] = useState(null);
+  // Reschedule sheet — opened from the new "Reschedule" pill in the
+  // header. See RescheduleCheckInSheet for the UX.
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
 
   // Form state
   const [sessionsDone, setSessionsDone] = useState({}); // { [activityId]: true }
@@ -128,6 +137,11 @@ export default function CheckInScreen({ navigation, route }) {
           const week = ci.weekNum || plan.currentWeek || 1;
           const acts = plan.activities.filter(a => a.week === week && a.type !== 'rest');
           setThisWeekActs(acts);
+          // Capture the plan's start date so the session row can render
+          // the actual calendar date below the title (e.g. "Mon 27 Apr").
+          // We don't store the plan itself — the date string is all we
+          // need.
+          setPlanStartDate(plan.startDate || null);
         }
       } catch {
         setPhase('error');
@@ -151,6 +165,71 @@ export default function CheckInScreen({ navigation, route }) {
     AsyncStorage.setItem(draftKey(id), JSON.stringify(draft)).catch(() => {});
   }, [phase, sessionsDone, sessionComments, modifications, lifeEvents,
       injuryReported, injuryDetailsOpen, injuryDescription, intentToSeePhysio]);
+
+  // Resolve and format the calendar date for a single activity, e.g.
+  // "Mon 27 Apr". Returns null when the plan doesn't have a startDate
+  // yet (the session row will silently omit the pill in that case).
+  // Uses toLocaleDateString rather than Intl.DateTimeFormat directly
+  // because RN's bundled ICU lacks long-form names — `weekday: 'short'`
+  // + `day: 'numeric'` + `month: 'short'` is the safe combination.
+  const formatActivityDate = (activity) => {
+    if (!planStartDate || activity?.dayOfWeek == null || activity?.week == null) return null;
+    try {
+      const d = getActivityDate(planStartDate, activity.week, activity.dayOfWeek);
+      return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    } catch {
+      return null;
+    }
+  };
+
+  // Render the rider's post-ride feedback (effort / feel / note) saved
+  // via ActivityFeedbackSheet when they ticked the session done.
+  // Surfacing it here closes the loop: the rider sees that what they
+  // typed in the moment is being passed through to their coach, so they
+  // don't waste time re-typing the same thing in "anything to flag".
+  // The activityFeedback array on the respond payload uses the same
+  // values; the server-side prompt builder threads it into the LLM
+  // context so the coach can quote-anchor next-week suggestions.
+  const EFFORT_LABELS = {
+    way_too_easy: 'way too easy',
+    easy: 'easy',
+    just_right: 'just right',
+    hard: 'hard',
+    way_too_hard: 'way too hard',
+  };
+  const FEEL_LABELS = { strong: 'felt strong', ok: 'felt ok', off: 'felt off' };
+  const formatFeedbackLine = (feedback) => {
+    if (!feedback) return null;
+    const bits = [];
+    if (feedback.effort && EFFORT_LABELS[feedback.effort]) bits.push(EFFORT_LABELS[feedback.effort]);
+    else if (feedback.rpe != null) bits.push(`RPE ${feedback.rpe}/10`);
+    if (feedback.feel && FEEL_LABELS[feedback.feel]) bits.push(FEEL_LABELS[feedback.feel]);
+    const head = bits.join(' · ');
+    const note = feedback.note ? `'${String(feedback.note).slice(0, 80)}'` : null;
+    return [head, note].filter(Boolean).join(' · ');
+  };
+
+  // Reschedule handler — calls the server endpoint directly. Previously we
+  // kept an AsyncStorage `@etapa_checkin_rescheduled_<id>` fallback in case
+  // the route hadn't shipped yet, but POST /api/checkins/:id/reschedule is
+  // now wired (see server/src/routes/checkins.js) and the server is the
+  // canonical source of truth — `scheduled_at` on coach_checkins moves with
+  // the rider's choice. We still dismiss the sheet + nav back even on
+  // failure so the rider gets one consistent outcome ("you're done with
+  // this for now") rather than a stuck modal.
+  const handleReschedule = async (isoDate) => {
+    setRescheduleOpen(false);
+    const id = checkin?.id || resolvedIdRef.current;
+    if (!id) { navigation.goBack(); return; }
+    try {
+      await api.checkins.reschedule(id, isoDate);
+    } catch {
+      // Best-effort — surface failures via the toast / nav rather than
+      // blocking; the rider can re-fire from the next pending check-in.
+    }
+    analytics.events.weeklyCheckinRescheduled?.({ checkinId: id, to: isoDate });
+    navigation.goBack();
+  };
 
   const toggleSessionDone = (id) => {
     setSessionsDone(prev => ({ ...prev, [id]: !prev[id] }));
@@ -188,6 +267,24 @@ export default function CheckInScreen({ navigation, route }) {
 
     setPhase('submitting');
     const doneIds = Object.keys(sessionsDone).filter(k => sessionsDone[k]);
+    // Pull post-ride feedback the rider already saved via
+    // ActivityFeedbackSheet for any session they're confirming. Sent
+    // alongside the free-text modifications so the coach prompt builder
+    // has structured "how did each ride feel" data, not just narrative.
+    // We only attach feedback for sessions the rider ticked done — if
+    // they're skipping a session entirely, sending its feedback would
+    // be misleading.
+    const activityFeedback = thisWeekActs
+      .filter(a => sessionsDone[a.id] && a.feedback)
+      .map(a => ({
+        activityId: a.id,
+        title: a.title || null,
+        effort: a.feedback.effort || null,
+        rpe: a.feedback.rpe ?? null,
+        feel: a.feedback.feel || null,
+        note: a.feedback.note || '',
+        recordedAt: a.feedback.recordedAt || null,
+      }));
     try {
       const res = await api.checkins.respond(checkin.id, {
         sessionsDone: doneIds,
@@ -198,6 +295,10 @@ export default function CheckInScreen({ navigation, route }) {
         sessionComments: {},
         modifications: modifications.trim(),
         lifeEvents: '',
+        // Structured per-session post-ride feedback. New field — the
+        // server's /respond handler accepts it under the same
+        // `responses` jsonb so the coach LLM can reference it.
+        activityFeedback,
         injury: {
           reported: injuryReported,
           description: injuryReported ? injuryDescription.trim() : '',
@@ -345,13 +446,38 @@ export default function CheckInScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.container}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        // 80pt offset on iOS so the focused TextInput lifts clear of
+        // the soft keyboard. The default (0) leaves the input flush
+        // against the keyboard's top edge — fine on a 6.7" Pro Max
+        // but cramped on smaller phones. Android handles this via
+        // adjustResize so we leave the offset at 0 there.
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+      >
         <View style={s.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Text style={s.backArrow}>{'\u2190'}</Text>
           </TouchableOpacity>
           <Text style={s.headerTitle}>Weekly check-in</Text>
-          <View style={{ width: 24 }} />
+          {/* Reschedule pill replaces the empty 24px spacer that used
+              to sit on the right. Only shown in the form phase — once
+              the rider has submitted there's nothing to reschedule
+              (the suggestions are already in hand). */}
+          {phase === 'form' || phase === 'submitting' ? (
+            <TouchableOpacity
+              style={s.reschedulePill}
+              onPress={() => setRescheduleOpen(true)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons name="calendar-clock" size={13} color={colors.textMid} />
+              <Text style={s.reschedulePillText}>Reschedule</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 24 }} />
+          )}
         </View>
 
         {phase === 'form' || phase === 'submitting' ? (
@@ -380,9 +506,35 @@ export default function CheckInScreen({ navigation, route }) {
                     </TouchableOpacity>
                     <View style={{ flex: 1 }}>
                       <Text style={s.sessionTitle}>{a.title}</Text>
+                      {/* Calendar date pill — small pink line right under
+                          the title. Helps the rider place the session in
+                          the week ("Mon 27 Apr — that was the hill ride")
+                          when reading down a list of un-named generic
+                          titles. Silently omitted when we can't resolve
+                          a date (e.g. plan startDate missing). */}
+                      {(() => {
+                        const dateLabel = formatActivityDate(a);
+                        return dateLabel ? (
+                          <Text style={s.sessionDate}>{dateLabel}</Text>
+                        ) : null;
+                      })()}
                       <Text style={s.sessionMeta}>
                         {[a.distanceKm ? `${Math.round(a.distanceKm)} km` : null, a.durationMins ? `${a.durationMins} min` : null, a.effort].filter(Boolean).join(' · ')}
                       </Text>
+                      {/* Echo back the rider's post-ride feedback if they
+                          left any via ActivityFeedbackSheet. Pink-tinted
+                          pill makes it obvious this is something they
+                          said (not a system field) and that it's already
+                          on its way to the coach — no need to re-type. */}
+                      {(() => {
+                        const fb = formatFeedbackLine(a.feedback);
+                        return fb ? (
+                          <View style={s.feedbackPill}>
+                            <Text style={s.feedbackPillEyebrow}>YOU SAID</Text>
+                            <Text style={s.feedbackPillText}>{fb}</Text>
+                          </View>
+                        ) : null;
+                      })()}
                       {/* Per-session comment field used to live here.
                           Riders rarely filled them in and the form
                           read long; the single "Anything to flag?"
@@ -640,6 +792,15 @@ export default function CheckInScreen({ navigation, route }) {
           </ScrollView>
         ) : null}
 
+        {/* Reschedule sheet — surfaced from the header pill. Renders as
+            a Modal internally so it sits above the KeyboardAvoidingView
+            and isn't constrained by it. */}
+        <RescheduleCheckInSheet
+          visible={rescheduleOpen}
+          onCancel={() => setRescheduleOpen(false)}
+          onConfirm={handleReschedule}
+        />
+
         {/* Undo snackbar — fades out after 6s. Sits above the bottom
             edge in screen-space so it's visible whatever the rider is
             reading on the review list. */}
@@ -683,7 +844,37 @@ const s = StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: colors.border,
   },
   sessionTitle: { fontSize: 14, fontWeight: '500', color: colors.text, fontFamily: FF.medium },
+  // Pink date pill below the title — small, low-contrast on its own
+  // (no chip background) but pink enough that it reads as the calendar
+  // anchor for that row.
+  sessionDate: { fontSize: 11, color: colors.primary, fontFamily: FF.medium, marginTop: 2 },
   sessionMeta: { fontSize: 11, color: colors.textMid, fontFamily: FF.regular, marginTop: 3 },
+  // Echoed post-ride feedback. Pink-tinted to flag it as the rider's
+  // own words coming back to them, with a small "YOU SAID" eyebrow so
+  // it's obvious this is being threaded through to the coach.
+  feedbackPill: {
+    marginTop: 6, alignSelf: 'flex-start',
+    backgroundColor: colors.primary + '14',
+    borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5,
+    borderLeftWidth: 2, borderLeftColor: colors.primary,
+  },
+  feedbackPillEyebrow: {
+    fontSize: 8, fontWeight: '700', color: colors.primary, fontFamily: FF.semibold,
+    letterSpacing: 0.7, marginBottom: 1,
+  },
+  feedbackPillText: {
+    fontSize: 11, color: colors.text, fontFamily: FF.regular, lineHeight: 15,
+  },
+
+  // Header right — Reschedule pill. Replaces the empty 24px spacer.
+  // Borderless ghost so it doesn't visually compete with the title;
+  // tap target is generous via hitSlop on the touchable itself.
+  reschedulePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
+    borderWidth: 0.5, borderColor: colors.border,
+  },
+  reschedulePillText: { fontSize: 11, color: colors.textMid, fontFamily: FF.medium, fontWeight: '500' },
   commentInput: {
     marginTop: 8, backgroundColor: colors.surfaceLight,
     borderWidth: 0.5, borderColor: colors.border, borderRadius: 8,

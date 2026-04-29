@@ -32,6 +32,7 @@ import { t } from '../services/strings';
 import ComingSoon from '../components/ComingSoon';
 import StravaLogo from '../components/StravaLogo';
 import CoachChatCard from '../components/CoachChatCard';
+import ActivityFeedbackSheet from '../components/ActivityFeedbackSheet';
 import LoadingSplash from '../components/LoadingSplash';
 import { useUnits } from '../utils/units';
 import { triggerMaintenanceMode } from '../../App';
@@ -143,6 +144,22 @@ export default function HomeScreen({ navigation, route }) {
   // The completion handler itself is defined further down (after
   // `load` is declared) so the useCallback deps line up.
   const [optimisticDone, setOptimisticDone] = useState(() => new Set());
+
+  // Post-ride feedback sheet — shown after the rider transitions an
+  // activity from incomplete → complete via the home cards/list. Same
+  // sheet + same payload as WeekViewScreen; here it just hooks into
+  // completeOptimistic. Skip / backdrop-tap leaves the completion in
+  // place and records nothing. Keep parent-owned so dismiss + reopen is
+  // idempotent.
+  const [feedbackSheetOpen, setFeedbackSheetOpen] = useState(false);
+  const [feedbackActivity, setFeedbackActivity] = useState(null);
+  const [feedbackToast, setFeedbackToast] = useState(null);
+  const feedbackToastTimerRef = useRef(null);
+  const showFeedbackToast = useCallback((message) => {
+    if (feedbackToastTimerRef.current) clearTimeout(feedbackToastTimerRef.current);
+    setFeedbackToast(message);
+    feedbackToastTimerRef.current = setTimeout(() => setFeedbackToast(null), 4000);
+  }, []);
   // ── Week module display mode ──────────────────────────────────────────
   // Single source of truth for the week section. Was previously two
   // overlapping views (horizontal cards rail + a 7-day calendar strip
@@ -626,8 +643,21 @@ export default function HomeScreen({ navigation, route }) {
   // visible "done" state before the server round-trip lands so the
   // UI doesn't feel laggy on slow networks. Used by both the home
   // card circle and the week-list circle below.
+  //
+  // Now also opens the post-ride feedback sheet on transition
+  // false → true (un-marking is a no-op for the prompt — we don't
+  // want to nag a rider who's correcting a mis-tap).
   const completeOptimistic = useCallback(async (activityId) => {
     if (!activityId) return;
+    // Capture the PRE-toggle state. We need to know whether we're
+    // marking done or un-marking — markActivityComplete is a toggle.
+    // Cheap to walk the loaded plans here; the find returns the first
+    // matching activity, which is fine since ids are uid()-unique.
+    const prevAct = (plans || [])
+      .flatMap((p) => p.activities || [])
+      .find((a) => a && a.id === activityId) || null;
+    const wasCompleted = !!prevAct?.completed;
+
     setOptimisticDone(prev => {
       const next = new Set(prev);
       next.add(activityId);
@@ -648,7 +678,67 @@ export default function HomeScreen({ navigation, route }) {
         return next;
       });
     }
-  }, [load]);
+
+    // Open the feedback sheet only on transition false → true.
+    // Un-marking ("oh wait, I didn't finish") shouldn't prompt — the
+    // rider is correcting a tap, not finishing a ride.
+    if (prevAct && !wasCompleted) {
+      setFeedbackActivity(prevAct);
+      setFeedbackSheetOpen(true);
+    }
+  }, [load, plans]);
+
+  // Save / skip handlers for the feedback sheet — same shape as the
+  // ones in WeekViewScreen. The save path persists feedback via
+  // updateActivity (storageService syncs to the server) and pops a
+  // 4-second toast. Skip / backdrop-tap is a no-op for the data; just
+  // closes the sheet.
+  const handleFeedbackSave = useCallback(async ({ effort, rpe, feel, note }) => {
+    // Don't dismiss the sheet here — it now drives a 'loading' →
+    // 'reaction' phase internally so the rider sees a single coach
+    // response (Haiku call). The sheet calls onClose itself when the
+    // rider taps Done after the reaction lands, or silently if the
+    // reaction call fails.
+    const act = feedbackActivity;
+    if (!act?.id) return;
+    try {
+      await updateActivity(act.id, {
+        feedback: {
+          effort: effort || null,
+          rpe: rpe || null,
+          feel: feel || null,
+          note: note || null,
+          recordedAt: new Date().toISOString(),
+        },
+      });
+      analytics.track?.('activity_feedback_saved', {
+        activityId: act.id, effort, rpe, feel, hasNote: !!note,
+      });
+      showFeedbackToast('Saved \u2014 your coach will see this on Sunday.');
+      await load({ force: true });
+    } catch {
+      // Best-effort — completion already landed, so no error alert.
+    }
+  }, [feedbackActivity, load, showFeedbackToast]);
+
+  const handleFeedbackSkip = useCallback(() => {
+    setFeedbackSheetOpen(false);
+    setFeedbackActivity(null);
+  }, []);
+
+  // "Chat with <coach>" handoff from the post-save reaction phase.
+  // Mirrors the WeekViewScreen handler — navigate to CoachChatScreen
+  // scoped to the same activity so the conversation continues with
+  // context loaded.
+  const handleChatWithCoach = useCallback(({ activity: ctxActivity }) => {
+    setFeedbackSheetOpen(false);
+    setFeedbackActivity(null);
+    const activePlan = plans.find(p => p.status !== 'archived') || plans[0] || null;
+    navigation.navigate('CoachChat', {
+      planId: activePlan?.id || null,
+      activityId: ctxActivity?.id || null,
+    });
+  }, [navigation, plans]);
 
   useEffect(() => { load({ force: true }); }, [load]);
   useEffect(() => {
@@ -3060,6 +3150,32 @@ export default function HomeScreen({ navigation, route }) {
           } catch {}
         }}
       />
+
+      {/* Post-ride feedback bottom sheet. Hooked into completeOptimistic
+          (see above) so it opens on the false → true transition for
+          home-card / week-list checkmark taps. WeekViewScreen owns
+          its own copy — both screens share the same sheet component
+          so saved feedback round-trips through storageService and the
+          weekly check-in picks it up either way. */}
+      <ActivityFeedbackSheet
+        visible={feedbackSheetOpen}
+        activity={feedbackActivity}
+        onSave={handleFeedbackSave}
+        onSkip={handleFeedbackSkip}
+        onClose={handleFeedbackSkip}
+        onChatWithCoach={handleChatWithCoach}
+      />
+
+      {/* "Saved — your coach will see this on Sunday." toast.
+          4-second window. Pinned to the bottom over the action bar. */}
+      {feedbackToast && (
+        <View style={s.feedbackToast} pointerEvents="box-none">
+          <View style={s.feedbackToastInner} accessibilityRole="alert">
+            <MaterialCommunityIcons name="check-circle" size={16} color={colors.primary} />
+            <Text style={s.feedbackToastText}>{feedbackToast}</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }

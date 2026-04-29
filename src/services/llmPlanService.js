@@ -661,6 +661,82 @@ export async function explainTips(activityId, { force } = {}) {
 }
 
 /**
+ * Fetch a "tip from your coach" card for a specific upcoming activity.
+ *
+ * Designed to feel snappy — the WeekView ride-tip card waits on this with
+ * three shimmer rows so latency is visible but not blocking. We POST a
+ * small JSON body to /api/ai/ride-tip on the server which routes to Claude
+ * Haiku 4.5 (the server pins the model — no modelHint is passed). Failure
+ * returns null so the caller can render a graceful empty state.
+ *
+ * `fatigue` is currently always null (no UI surfaces it yet). Kept in the
+ * signature so a future "feeling tired today?" affordance can pipe through
+ * without re-threading every call site. Pass null for now.
+ *
+ * Note: a previous version threaded a `weather` string through here. There's
+ * no real weather hook yet, so the parameter was dropped rather than fed
+ * with placeholder copy that would have lied to the rider.
+ *
+ * Returns:
+ *   { tip: string, chips: [{ label, value }] } | null
+ */
+export async function fetchRideTip(activity, fatigue) {
+  if (!activity) return null;
+  const serverUrl = getServerUrl();
+  if (!serverUrl) return null;
+  try {
+    const authHeaders = await getAuthHeaders();
+    const response = await fetch(`${serverUrl}/api/ai/ride-tip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      // No modelHint — the server pins the model (claude-haiku-4-5) so
+      // cost cap / model swaps stay a server-side concern.
+      body: JSON.stringify({
+        activity,
+        fatigue: fatigue || null,
+      }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data && typeof data === 'object') return data;
+    return null;
+  } catch (err) {
+    console.warn('fetchRideTip failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Single coach-voiced reaction shown right after the rider saves
+ * post-ride feedback (effort/feel/note). Backed by Haiku for sub-second
+ * latency. Persona-aware on the server. Returns null on any failure so
+ * the caller can render a graceful "Saved" without the reaction bubble.
+ *
+ * Returns:
+ *   { message: string, coachName: string, coachId: string } | null
+ */
+export async function fetchPostRideReaction(activity, feedback) {
+  if (!activity || !feedback) return null;
+  const serverUrl = getServerUrl();
+  if (!serverUrl) return null;
+  try {
+    const authHeaders = await getAuthHeaders();
+    const response = await fetch(`${serverUrl}/api/ai/post-ride-reaction`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ activity, feedback }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data && typeof data === 'object' && typeof data.message === 'string') return data;
+    return null;
+  } catch (err) {
+    console.warn('fetchPostRideReaction failed:', err);
+    return null;
+  }
+}
+
+/**
  * Adjust a week's existing activities when an organised ride is added.
  * Calls the server AI to decide what to reduce/shift; falls back to
  * a simple local heuristic (reduce the easiest ride's volume by ~20%).

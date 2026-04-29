@@ -80,7 +80,8 @@
       ],
       "./plugins/withSwiftConcurrency",
       "./plugins/withInAppPurchase",
-      "@sentry/react-native"
+      "@sentry/react-native",
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "serverUrl": "https://etapa-production.up.railway.app",

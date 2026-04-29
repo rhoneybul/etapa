@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import { getPlan, getPlans, getWeekActivities, getWeekProgress, markActivityComplete, getWeekMonthLabel, getGoals, getPlanConfig, updateActivity, savePlan } from '../services/storageService';
-import { editActivityWithAI, adjustWeekForOrganisedRide } from '../services/llmPlanService';
+import { editActivityWithAI, adjustWeekForOrganisedRide, fetchRideTip } from '../services/llmPlanService';
 import { uid } from '../services/storageService';
 import { getSessionColor, getSessionLabel, getActivityIcon, getCrossTrainingForDay, CROSS_TRAINING_COLOR } from '../utils/sessionLabels';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -18,6 +18,7 @@ import { syncStravaActivities, getStravaActivitiesForWeek, getStravaActivitiesFo
 import { isStravaConnected } from '../services/stravaService';
 import StravaLogo from '../components/StravaLogo';
 import CoachChatCard from '../components/CoachChatCard';
+import ActivityFeedbackSheet from '../components/ActivityFeedbackSheet';
 import { getCoach } from '../data/coaches';
 import { useUnits } from '../utils/units';
 import analytics from '../services/analyticsService';
@@ -50,6 +51,51 @@ export default function WeekViewScreen({ navigation, route }) {
 
   // Background adjustment flag — must live here (before any early return) to satisfy Rules of Hooks
   const [adjustingInBackground, setAdjustingInBackground] = useState(false);
+
+  // ── Today's tip card ───────────────────────────────────────────────────
+  // Quick AI-generated note about today's session — weather, target HR
+  // zone, RPE — fetched via Claude Haiku for snappy latency. The card
+  // shimmers three placeholder rows while loading so the UI doesn't
+  // feel empty in the ~1s wait. Cached per activityId for the screen's
+  // lifetime so toggling weeks doesn't re-fire the call.
+  const [tip, setTip] = useState(null);          // { tip, chips }
+  const [tipLoading, setTipLoading] = useState(false);
+  const [tipForActivityId, setTipForActivityId] = useState(null);
+  const tipShimmer = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    // Only animate while loading — saves a tiny bit of CPU when the
+    // tip is settled. The 0.4 → 1.0 range matches the standard skeleton
+    // pattern used elsewhere (CoachChatCard refreshing state).
+    if (!tipLoading) return undefined;
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(tipShimmer, { toValue: 1.0, duration: 600, useNativeDriver: true }),
+      Animated.timing(tipShimmer, { toValue: 0.4, duration: 600, useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [tipLoading, tipShimmer]);
+
+  // ── Post-ride feedback sheet ───────────────────────────────────────────
+  // Opens whenever the rider flips an activity from completed:false →
+  // true. Captures structured signal that flows into the next weekly
+  // check-in (see ActivityFeedbackSheet + storageService updateActivity
+  // + server/src/routes/checkins.js suggestion builder for the round
+  // trip). Skip / backdrop-tap leaves the completion in place but no
+  // feedback recorded.
+  const [feedbackSheetOpen, setFeedbackSheetOpen] = useState(false);
+  const [feedbackActivity, setFeedbackActivity] = useState(null);
+
+  // Toast — non-modal "Saved — your coach will see this on Sunday."
+  // confirmation after a feedback save. Same dismiss-on-timeout pattern
+  // as the undo toast in CheckInScreen so the visual language is
+  // consistent across the app. 4-second window per spec.
+  const [feedbackToast, setFeedbackToast] = useState(null); // string | null
+  const feedbackToastTimerRef = useRef(null);
+  const showFeedbackToast = (message) => {
+    if (feedbackToastTimerRef.current) clearTimeout(feedbackToastTimerRef.current);
+    setFeedbackToast(message);
+    feedbackToastTimerRef.current = setTimeout(() => setFeedbackToast(null), 4000);
+  };
 
   // ── Week completion celebration ────────────────────────────────────────
   // Shown once when the user marks the LAST incomplete session of a week as
@@ -119,6 +165,53 @@ export default function WeekViewScreen({ navigation, route }) {
     if (plan) analytics.events.weekViewed(week, plan.id);
   }, [week, plan?.id]);
 
+  // Wire up the tip fetcher. It runs whenever the activity we're
+  // anchoring on changes — which mostly means "the user navigated to a
+  // different week" or "today rolled over". A guard against re-fetching
+  // for the same activityId keeps multiple re-renders from triggering
+  // back-to-back calls. Also re-runs when `tipForActivityId` is reset
+  // to null (the refresh-tap path).
+  useEffect(() => {
+    if (!plan) return;
+    // Recompute target activity inside the effect so the closure isn't
+    // stale across re-renders.
+    if (!plan.startDate) return;
+    const start = parseDateLocal(plan.startDate);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const daysSince = Math.round((today - start) / (1000 * 60 * 60 * 24));
+    const todayWeek = Math.floor(daysSince / 7) + 1;
+    if (todayWeek !== week) { setTip(null); return; }
+    const todayDow = ((daysSince % 7) + 7) % 7;
+    const weekActs = getWeekActivities(plan, week);
+    let target = null;
+    for (let dow = todayDow; dow < 7; dow++) {
+      const a = weekActs.find(x => x.dayOfWeek === dow && x.type !== 'rest' && !x.completed);
+      if (a) { target = a; break; }
+    }
+    if (!target) { setTip(null); return; }
+    if (tipForActivityId === target.id && tip) return; // already fetched
+    let cancelled = false;
+    setTipLoading(true);
+    // We used to thread a hardcoded "18°C, light breeze" weather string
+    // here as a placeholder until the real weather hook landed. That
+    // shipped a tip card that was effectively a lie about the
+    // conditions, so the placeholder was removed; the prompt builder
+    // simply skips weather context server-side. Fatigue is also null
+    // for now — no UI surfaces it yet.
+    fetchRideTip(target, null).then((res) => {
+      if (cancelled) return;
+      setTip(res || null);
+      setTipForActivityId(target.id);
+    }).catch(() => {
+      if (cancelled) return;
+      setTip(null);
+    }).finally(() => {
+      if (!cancelled) setTipLoading(false);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan?.id, week, tipForActivityId]);
+
   // Auto-open organised ride modal if navigated with openOrgRide param
   useEffect(() => {
     if (openOrgRideDay !== null && plan) {
@@ -136,6 +229,29 @@ export default function WeekViewScreen({ navigation, route }) {
   const isDeload = week % 4 === 0;
   const monthLabel = getWeekMonthLabel(plan.startDate, week);
 
+  // Find the activity for "today" (or the next upcoming session this week
+  // if today is a rest day). Used to anchor the tip card so the rider
+  // sees advice for what they're about to do, not a stale Monday tip
+  // on Thursday. Returns null if nothing's scheduled in the rest of the
+  // week.
+  const findTodaysActivity = () => {
+    if (!plan?.startDate) return null;
+    const start = parseDateLocal(plan.startDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const daysSince = Math.round((today - start) / (1000 * 60 * 60 * 24));
+    const todayWeek = Math.floor(daysSince / 7) + 1;
+    const todayDow = ((daysSince % 7) + 7) % 7;
+    if (todayWeek !== week) return null; // tip card only for the active week
+    // Prefer today's session; otherwise scan forward for the next one.
+    for (let dow = todayDow; dow < 7; dow++) {
+      const acts = activities.filter(a => a.dayOfWeek === dow && a.type !== 'rest' && !a.completed);
+      if (acts.length > 0) return acts[0];
+    }
+    return null;
+  };
+  const todaysActivity = findTodaysActivity();
+
   const byDay = {};
   activities.forEach(a => { const d = a.dayOfWeek ?? 0; if (!byDay[d]) byDay[d] = []; byDay[d].push(a); });
 
@@ -150,6 +266,16 @@ export default function WeekViewScreen({ navigation, route }) {
     }
     await markActivityComplete(id);
     await loadPlan();
+
+    // ── Open the feedback sheet on transition false → true ──────────
+    // We check `act?.completed` which is the PRE-toggle state captured
+    // above. If the rider was un-marking a session we don't prompt —
+    // they're not finishing, they're correcting a tap. Existing
+    // feedback (if any) stays on the activity unchanged.
+    if (act && !act.completed) {
+      setFeedbackActivity(act);
+      setFeedbackSheetOpen(true);
+    }
 
     // ── Trigger week-complete celebration ─────────────────────────────
     // We check *after* loadPlan has refreshed the plan so the completion
@@ -265,6 +391,74 @@ export default function WeekViewScreen({ navigation, route }) {
     }
   };
 
+  // ── Feedback sheet handlers ─────────────────────────────────────────────
+  // Save: persist the structured payload onto the activity (server-synced
+  // by updateActivity in storageService) and pop the toast. Skip / Close
+  // (backdrop tap) leave the completion intact but record no feedback.
+  // We stamp recordedAt server-side conceptually — the client writes it
+  // because storageService.updateActivity is the only path to the row,
+  // and we want the timestamp captured at the moment of save, not
+  // whenever the row next syncs.
+  const handleFeedbackSave = async ({ effort, rpe, feel, note }) => {
+    // Don't dismiss the sheet here — it now drives a 'loading' →
+    // 'reaction' phase internally so the rider sees a single coach
+    // response (Haiku call via fetchPostRideReaction). The sheet calls
+    // onClose itself when the rider taps Done or the backdrop after
+    // the reaction lands. If the reaction call fails the sheet closes
+    // silently and the toast we fire below remains the visible
+    // confirmation.
+    const act = feedbackActivity;
+    if (!act?.id) return;
+    try {
+      await updateActivity(act.id, {
+        feedback: {
+          effort: effort || null,
+          rpe: rpe || null,
+          feel: feel || null,
+          note: note || null,
+          recordedAt: new Date().toISOString(),
+        },
+      });
+      analytics.track?.('activity_feedback_saved', {
+        activityId: act.id, effort, rpe, feel, hasNote: !!note,
+      });
+      showFeedbackToast('Saved \u2014 your coach will see this on Sunday.');
+      await loadPlan();
+    } catch {
+      // Best-effort — the completion already landed, so the worst case
+      // is the rider's note didn't sync. We don't surface an error
+      // alert because that would imply something broke when really
+      // they're already done.
+    }
+    // Note: feedbackActivity is cleared in handleFeedbackSkip when the
+    // sheet finally closes (Done tap, backdrop, or silent close on
+    // Haiku failure).
+  };
+
+  const handleFeedbackSkip = () => {
+    // Backdrop tap and Skip both land here — the completion stands, no
+    // feedback row added. Identical UX from the rider's POV.
+    setFeedbackSheetOpen(false);
+    setFeedbackActivity(null);
+  };
+
+  // "Chat with <coach>" handoff from the post-save reaction phase.
+  // Navigates to CoachChatScreen scoped to the same activity so the
+  // rider's first message lands with the right context already loaded
+  // (CoachChatScreen reads route.params.activityId for scoping).
+  // The reaction itself is one-shot and lives only in the sheet — we
+  // don't seed it into chat history, the rider just picks up where
+  // they left off in the conversation.
+  const handleChatWithCoach = ({ activity: ctxActivity }) => {
+    setFeedbackSheetOpen(false);
+    setFeedbackActivity(null);
+    navigation.navigate('CoachChat', {
+      planId: plan?.id,
+      weekNum: week,
+      activityId: ctxActivity?.id || null,
+    });
+  };
+
   // Inline activity edit via AI
   const handleActivityEdit = async () => {
     if (!actEditText.trim() || !editingActivity || actEditing) return;
@@ -352,6 +546,69 @@ export default function WeekViewScreen({ navigation, route }) {
           contentContainerStyle={{ paddingBottom: 32 + BOTTOM_INSET }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#666" />}
         >
+          {/* Tip-from-coach card — anchored on today's (or the next
+              upcoming) session. Renders three shimmer rows during the
+              fetch, then the prose tip + chips. Tap the refresh icon
+              top-right to clear the cache and re-fetch. The card is
+              hidden if there's nothing to anchor on (rest day at the
+              end of the week, or future week navigation). */}
+          {todaysActivity && (tipLoading || tip) && (() => {
+            const coachName = getCoach(planConfig?.coachId)?.name || 'Coach';
+            return (
+              <View style={s.tipCard}>
+                <View style={s.tipHeader}>
+                  <Text style={s.tipEyebrow}>{`TIP FROM ${coachName.toUpperCase()}`}</Text>
+                  <TouchableOpacity
+                    onPress={() => { setTip(null); setTipForActivityId(null); }}
+                    hitSlop={HIT}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialCommunityIcons name="refresh" size={14} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+                {tipLoading ? (
+                  // Three shimmer rows — width staggers so it doesn't
+                  // read as a perfect-rectangle skeleton.
+                  <View>
+                    {[0.95, 0.85, 0.62].map((w, i) => (
+                      <Animated.View
+                        key={i}
+                        style={[s.tipShimmerRow, { width: `${w * 100}%`, opacity: tipShimmer }]}
+                      />
+                    ))}
+                  </View>
+                ) : (
+                  <>
+                    <Text style={s.tipText}>{tip?.tip || ''}</Text>
+                    {Array.isArray(tip?.chips) && tip.chips.length > 0 && (
+                      <View style={s.tipChipsRow}>
+                        {tip.chips.map((c, i) => {
+                          // Server returns { label, value } per chip; the
+                          // label is the noun ("HR", "effort"), the value
+                          // is the qualifier ("easy", "4/10"). Prefer the
+                          // "label · value" rendering when both are set,
+                          // fall back gracefully if a chip omits one or
+                          // the other (older server response shapes).
+                          const label = c?.label || '';
+                          const value = c?.value || '';
+                          const display = label && value
+                            ? `${label} \u00B7 ${value}`
+                            : (label || value);
+                          if (!display) return null;
+                          return (
+                            <View key={i} style={s.tipChip}>
+                              <Text style={s.tipChipText}>{display}</Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </>
+                )}
+              </View>
+            );
+          })()}
+
           {DAY_LABELS_FULL.map((dayLabel, dayIdx) => {
             const dayActivities = byDay[dayIdx] || [];
             const ctItems = getCrossTrainingForDay(crossTraining, dayIdx);
@@ -421,6 +678,27 @@ export default function WeekViewScreen({ navigation, route }) {
                           </View>
                           {!activity.completed && (
                             <Text style={s.editHint}>Hold to edit</Text>
+                          )}
+                          {/* "feedback saved" pill — only when the rider
+                              has already left feedback for this session.
+                              Tapping the pill re-opens the sheet so they
+                              can edit (e.g. they realised the climb was
+                              "hard" not "just right"). Stops the rider
+                              wondering "did my note save?" and lets them
+                              correct it without un-marking the session. */}
+                          {activity.completed && activity.feedback && (
+                            <TouchableOpacity
+                              style={s.feedbackSavedPill}
+                              onPress={() => {
+                                setFeedbackActivity(activity);
+                                setFeedbackSheetOpen(true);
+                              }}
+                              activeOpacity={0.7}
+                              accessibilityLabel="Feedback saved — tap to edit"
+                            >
+                              <MaterialCommunityIcons name="check" size={10} color={colors.primary} />
+                              <Text style={s.feedbackSavedPillText}>FEEDBACK SAVED</Text>
+                            </TouchableOpacity>
                           )}
                         </View>
                       </TouchableOpacity>
@@ -637,6 +915,31 @@ export default function WeekViewScreen({ navigation, route }) {
           </KeyboardAvoidingView>
         </Modal>
 
+        {/* Post-ride feedback bottom sheet — opens after the rider
+            transitions an activity from incomplete → complete. See
+            handleComplete + handleFeedbackSave above for the pipeline.
+            Skipping leaves completion intact, no feedback. */}
+        <ActivityFeedbackSheet
+          visible={feedbackSheetOpen}
+          activity={feedbackActivity}
+          onSave={handleFeedbackSave}
+          onSkip={handleFeedbackSkip}
+          onClose={handleFeedbackSkip}
+          onChatWithCoach={handleChatWithCoach}
+        />
+
+        {/* "Saved — your coach will see this on Sunday." toast.
+            4-second window, copies the undo-toast pattern from
+            CheckInScreen so the visual language stays consistent. */}
+        {feedbackToast && (
+          <View style={s.feedbackToast} pointerEvents="box-none">
+            <View style={s.feedbackToastInner} accessibilityRole="alert">
+              <MaterialCommunityIcons name="check-circle" size={16} color={colors.primary} />
+              <Text style={s.feedbackToastText}>{feedbackToast}</Text>
+            </View>
+          </View>
+        )}
+
         {/* ── Week completion celebration ──────────────────────────────
             Full-screen overlay shown once when user completes the final
             session of a week. Tap anywhere to dismiss. Animation is a
@@ -780,6 +1083,71 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(232,69,139,0.2)',
   },
   adjustBannerText: { fontSize: 13, fontWeight: '500', fontFamily: FF.medium, color: colors.primary },
+
+  // ── Tip-from-coach card (Haiku-fed quick advice) ─────────────────
+  // Pink-tinted card with a small refresh affordance top-right. Sits
+  // at the top of the week list so the rider sees it before drilling
+  // into a specific day.
+  tipCard: {
+    marginHorizontal: 16, marginTop: 8, marginBottom: 14,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: '#E8458B14', // 8% alpha pink tint
+    borderWidth: 0.5, borderColor: '#E8458B50',
+  },
+  tipHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 8,
+  },
+  tipEyebrow: {
+    fontSize: 10, fontWeight: '700', color: '#E8458B',
+    fontFamily: FF.semibold, letterSpacing: 0.8,
+  },
+  tipText: {
+    fontSize: 13, color: colors.text, fontFamily: FF.regular,
+    lineHeight: 19,
+  },
+  tipShimmerRow: {
+    height: 12, borderRadius: 6, marginBottom: 8,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  tipChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  tipChip: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 0.5, borderColor: colors.border,
+  },
+  tipChipText: { fontSize: 11, color: colors.textMid, fontFamily: FF.medium },
+
+  // ── Activity-card "feedback saved" pill + post-save toast ──────────
+  // Tiny pink chip rendered inline with the activity meta when the
+  // rider has already left feedback for that session. Visible cue so
+  // they know not to re-tap the checkmark expecting a sheet (and so
+  // we can avoid re-prompting if they untoggle and re-toggle).
+  feedbackSavedPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+    backgroundColor: colors.primary + '14',
+    borderWidth: 0.5, borderColor: colors.primary + '50',
+    marginTop: 6, alignSelf: 'flex-start',
+  },
+  feedbackSavedPillText: {
+    fontSize: 10, fontWeight: '600', color: colors.primary,
+    fontFamily: FF.semibold, letterSpacing: 0.3,
+  },
+  // Toast — pinned to the bottom of the screen for 4s after Save.
+  // Mirrors the undo-toast styling in CheckInScreen for consistency.
+  feedbackToast: {
+    position: 'absolute', left: 16, right: 16, bottom: 90,
+    alignItems: 'center', pointerEvents: 'box-none',
+  },
+  feedbackToastInner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.text,
+    paddingHorizontal: 14, paddingVertical: 11,
+    borderRadius: 10,
+  },
+  feedbackToastText: { color: colors.bg, fontSize: 13, fontFamily: FF.regular, flex: 0 },
 
   list: { flex: 1 },
   dayGroup: { marginBottom: 8 },

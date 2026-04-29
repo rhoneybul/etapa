@@ -95,7 +95,14 @@ router.get('/', async (req, res, next) => {
 // ── POST /respond ──────────────────────────────────────────────────────────
 // Body: { sessionsDone: [activityId, ...], sessionComments: { [activityId]: string },
 //         modifications: string, lifeEvents: string,
+//         activityFeedback: [{ activityId, title?, effort?, rpe?, feel?, note?, recordedAt? }],
 //         injury: { reported: bool, description?: string, intentToSeePhysio?: bool } }
+//
+// activityFeedback is the per-session post-ride feedback captured by
+// ActivityFeedbackSheet on the client when the rider marks a session
+// done. effort: way_too_easy|easy|just_right|hard|way_too_hard,
+// rpe: 2/4/6/8/10, feel: strong|ok|off, note: free-text up to 500 chars.
+// Surfaced to the coach LLM in generateSuggestions().
 //
 // Side-effects:
 //   1. Persists responses on the check-in row
@@ -123,11 +130,33 @@ router.post('/:id/respond', async (req, res, next) => {
 
     // Persist responses immediately so a Claude failure doesn't lose the
     // rider's input.
+    //
+    // activityFeedback is the structured per-session "how did it go"
+    // payload captured by ActivityFeedbackSheet on the client when the
+    // rider marks a session done. Each entry: { activityId, title,
+    // effort: 'just_right'|..., rpe: 6, feel: 'ok', note, recordedAt }.
+    // We sanitise field-by-field so a malformed entry doesn't poison
+    // the whole responses jsonb. The coach prompt builder reads it via
+    // generateSuggestions() below.
+    const incomingFeedback = Array.isArray(body.activityFeedback) ? body.activityFeedback : [];
+    const activityFeedback = incomingFeedback
+      .filter((f) => f && typeof f === 'object' && typeof f.activityId === 'string')
+      .map((f) => ({
+        activityId: f.activityId,
+        title: typeof f.title === 'string' ? f.title : null,
+        effort: typeof f.effort === 'string' ? f.effort : null,
+        rpe: typeof f.rpe === 'number' ? f.rpe : null,
+        feel: typeof f.feel === 'string' ? f.feel : null,
+        note: typeof f.note === 'string' ? f.note.slice(0, 500) : '',
+        recordedAt: typeof f.recordedAt === 'string' ? f.recordedAt : null,
+      }));
+
     const responses = {
       sessionsDone: Array.isArray(body.sessionsDone) ? body.sessionsDone : [],
       sessionComments: typeof body.sessionComments === 'object' ? body.sessionComments : {},
       modifications: String(body.modifications || ''),
       lifeEvents: String(body.lifeEvents || ''),
+      activityFeedback,
       injury: {
         reported: !!body.injury?.reported,
         description: String(body.injury?.description || ''),
@@ -189,6 +218,86 @@ router.post('/:id/respond', async (req, res, next) => {
       .from('coach_checkins')
       .select('*')
       .eq('id', checkinId)
+      .maybeSingle();
+    res.json({ checkin: checkinToClient(updated) });
+  } catch (err) { next(err); }
+});
+
+// ── POST /reschedule ───────────────────────────────────────────────────────
+// Body: { isoDate: 'YYYY-MM-DD' or full ISO timestamp }.
+//
+// Pushes a pending/sent check-in to a future date. Updates `scheduled_at`
+// (the canonical "when does this fire" column on coach_checkins — there's
+// no separate dueDate field; see migrations/20260428000002_weekly_coach_checkins.sql).
+// Status stays at 'pending' / 'sent' so the cron / pending hydrator picks
+// it up again on the new date.
+//
+// Validation:
+//   - isoDate must parse to a real Date
+//   - must be strictly in the future (else 400)
+//
+// We accept both YYYY-MM-DD (sent by RescheduleCheckInSheet's
+// toLocalISODate helper) and full ISO timestamps. A bare YYYY-MM-DD is
+// interpreted as midnight UTC; the rider opted for "this day or later",
+// so any non-past timestamp on that day is fine.
+router.post('/:id/reschedule', async (req, res, next) => {
+  try {
+    const { isoDate } = req.body || {};
+    if (!isoDate || typeof isoDate !== 'string') {
+      return res.status(400).json({ error: 'isoDate is required' });
+    }
+    const parsed = new Date(isoDate);
+    if (isNaN(parsed.getTime())) {
+      return res.status(400).json({ error: 'isoDate is not a valid date' });
+    }
+    // Must be strictly after now. We use a 60-second cushion so a click
+    // that arrives a tick after midnight on the chosen day still counts
+    // as "future" (clock skew between client + server is normal).
+    if (parsed.getTime() <= Date.now() - 60_000) {
+      return res.status(400).json({ error: 'isoDate must be in the future' });
+    }
+
+    // Load + ownership check
+    const { data: checkin, error: fetchErr } = await supabase
+      .from('coach_checkins')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+    if (fetchErr) throw fetchErr;
+    if (!checkin) return res.status(404).json({ error: 'Check-in not found' });
+
+    // Once a check-in is responded / dismissed / expired, rescheduling is
+    // a no-op — the rider should start a new ritual rather than mutate a
+    // historical row.
+    if (['responded', 'dismissed', 'expired'].includes(checkin.status)) {
+      return res.status(409).json({ error: 'Check-in already closed', checkin: checkinToClient(checkin) });
+    }
+
+    const { error: updErr } = await supabase
+      .from('coach_checkins')
+      .update({
+        scheduled_at: parsed.toISOString(),
+        // Reset reminder bookkeeping: the count + popup flag are
+        // relative to the *current* scheduled_at, not the original.
+        // Without this, a check-in rescheduled past the popup-due
+        // threshold would show its in-app popup the moment the new
+        // date lands, defeating the rider's "later" intent.
+        reminder_count: 0,
+        in_app_popup_due: false,
+        // Pending check-ins go back to 'pending' so the cron
+        // re-fires the initial push on the new date. Sent check-ins
+        // stay 'sent' (the rider has the original push, just deferred).
+        status: checkin.status === 'pending' ? 'pending' : 'sent',
+      })
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id);
+    if (updErr) throw updErr;
+
+    const { data: updated } = await supabase
+      .from('coach_checkins')
+      .select('*')
+      .eq('id', req.params.id)
       .maybeSingle();
     res.json({ checkin: checkinToClient(updated) });
   } catch (err) { next(err); }
@@ -303,6 +412,10 @@ async function generateSuggestions(userId, checkin, responses) {
     sessionComments: c.responses?.sessionComments || {},
     modifications: c.responses?.modifications || '',
     lifeEvents: c.responses?.lifeEvents || '',
+    // Past weeks' per-session feedback. Surfaced so the coach can spot
+    // recurring "way too hard" calls on the same workout type, or a
+    // shift from "off" to "strong" feel that's worth acknowledging.
+    activityFeedback: c.responses?.activityFeedback || [],
     injury: c.responses?.injury || null,
     coachSummary: c.suggestions?.summary || null,
     coachRecommendedPhysio: !!c.suggestions?.physioRecommended,
@@ -323,7 +436,7 @@ Use the previous check-ins (when present) as context for pattern recognition:
 - Don't repeat a suggestion you made last week unless the rider hasn't acted on it.
 
 ANCHOR EVERY SUGGESTION TO THE RIDER'S OWN WORDS:
-- Each change.reason MUST quote a short, distinctive phrase from what the rider actually wrote ("you said: 'bonked at km 60'", "you wrote: 'travelling Wed-Fri'"). One quoted phrase per reason, max 12 words. The quote must appear verbatim in the rider's responses (modifications, lifeEvents, sessionComments, or injury.description).
+- Each change.reason MUST quote a short, distinctive phrase from what the rider actually wrote ("you said: 'bonked at km 60'", "you wrote: 'travelling Wed-Fri'"). One quoted phrase per reason, max 12 words. The quote must appear verbatim in the rider's responses (modifications, lifeEvents, sessionComments, activityFeedback notes, or injury.description). The activityFeedback array is rich material — its 'note' field is the rider's own words right after the ride; quote those when relevant. The structured 'effort' / 'feel' fields ARE quotable too: "you marked Tuesday way too hard" or "you said Saturday felt off" both work.
 - Do NOT invent reasons. If the rider didn't say something that justifies a change, don't suggest the change.
 - The summary should reference at least one quote when the rider provided meaningful free-text. If they answered tersely, keep the summary short and don't over-pattern-match.
 - This is non-negotiable. A suggestion without a grounding quote will be discarded server-side.
@@ -354,6 +467,14 @@ ${JSON.stringify({
   sessionComments: responses.sessionComments,
   modifications: responses.modifications,
   lifeEvents: responses.lifeEvents,
+  // Per-session post-ride feedback the rider tapped through right
+  // after marking each session done. effort is one of way_too_easy /
+  // easy / just_right / hard / way_too_hard; rpe is the matching
+  // 2/4/6/8/10. feel is strong / ok / off. note is free-text. Treat
+  // these as quotable phrases when justifying changes — e.g. if a
+  // rider marked Tuesday "way too hard" with note "legs cooked", a
+  // change.reason can quote "you said: 'legs cooked'" verbatim.
+  activityFeedback: responses.activityFeedback || [],
   injury: responses.injury,
   physioNotes: responses.physioNotes || null,
 }, null, 2)}

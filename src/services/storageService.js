@@ -16,6 +16,13 @@ const KEYS = {
   CURRENT_USER:   '@etapa_current_user_id',
   USER_PREFS:     '@etapa_user_prefs',
   ONBOARDING_DONE:'@etapa_onboarding_done',
+  // Locally-managed "I can't ride on these days" list. Stored as
+  // [{ date: 'YYYY-MM-DD', reason: '' }]. Used by the Calendar to render
+  // hatched/struck-through cells, and by the coach prompt builder so the
+  // AI plans around the rider's stated unavailable days. Lives client-
+  // side only for v1 — no server roundtrip — to keep the feature snappy
+  // and offline-safe; we'll move it to the server once the schema lands.
+  UNAVAILABLE_DATES: '@etapa_unavailable_dates_v1',
   // Legacy single-item keys (for migration)
   GOAL:           '@etapa_goal',
   PLAN_CONFIG:    '@etapa_plan_config',
@@ -605,6 +612,64 @@ export async function setOnboardingDone() {
   await AsyncStorage.setItem(KEYS.ONBOARDING_DONE, 'true');
   // Persist to server so the flag follows the user across devices.
   api.preferences.update({ onboarding_done: true }).catch(() => {});
+}
+
+// ── Unavailable dates (rider-blocked days) ─────────────────────────────────
+//
+// Lightweight local store for "I can't ride these days" used by the Calendar
+// "Mark unavailable" sheet and surfaced to the coach so it plans around the
+// rider's life (travel, work crunches, family). Shape:
+//   [{ date: 'YYYY-MM-DD', reason: '' }]
+// We store the date as a YYYY-MM-DD string (NOT a JS Date) so timezone shifts
+// can't bump anything by ±1 day on round-trip. `reason` is optional free text.
+//
+// All mutations dedupe on `date` — the most recent reason wins for a given
+// day. Getters always return an array so callers can spread / map without
+// nullish-checking.
+
+export async function getUnavailableDates() {
+  const raw = (await getJSON(KEYS.UNAVAILABLE_DATES)) || [];
+  // Normalise: strip any malformed entries from older builds.
+  return raw.filter(e => e && typeof e.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date));
+}
+
+export async function setUnavailableDates(arr) {
+  // Accept either [{ date, reason }] or a bare ['YYYY-MM-DD'] for callers
+  // that just want to mark dates without a reason. We coerce to the
+  // canonical object shape on write so the read side never has to branch.
+  const normalised = (Array.isArray(arr) ? arr : []).map(e => {
+    if (typeof e === 'string') return { date: e, reason: '' };
+    return { date: e.date, reason: typeof e.reason === 'string' ? e.reason : '' };
+  }).filter(e => /^\d{4}-\d{2}-\d{2}$/.test(e.date));
+  await setJSON(KEYS.UNAVAILABLE_DATES, normalised);
+  return normalised;
+}
+
+export async function addUnavailableDates(dateArr, reason) {
+  // Merge new dates into the existing list, deduping on `date`. If a date
+  // already exists, the supplied reason overwrites the old one (the rider
+  // is editing their note for that day).
+  if (!Array.isArray(dateArr) || dateArr.length === 0) return getUnavailableDates();
+  const existing = await getUnavailableDates();
+  const byDate = {};
+  existing.forEach(e => { byDate[e.date] = e; });
+  dateArr.forEach(d => {
+    if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+    byDate[d] = { date: d, reason: reason || (byDate[d]?.reason ?? '') };
+  });
+  // Sort ascending for stable rendering — the calendar reads this list
+  // every redraw and a stable order makes the diff cheaper.
+  const merged = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+  await setJSON(KEYS.UNAVAILABLE_DATES, merged);
+  return merged;
+}
+
+export async function removeUnavailableDate(date) {
+  if (typeof date !== 'string') return getUnavailableDates();
+  const existing = await getUnavailableDates();
+  const filtered = existing.filter(e => e.date !== date);
+  await setJSON(KEYS.UNAVAILABLE_DATES, filtered);
+  return filtered;
 }
 
 export { uid };

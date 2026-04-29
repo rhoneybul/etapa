@@ -30,6 +30,7 @@ import { setFocusedScreen } from '../services/notificationService';
 import { syncStravaActivities, buildStravaContextForAI, weekComparisonSummary } from '../services/stravaSyncService';
 import { isStravaConnected } from '../services/stravaService';
 import analytics from '../services/analyticsService';
+import CoachChangePreviewCard from '../components/CoachChangePreviewCard';
 
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
@@ -1606,6 +1607,99 @@ export default function CoachChatScreen({ navigation, route }) {
                     </View>
                   )}
                 </TouchableOpacity>
+                {/* Inline change preview — shown when an assistant
+                    message carries a structured `changePreview` object
+                    (the new shape) OR a legacy `suggestions.changes`
+                    array (the older API). The fallback maps the legacy
+                    shape into the same { adds, moves, removes } the new
+                    card consumes so the visual is consistent regardless
+                    of which server we're talking to. We hide the card
+                    on `pending` messages because the structured field
+                    only stabilises once the server has finished
+                    streaming the JSON fence. */}
+                {msg.role === 'assistant' && !msg.pending && (() => {
+                  // Prefer the new structured `changePreview` field —
+                  // when present, the server has already sliced the
+                  // changes into the three buckets we need.
+                  let preview = msg.changePreview;
+                  if (!preview && msg.suggestions?.changes) {
+                    // Legacy shape — { changes: [{ kind, ... }] }. Map
+                    // each change into the bucket the new card expects:
+                    //   - 'modify' / 'switch_*' → moves (with from→to)
+                    //   - 'skip' / 'remove'    → removes
+                    //   - 'add' / unknown      → adds
+                    // We don't try to be clever about extracting the
+                    // calendar date from the change object — the legacy
+                    // shape doesn't carry it reliably — so the `when`
+                    // / `from` / `to` fields fall back to a short
+                    // human-readable hint.
+                    const adds = []; const moves = []; const removes = [];
+                    msg.suggestions.changes.forEach(c => {
+                      const title = c.title || c.activityTitle || 'Session';
+                      if (c.kind === 'skip' || c.kind === 'remove') {
+                        removes.push({ title, reason: c.reason || '' });
+                      } else if (c.kind === 'add') {
+                        adds.push({ title, when: c.when || '', detail: c.detail || c.reason || '' });
+                      } else {
+                        moves.push({
+                          title,
+                          from: c.from || c.previousMeta || '',
+                          to: c.to || c.newMeta || c.reason || '',
+                        });
+                      }
+                    });
+                    if (adds.length || moves.length || removes.length) {
+                      preview = { adds, moves, removes };
+                    }
+                  }
+                  if (!preview) return null;
+                  return (
+                    <CoachChangePreviewCard
+                      adds={preview.adds || []}
+                      moves={preview.moves || []}
+                      removes={preview.removes || []}
+                      onSeeOnCalendar={() => {
+                        // Reuse the same nav payload the
+                        // handleApplyUpdate path uses so the calendar
+                        // shows the proposed-state diff.
+                        if (!plan) return;
+                        const proposed = msg.updatedActivities && msg.updatedActivities.length > 0
+                          ? msg.updatedActivities
+                          : (plan.activities || []);
+                        navigation.navigate('Calendar', {
+                          pendingChanges: {
+                            planId: plan.id,
+                            previousActivities: plan.activities || [],
+                            proposedActivities: proposed,
+                          },
+                        });
+                      }}
+                      onApply={() => {
+                        // If the message had updated activities, plumb
+                        // them into pendingUpdate then trigger the
+                        // existing apply path so we don't re-implement
+                        // the side-effect logic. If not, fall back to
+                        // navigating the rider to Calendar where they
+                        // can review and confirm.
+                        if (msg.updatedActivities && msg.updatedActivities.length > 0) {
+                          setPendingUpdate({ activities: msg.updatedActivities, msgIndex: i });
+                          // handleApplyUpdate reads from pendingUpdate
+                          // state on next tick — defer so React commits
+                          // the state set first.
+                          setTimeout(handleApplyUpdate, 0);
+                        } else if (plan) {
+                          navigation.navigate('Calendar', {
+                            pendingChanges: {
+                              planId: plan.id,
+                              previousActivities: plan.activities || [],
+                              proposedActivities: plan.activities || [],
+                            },
+                          });
+                        }
+                      }}
+                    />
+                  );
+                })()}
                 {msg.blocked && (
                   <TouchableOpacity
                     style={s.reportBtn}

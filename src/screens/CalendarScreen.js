@@ -11,11 +11,12 @@ import {
 import { Gesture, GestureDetector, ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, useBottomInset } from '../theme';
-import { getPlans, getGoals, getActivityDate, getPlanConfig, savePlan, getWeekActivities, getUserPrefs } from '../services/storageService';
+import { getPlans, getGoals, getActivityDate, getPlanConfig, savePlan, getWeekActivities, getUserPrefs, getUnavailableDates } from '../services/storageService';
 import { coachChat } from '../services/llmPlanService';
 import { getSessionColor, getSessionLabel, getMetricLabel, getActivityIcon, CROSS_TRAINING_COLOR, getCrossTrainingLabel } from '../utils/sessionLabels';
 import { getCoach } from '../data/coaches';
 import CoachChatCard from '../components/CoachChatCard';
+import UnavailabilitySheet from '../components/UnavailabilitySheet';
 import { useUnits } from '../utils/units';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import analytics from '../services/analyticsService';
@@ -39,6 +40,20 @@ export default function CalendarScreen({ navigation, route }) {
   const [selectedDate, setSelectedDate] = useState(null);
   const [filterPlanId, setFilterPlanId] = useState(null); // null = all
   const [reviewMode, setReviewMode] = useState(!!pendingChanges); // true when reviewing coach changes
+
+  // Locally-managed "I can't ride on these days" list. Loaded on focus
+  // and via the sheet's onSave callback. Cells whose YYYY-MM-DD matches
+  // an entry render with a hatched background + struck-through date so
+  // they read clearly as "blocked" without being aggressive about it.
+  const [unavailableDates, setUnavailableDatesState] = useState([]);
+  const [unavailabilityOpen, setUnavailabilityOpen] = useState(false);
+  // Built once per render — { 'YYYY-MM-DD': true } so day-cell rendering
+  // can lookup in O(1) without iterating the array per cell.
+  const unavailableSet = useMemo(() => {
+    const set = new Set();
+    unavailableDates.forEach(e => set.add(e.date));
+    return set;
+  }, [unavailableDates]);
   const [movingActivity, setMovingActivity] = useState(null); // { activity, planId, planStartDate } when moving
   const [actionActivity, setActionActivity] = useState(null); // { activity, planId } when action bar is shown
 
@@ -131,9 +146,12 @@ export default function CalendarScreen({ navigation, route }) {
   }, [pendingChanges]);
 
   const load = useCallback(async () => {
-    const [p, g] = await Promise.all([getPlans(), getGoals()]);
+    const [p, g, ud] = await Promise.all([getPlans(), getGoals(), getUnavailableDates()]);
     setPlans(p);
     setGoals(g);
+    // Local "blocked days" list — surfaces in the grid as hatched cells
+    // and is editable via the new "+ Mark unavailable" sheet.
+    setUnavailableDatesState(ud || []);
     // Load configs for cross-training
     const cfgs = {};
     for (const plan of p) {
@@ -564,22 +582,55 @@ export default function CalendarScreen({ navigation, route }) {
     return keys;
   }, [reviewMode, pendingChanges, changeDiff, visiblePlans, plans]);
 
-  // When in review mode, overlay proposed activities onto the activity map
+  // When in review mode, overlay proposed activities onto the activity map.
+  // We tag each proposed activity with `_diffKind` ('added' | 'modified' |
+  // 'unchanged') so the activity card render below can decorate it
+  // accordingly (3px pink left border for added, before→after meta for
+  // modified). Removed activities aren't in proposedActivities so we
+  // also push them into the map under `_diffKind: 'removed'` so they
+  // still appear with strike-through + dashed border for context.
   if (reviewMode && pendingChanges) {
     const plan = visiblePlans.find(p => p.id === pendingChanges.planId) || plans.find(p => p.id === pendingChanges.planId);
     if (plan?.startDate) {
+      const prevById = {};
+      (pendingChanges.previousActivities || []).forEach(a => { prevById[a.id] = a; });
+      const propById = {};
+      (pendingChanges.proposedActivities || []).forEach(a => { propById[a.id] = a; });
+
       // Remove all previous activities from this plan from the map
       Object.keys(activityMap).forEach(key => {
         activityMap[key] = activityMap[key].filter(a => a._planId !== pendingChanges.planId);
         if (activityMap[key].length === 0) delete activityMap[key];
       });
-      // Add proposed activities
+      // Add proposed activities, tagged with their diff kind
       (pendingChanges.proposedActivities || []).forEach(a => {
         if (a.dayOfWeek == null) return;
         const d = getActivityDate(plan.startDate, a.week, a.dayOfWeek);
         const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
         if (!activityMap[key]) activityMap[key] = [];
-        activityMap[key].push({ ...a, _planId: plan.id });
+        const prev = prevById[a.id];
+        let _diffKind = 'unchanged';
+        if (!prev) {
+          _diffKind = 'added';
+        } else {
+          const changed = a.week !== prev.week || a.dayOfWeek !== prev.dayOfWeek
+            || a.title !== prev.title || a.distanceKm !== prev.distanceKm
+            || a.durationMins !== prev.durationMins || a.effort !== prev.effort
+            || a.type !== prev.type || a.subType !== prev.subType;
+          if (changed) _diffKind = 'modified';
+        }
+        activityMap[key].push({ ...a, _planId: plan.id, _diffKind, _diffPrev: prev || null });
+      });
+      // Pin removed activities back into the map under their original
+      // date so the rider can see what's about to disappear. Strike-
+      // through + dashed border below makes the intent unambiguous.
+      (pendingChanges.previousActivities || []).forEach(a => {
+        if (propById[a.id]) return; // still present — handled above
+        if (a.dayOfWeek == null) return;
+        const d = getActivityDate(plan.startDate, a.week, a.dayOfWeek);
+        const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+        if (!activityMap[key]) activityMap[key] = [];
+        activityMap[key].push({ ...a, _planId: plan.id, _diffKind: 'removed', _diffPrev: null });
       });
     }
   }
@@ -708,6 +759,30 @@ export default function CalendarScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
+        {/* "+ Mark unavailable" pill — sits below the month nav rather
+            than in the header proper because the header is already
+            tight (back arrow + title). Tap opens the UnavailabilitySheet
+            which lets the rider tag travel / work / family days the
+            coach should plan around. We hide it in review mode so the
+            review CTAs don't compete for attention. */}
+        {!reviewMode && (
+          <View style={s.unavailRow}>
+            <TouchableOpacity
+              style={s.unavailPill}
+              onPress={() => setUnavailabilityOpen(true)}
+              activeOpacity={0.7}
+              hitSlop={HIT}
+            >
+              <MaterialCommunityIcons name="calendar-remove" size={13} color={colors.primary} />
+              <Text style={s.unavailPillText}>
+                {unavailableDates.length > 0
+                  ? `Unavailable · ${unavailableDates.length}`
+                  : '+ Mark unavailable'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Review mode banner */}
         {reviewMode && changeDiff && (
           <View style={s.reviewBanner}>
@@ -756,6 +831,16 @@ export default function CalendarScreen({ navigation, route }) {
                 const dayKey = day ? getKey(day) : null;
                 const isDragHover = dragActivity && dayKey && hoveredDateKey === dayKey;
                 const isJustMoved = dayKey && justMovedKey === dayKey;
+                // Cell is "unavailable" when the rider has tagged the
+                // calendar date in the UnavailabilitySheet. We compose
+                // a YYYY-MM-DD lookup key here (separate from dayKey
+                // which uses month index) and check against the Set
+                // built once per render. Used to drive both the
+                // hatched bg and the strike-through date number.
+                const isoForCell = day
+                  ? `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                  : null;
+                const isUnavailable = !!isoForCell && unavailableSet.has(isoForCell);
                 // Long-press-to-drag from the calendar GRID itself (not
                 // just the activity list below it). Pick the day's
                 // primary activity — first ride if there is one, else
@@ -788,6 +873,13 @@ export default function CalendarScreen({ navigation, route }) {
                       isMoveSource(day) && s.dayCellMoveSource,
                       isDragHover && s.dayCellDragHover,
                       isJustMoved && s.dayCellJustMoved,
+                      // Unavailable styling sits LAST so its faint
+                      // dashed border + low-contrast bg override the
+                      // default look without fighting selection /
+                      // today states (which the rider may still want
+                      // to see). When `isSelected` is true we skip the
+                      // override — the pink fill carries enough signal.
+                      isUnavailable && !isSelected(day) && s.dayCellUnavailable,
                     ]}
                     onPress={() => {
                       if (!day) return;
@@ -813,7 +905,16 @@ export default function CalendarScreen({ navigation, route }) {
                   >
                     {day ? (
                       <>
-                        <Text style={[s.dayText, isToday(day) && s.dayTextToday, isSelected(day) && s.dayTextSelected]}>
+                        <Text style={[
+                          s.dayText,
+                          isToday(day) && s.dayTextToday,
+                          isSelected(day) && s.dayTextSelected,
+                          // Strike-through when the day is tagged
+                          // unavailable. Skipped on the selected
+                          // cell so the rider can read the date
+                          // they just tapped.
+                          isUnavailable && !isSelected(day) && s.dayTextUnavailable,
+                        ]}>
                           {day}
                         </Text>
                         {goalDateMap[getKey(day)] && (
@@ -944,6 +1045,12 @@ export default function CalendarScreen({ navigation, route }) {
             // was confusing. Open is now always an explicit button.
             const isSelected = actionActivity?.activity?.id === activity.id;
             const anyOtherSelected = !!actionActivity && !isSelected;
+            // Diff-aware decoration for review mode. We pin a 3px pink
+            // left bar onto added cards (so they read as "new"), an
+            // amber bar onto modified ones (so the rider knows there's
+            // a before→after they should glance at), and a dashed +
+            // strikethrough treatment onto removed ones.
+            const diffKind = reviewMode ? activity._diffKind : null;
             const card = (
               <TouchableOpacity
                 key={activity.id}
@@ -953,6 +1060,9 @@ export default function CalendarScreen({ navigation, route }) {
                   activity.completed && s.actCardDone,
                   isSelected && s.actCardActive,
                   anyOtherSelected && s.actCardDimmed,
+                  diffKind === 'added' && s.actCardAdded,
+                  diffKind === 'modified' && s.actCardModified,
+                  diffKind === 'removed' && s.actCardRemoved,
                 ]}
                 onPress={() => {
                   if (justDraggedRef.current) return;
@@ -976,13 +1086,35 @@ export default function CalendarScreen({ navigation, route }) {
                       <Text style={[s.actTypeText, { color: ACTIVITY_BLUE }]}>{getSessionLabel(activity)}</Text>
                     </View>
                     <View style={s.actTextWrap}>
-                      <Text style={[s.actTitle, activity.completed && s.actTitleDone]}>{activity.title}</Text>
+                      <Text style={[
+                        s.actTitle,
+                        activity.completed && s.actTitleDone,
+                        // Strike through removed cards' titles so the
+                        // rider sees they're being deleted before
+                        // they apply changes.
+                        diffKind === 'removed' && s.actTitleDone,
+                      ]}>{activity.title}</Text>
                       <Text style={s.actMeta}>
                         {activity.distanceKm ? formatDistance(activity.distanceKm) : ''}
                         {activity.distanceKm && activity.durationMins ? ' \u00B7 ' : ''}
                         {activity.durationMins ? `${activity.durationMins} min` : ''}
                         {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
                       </Text>
+                      {/* Modified — show the before-state on a second
+                          line so the rider can read both sides of the
+                          change at a glance. We don't try to be smart
+                          about which fields actually changed; the AI
+                          may have shifted multiple at once and surfacing
+                          all of them is cheaper than guessing wrong. */}
+                      {diffKind === 'modified' && activity._diffPrev && (
+                        <Text style={s.actDiffMeta}>
+                          was: {activity._diffPrev.distanceKm ? formatDistance(activity._diffPrev.distanceKm) : ''}
+                          {activity._diffPrev.distanceKm && activity._diffPrev.durationMins ? ' \u00B7 ' : ''}
+                          {activity._diffPrev.durationMins ? `${activity._diffPrev.durationMins} min` : ''}
+                          {activity._diffPrev.effort ? ` \u00B7 ${activity._diffPrev.effort}` : ''}
+                          {' \u2192 now'}
+                        </Text>
+                      )}
                     </View>
                     {/* Right-side affordance. Completed → check.
                         Selected → ✕ to collapse (absorbs the old
@@ -1169,6 +1301,15 @@ export default function CalendarScreen({ navigation, route }) {
             the GHScrollView above so it scrolls with the activity list
             and action bar as one cohesive panel below the calendar grid.
             See the coachCardWrap block just before the scroll spacer. */}
+
+        {/* Unavailable-days sheet — opened from the "+ Mark unavailable"
+            pill above the calendar grid. Reloads the local list on save
+            so the grid picks up the change without a full refetch. */}
+        <UnavailabilitySheet
+          visible={unavailabilityOpen}
+          onCancel={() => setUnavailabilityOpen(false)}
+          onSave={() => { setUnavailabilityOpen(false); load(); }}
+        />
       </SafeAreaView>
     </View>
   );
@@ -1213,6 +1354,29 @@ const s = StyleSheet.create({
   dayTextSelected: { color: '#fff' },
 
   dayCellGoal: { backgroundColor: 'rgba(232,69,139,0.12)', borderWidth: 1, borderColor: 'rgba(232,69,139,0.3)' },
+
+  // Unavailable cell — hatched look via low-opacity bg + thin dashed
+  // border. The intent is "this day exists but isn't usable" — visible
+  // enough to read but quiet enough not to dominate the grid.
+  dayCellUnavailable: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderWidth: 0.5, borderColor: '#444', borderStyle: 'dashed',
+  },
+  dayTextUnavailable: {
+    textDecorationLine: 'line-through',
+    color: colors.textFaint,
+  },
+
+  // "+ Mark unavailable" row — sits between the month nav and the day
+  // headers. Right-aligned so it doesn't compete with the month title.
+  unavailRow: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 16, marginBottom: 6 },
+  unavailPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
+    backgroundColor: colors.primary + '14',
+    borderWidth: 0.5, borderColor: colors.primary + '50',
+  },
+  unavailPillText: { fontSize: 11, color: colors.primary, fontFamily: FF.medium, fontWeight: '500' },
   goalFlag: { marginTop: 2 },
   goalFlagSelected: { opacity: 0.9 },
   goalFlagDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary },
@@ -1407,6 +1571,27 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(232,69,139,0.06)',
   },
   actCardDimmed: { opacity: 0.45 },
+
+  // Diff-mode decoration. These fight with `actCardActive` if both
+  // apply — `actCardActive` is layered later in the style array so a
+  // selected diff card still shows the pink ring; the diff bar comes
+  // through via the explicit borderLeftColor / Width below.
+  actCardAdded: {
+    borderLeftWidth: 3, borderLeftColor: colors.primary,
+    backgroundColor: colors.primary + '0F',
+  },
+  actCardModified: {
+    borderLeftWidth: 3, borderLeftColor: '#F59E0B',
+    backgroundColor: 'rgba(245, 158, 11, 0.05)',
+  },
+  actCardRemoved: {
+    borderStyle: 'dashed', borderColor: colors.border,
+    opacity: 0.55,
+  },
+  actDiffMeta: {
+    fontSize: 11, color: '#F59E0B', fontFamily: FF.regular,
+    marginTop: 4, fontStyle: 'italic',
+  },
 
   // Right-side affordances on the activity card.
   // actDragHint: muted ≡ + "Hold to drag" caption, replaces the top

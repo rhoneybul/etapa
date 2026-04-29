@@ -163,6 +163,15 @@ router.patch('/:planId/activities/:activityId', async (req, res, next) => {
     //   - explicit { tips: null } to bust the cache after a material
     //     edit (duration / structure / bike).
     if (b.tips !== undefined)        updates.tips = b.tips || null;
+    // Post-ride structured feedback. Captured by ActivityFeedbackSheet
+    // when the rider marks a session done. Shape:
+    //   { effort, rpe, feel, note, recordedAt }
+    // Stored as a JSONB column so the shape can evolve without a
+    // migration. The server currently writes it through opaquely; the
+    // weekly check-in suggestions builder reads it back as
+    // `activityFeedback` to ground next-week recommendations in real
+    // post-session signal rather than fading memory.
+    if (b.feedback !== undefined)    updates.feedback = b.feedback || null;
 
     // Heuristic cache-bust: if any material field changes (duration /
     // structure / bike type / effort) and the client didn't already
@@ -495,6 +504,10 @@ function activityToRow(a, userId, planId) {
     // opens skip the Claude call. We pass it through round-tripping to
     // avoid wiping the cache on a normal client save.
     tips: a.tips || null,
+    // Post-ride structured feedback (set by ActivityFeedbackSheet). See
+    // migrations/20260429000001_activities_feedback.sql for the shape.
+    // Nullable; old activities don't have it.
+    feedback: a.feedback || null,
     completed: a.completed || false,
     completed_at: a.completedAt || null,
     strava_activity_id: a.stravaActivityId || null,
@@ -519,6 +532,9 @@ function activityToClient(row) {
     bikeType: row.bike_type || null,
     structure: row.structure || null,
     tips: row.tips || null,
+    // Post-ride feedback ({ effort, rpe, feel, note, recordedAt }). See
+    // ActivityFeedbackSheet on the client.
+    feedback: row.feedback || null,
     completed: row.completed,
     completedAt: row.completed_at,
     stravaActivityId: row.strava_activity_id,

@@ -7,16 +7,13 @@
  * thing a rider posts to a WhatsApp group or Instagram story without
  * editing.
  *
- * v1 share path: React Native's built-in Share API sends a text-only
- * payload via the OS share sheet (so WhatsApp / Instagram Stories
- * /Threads / Mastodon all work natively). Riders who want the visual
- * card simply screenshot the screen — every modern phone has a
- * screenshot share button right after capture.
- *
- * Image-export of the card itself (capture-as-PNG via
- * react-native-view-shot) is an obvious follow-up, but it's a native
- * module that needs an EAS build, so we keep it for later. The text
- * share gets the feature live today.
+ * Share path (v2): we capture the actual card view via
+ * react-native-view-shot and pass the resulting PNG either to the OS
+ * share sheet (`url` field — WhatsApp / iMessage / Instagram Stories
+ * all accept image attachments via this) or directly into the photo
+ * library via expo-media-library. The previous text-only fallback
+ * (and the "screenshot the screen yourself" tip) lived here while the
+ * native module was deferred — those are gone now.
  *
  * Stats computed locally from the active plan's activities — no
  * server round-trip, instant render. Stats covered:
@@ -24,19 +21,40 @@
  *   - Sessions completed / planned
  *   - Longest single ride
  *   - Current streak (consecutive completed sessions)
+ *   - 4-week mini-trend bar chart (current week pink, previous 3 grey)
  *
  * Coach quote is shown if the most recent check-in had AI suggestions
- * with a `summary` field — gives the share a personal flavour.
+ * with a `summary` field — gives the share a personal flavour, and
+ * we wrap it with the active coach's name so the quote reads as
+ * "Clara · your coach" rather than as anonymous AI output.
  */
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Share, Alert } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Share, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fontFamily } from '../theme';
-import { getPlans, getGoals } from '../services/storageService';
+import { getPlans, getGoals, getPlanConfig } from '../services/storageService';
+import { getCoach } from '../data/coaches';
 import api from '../services/api';
 import analytics from '../services/analyticsService';
+
+// Lazy-imports — view-shot + media-library are native modules that
+// need a dev client / EAS build to actually work. Wrap the require
+// so this file doesn't fail to import when running in Expo Go (the
+// share-as-image path simply degrades to text-only there).
+let ViewShot = null; let captureRef = null;
+try {
+  // eslint-disable-next-line global-require
+  const vs = require('react-native-view-shot');
+  ViewShot = vs.default || vs.ViewShot;
+  captureRef = vs.captureRef;
+} catch {}
+let MediaLibrary = null;
+try {
+  // eslint-disable-next-line global-require
+  MediaLibrary = require('expo-media-library');
+} catch {}
 
 const FF = fontFamily;
 
@@ -78,10 +96,34 @@ function computeWeekStats(plan) {
   };
 }
 
+// Compute the last N weeks' completed-km totals as bar-chart data. Used
+// for the 4-week mini-trend strip below the stats row. We also compute a
+// max so the bar heights can be scaled relative to the tallest week.
+function computeRecentWeekKms(plan, count = 4) {
+  if (!plan?.activities || !plan?.currentWeek) return { weeks: [], max: 0 };
+  const cw = plan.currentWeek || 1;
+  const startWeek = Math.max(1, cw - (count - 1));
+  const weeks = [];
+  for (let w = startWeek; w <= cw; w++) {
+    const km = (plan.activities || [])
+      .filter(a => a.week === w && a.type === 'ride' && a.completed)
+      .reduce((sum, a) => sum + (Number(a.distanceKm) || 0), 0);
+    weeks.push({ week: w, km: Math.round(km), isCurrent: w === cw });
+  }
+  const max = weeks.reduce((m, w) => Math.max(m, w.km), 0);
+  return { weeks, max };
+}
+
 export default function WeeklySummaryScreen({ navigation }) {
   const [plan, setPlan] = useState(null);
   const [goal, setGoal] = useState(null);
   const [coachQuote, setCoachQuote] = useState(null);
+  const [coach, setCoach] = useState(null);
+  const [savingImage, setSavingImage] = useState(false);
+  // ViewShot ref for the card. captureRef(viewShotRef, {...}) returns
+  // a file URI we can hand to MediaLibrary.saveToLibraryAsync or
+  // Share.share's `url` field.
+  const cardRef = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -91,6 +133,14 @@ export default function WeeklySummaryScreen({ navigation }) {
         const active = plans?.find(p => p.status !== 'archived') || plans?.[0] || null;
         setPlan(active);
         setGoal(goals?.find(g => g.id === active?.goalId) || goals?.[0] || null);
+        // Resolve the active coach via the plan's configId — getCoach()
+        // safely falls back to the default if the id isn't recognised.
+        try {
+          if (active?.configId) {
+            const cfg = await getPlanConfig(active.configId);
+            if (cfg?.coachId) setCoach(getCoach(cfg.coachId));
+          }
+        } catch {}
         // Pull the most recent check-in's coach summary as the quote.
         // Best-effort — failure here just means no quote in the share.
         try {
@@ -106,6 +156,9 @@ export default function WeeklySummaryScreen({ navigation }) {
   }, []);
 
   const stats = useMemo(() => computeWeekStats(plan), [plan]);
+  // 4-week trend strip data, computed once per plan change so the bar
+  // chart doesn't re-layout on every render.
+  const trend = useMemo(() => computeRecentWeekKms(plan, 4), [plan]);
 
   const formatHours = (mins) => {
     if (!mins) return '0h';
@@ -114,35 +167,101 @@ export default function WeeklySummaryScreen({ navigation }) {
     return m === 0 ? `${h}h` : `${h}h ${m}m`;
   };
 
-  const onShare = async () => {
-    // Plain-text share — works on every share-sheet target. Riders who
-    // want a visual post screenshot the card above and post it from
-    // their photos. Keeps the share fun and human, not corporate.
+  // Try to capture the card to a PNG file URI. Returns null on any
+  // failure (no view-shot, ref not yet attached, capture threw). The
+  // caller is responsible for falling back to text-only share.
+  const captureCard = async () => {
+    if (!captureRef || !cardRef.current) return null;
+    try {
+      const uri = await captureRef(cardRef, { format: 'png', quality: 1, result: 'tmpfile' });
+      return uri || null;
+    } catch (err) {
+      console.warn('captureCard failed:', err);
+      return null;
+    }
+  };
+
+  // Build the textual side of the share — kept as a function because
+  // both Share (for image+text) and any text-only fallback want the
+  // same copy.
+  const buildShareText = () => {
     const goalLine = goal?.eventName
       ? `Building toward ${goal.eventName}.`
       : (goal?.targetDistance ? `Working toward ${goal.targetDistance} km.` : 'Building the habit.');
     const lines = [
       `Week ${stats.weekNumber} on the bike:`,
-      `· ${stats.totalKm} km logged`,
-      stats.longestKm > 0 ? `· longest ride ${stats.longestKm} km` : null,
-      stats.totalMins > 0 ? `· ${formatHours(stats.totalMins)} in the saddle` : null,
-      stats.streak > 1 ? `· ${stats.streak}-session streak` : null,
+      `\u00B7 ${stats.totalKm} km logged`,
+      stats.longestKm > 0 ? `\u00B7 longest ride ${stats.longestKm} km` : null,
+      stats.totalMins > 0 ? `\u00B7 ${formatHours(stats.totalMins)} in the saddle` : null,
+      stats.streak > 1 ? `\u00B7 ${stats.streak}-session streak` : null,
       '',
       goalLine,
       '',
       'Plan + AI coach via @etapa.app',
     ].filter(Boolean);
-    const message = lines.join('\n');
+    return lines.join('\n');
+  };
+
+  const onShare = async () => {
+    // Try the image-share path first. We wait briefly for the ref to
+    // settle if the screen just mounted; in practice the capture is
+    // instant by the time the user can tap Share.
+    const message = buildShareText();
+    let uri = await captureCard();
     try {
-      analytics.events.weeklySummaryShared?.({ km: stats.totalKm });
-      await Share.share({ message }, { dialogTitle: 'Share your week' });
+      analytics.events.weeklySummaryShared?.({ km: stats.totalKm, withImage: !!uri });
+      if (uri) {
+        // iOS reads `url` to attach a file; Android reads `message`
+        // and (since RN 0.72) also `url` for some apps. Pass both so
+        // each platform picks the right field.
+        await Share.share(
+          Platform.OS === 'ios' ? { url: uri, message } : { message, url: uri },
+          { dialogTitle: 'Share your week' },
+        );
+      } else {
+        await Share.share({ message }, { dialogTitle: 'Share your week' });
+      }
     } catch (err) {
-      // User cancelling the share is not an error — only show an alert
-      // for genuine errors (rare: typically a content-blocked sheet).
       const msg = err?.message || '';
       if (!/cancel/i.test(msg)) {
-        Alert.alert('Share unavailable', 'Couldn\'t open the share sheet. Try again in a moment.');
+        Alert.alert('Share unavailable', "Couldn't open the share sheet. Try again in a moment.");
       }
+    }
+  };
+
+  // "Save image" — separate button for riders who want the PNG in their
+  // photo library to post manually (Instagram Stories etc. that don't
+  // accept share-sheet attachments). Asks for media-library permission
+  // once; if the rider denies, we fall back to a polite alert pointing
+  // them at Settings.
+  const onSaveImage = async () => {
+    if (savingImage) return;
+    setSavingImage(true);
+    try {
+      if (!MediaLibrary) {
+        Alert.alert('Update needed', 'Saving images needs the latest build of Etapa. Please update from the App Store.');
+        return;
+      }
+      const perm = await MediaLibrary.requestPermissionsAsync();
+      if (!perm?.granted) {
+        Alert.alert(
+          'Allow photo access',
+          'Etapa needs permission to save the card to your photo library. Enable it in Settings → Etapa → Photos.',
+        );
+        return;
+      }
+      const uri = await captureCard();
+      if (!uri) {
+        Alert.alert("Couldn't capture", 'Try again in a moment.');
+        return;
+      }
+      await MediaLibrary.saveToLibraryAsync(uri);
+      analytics.events.weeklySummarySavedImage?.({ km: stats.totalKm });
+      Alert.alert('Saved to Photos', 'Your week is in your camera roll — post it anywhere.');
+    } catch (err) {
+      Alert.alert("Couldn't save", err?.message || 'Try again in a moment.');
+    } finally {
+      setSavingImage(false);
     }
   };
 
@@ -157,66 +276,133 @@ export default function WeeklySummaryScreen({ navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={s.scroll}>
-        {/* The branded share card. Designed to hold up as a screenshot
-            without further chrome — punchy hero number, week ID, three
-            secondary stats, optional coach quote, brand mark. */}
-        <LinearGradient
-          colors={[colors.primary, '#FF6FB1']}
-          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-          style={s.card}
-        >
-          <Text style={s.cardEyebrow}>WEEK {stats.weekNumber}</Text>
-          <Text style={s.cardHero}>{stats.totalKm}<Text style={s.cardHeroUnit}> km</Text></Text>
-          <Text style={s.cardHeroLabel}>logged this week</Text>
+        {/* The branded share card. Wrapped in ViewShot so we can capture
+            it as a PNG via captureRef on Share / Save image taps. The
+            wrapper component degrades gracefully — when view-shot isn't
+            installed (Expo Go, older builds), CardWrap is just a View
+            and the captureCard() helper returns null. */}
+        {(() => {
+          const CardWrap = ViewShot || View;
+          return (
+            <CardWrap
+              ref={cardRef}
+              options={{ format: 'png', quality: 1 }}
+              style={s.cardWrap}
+            >
+              <LinearGradient
+                colors={[colors.primary, '#FF6FB1']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                style={s.card}
+              >
+                {/* Top-left brand mark — pink rounded square with a
+                    white "E". Anchors the card visually so a cropped
+                    screenshot still reads as Etapa. */}
+                <View style={s.cardLogoRow}>
+                  <View style={s.logoBadge}>
+                    <Text style={s.logoBadgeText}>E</Text>
+                  </View>
+                  <Text style={s.cardEyebrow}>WEEK {stats.weekNumber}</Text>
+                </View>
 
-          <View style={s.cardStatsRow}>
-            <View style={s.cardStat}>
-              <Text style={s.cardStatValue}>{stats.completed}/{stats.planned}</Text>
-              <Text style={s.cardStatLabel}>sessions</Text>
-            </View>
-            <View style={s.cardStatDivider} />
-            <View style={s.cardStat}>
-              <Text style={s.cardStatValue}>{stats.longestKm} km</Text>
-              <Text style={s.cardStatLabel}>longest ride</Text>
-            </View>
-            <View style={s.cardStatDivider} />
-            <View style={s.cardStat}>
-              <Text style={s.cardStatValue}>{formatHours(stats.totalMins)}</Text>
-              <Text style={s.cardStatLabel}>saddle time</Text>
-            </View>
-          </View>
+                <Text style={s.cardHero}>{stats.totalKm}<Text style={s.cardHeroUnit}> km</Text></Text>
+                <Text style={s.cardHeroLabel}>logged this week</Text>
 
-          {coachQuote ? (
-            <View style={s.cardQuote}>
-              <Text style={s.cardQuoteText}>{`"${coachQuote.replace(/^"|"$/g, '').slice(0, 180)}"`}</Text>
-            </View>
-          ) : null}
+                <View style={s.cardStatsRow}>
+                  <View style={s.cardStat}>
+                    <Text style={s.cardStatValue}>{stats.completed}/{stats.planned}</Text>
+                    <Text style={s.cardStatLabel}>sessions</Text>
+                  </View>
+                  <View style={s.cardStatDivider} />
+                  <View style={s.cardStat}>
+                    <Text style={s.cardStatValue}>{stats.longestKm} km</Text>
+                    <Text style={s.cardStatLabel}>longest ride</Text>
+                  </View>
+                  <View style={s.cardStatDivider} />
+                  <View style={s.cardStat}>
+                    <Text style={s.cardStatValue}>{formatHours(stats.totalMins)}</Text>
+                    <Text style={s.cardStatLabel}>saddle time</Text>
+                  </View>
+                </View>
 
-          {stats.streak > 1 ? (
-            <View style={s.cardStreak}>
-              <MaterialCommunityIcons name="fire" size={14} color="#FFFFFF" />
-              <Text style={s.cardStreakText}>{stats.streak}-session streak</Text>
-            </View>
-          ) : null}
+                {/* 4-week trend strip — small bars showing recent week
+                    km totals. Current week pink (matches the card's
+                    palette but slightly opaque), previous 3 weeks in
+                    semi-transparent white so the eye lands on the
+                    current number first. Hidden when there's no
+                    completed history yet (max=0) — the strip would
+                    just render empty space. */}
+                {trend.weeks.length > 0 && trend.max > 0 && (
+                  <View style={s.trendWrap}>
+                    <Text style={s.trendLabel}>Last {trend.weeks.length} weeks</Text>
+                    <View style={s.trendBars}>
+                      {trend.weeks.map((w, i) => {
+                        const heightPct = trend.max > 0 ? (w.km / trend.max) : 0;
+                        // Cap the minimum height so empty weeks still
+                        // draw a hairline rather than vanishing.
+                        const h = Math.max(3, Math.round(heightPct * 36));
+                        return (
+                          <View key={i} style={s.trendBarCol}>
+                            <View
+                              style={[
+                                s.trendBar,
+                                { height: h },
+                                w.isCurrent ? s.trendBarCurrent : s.trendBarPast,
+                              ]}
+                            />
+                            <Text style={s.trendBarValue}>{w.km}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
 
-          <Text style={s.cardBrand}>etapa</Text>
-        </LinearGradient>
+                {coachQuote ? (
+                  <View style={s.cardQuote}>
+                    {/* "Clara · your coach" — light-weight attribution
+                        line above the quote so the rider sees who said
+                        it. Falls back to a generic label when the coach
+                        isn't resolved yet. */}
+                    <Text style={s.cardQuoteAttr}>
+                      {coach?.name ? `${coach.name} \u00B7 your coach` : 'Your coach'}
+                    </Text>
+                    <Text style={s.cardQuoteText}>{`"${coachQuote.replace(/^"|"$/g, '').slice(0, 180)}"`}</Text>
+                  </View>
+                ) : null}
+
+                {stats.streak > 1 ? (
+                  <View style={s.cardStreak}>
+                    <MaterialCommunityIcons name="fire" size={14} color="#FFFFFF" />
+                    <Text style={s.cardStreakText}>{stats.streak}-session streak</Text>
+                  </View>
+                ) : null}
+
+                <Text style={s.cardBrand}>etapa</Text>
+              </LinearGradient>
+            </CardWrap>
+          );
+        })()}
 
         <Text style={s.shareHint}>
           Share to your group, your story, anywhere — keeps you accountable and
           maybe pulls a friend onto the bike.
         </Text>
 
-        <TouchableOpacity style={s.shareBtn} onPress={onShare} activeOpacity={0.85}>
-          <MaterialCommunityIcons name="share-variant" size={18} color="#FFFFFF" />
-          <Text style={s.shareBtnText}>Share my week</Text>
-        </TouchableOpacity>
-
-        <Text style={s.tip}>
-          Tip: take a screenshot of the card above (Side + Volume Up on iPhone, Power
-          + Volume Down on Android) and post it as an image — every share target
-          supports photo posts.
-        </Text>
+        <View style={s.btnRow}>
+          <TouchableOpacity style={[s.shareBtn, { flex: 1 }]} onPress={onShare} activeOpacity={0.85}>
+            <MaterialCommunityIcons name="share-variant" size={18} color="#FFFFFF" />
+            <Text style={s.shareBtnText}>Share my week</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.saveBtn, savingImage && { opacity: 0.6 }]}
+            onPress={onSaveImage}
+            disabled={savingImage}
+            activeOpacity={0.85}
+          >
+            <MaterialCommunityIcons name="image-outline" size={18} color={colors.text} />
+            <Text style={s.saveBtnText}>{savingImage ? 'Saving…' : 'Save image'}</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -235,11 +421,25 @@ const s = StyleSheet.create({
   scroll: { padding: 18, paddingBottom: 60 },
 
   // ── Branded card ──────────────────────────────────────────────────
+  // The ViewShot wrapper sits at this level — we add `marginBottom`
+  // here (rather than on the gradient itself) so the captured image
+  // crops tightly to the card's visual edge without bleeding margin.
+  cardWrap: { marginBottom: 22 },
   card: {
-    borderRadius: 22, padding: 24, marginBottom: 22,
+    borderRadius: 22, padding: 24,
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.18, shadowRadius: 12, elevation: 6,
   },
+
+  // Top-left brand mark — small pink rounded square with white "E".
+  // Stays inside the card so a cropped screenshot retains the brand.
+  cardLogoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  logoBadge: {
+    width: 22, height: 22, borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  logoBadgeText: { fontSize: 13, fontWeight: '800', color: colors.primary, fontFamily: FF.semibold },
   cardEyebrow: {
     fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.85)',
     fontFamily: FF.semibold, letterSpacing: 1.5, marginBottom: 8,
@@ -266,9 +466,34 @@ const s = StyleSheet.create({
     fontSize: 11, color: 'rgba(255,255,255,0.85)', fontFamily: FF.regular,
   },
   cardStatDivider: { width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.25)' },
+
+  // 4-week trend strip
+  trendWrap: { marginBottom: 18 },
+  trendLabel: {
+    fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.85)',
+    fontFamily: FF.medium, letterSpacing: 0.6, textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  trendBars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 50 },
+  trendBarCol: { flex: 1, alignItems: 'center', marginHorizontal: 4 },
+  trendBar: { width: '100%', borderRadius: 4 },
+  trendBarPast: { backgroundColor: 'rgba(255,255,255,0.4)' },
+  // Current week — slightly more saturated. The card itself is on a
+  // pink gradient so we use white-with-high-opacity (instead of pink)
+  // to keep contrast.
+  trendBarCurrent: { backgroundColor: 'rgba(255,255,255,0.95)' },
+  trendBarValue: {
+    fontSize: 9, fontWeight: '600', color: 'rgba(255,255,255,0.85)',
+    fontFamily: FF.medium, marginTop: 4,
+  },
+
   cardQuote: {
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 12, padding: 12, marginBottom: 14,
+  },
+  cardQuoteAttr: {
+    fontSize: 10, fontWeight: '500', color: 'rgba(255,255,255,0.75)',
+    fontFamily: FF.medium, letterSpacing: 0.4, marginBottom: 6,
   },
   cardQuoteText: {
     fontSize: 13, color: '#FFFFFF', fontFamily: FF.regular,
@@ -291,14 +516,22 @@ const s = StyleSheet.create({
     fontSize: 13, color: colors.textMid, fontFamily: FF.regular,
     lineHeight: 19, marginBottom: 18, textAlign: 'center',
   },
+  // Two-button row — Share + Save image side by side. Share is the
+  // primary affordance (filled pink) since most riders want it on a
+  // group chat directly; Save is the ghost variant for the "I'll
+  // post this manually to Stories later" path.
+  btnRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
   shareBtn: {
     flexDirection: 'row', gap: 8,
     backgroundColor: colors.primary, paddingVertical: 14,
-    borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 14,
+    borderRadius: 12, alignItems: 'center', justifyContent: 'center',
   },
   shareBtnText: { fontSize: 15, fontWeight: '600', color: '#FFFFFF', fontFamily: FF.semibold },
-  tip: {
-    fontSize: 12, color: colors.textMuted, fontFamily: FF.regular,
-    lineHeight: 17, textAlign: 'center',
+  saveBtn: {
+    flex: 1, flexDirection: 'row', gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 0.5, borderColor: colors.border,
   },
+  saveBtnText: { fontSize: 15, fontWeight: '600', color: colors.text, fontFamily: FF.semibold },
 });

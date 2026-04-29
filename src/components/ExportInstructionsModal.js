@@ -1,185 +1,227 @@
 /**
- * ExportInstructionsModal — first-time popup explaining how to actually
- * land a Send-to-trainer .zwo / .mrc file inside the rider's chosen
- * trainer app.
+ * ExportInstructionsModal — "Send your workout" bottom sheet.
  *
- * Why it exists in this shape: the previous version stacked every app's
- * instructions on one long screen — riders trying to get a workout into
- * Zwift had to scroll past Wahoo, Rouvy, TrainerRoad, intervals.icu,
- * and a CompuTrainer mention before finding their bit. Now we ask once
- * — "I use:" — and reveal only that app's specific path.
+ * What this modal does (and doesn't):
  *
- * Two-step universal flow up top so a rider who just wants the gist
- * gets it in 12 seconds:
- *   1. Save the file to your phone.
- *   2. Upload it on the app's web dashboard.
+ *   IT DOES: produce the workout file (.zwo / .fit) and hand it to the
+ *   OS share sheet so the rider can route it into Zwift / Rouvy /
+ *   Wahoo SYSTM / intervals.icu / Files.
  *
- * iOS specifically pre-empts the "Copy to Zwift" share-sheet illusion —
- * it sometimes appears even though Zwift's mobile app doesn't actually
- * import the file. Better to call it out before the rider tries.
+ *   IT DOES NOT: speak to the trainer over Bluetooth and play back a
+ *   workout. Smart trainers don't store .zwo files — they receive
+ *   real-time power commands from a trainer app while you ride. We
+ *   considered building a BLE + FTMS playback engine; that's a separate
+ *   product (a Zwift competitor) and not the bet we're making.
  *
- * MRC fallback exposed as a small link at the bottom — most riders never
- * see it; legacy-trainer-software users can find it.
+ * So the modal is honest about what it produces (a file) and where the
+ * file needs to go to actually become a ride. Two phases:
  *
- * Props:
- *   visible       boolean
- *   onProceed(format)  fires the actual export with the chosen format
- *                      ('zwo' | 'mrc'). 'zwo' is the default; the modal
- *                      flips to 'mrc' if the rider taps the legacy link.
- *   onCancel()    dismissed without exporting
+ *   1. PICK — rider chooses a destination. We group by reality, not by
+ *      brand: phone-only options (intervals.icu) are separate from
+ *      desktop-required options (Zwift / Wahoo / Rouvy) so a rider on
+ *      their phone in the kitchen doesn't pick Zwift, hit a wall, and
+ *      think the app is broken.
+ *
+ *   2. STEPS — once they've picked, we show 2-3 numbered steps + one
+ *      "Save & share" button. No accordion, no don't-show-again, no
+ *      legacy-format fallback. Single CTA.
+ *
+ * Same external interface as before so callers (ActivityDetailScreen)
+ * don't change:
+ *
+ *   visible           boolean
+ *   onProceed(format) fires with 'zwo' | 'fit' — the calling screen
+ *                     handles the actual file write + share-sheet open
+ *   onCancel()        dismissed without exporting
+ *   workout?          { title, distanceKm, durationMins, effort } —
+ *                     optional subtitle line so the rider sees what
+ *                     they're sending
+ *
+ * Removed in this rewrite (intentionally):
+ *   - bleTrainerService and TrainerPairingSheet (BLE was a mock; we
+ *     decided against shipping a half-built version that pretends to
+ *     "send to trainer" when it just opens a share sheet)
+ *   - "Don't show this again" + the universal step list it was hiding
+ *   - .mrc legacy format (CompuTrainer / GoldenCheetah users represent
+ *     <1% of riders — if anyone needs it we add a Settings affordance)
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, Platform,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fontFamily } from '../theme';
-import { setUserPrefs } from '../services/storageService';
 import analytics from '../services/analyticsService';
 
 const FF = fontFamily;
 
-// Apps the rider can pick. Each entry knows: badge colour + initial,
-// the iOS-specific path, and the Android-specific path. Both paths are
-// kept short — 2-3 numbered steps. Long-form context lives below in a
-// "Why this is the path" footer the rider can ignore.
+// Each destination knows: badge styling, the file format we save it as,
+// and the steps the rider needs to follow once the file lands. The
+// `phoneOnly` flag drives the visual grouping in phase 1 — if it's true,
+// the rider can complete this entirely on their phone; if false, they
+// need a laptop somewhere in the loop and we say so up front.
 //
-// intervals.icu sits FIRST, intentionally. It's the only path that
-// works mobile-only, it's free, and once connected it pushes
-// workouts straight into Zwift / Garmin / Wahoo. For most riders
-// (especially phone-first ones) this is the right answer; the other
-// apps below all require a desktop step we can't help with from the
-// phone. The hero card at the top of the modal also previews this
-// recommendation before the rider even reaches the picker.
-const APP_OPTIONS = [
+// Steps are deliberately short. Three lines max. Each step is one
+// concrete action ("save the file", "open the dashboard", "drop it in
+// the workouts folder"). No marketing copy.
+const DESTINATIONS = [
   {
     key: 'intervals',
     name: 'intervals.icu',
     badgeColor: '#3478F6',
     badgeLetter: 'i',
-    iosSteps: [
-      'Save to Files (or just tap the share sheet → upload).',
-      'Open intervals.icu on your phone → sign in (free) → Workouts → Calendar → drag the .zwo onto a date.',
-      'Connect intervals.icu to Zwift / Garmin / Wahoo once and every future workout you upload syncs through automatically.',
-    ],
-    androidSteps: [
-      'File saves to Downloads.',
-      'Open intervals.icu in your browser → sign in (free) → Workouts → Calendar → upload the .zwo onto a date.',
-      'Connect intervals.icu to Zwift / Garmin / Wahoo once and every future workout you upload syncs through automatically.',
-    ],
-    badge: 'Recommended — works phone-only',
-    fasterPath: 'Free forever. The fastest path on mobile, and the only one that puts workouts into a Garmin Edge / Wahoo ELEMNT head unit.',
+    format: 'zwo',
+    formatLabel: '.zwo',
+    phoneOnly: true,
+    tagline: 'Free, works phone-only, syncs to Zwift / Garmin / Wahoo',
+    steps: {
+      ios: [
+        'Tap "Save & share" below.',
+        'In the share sheet, save to Files (or open intervals.icu and use the upload affordance).',
+        'In intervals.icu → Workouts → Calendar, drag the .zwo onto a date.',
+      ],
+      android: [
+        'Tap "Save & share" below.',
+        'The file lands in Downloads (or your chosen share target).',
+        'Open intervals.icu in your browser → Workouts → Calendar → upload the .zwo onto a date.',
+      ],
+    },
+    extraTip: 'Once you connect intervals.icu to Zwift / Garmin / Wahoo (one-time, in their settings), every workout you upload syncs through automatically.',
   },
   {
     key: 'zwift',
     name: 'Zwift',
     badgeColor: '#FC6719',
     badgeLetter: 'Z',
-    iosSteps: [
-      'Save to Files → iCloud Drive.',
-      'On a desktop, open the file and drag it into Documents/Zwift/Workouts/{your-id}/.',
-      'Open Zwift on any device — appears under Custom Workouts → Etapa.',
-    ],
-    androidSteps: [
-      'File saves to your Downloads folder.',
-      'Move it to a desktop (USB / Drive / email).',
-      'Drop into Documents/Zwift/Workouts/{your-id}/. Appears in Zwift on next launch.',
-    ],
-    iosWarning: '"Copy to Zwift" sometimes appears in the share sheet — ignore it. Zwift\'s mobile app doesn\'t actually import the file.',
-    fasterPath: 'Phone-only? Use intervals.icu (top of this list) — it\'s free, takes mobile uploads, and has built-in Zwift sync.',
-  },
-  {
-    key: 'wahoo',
-    name: 'Wahoo SYSTM',
-    badgeColor: '#0066B3',
-    badgeLetter: 'W',
-    iosSteps: [
-      'Save to Files → iCloud Drive.',
-      'On a laptop, sign in at systm.wahoofitness.com → Workouts → Custom → Import.',
-      'Syncs to the SYSTM app on next launch.',
-    ],
-    androidSteps: [
-      'File saves to Downloads.',
-      'Sign in at systm.wahoofitness.com → Workouts → Custom → Import.',
-      'Syncs to SYSTM on next launch.',
-    ],
+    format: 'zwo',
+    formatLabel: '.zwo',
+    phoneOnly: false,
+    tagline: 'Custom workouts folder. Needs a laptop.',
+    steps: {
+      ios: [
+        'Tap "Save & share" below, save to Files → iCloud Drive.',
+        'On a laptop, drop the file into Documents/Zwift/Workouts/[your-id]/.',
+        'Open Zwift → Custom Workouts → Etapa folder.',
+      ],
+      android: [
+        'Tap "Save & share" below — the file lands in Downloads.',
+        'Move it to a laptop (USB / Drive / email) and drop it into Documents/Zwift/Workouts/[your-id]/.',
+        'Open Zwift → Custom Workouts → Etapa folder.',
+      ],
+    },
+    iosWarning: '"Copy to Zwift" sometimes appears in the share sheet. Ignore it — Zwift\'s mobile app does not import workouts. The Files route above is the only one that works.',
   },
   {
     key: 'rouvy',
     name: 'Rouvy',
     badgeColor: '#0F1F19',
     badgeLetter: 'R',
-    iosSteps: [
-      'Save to Files.',
-      'On a laptop, sign in at my.rouvy.com → Workouts → Add → upload the .zwo.',
-      'Syncs to mobile and desktop.',
-    ],
-    androidSteps: [
-      'File saves to Downloads.',
-      'Sign in at my.rouvy.com → Workouts → Add → upload the .zwo.',
-      'Syncs to mobile and desktop.',
-    ],
+    format: 'zwo',
+    formatLabel: '.zwo',
+    phoneOnly: false,
+    tagline: 'Web upload, then syncs to mobile + desktop.',
+    steps: {
+      ios: [
+        'Tap "Save & share" below, save to Files.',
+        'On a laptop, sign in at my.rouvy.com → Workouts → Add → upload the .zwo.',
+        'Syncs to the Rouvy app on next launch.',
+      ],
+      android: [
+        'Tap "Save & share" below — the file lands in Downloads.',
+        'On a laptop, sign in at my.rouvy.com → Workouts → Add → upload the .zwo.',
+        'Syncs to the Rouvy app on next launch.',
+      ],
+    },
   },
   {
-    key: 'trainerroad',
-    name: 'TrainerRoad',
-    badgeColor: '#E73B3F',
-    badgeLetter: 'TR',
-    iosSteps: [
-      'Save to Files.',
-      'On a laptop, sign in at trainerroad.com → Workouts → Workout Creator → Import.',
-    ],
-    androidSteps: [
-      'File saves to Downloads.',
-      'Sign in at trainerroad.com → Workouts → Workout Creator → Import.',
-    ],
+    key: 'wahoo',
+    name: 'Wahoo SYSTM',
+    badgeColor: '#0066B3',
+    badgeLetter: 'W',
+    format: 'fit',
+    formatLabel: '.fit',
+    phoneOnly: false,
+    tagline: 'Web import, syncs to SYSTM app.',
+    steps: {
+      ios: [
+        'Tap "Save & share" below, save to Files.',
+        'On a laptop, sign in at systm.wahoofitness.com → Workouts → Custom → Import.',
+        'Syncs to the SYSTM app on next launch.',
+      ],
+      android: [
+        'Tap "Save & share" below — the file lands in Downloads.',
+        'On a laptop, sign in at systm.wahoofitness.com → Workouts → Custom → Import.',
+        'Syncs to the SYSTM app on next launch.',
+      ],
+    },
   },
   {
     key: 'other',
-    name: 'Other / not sure',
+    name: 'Other / save to Files',
     badgeColor: '#5F5E5A',
     badgeLetter: '?',
-    iosSteps: [
-      'Save to Files.',
-      'Open your trainer app\'s web dashboard from a laptop.',
-      'Look for "Workouts → Import" or similar.',
-    ],
-    androidSteps: [
-      'File saves to Downloads.',
-      'Open your trainer app\'s web dashboard from a laptop.',
-      'Look for "Workouts → Import" or similar.',
-    ],
+    format: 'zwo',
+    formatLabel: '.zwo',
+    phoneOnly: false,
+    tagline: 'Save the file and import it manually wherever you ride.',
+    steps: {
+      ios: [
+        'Tap "Save & share" below — pick "Save to Files" or any app you like.',
+        'Open your trainer app and look for "Workouts → Import" (it\'s called something close to that everywhere).',
+        'Drop the .zwo in.',
+      ],
+      android: [
+        'Tap "Save & share" below — the file lands in Downloads.',
+        'Open your trainer app and look for "Workouts → Import" (it\'s called something close to that everywhere).',
+        'Drop the .zwo in.',
+      ],
+    },
   },
 ];
 
-export default function ExportInstructionsModal({ visible, onProceed, onCancel }) {
-  // Default to intervals.icu — the recommended path for the vast
-  // majority of riders, and the only one that works phone-only. This
-  // means the modal opens with the steps already visible (no "pick
-  // an app first" empty state) and the rider sees the easy answer
-  // by default.
-  const [selectedApp, setSelectedApp] = useState('intervals');
-  const [dontShowAgain, setDontShowAgain] = useState(false);
-  const [useMrc, setUseMrc] = useState(false);
+export default function ExportInstructionsModal({ visible, onProceed, onCancel, workout }) {
+  // Two-phase state: null = picker, otherwise the selected destination key.
+  // We reset to null whenever `visible` flips off so re-opening the modal
+  // is always a clean picker, not a stuck-on-the-last-app state.
+  const [picked, setPicked] = useState(null);
 
-  // Reset selection when the modal opens — fresh start each time,
-  // re-defaulting to the intervals.icu recommendation.
-  useEffect(() => { if (visible) { setSelectedApp('intervals'); setDontShowAgain(false); setUseMrc(false); } }, [visible]);
+  // useEffect-equivalent without the import: reset on close. Cheap because
+  // the modal is mounted via the `visible` prop — when it's false we
+  // return null and the picker state is moot anyway.
+  if (!visible && picked !== null) {
+    // Reset only when transitioning out. Using `setPicked` here would
+    // loop, so we use the inline guard pattern: next render sees null.
+    setTimeout(() => setPicked(null), 0);
+  }
 
   if (!visible) return null;
 
   const isAndroid = Platform.OS === 'android';
-  const app = APP_OPTIONS.find(a => a.key === selectedApp) || null;
-  const steps = app ? (isAndroid ? app.androidSteps : app.iosSteps) : null;
-  const showZwiftWarning = app?.key === 'zwift' && !isAndroid && app.iosWarning;
+  const dest = picked ? DESTINATIONS.find(d => d.key === picked) || null : null;
+  const steps = dest ? (isAndroid ? dest.steps.android : dest.steps.ios) : null;
+  const showIosWarning = dest && !isAndroid && dest.iosWarning;
 
-  const handleProceed = async () => {
-    if (dontShowAgain) {
-      try { await setUserPrefs({ hideExportInstructions: true }); } catch {}
-      analytics.events.exportInstructionsOptedOut?.();
-    }
-    if (selectedApp) analytics.events.exportAppPicked?.({ app: selectedApp });
-    onProceed?.(useMrc ? 'mrc' : 'zwo');
+  const handlePick = (key) => {
+    setPicked(key);
+    analytics.events.exportAppPicked?.({ app: key });
   };
+
+  const handleSaveShare = () => {
+    if (!dest) return;
+    analytics.events.exportProceeded?.({ app: dest.key, format: dest.format });
+    onProceed?.(dest.format);
+  };
+
+  const handleBackToPicker = () => setPicked(null);
+
+  // Workout meta line — small subtitle so the rider sees what they're
+  // about to send. Drops cleanly when no `workout` prop is passed.
+  const workoutMeta = workout ? [
+    workout.title,
+    workout.distanceKm ? `${Math.round(workout.distanceKm)} km` : null,
+    workout.durationMins ? `${workout.durationMins} min` : null,
+    workout.effort,
+  ].filter(Boolean).join(' \u00B7 ') : null;
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onCancel} statusBarTranslucent>
@@ -189,174 +231,157 @@ export default function ExportInstructionsModal({ visible, onProceed, onCancel }
 
           <View style={s.headerRow}>
             <View style={{ flex: 1 }}>
-              <Text style={s.title}>Send to your trainer</Text>
-              <Text style={s.subtitle}>
-                The easiest path on a phone is intervals.icu. It's free, takes mobile uploads, and pushes workouts straight into Zwift / Garmin / Wahoo.
+              <Text style={s.title}>
+                {dest ? `Send to ${dest.name}` : 'Send your workout'}
               </Text>
+              {workoutMeta ? (
+                <Text style={s.subtitle} numberOfLines={1}>{workoutMeta}</Text>
+              ) : null}
             </View>
-            <TouchableOpacity onPress={onCancel} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-              <Text style={s.closeX}>{'\u2715'}</Text>
+            <TouchableOpacity onPress={onCancel} hitSlop={HIT}>
+              <MaterialCommunityIcons name="close" size={20} color={colors.textMid} />
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 12 }} showsVerticalScrollIndicator={false}>
-            {/* Hero recommendation — pushes intervals.icu hard.
-                Most riders who land here are on a phone with no
-                desktop nearby; intervals.icu is the only path that
-                actually works in that setup. The card stays visible
-                even after the rider picks a different app, because
-                even Zwift / Wahoo / Rouvy users sometimes prefer
-                the intervals.icu bridge. */}
-            <View style={s.heroCard}>
-              <View style={s.heroBadge}>
-                <Text style={s.heroBadgeText}>RECOMMENDED</Text>
-              </View>
-              <Text style={s.heroTitle}>Use intervals.icu</Text>
-              <Text style={s.heroBody}>
-                Free forever. Upload .zwo straight from your phone. Connect once and your workouts auto-sync to Zwift, Garmin Edge, Wahoo ELEMNT — no laptop, no fiddling.
-              </Text>
-              <TouchableOpacity
-                style={s.heroBtn}
-                onPress={() => setSelectedApp('intervals')}
-                activeOpacity={0.85}
-              >
-                <Text style={s.heroBtnText}>
-                  {selectedApp === 'intervals' ? '✓ Selected — see the steps below' : 'Use intervals.icu'}
+          <ScrollView
+            style={s.scroll}
+            contentContainerStyle={s.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* ── PHASE 1: picker ─────────────────────────────────────
+                Two visual groups so the rider's first decision is
+                framed by their reality, not by brand: do you have a
+                laptop nearby or are you on your phone? Phone-only =
+                intervals.icu. Needs-desktop = the rest. */}
+            {!dest && (
+              <>
+                <Text style={s.preamble}>
+                  We'll save the workout file and open the share sheet. Pick where you ride.
                 </Text>
-              </TouchableOpacity>
-            </View>
 
-            {/* App picker grid — selecting an app reveals only that app's
-                specific steps below. intervals.icu lives here too (and
-                first) so a rider who scrolled down keeps the
-                recommended option visible inline with the others. */}
-            <Text style={s.sectionLabel}>Or pick your specific app</Text>
-            <View style={s.appGrid}>
-              {APP_OPTIONS.map(a => {
-                const sel = a.key === selectedApp;
-                return (
-                  <TouchableOpacity
-                    key={a.key}
-                    style={[s.appOption, sel && s.appOptionSelected]}
-                    onPress={() => setSelectedApp(a.key)}
-                    activeOpacity={0.7}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: sel }}
-                  >
-                    <View style={[s.appBadge, { backgroundColor: a.badgeColor }]}>
-                      <Text style={s.appBadgeText}>{a.badgeLetter}</Text>
-                    </View>
-                    <Text style={[s.appName, sel && s.appNameSelected]} numberOfLines={1}>{a.name}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {app?.badge && (
-              <View style={s.recommendedBadge}>
-                <Text style={s.recommendedBadgeText}>{app.badge}</Text>
-              </View>
-            )}
-
-            {/* iOS-only Zwift gotcha — surfaces BEFORE the steps so a
-                rider following them doesn't get tripped up by the
-                share-sheet illusion. */}
-            {showZwiftWarning && (
-              <View style={s.warning}>
-                <Text style={s.warningTitle}>Heads-up</Text>
-                <Text style={s.warningBody}>{app.iosWarning}</Text>
-              </View>
-            )}
-
-            {/* Per-app numbered steps. Replaces the old single-screen
-                wall of every app's path stacked. */}
-            {steps ? (
-              <View style={s.stepsCard}>
-                {steps.map((step, i) => (
-                  <View key={i} style={s.stepRow}>
-                    <View style={s.stepNum}><Text style={s.stepNumText}>{i + 1}</Text></View>
-                    <Text style={s.stepText}>{step}</Text>
-                  </View>
+                <Text style={s.groupLabel}>Phone only</Text>
+                {DESTINATIONS.filter(d => d.phoneOnly).map(d => (
+                  <DestinationTile
+                    key={d.key}
+                    destination={d}
+                    onPress={() => handlePick(d.key)}
+                    accent
+                  />
                 ))}
-                {app?.fasterPath && (
-                  <View style={s.fasterPathRow}>
-                    <Text style={s.fasterPathText}>{app.fasterPath}</Text>
+
+                <Text style={[s.groupLabel, { marginTop: 16 }]}>Needs a laptop somewhere</Text>
+                {DESTINATIONS.filter(d => !d.phoneOnly).map(d => (
+                  <DestinationTile
+                    key={d.key}
+                    destination={d}
+                    onPress={() => handlePick(d.key)}
+                  />
+                ))}
+
+                <Text style={s.honestNote}>
+                  Why we don't "send straight to your trainer": smart trainers don't play back workout files — a trainer app does that while you ride. We make the file. The apps above ride it.
+                </Text>
+              </>
+            )}
+
+            {/* ── PHASE 2: steps for the picked destination ───────────
+                Numbered list, one CTA, one back link. The iOS Zwift
+                gotcha (share sheet "Copy to Zwift" doesn't actually
+                import) gets surfaced before the steps so a rider
+                following them isn't tripped up by it. */}
+            {dest && (
+              <>
+                <TouchableOpacity
+                  style={s.backLink}
+                  onPress={handleBackToPicker}
+                  hitSlop={HIT}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons name="chevron-left" size={16} color={colors.textMid} />
+                  <Text style={s.backLinkText}>Pick a different app</Text>
+                </TouchableOpacity>
+
+                <Text style={s.formatLine}>
+                  We'll save this as a <Text style={s.formatStrong}>{dest.formatLabel}</Text> file.
+                </Text>
+
+                {showIosWarning && (
+                  <View style={s.warning}>
+                    <MaterialCommunityIcons name="alert" size={14} color="#F0B72F" style={{ marginTop: 1 }} />
+                    <Text style={s.warningText}>{dest.iosWarning}</Text>
                   </View>
                 )}
-              </View>
-            ) : (
-              <Text style={s.pickPrompt}>Pick an app above to see the specific steps.</Text>
-            )}
 
-            {/* Universal footnote — same for every app. Kept short. */}
-            {selectedApp && (
-              <Text style={s.footnote}>
-                Power targets are a percentage of your FTP, so set your FTP inside the trainer app once and every imported workout plays back at the right watts. Garmin Edge / Wahoo ELEMNT head units don't read .zwo directly — route through intervals.icu.
-              </Text>
-            )}
+                <View style={s.stepsCard}>
+                  {steps.map((step, i) => (
+                    <View key={i} style={s.stepRow}>
+                      <View style={s.stepNum}><Text style={s.stepNumText}>{i + 1}</Text></View>
+                      <Text style={s.stepText}>{step}</Text>
+                    </View>
+                  ))}
+                </View>
 
-            {/* MRC fallback — discovered, not in-the-way. */}
-            {selectedApp && (
-              <TouchableOpacity
-                style={s.mrcRow}
-                onPress={() => setUseMrc(v => !v)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: useMrc }}
-              >
-                <View style={[s.checkBox, useMrc && s.checkBoxOn]}>
-                  {useMrc && <Text style={s.checkTick}>{'\u2713'}</Text>}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.mrcLabel}>Use the older .mrc format instead</Text>
-                  <Text style={s.mrcSub}>For CompuTrainer, PerfPro, ErgVideo, GoldenCheetah and other legacy software.</Text>
-                </View>
-              </TouchableOpacity>
+                {dest.extraTip && (
+                  <Text style={s.extraTip}>{dest.extraTip}</Text>
+                )}
+
+                <TouchableOpacity
+                  style={s.primaryBtn}
+                  onPress={handleSaveShare}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="share-variant" size={16} color="#FFFFFF" />
+                  <Text style={s.primaryBtnText}>Save & share</Text>
+                </TouchableOpacity>
+              </>
             )}
           </ScrollView>
 
-          {/* Footer pinned at bottom */}
-          <View style={s.footer}>
-            <TouchableOpacity
-              style={s.checkRow}
-              onPress={() => setDontShowAgain(v => !v)}
-              activeOpacity={0.7}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: dontShowAgain }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <View style={[s.checkBox, dontShowAgain && s.checkBoxOn]}>
-                {dontShowAgain && <Text style={s.checkTick}>{'\u2713'}</Text>}
-              </View>
-              <Text style={s.checkLabel}>Don't show this again. (You can re-enable in Settings.)</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[s.primaryBtn, !selectedApp && s.primaryBtnDisabled]}
-              onPress={handleProceed}
-              disabled={!selectedApp}
-              activeOpacity={0.85}
-            >
-              <Text style={s.primaryBtnText}>
-                {selectedApp ? `Got it — export ${useMrc ? '.mrc' : '.zwo'}` : 'Pick an app first'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={s.cancelBtn} onPress={onCancel} activeOpacity={0.7}>
-              <Text style={s.cancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity style={s.cancelBtn} onPress={onCancel} activeOpacity={0.7}>
+            <Text style={s.cancelText}>Cancel</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
   );
 }
 
+// Destination row tile. `accent` = pink-tinted variant for the
+// phone-only group so it visually distinguishes itself from the
+// laptop-required ones without resorting to emoji or icons.
+function DestinationTile({ destination, onPress, accent }) {
+  const { name, badgeColor, badgeLetter, formatLabel, tagline } = destination;
+  return (
+    <TouchableOpacity
+      style={[s.tile, accent && s.tileAccent]}
+      onPress={onPress}
+      activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel={`Send to ${name}`}
+    >
+      <View style={[s.tileBadge, { backgroundColor: badgeColor }]}>
+        <Text style={s.tileBadgeText}>{badgeLetter}</Text>
+      </View>
+      <View style={s.tileText}>
+        <View style={s.tileNameRow}>
+          <Text style={s.tileName}>{name}</Text>
+          <Text style={s.tileFormat}>{formatLabel}</Text>
+        </View>
+        <Text style={s.tileTagline}>{tagline}</Text>
+      </View>
+      <MaterialCommunityIcons name="chevron-right" size={18} color={colors.textMuted} />
+    </TouchableOpacity>
+  );
+}
+
+const HIT = { top: 12, bottom: 12, left: 12, right: 12 };
+
 const s = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: 22, borderTopRightRadius: 22,
-    paddingTop: 6, paddingBottom: 24,
+    paddingTop: 6, paddingBottom: 18,
     borderTopWidth: 0.5, borderColor: colors.border,
     maxHeight: '92%',
   },
@@ -364,116 +389,93 @@ const s = StyleSheet.create({
 
   headerRow: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-    paddingHorizontal: 18, paddingTop: 10, paddingBottom: 10,
+    paddingHorizontal: 18, paddingTop: 10, paddingBottom: 12,
     borderBottomWidth: 0.5, borderBottomColor: colors.borderLight,
   },
   title: { fontSize: 17, fontWeight: '600', color: colors.text, fontFamily: FF.semibold, marginBottom: 4 },
   subtitle: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, lineHeight: 17 },
-  closeX: { fontSize: 18, color: colors.textMid, padding: 2 },
 
   scroll: { flexGrow: 0 },
+  scrollContent: { paddingHorizontal: 18, paddingBottom: 12 },
 
-  sectionLabel: {
+  // ── Phase 1: picker ─────────────────────────────────────────────────
+  preamble: {
+    fontSize: 13, color: colors.textMid, fontFamily: FF.regular,
+    lineHeight: 19, marginTop: 14, marginBottom: 14,
+  },
+  groupLabel: {
     fontSize: 10, fontWeight: '600', color: colors.textMuted,
     textTransform: 'uppercase', letterSpacing: 0.6,
     fontFamily: FF.medium,
-    marginHorizontal: 18, marginTop: 16, marginBottom: 8,
+    marginBottom: 8,
   },
 
-  // ── Hero recommendation card (intervals.icu) ──────────────────────
-  // Pink-tinted card sat at the top of the scroll. Strong visual
-  // pull so a rider who lands here just hits the CTA without thinking
-  // about which trainer app they use. Compact enough to coexist with
-  // the picker grid below for riders who want to override.
-  heroCard: {
-    marginHorizontal: 18, marginTop: 14,
+  // Tile: row layout with badge / text / chevron. Accent variant for
+  // the phone-only group is a subtle pink-tinted bg + pink left border.
+  tile: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, paddingHorizontal: 12,
+    borderRadius: 12, marginBottom: 6,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 0.5, borderColor: colors.border,
+  },
+  tileAccent: {
     backgroundColor: colors.primary + '14',
-    borderWidth: 1, borderColor: colors.primary + '50',
-    borderRadius: 14, padding: 16,
+    borderColor: colors.primary + '50',
+    borderLeftWidth: 3, borderLeftColor: colors.primary,
   },
-  heroBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8, paddingVertical: 3,
-    backgroundColor: colors.primary,
-    borderRadius: 999, marginBottom: 8,
+  tileBadge: {
+    width: 32, height: 32, borderRadius: 8,
+    alignItems: 'center', justifyContent: 'center',
   },
-  heroBadgeText: {
-    fontSize: 9, fontWeight: '700', color: '#FFFFFF',
-    fontFamily: FF.semibold, letterSpacing: 0.8,
+  tileBadgeText: { color: '#FFFFFF', fontWeight: '700', fontSize: 12, fontFamily: FF.semibold },
+  tileText: { flex: 1 },
+  tileNameRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  tileName: { fontSize: 14, fontWeight: '500', color: colors.text, fontFamily: FF.medium },
+  tileFormat: { fontSize: 11, color: colors.textMuted, fontFamily: FF.regular },
+  tileTagline: { fontSize: 11, color: colors.textMid, fontFamily: FF.regular, marginTop: 3, lineHeight: 15 },
+
+  // Honest note about why we don't "send to trainer". Italic + muted so
+  // it doesn't compete with the picker, but visible enough that anyone
+  // wondering gets the real answer.
+  honestNote: {
+    fontSize: 11, color: colors.textMuted, fontFamily: FF.regular,
+    fontStyle: 'italic', lineHeight: 16,
+    marginTop: 18, paddingTop: 14,
+    borderTopWidth: 0.5, borderTopColor: colors.borderLight,
   },
-  heroTitle: {
-    fontSize: 17, fontWeight: '700', color: colors.text,
-    fontFamily: FF.bold, marginBottom: 6,
+
+  // ── Phase 2: steps ─────────────────────────────────────────────────
+  backLink: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    alignSelf: 'flex-start', marginTop: 12, marginBottom: 6,
+    paddingVertical: 4, paddingRight: 8,
   },
-  heroBody: {
+  backLinkText: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular },
+
+  formatLine: {
     fontSize: 13, color: colors.textMid, fontFamily: FF.regular,
     lineHeight: 19, marginBottom: 12,
   },
-  heroBtn: {
-    backgroundColor: colors.primary, paddingVertical: 11,
-    borderRadius: 10, alignItems: 'center',
-  },
-  heroBtnText: {
-    fontSize: 13, fontWeight: '600', color: '#FFFFFF',
-    fontFamily: FF.semibold,
-  },
-
-  // Three-column app grid. 2 rows of 3 → all six options visible
-  // without scrolling on standard phones.
-  appGrid: {
-    flexDirection: 'row', flexWrap: 'wrap',
-    paddingHorizontal: 14, gap: 8,
-  },
-  appOption: {
-    width: '31%',
-    backgroundColor: colors.surfaceLight,
-    borderWidth: 1, borderColor: colors.border, borderRadius: 12,
-    padding: 10,
-    alignItems: 'center', gap: 6,
-    minHeight: 66,
-  },
-  appOptionSelected: { backgroundColor: colors.primary + '14', borderColor: colors.primary, borderWidth: 1.5 },
-  appBadge: {
-    width: 28, height: 28, borderRadius: 8,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  appBadgeText: { color: '#fff', fontWeight: '700', fontSize: 11, letterSpacing: 0.4 },
-  appName: { fontSize: 11, fontWeight: '500', color: colors.textMid, fontFamily: FF.medium, textAlign: 'center' },
-  appNameSelected: { color: colors.text, fontWeight: '600', fontFamily: FF.semibold },
-
-  recommendedBadge: {
-    alignSelf: 'flex-start',
-    marginHorizontal: 18, marginTop: 12,
-    paddingHorizontal: 10, paddingVertical: 4,
-    backgroundColor: colors.primary + '14',
-    borderRadius: 999,
-    borderWidth: 0.5, borderColor: colors.primary + '50',
-  },
-  recommendedBadgeText: {
-    fontSize: 10, fontWeight: '600', color: colors.primary,
-    fontFamily: FF.semibold, letterSpacing: 0.4,
-  },
+  formatStrong: { color: colors.text, fontWeight: '600', fontFamily: FF.semibold },
 
   warning: {
-    marginHorizontal: 18, marginTop: 12,
-    padding: 12,
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    padding: 12, marginBottom: 12,
     backgroundColor: 'rgba(240, 183, 47, 0.08)',
     borderWidth: 0.5, borderColor: 'rgba(240, 183, 47, 0.4)',
     borderLeftWidth: 2, borderLeftColor: '#F0B72F',
-    borderRadius: 0,
+    borderRadius: 8,
   },
-  warningTitle: {
-    fontSize: 11, fontWeight: '600', color: '#F0B72F',
-    fontFamily: FF.semibold, letterSpacing: 0.4,
-    textTransform: 'uppercase', marginBottom: 4,
+  warningText: {
+    flex: 1, fontSize: 12, color: colors.textMid, fontFamily: FF.regular, lineHeight: 17,
   },
-  warningBody: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, lineHeight: 17 },
 
   stepsCard: {
-    marginHorizontal: 18, marginTop: 14,
     backgroundColor: colors.surfaceLight,
     borderRadius: 12, padding: 14,
     borderWidth: 0.5, borderColor: colors.border,
+    marginBottom: 12,
   },
   stepRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
   stepNum: {
@@ -482,58 +484,25 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     marginTop: 1,
   },
-  stepNumText: { color: '#fff', fontWeight: '700', fontSize: 11, fontFamily: FF.semibold },
+  stepNumText: { color: '#FFFFFF', fontWeight: '700', fontSize: 11, fontFamily: FF.semibold },
   stepText: { flex: 1, fontSize: 13, color: colors.text, fontFamily: FF.regular, lineHeight: 19 },
-  fasterPathRow: {
-    marginTop: 6, paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border,
-  },
-  fasterPathText: {
-    fontSize: 11, fontStyle: 'italic',
-    color: colors.textMid, fontFamily: FF.regular, lineHeight: 16,
-  },
 
-  pickPrompt: {
-    fontSize: 13, color: colors.textMuted, fontFamily: FF.regular,
-    textAlign: 'center', paddingVertical: 24, paddingHorizontal: 18,
-  },
-
-  footnote: {
-    marginHorizontal: 18, marginTop: 14,
+  extraTip: {
     fontSize: 11, color: colors.textMuted, fontFamily: FF.regular,
-    lineHeight: 16, fontStyle: 'italic',
+    fontStyle: 'italic', lineHeight: 16,
+    marginBottom: 14, paddingHorizontal: 2,
   },
 
-  mrcRow: {
-    marginHorizontal: 18, marginTop: 14,
-    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
-    paddingVertical: 10, paddingHorizontal: 12,
-    backgroundColor: colors.surfaceLight,
-    borderWidth: 0.5, borderColor: colors.border,
-    borderRadius: 10,
+  primaryBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: colors.primary, paddingVertical: 14,
+    borderRadius: 12,
   },
-  mrcLabel: { fontSize: 12, fontWeight: '500', color: colors.text, fontFamily: FF.medium },
-  mrcSub: { fontSize: 11, color: colors.textMuted, fontFamily: FF.regular, lineHeight: 15, marginTop: 3 },
+  primaryBtnText: { fontSize: 14, fontWeight: '600', color: '#FFFFFF', fontFamily: FF.semibold },
 
-  footer: {
-    paddingHorizontal: 18, paddingTop: 12,
-    borderTopWidth: 0.5, borderTopColor: colors.borderLight,
-    backgroundColor: colors.surface,
+  cancelBtn: {
+    paddingVertical: 14, alignItems: 'center', marginTop: 6,
+    paddingHorizontal: 18,
   },
-  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, marginBottom: 4 },
-  checkBox: {
-    width: 18, height: 18, borderRadius: 5,
-    borderWidth: 1.5, borderColor: colors.border,
-    backgroundColor: colors.surfaceLight,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  checkBoxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-  checkTick: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  checkLabel: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, flex: 1, lineHeight: 16 },
-
-  primaryBtn: { backgroundColor: colors.primary, paddingVertical: 13, borderRadius: 12, alignItems: 'center', marginBottom: 8 },
-  primaryBtnDisabled: { opacity: 0.45 },
-  primaryBtnText: { fontSize: 14, fontWeight: '600', color: '#fff', fontFamily: FF.semibold },
-  cancelBtn: { paddingVertical: 10, alignItems: 'center' },
   cancelText: { fontSize: 13, color: colors.textMuted, fontFamily: FF.regular },
 });
