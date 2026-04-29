@@ -180,37 +180,118 @@ export default function ExportInstructionsModal({ visible, activity, planId, onC
     setPhase('downloading');
     setErrorMsg('');
     try {
-      const url = await buildWorkoutExportUrl(planId, activity.id, 'zwo');
+      // 1) Mint the signed export URL.
+      let url;
+      try {
+        url = await buildWorkoutExportUrl(planId, activity.id, 'zwo');
+      } catch (err) {
+        setErrorMsg('Couldn\'t reach the server. Check your connection and try again.');
+        setPhase('error');
+        return;
+      }
       if (!url) {
         setErrorMsg('Sign-in expired. Pull-to-refresh on Home, then try again.');
         setPhase('error');
         return;
       }
 
-      // Ensure a workouts dir exists under the app's documentDirectory.
-      // documentDirectory is iOS-visible-in-Files when the app sets
-      // UIFileSharingEnabled — that means riders can browse to the file
-      // later via Files → On My iPhone → Etapa.
+      // 2) Ensure the local workouts directory exists. We use the app's
+      // documentDirectory because (a) it survives across app launches
+      // and (b) on iOS with UIFileSharingEnabled it's visible under
+      // Files → On My iPhone → Etapa. makeDirectoryAsync with
+      // intermediates:true is idempotent — a pre-existing dir is fine.
       const dir = FileSystem.documentDirectory + 'workouts/';
-      try { await FileSystem.makeDirectoryAsync(dir, { intermediates: true }); } catch {}
+      try {
+        await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+      } catch (err) {
+        // Almost always "already exists" — fine. Surface anything else.
+        const msg = String(err?.message || '');
+        if (!/exists|EEXIST/i.test(msg)) {
+          console.warn('[export-modal] makeDirectoryAsync failed:', msg);
+        }
+      }
 
       const filename = `${slugForFile(activity.title)}.zwo`;
       const localUri = dir + filename;
 
-      const result = await FileSystem.downloadAsync(url, localUri);
-      if (!result?.uri || (result.status && result.status >= 400)) {
-        setErrorMsg('Couldn\'t save the file. Try again in a moment.');
+      // 3) Fetch the signed URL ourselves (was FileSystem.downloadAsync,
+      // which on Expo SDK 55 has flaky redirect handling and returns an
+      // opaque "Couldn't save" error on any non-2xx — including the
+      // perfectly recoverable 401 from a stale session). Going through
+      // fetch() lets us surface the real reason.
+      let response;
+      try {
+        response = await fetch(url, { method: 'GET' });
+      } catch (err) {
+        setErrorMsg(`Network error while fetching the workout. Check your connection and try again.`);
         setPhase('error');
         return;
       }
 
-      // Best-effort size lookup so we can show the rider how big the
-      // file is. Failing this is non-fatal — we just leave size blank.
+      if (!response.ok) {
+        // Map the most common server statuses to plain English. The
+        // signed URL is one-shot + short-TTL; if the modal sat on the
+        // screen for several minutes the URL may have expired by the
+        // time the rider tapped retry.
+        let reason;
+        if (response.status === 401 || response.status === 403) {
+          reason = 'The workout link expired. Tap retry to fetch a fresh one.';
+        } else if (response.status === 404) {
+          reason = 'This activity isn\'t available for export. It may have been deleted.';
+        } else if (response.status >= 500) {
+          reason = `Server error (${response.status}). Try again in a moment.`;
+        } else {
+          reason = `Couldn\'t fetch the workout (${response.status}). Try again.`;
+        }
+        setErrorMsg(reason);
+        setPhase('error');
+        return;
+      }
+
+      // 4) Read the body. .zwo is XML so we can read it as text.
+      let content;
+      try {
+        content = await response.text();
+      } catch (err) {
+        setErrorMsg('The workout file came through corrupted. Try again.');
+        setPhase('error');
+        return;
+      }
+
+      // Sanity check — anything not starting with `<` is almost
+      // certainly not the .zwo XML we expected (could be an HTML error
+      // page from a misconfigured proxy, an empty body, etc.). Better
+      // to fail honestly than write garbage to disk.
+      const trimmed = (content || '').trim();
+      if (!trimmed.startsWith('<')) {
+        setErrorMsg('The server returned an unexpected response. Try again in a moment.');
+        setPhase('error');
+        return;
+      }
+
+      // 5) Write the file. writeAsStringAsync defaults to UTF-8, which
+      // is what the .zwo XML wants.
+      try {
+        await FileSystem.writeAsStringAsync(localUri, content);
+      } catch (err) {
+        setErrorMsg(`Couldn\'t write the file to your device. ${err?.message || ''}`.trim());
+        setPhase('error');
+        return;
+      }
+
+      // 6) Best-effort size lookup so we can show the rider how big
+      // the file is. Failing this is non-fatal.
       let sizeBytes = 0;
       try {
-        const info = await FileSystem.getInfoAsync(result.uri, { size: true });
-        sizeBytes = info?.size || 0;
-      } catch {}
+        const info = await FileSystem.getInfoAsync(localUri, { size: true });
+        sizeBytes = info?.size || trimmed.length || 0;
+      } catch {
+        sizeBytes = trimmed.length || 0;
+      }
+
+      // Synthesize a result object matching what the rest of the
+      // function expects (downstream code reads .uri off this).
+      const result = { uri: localUri };
 
       analytics.events.activityExported?.({
         activityId: activity.id, format: 'zwo', reused: false, mode: 'in_app',

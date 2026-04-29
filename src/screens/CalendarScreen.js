@@ -504,21 +504,25 @@ export default function CalendarScreen({ navigation, route }) {
       });
   };
 
-  // When entering review mode, jump to the affected date AND select it
-  // so the day-detail panel below the grid auto-shows the activities the
-  // coach is proposing to change. Picking which day to focus on:
+  // When pendingChanges arrives, jump to the EARLIEST affected calendar
+  // date AND select it so the day-detail panel below the grid auto-shows
+  // what the coach is proposing.
   //
-  //   1. If there are *added* sessions, focus the first one — additions
-  //      are "new things showing up" and that's the most informative
-  //      view ("oh, the coach is suggesting a recovery spin on Mon").
-  //   2. Else, the *destination* of the first move (modified.after) —
-  //      shows where the session is landing in its new home, which is
-  //      typically what the rider cares about ("the long ride moved
-  //      to Sunday").
-  //   3. Else, the first *removed* day — last resort, less common path.
+  // Two important fixes vs. the previous version:
   //
-  // Falls back to the previous "first key from the affectedDayKeys set"
-  // logic if for some reason none of the buckets above resolved a date.
+  //   1. We compute candidate dates across every bucket (added,
+  //      modified.after, removed) and pick the earliest one — not just
+  //      [0] from the first non-empty bucket. The coach's iteration
+  //      order isn't necessarily date order, so [0] could be a later
+  //      day in the same change set. If the change is in May and we're
+  //      currently looking at April, picking [0] from `modified` could
+  //      land on a future day rather than the actual first affected day.
+  //
+  //   2. The dep array is `pendingChanges` (identity), not just
+  //      `reviewMode`. If reviewMode is already true and a *new*
+  //      pendingChanges arrives (e.g. another tap from chat with a
+  //      different change set), we want the focus to update too.
+  //      Previously we'd ignore it because reviewMode hadn't toggled.
   useEffect(() => {
     if (!(reviewMode && pendingChanges && changeDiff && changeDiff.affectedDayKeys.size > 0)) return;
     const plan = plans.find(p => p.id === pendingChanges.planId);
@@ -529,24 +533,50 @@ export default function CalendarScreen({ navigation, route }) {
         ? getActivityDate(plan.startDate, a.week, a.dayOfWeek)
         : null;
 
-    let focusDate =
-      dateFromActivity(changeDiff.added?.[0]) ||
-      dateFromActivity(changeDiff.modified?.[0]?.after) ||
-      dateFromActivity(changeDiff.removed?.[0]);
+    // Build the full list of candidate dates from every bucket. Each
+    // bucket is in coach iteration order, not date order, so we have
+    // to actually compare timestamps to find the earliest.
+    const candidates = [];
+    (changeDiff.added || []).forEach(a => {
+      const d = dateFromActivity(a);
+      if (d) candidates.push(d);
+    });
+    (changeDiff.modified || []).forEach(m => {
+      const d = dateFromActivity(m?.after);
+      if (d) candidates.push(d);
+    });
+    (changeDiff.removed || []).forEach(a => {
+      const d = dateFromActivity(a);
+      if (d) candidates.push(d);
+    });
+
+    let focusDate = candidates.length
+      ? candidates.reduce((earliest, d) => (d < earliest ? d : earliest), candidates[0])
+      : null;
 
     if (!focusDate) {
-      // Fallback — same logic as before, derive from the affectedDayKeys set.
-      const firstKey = [...changeDiff.affectedDayKeys].sort()[0];
-      const [week, dayOfWeek] = firstKey.split('-').map(Number);
-      focusDate = getActivityDate(plan.startDate, week, dayOfWeek);
+      // Fallback — derive from affectedDayKeys. The keys are
+      // `${week}-${dayOfWeek}` so we have to split + sort numerically;
+      // a plain string sort breaks at week 10+ ("10-0" < "2-0"
+      // lexicographically).
+      const sorted = [...changeDiff.affectedDayKeys]
+        .map(k => {
+          const [w, dow] = k.split('-').map(Number);
+          return { w, dow, date: getActivityDate(plan.startDate, w, dow) };
+        })
+        .filter(x => x.date)
+        .sort((a, b) => a.date - b.date);
+      focusDate = sorted[0]?.date || null;
     }
 
+    if (!focusDate) return;
+
+    // Set both viewDate (which month is on screen) and selectedDate
+    // (which day-detail panel is open). Normalise to noon to dodge DST
+    // edges that could otherwise produce off-by-one days at midnight.
     setViewDate(new Date(focusDate.getFullYear(), focusDate.getMonth(), 1));
-    // Selecting the date opens the day-detail panel under the grid for
-    // that day, so the rider lands on the calendar AT the change rather
-    // than having to hunt for it. Normalise to noon to dodge DST edges.
     setSelectedDate(new Date(focusDate.getFullYear(), focusDate.getMonth(), focusDate.getDate(), 12, 0, 0));
-  }, [reviewMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reviewMode, pendingChanges, changeDiff, plans]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filtered plans
   const visiblePlans = filterPlanId ? plans.filter(p => p.id === filterPlanId) : plans;
