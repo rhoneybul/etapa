@@ -153,6 +153,12 @@ export default function HomeScreen({ navigation, route }) {
   // idempotent.
   const [feedbackSheetOpen, setFeedbackSheetOpen] = useState(false);
   const [feedbackActivity, setFeedbackActivity] = useState(null);
+  // True while the activity-completion server round-trip is mid-flight.
+  // The feedback sheet opens optimistically the moment the rider taps
+  // the check circle so they see something instantly; this drives the
+  // "Saving your ride…" banner + disabled Save button inside the sheet
+  // until the round-trip resolves.
+  const [markingDone, setMarkingDone] = useState(false);
   const [feedbackToast, setFeedbackToast] = useState(null);
   const feedbackToastTimerRef = useRef(null);
   const showFeedbackToast = useCallback((message) => {
@@ -663,6 +669,19 @@ export default function HomeScreen({ navigation, route }) {
       next.add(activityId);
       return next;
     });
+
+    // Open the feedback sheet IMMEDIATELY on transition false → true.
+    // Previously we awaited markActivityComplete + load before showing
+    // the sheet, which produced a perceptible delay between the rider's
+    // tap and the popup appearing. Now the sheet shows up instantly
+    // and renders a "Saving your ride…" banner via `markingDone` while
+    // the round-trip is in flight. Un-marking still doesn't prompt.
+    if (prevAct && !wasCompleted) {
+      setFeedbackActivity(prevAct);
+      setMarkingDone(true);
+      setFeedbackSheetOpen(true);
+    }
+
     try {
       await markActivityComplete(activityId);
       // force:true bypasses load()'s plan-hash cache, which only
@@ -677,14 +696,7 @@ export default function HomeScreen({ navigation, route }) {
         next.delete(activityId);
         return next;
       });
-    }
-
-    // Open the feedback sheet only on transition false → true.
-    // Un-marking ("oh wait, I didn't finish") shouldn't prompt — the
-    // rider is correcting a tap, not finishing a ride.
-    if (prevAct && !wasCompleted) {
-      setFeedbackActivity(prevAct);
-      setFeedbackSheetOpen(true);
+      setMarkingDone(false);
     }
   }, [load, plans]);
 
@@ -742,7 +754,17 @@ export default function HomeScreen({ navigation, route }) {
 
   useEffect(() => { load({ force: true }); }, [load]);
   useEffect(() => {
-    const unsub = navigation.addListener('focus', () => load());
+    // Force a full reload on every focus rather than relying on the
+    // plan-hash cache check inside load(). The hash key (id, updatedAt,
+    // activity count) catches most plan mutations but loses signal for
+    // edits that don't bump those — e.g. an accept-changes flow that
+    // swaps activities one-for-one (same length, savePlan should bump
+    // updatedAt but races with parallel writes have proven flaky in
+    // practice). Forcing here is cheap (a single getPlans + the rest
+    // of the local state hydration) and means the rider never sees a
+    // stale Home after applying coach suggestions or accepting changes
+    // from the calendar review.
+    const unsub = navigation.addListener('focus', () => load({ force: true }));
     return unsub;
   }, [navigation, load]);
 
@@ -3160,6 +3182,7 @@ export default function HomeScreen({ navigation, route }) {
       <ActivityFeedbackSheet
         visible={feedbackSheetOpen}
         activity={feedbackActivity}
+        saving={markingDone}
         onSave={handleFeedbackSave}
         onSkip={handleFeedbackSkip}
         onClose={handleFeedbackSkip}
@@ -3705,14 +3728,16 @@ const s = StyleSheet.create({
     fontSize: 10, fontWeight: '600', fontFamily: FF.semibold,
     color: colors.primary, letterSpacing: 1.2,
   },
+  // "Done" pill on the today-hero card. Pink-tinted to match every
+  // other completion indicator (check circle, doneBadge, calendar tick).
   todayHeroDoneBadge: {
     paddingHorizontal: 8, paddingVertical: 3,
     borderRadius: 999,
-    backgroundColor: 'rgba(34,197,94,0.15)',
+    backgroundColor: colors.primary + '26', // ~15% alpha pink
   },
   todayHeroDoneBadgeText: {
     fontSize: 10, fontWeight: '600', fontFamily: FF.semibold,
-    color: '#22C55E', letterSpacing: 0.6,
+    color: colors.primary, letterSpacing: 0.6,
   },
   todayHeroTitle: {
     fontSize: 20, fontWeight: '600', fontFamily: FF.semibold,
@@ -4201,7 +4226,9 @@ const s = StyleSheet.create({
   todayTitle: { fontSize: 15, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
   todayMeta: { fontSize: 13, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 2 },
   todayArrow: { fontSize: 24, color: colors.textFaint, paddingRight: 14, fontWeight: '300' },
-  doneBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#22C55E', alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  // Brand pink — see WeekViewScreen.checkBtnDone + ActivityDetailScreen.completeCircleDone.
+  // "Completed" reads as pink across every surface.
+  doneBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   doneMark: { fontSize: 14, color: '#fff', fontWeight: '600', fontFamily: FF.semibold },
 
   // Week progress

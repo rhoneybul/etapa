@@ -412,9 +412,12 @@ a:hover { color: var(--accent-hover); }
 
   <!-- ============================================================
        LANZAMIENTO · 29 de abril de 2026
-       Espejo del bloque inglés — mantén ambos en paralelo cuando
-       añadas funciones nuevas. Las imágenes usan data-placeholder="1"
-       hasta que se incorporen capturas reales.
+       Lanzamiento único combinado. Hemos colapsado las entradas
+       previas de 27 y 28 de abril en este snapshot — los changelogs
+       antiguos viven en git si alguien necesita el rastro de
+       auditoría. Tres tarjetas titular, sin lista de detalles, sin
+       resumen de errores. Cada tarjeta mapea 1:1 con una línea del
+       titular del lanzamiento.
        ============================================================ -->
   <section class="release">
     <div class="release-head">
@@ -426,44 +429,27 @@ a:hover { color: var(--accent-hover); }
       </h2>
     </div>
 
-    <!-- ───── Función 1: Feedback post-salida + reacción del entrenador ───── -->
+    <!-- ───── Función 1: Feedback post-salida → eco en el check-in ───── -->
     <div class="feature">
       <div class="feature-copy">
         <div class="eyebrow">
-          <span>Feedback post-salida</span>
+          <span>Bucle de feedback</span>
           <span class="experimental">Nuevo</span>
         </div>
-        <h3>Marcas hecho — tu entrenador responde al momento</h3>
-        <p>En cuanto marcas una sesión completada, una pequeña ventana te pregunta cómo fue: esfuerzo, cómo se sintieron las piernas, y una línea opcional. Tu entrenador la lee y responde ahí mismo con una frase corta. Si quieres profundizar, toca "Hablar con [entrenador]" y la conversación continúa con la sesión correcta ya en contexto.</p>
+        <h3>Marcas hecho, tu entrenador responde — y el check-in del domingo ya sabe lo que dijiste</h3>
+        <p>En cuanto marcas una sesión completada, una pequeña ventana te pregunta cómo fue: esfuerzo, cómo se sintieron las piernas, y una línea opcional. Tu entrenador la lee al instante y responde con una frase corta — toca "Hablar con [entrenador]" si quieres profundizar. Lo que escribiste ahí se te muestra de vuelta en el check-in semanal (pastilla rosa "DIJISTE" debajo de cada sesión) y le llega a tu entrenador como datos estructurados, así las propuestas para la próxima semana citan tus palabras literales en vez de parafrasear.</p>
         <ul style="margin: 12px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
-          <li>El esfuerzo se elige en cinco segmentos: Demasiado fácil → Justo → Demasiado duro. Sin test de FTP, sin números de zona.</li>
-          <li>La reacción es deliberadamente única — los cambios al plan siguen pasando en el check-in semanal. Esto es acuse de recibo, no renegociación.</li>
-          <li>Saltar es una opción real. La sesión queda completada igual.</li>
+          <li>Escala de esfuerzo en cinco segmentos: Demasiado fácil → Justo → Demasiado duro. Sin test de FTP, sin números de zona.</li>
+          <li>La reacción es deliberadamente única — los cambios al plan siguen pasando en el check-in semanal.</li>
+          <li>Pastilla "Reprogramar" en la cabecera del check-in: empújalo a un día posterior sin saltártelo.</li>
         </ul>
       </div>
       <div class="feature-shot"
            data-placeholder="1"
-           data-caption="Hoja de feedback de actividad — segmentos de esfuerzo, Fuerte/OK/Mal, nota opcional → burbuja de reacción del entrenador → Hablar / Hecho."></div>
+           data-caption="Hoja de feedback de actividad — segmentos de esfuerzo, Fuerte/OK/Mal, nota opcional → burbuja de reacción del entrenador → Hablar / Hecho. Después el check-in con el eco 'DIJISTE' bajo cada sesión."></div>
     </div>
 
-    <!-- ───── Función 2: El feedback alimenta el check-in semanal ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Mejoras en el check-in semanal</div>
-        <h3>El check-in del domingo ya sabe lo que dijiste</h3>
-        <p>Lo que escribiste después de cada salida esta semana se te muestra de vuelta en el check-in — pastilla rosa "DIJISTE" debajo de cada sesión — para que no repitas lo mismo. Tu entrenador lo lee como datos estructurados y te cita literal cuando propone ajustes ("marcaste el martes como demasiado duro" en vez de "veo que te costó").</p>
-        <ul style="margin: 12px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
-          <li>Cada fila de sesión muestra su fecha de calendario para que la sitúes en la semana.</li>
-          <li>Pastilla "Reprogramar" en la cabecera — empuja el check-in a un día posterior sin saltártelo.</li>
-          <li>El teclado ya no tapa lo que escribes, en ninguna plataforma.</li>
-        </ul>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Pantalla de check-in — pastilla de fecha bajo cada sesión, eco 'DIJISTE' del feedback post-salida, pastilla Reprogramar en la cabecera."></div>
-    </div>
-
-    <!-- ───── Función 3: Calendario — días no disponibles + vista diff ───── -->
+    <!-- ───── Función 2: Calendario ───── -->
     <div class="feature">
       <div class="feature-copy">
         <div class="eyebrow">Calendario</div>
@@ -476,186 +462,20 @@ a:hover { color: var(--accent-hover); }
            data-caption="Calendario — días rayados como no disponibles + sesiones añadidas con borde rosa y eliminaciones tachadas del diff del entrenador."></div>
     </div>
 
-    <!-- ───── Función 4: Enviar al rodillo — reconstruido para claridad ───── -->
+    <!-- ───── Función 3: Enviar al rodillo ───── -->
     <div class="feature">
       <div class="feature-copy">
         <div class="eyebrow">Enviar a tu rodillo</div>
-        <h3>Una pantalla de exportar que no finge</h3>
+        <h3>Elige dónde rodar. Nosotros hacemos el archivo, tú haces la salida.</h3>
         <p>La pantalla para exportar al rodillo agrupa los destinos según cómo eliges de verdad: <strong style="color: var(--fg);">solo móvil</strong> (intervals.icu — el camino fácil) frente a <strong style="color: var(--fg);">necesitas un portátil en algún momento</strong> (Zwift, Rouvy, Wahoo SYSTM). Eliges uno, ves tres pasos numerados para esa app concreta, y le das a Guardar y compartir. Un solo botón. Sin fingir que mandamos el archivo "directo al rodillo por Bluetooth" — los rodillos inteligentes no reproducen archivos, lo hace una app de rodillo, y nosotros entregamos el archivo a la correcta.</p>
         <ul style="margin: 12px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
           <li>El formato se elige solo: .zwo para Zwift / Rouvy / intervals.icu, .fit para Wahoo SYSTM.</li>
           <li>El truco de iOS con Zwift (el "Copiar a Zwift" del share-sheet que no funciona de verdad) sale antes de los pasos para que no tropieces.</li>
-          <li>"Otro / guardar en Archivos" deja el .zwo donde tú quieras.</li>
         </ul>
       </div>
       <div class="feature-shot"
            data-placeholder="1"
            data-caption="Pantalla de enviar al rodillo — grupo Solo móvil (intervals.icu) arriba del grupo Necesita un portátil, después pasos por app con un único botón Guardar y compartir."></div>
-    </div>
-
-    <!-- ───── Mejoras pequeñas ───── -->
-    <div class="subsection">
-      <div class="subsection-label"><span class="dot"></span>Detalles</div>
-      <h4>Cosas pequeñas que vas a notar</h4>
-      <ul class="touches">
-        <li><strong>Resumen semanal que puedes compartir de verdad</strong>Botón "Guardar imagen" que captura la tarjeta a tu carrete, además de una franja de tendencia de 4 semanas y una cita atribuida a tu entrenador — ya no es solo texto.</li>
-        <li><strong>Tip de salida en cada sesión</strong>Una frase generada para esa sesión exacta, con un esqueleto shimmer mientras carga. Modelo más rápido detrás para que aparezca en menos de un segundo.</li>
-        <li><strong>El entrenador propone cambios en el chat</strong>Cuando tu entrenador dice "muevo esa salida larga", el mensaje incrusta una tarjeta estructurada de añadir / mover / quitar con botones Aplicar y Ver en el calendario.</li>
-        <li><strong>Reprograma el check-in semanal</strong>Empuja el aviso a Mañana, En 3 días o Lunes que viene desde el propio check-in.</li>
-        <li><strong>Fechas en el check-in</strong>Cada fila de sesión muestra el día de calendario para que la sitúes ("Sáb 2 mayo — esa fue la salida larga").</li>
-        <li><strong>Honestos con el tiempo</strong>La pista de tiempo placeholder que vivía bajo los tips de salida ya no está — la traeremos cuando haya datos meteorológicos reales, no antes.</li>
-      </ul>
-    </div>
-
-    <!-- ───── Errores aplastados ───── -->
-    <div class="bugs">
-      <div class="bugs-label">Errores aplastados</div>
-      <ul>
-        <li>Las rutas de reprogramar y de tip de salida ahora están conectadas en el servidor — antes no hacían nada cuando la app las llamaba.</li>
-        <li>El campo de texto del check-in ya no se esconde bajo el teclado mientras escribes.</li>
-      </ul>
-    </div>
-  </section>
-
-  <section class="release">
-    <div class="release-head">
-      <div class="release-date"><span class="dot"></span>27 de abril de 2026</div>
-      <h2 class="release-headline">
-        <span>Una forma más clara de elegir tu plan.</span>
-        <span>Sesiones que arrastras y sueltas.</span>
-        <span>Un chat que nunca pierde un mensaje.</span>
-        <span>Un nuevo entrenador.</span>
-      </h2>
-    </div>
-
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Elegir tu plan</div>
-        <h3>Un plan construido alrededor de donde estás de verdad — en menos de un minuto</h3>
-        <p>Tres preguntas rápidas: para qué entrenas, cuál es tu salida más larga ahora, y cuándo es tu evento. Eso es todo. Sin test de FTP, sin jerga, sin la conjetura "principiante / intermedio / avanzado". Tu salida más larga real se convierte en el ancla de la Semana 1, así tu plan empieza a una distancia que de verdad puedes completar y va creciendo desde ahí.</p>
-        <p>En los pasos de tipos de entrenamiento y construye tu semana, verás una pequeña tarjeta "lo que solemos recomendar" — y la recomendación se adapta a tu nivel y a los tipos de sesión que ya hayas elegido. Después de tus respuestas, una pantalla de revisión muestra cada elección como una fila editable de un toque — sin tener que volver atrás por todo el flujo, sin empezar de cero, y volver desde cualquier paso posterior te lleva de vuelta de verdad.</p>
-      </div>
-      <div class="feature-shot"
-           data-caption="Selector de plan — paso de revisión con una fila editable por respuesta; o la tarjeta «lo que solemos recomendar» en el paso de tipos de entrenamiento.">
-        <img src="/whats-new-assets/screens/plan-picker-review.png" alt="Selector de plan en el paso de revisión con una fila editable por respuesta" />
-      </div>
-    </div>
-
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Arrastrar y soltar</div>
-        <h3>Mueve una sesión directamente desde el inicio o el calendario</h3>
-        <p>Mantén pulsada cualquier sesión en Inicio y arrástrala a un nuevo día. O abre el Calendario, mantén pulsada cualquier celda con una salida, y arrastra la sesión directamente fuera de la cuadrícula — sin necesidad de bajar a la lista de días para cogerla primero.</p>
-        <p>El mismo gesto, el mismo tiempo de mantener pulsado en ambos sitios. Si mueves una sesión a un día antes de que empiece la Semana 1, respetamos el cambio sin regenerar el resto del plan a su alrededor.</p>
-      </div>
-      <div class="feature-shot"
-           data-caption="Calendario — una sesión siendo arrastrada directamente fuera de una celda de la cuadrícula, en pleno gesto, con el día de destino resaltado.">
-        <img src="/whats-new-assets/screens/calendar-drag.png" alt="Sesión siendo arrastrada directamente desde la cuadrícula del calendario" />
-      </div>
-    </div>
-
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Mensajes</div>
-        <h3>Un chat que se abre al instante y nunca pierde una respuesta</h3>
-        <p>Hemos rediseñado cómo se guarda el chat del entrenador de extremo a extremo. Abre la pantalla y tu conversación está ahí desde la caché, y luego se reconcilia silenciosamente con el servidor en segundo plano. Envía un mensaje y cierra la app a media respuesta — cuando vuelvas, tu mensaje y la respuesta del entrenador estarán intactos. Si un envío falla, aparece una pequeña flecha de reenvío dentro de la burbuja, exactamente donde esperarías tocar.</p>
-        <p>Las notificaciones push ahora te llevan al mensaje exacto que las disparó, no al inicio del chat. Los toques en "plan listo" abren directamente la nueva vista del plan. Y pregunta "¿cómo es la sesión de hoy?" — tu entrenador responde ahora con un desglose estructurado: calentamiento, parte principal, vuelta a la calma, con el objetivo de esfuerzo para cada bloque.</p>
-      </div>
-      <div class="feature-shot"
-           data-caption="Chat del entrenador — respuesta con un desglose estructurado de calentamiento / parte principal / vuelta a la calma, más un mensaje fallido del usuario arriba mostrando la flecha de reenvío.">
-        <img src="/whats-new-assets/screens/chat-messaging.png" alt="Chat del entrenador con respuesta estructurada y flecha de reenvío" />
-      </div>
-    </div>
-
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Nuevo entrenador e idiomas</div>
-        <h3>Conoce a Kai — y habla con tu entrenador en su idioma</h3>
-        <p>Kai Donovan es la nueva cara del equipo: entrenador de Cycling Australia Nivel 2 desde Nueva Gales del Sur que trata la bici como una parte de un cuadro mayor. Partes meteorológicos de surf, series de natación y el resultado del cricket conviven con tu sesión de intervalos — para él todo es el mismo motor. Cálido, tranquilo, sin parodias de modismos australianos.</p>
-        <p>Cada entrenador tiene ahora una nacionalidad y una lista de idiomas que habla. Clara lee en inglés, español y catalán. Lars en inglés, danés, alemán. Sophie en francés. Matteo en italiano. Elena en inglés, español, italiano. Una pequeña pastilla de idioma se sitúa en la cabecera del chat — tócala, elige un idioma, y el entrenador suelta una breve bienvenida en el nuevo idioma de inmediato ("¡Genial! A partir de ahora seguimos en español…") y sigue respondiendo en ese idioma a partir de ahí. Memoria por entrenador, así que cambiar de entrenador no pierde tus ajustes.</p>
-      </div>
-      <div class="feature-shot"
-           data-caption="Chat del entrenador — cabecera con el nombre del entrenador y la pastilla rosa de idioma («Español ▾»); debajo, una burbuja de bienvenida del entrenador en el idioma seleccionado.">
-        <img src="/whats-new-assets/screens/chat-language-pill.png" alt="Cabecera del chat del entrenador con el selector de idioma y burbuja de bienvenida en español" />
-      </div>
-    </div>
-
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Pantalla de inicio</div>
-        <h3>Hoy, mañana y tu semana — una pantalla, sin scroll</h3>
-        <p>Tu sesión de hoy es lo primero que ves — nombre, distancia, duración, esfuerzo y un botón de "Ver detalles" de un toque. Mañana queda justo debajo. Bajo eso, los próximos cinco días corren en un scroll horizontal compacto con etiquetas de tipo de sesión (Resistencia, Intervalos, Salida larga…) para que la semana se lea como una semana real, no como dos tarjetas hero gigantes.</p>
-        <p>Tu chat con el entrenador vive en la parte superior de la pantalla, así nunca estás a más de un toque de una pregunta. El botón "+ Nuevo plan" se ha encogido a un círculo pequeño en la cabecera de TUS PLANES — solo aparece la versión completa cuando aún no tienes un plan, donde realmente pertenece.</p>
-      </div>
-      <div class="feature-shot"
-           data-caption="Inicio — scroll horizontal Hoy / Mañana arriba, cabecera TUS PLANES con el círculo +, tira de la semana con etiquetas de tipo de sesión debajo.">
-        <img src="/whats-new-assets/screens/home-compressed.png" alt="Pantalla de inicio compacta con scroll horizontal Hoy/Mañana" />
-      </div>
-    </div>
-
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Onboarding</div>
-        <h3>Conoces a tu entrenador en cuanto entras</h3>
-        <p>El recorrido de onboarding se dispara en cuanto terminas de iniciar sesión, antes de ver una pantalla de inicio vacía preguntándote qué hacer. Tres pasos, y ya estás dentro.</p>
-        <p>Elegir entrenador y elegir km o millas ya no son opcionales — esas dos respuestas dan forma al resto de la app, así que las preguntamos una vez y las recordamos para siempre. El botón Continuar permanece desactivado con una pista clara "Elige un entrenador para continuar" hasta que hayas elegido.</p>
-      </div>
-      <div class="feature-shot"
-           data-caption="Onboarding — el paso de selector de entrenador con el estado Continuar desactivado mostrando «Elige un entrenador para continuar» debajo.">
-        <img src="/whats-new-assets/screens/onboarding-coach.png" alt="Selector de entrenador en el onboarding, paso requerido" />
-      </div>
-    </div>
-
-    <div class="subsection">
-      <div class="subsection-label"><span class="dot"></span>Pulido</div>
-      <h4>Cosas pequeñas que vas a notar sin notarlas del todo</h4>
-      <p>Una ronda de mejoras silenciosas que no caben en una tarjeta de función pero hacen que la app se sienta más cuidada de extremo a extremo.</p>
-      <ul class="touches">
-        <li><strong>Generación de plan más rápida</strong>Hemos cambiado el modelo detrás de la creación del plan — la misma calidad, notablemente menos espera. La pantalla de "construyendo tu plan" termina mucho antes que antes.</li>
-        <li><strong>Sesiones duras, de tres formas</strong>Cada sesión de intervalos o tempo muestra el objetivo por sensación, por frecuencia cardíaca y por vatios. Elige lo que te funcione — mostramos el mismo número de tres formas.</li>
-        <li><strong>El entrenador lee toda la conversación</strong>Las respuestas cortas a las propias preguntas del entrenador ("Natación recreativa") ya no activan el filtro de "fuera de tema".</li>
-        <li><strong>El entrenador puede programar sesiones no ciclistas</strong>Natación, carrera, fisio, movilidad, estiramientos, yoga y 20 más — cada una aparece en tu semana con el icono correcto.</li>
-        <li><strong>Chat del entrenador, ahora asíncrono</strong>Envía un mensaje y márchate — recibirás un push cuando responda tu entrenador.</li>
-        <li><strong>El entrenador se compromete con los cambios de verdad</strong>Si tu entrenador dice "moveré esa salida larga al domingo", el plan se mueve de verdad. Hemos endurecido el prompt para que el lenguaje de compromiso tenga que ir acompañado de un cambio estructurado.</li>
-        <li><strong>Las notificaciones abren el lugar correcto</strong>La pantalla de Notificaciones lee primero de la caché así que se abre al instante, con una pequeña pista "Actualizando…" mientras comprobamos lo último en segundo plano.</li>
-        <li><strong>Tope de distancia objetivo para principiantes</strong>Ninguna salida de entrenamiento supera tu distancia objetivo hasta el día de la graduación, así la salida final se siente como el hito que debe ser.</li>
-        <li><strong>Soporte de FC máxima y FTP</strong>Añade los tuyos en Ajustes para ver pulsaciones / vatios reales en cada sesión.</li>
-        <li><strong>Pantalla de inicio antes de empezar el plan</strong>Una tarjeta clara "El plan empieza el lunes 27 de abril · 3 días" antes de que arranque la Semana 1.</li>
-        <li><strong>"1" rosa en la tarjeta del entrenador</strong>Cuando tu entrenador ha respondido, aparece una pequeña insignia en su avatar en Inicio. Se borra en el momento que abres el chat.</li>
-        <li><strong>Botón de prueba de push en Ajustes</strong>Nueva fila en Ajustes → Notificaciones para verificar que las notificaciones llegan a tu dispositivo.</li>
-        <li><strong>Desmarcar una sesión completada</strong>¿La marcaste por error? Toca de nuevo para deshacer.</li>
-        <li><strong>Ajustes ya no salta al cargar</strong>El esqueleto mantiene la misma forma que la pantalla cargada, así las filas no aparecen de la nada.</li>
-        <li><strong>Pantalla de splash minimalista</strong>Solo el icono y un halo rosa suave al arrancar — sin más texto "ETAPA / train with purpose". El splash nativo coincide con el cargador de la app exactamente.</li>
-        <li><strong>El teclado del Calendario respeta la entrada</strong>El campo de chat sobre el teclado se eleva correctamente en el Calendario.</li>
-        <li><strong>La revisión del selector de plan va directa a la configuración</strong>Confirmar la revisión te lleva directamente a plan-config — la pantalla intermedia redundante ha desaparecido.</li>
-        <li><strong>Spinner de carga al completar una sesión</strong>Se acabaron los momentos de "¿registró siquiera el toque?".</li>
-        <li><strong>Refresco de paleta en la vista del plan</strong>El gráfico de barras usa rosas de marca y azules pizarra. La bandera de semana pico pasó del rojo alarmante a un rosa más cálido.</li>
-        <li><strong>Km o millas, con honestidad</strong>Se pregunta al primer arranque, se guarda una vez, se usa en todas partes.</li>
-      </ul>
-    </div>
-
-    <div class="bugs">
-      <div class="bugs-label">Errores aplastados</div>
-      <ul>
-        <li>Los mensajes del usuario ya no desaparecen tras un seguimiento — el servidor ahora usa la conversación en directo como base antes de añadir la respuesta del entrenador.</li>
-        <li>Las respuestas del entrenador ya no se evaporan al volver — una condición de carrera servidor/cliente que sobrescribía la respuesta completa con una vacía está arreglada en ambos lados.</li>
-        <li>Las respuestas del entrenador dejan de llegar como compromisos vacíos — "Cambiaré eso" sin un cambio real ahora se bloquea.</li>
-        <li>El entrenador ya no responde a sus propias preguntas con un rechazo automático — el contexto del turno previo se incluye en la comprobación de "tema".</li>
-        <li>El recorrido de onboarding ahora se dispara para cuentas genuinamente nuevas, no solo para las que tienen al menos un plan.</li>
-        <li>El banner de prueba ahora aparece tanto en estados <em>trialing</em> como <em>starter</em>, con un fallback sensato cuando falta la fecha de fin de período.</li>
-        <li>Tocar un día en Inicio desplaza de forma fiable la fila correspondiente a la vista — ahora medimos al hacer clic en lugar de depender de valores de layout obsoletos.</li>
-        <li>El teclado de Android ya no oculta la entrada del chat del entrenador.</li>
-        <li>La entrada de chat del Calendario se eleva sobre el teclado en Android, en vez de quedar oculta por él.</li>
-        <li>La pantalla de splash en iOS y Android ya no muestra el viejo texto "ETAPA / train with purpose" — ambos coinciden ahora con el cargador minimalista.</li>
-        <li>La búsqueda de carrera mantiene la distancia correcta cuando cambias el evento.</li>
-        <li>El crash de Eliminar Plan (pantalla negra) está arreglado — ahora muestra un overlay de carga apropiado.</li>
-        <li>El gráfico de la vista del plan usa colores distintos para resistencia vs tempo.</li>
-        <li>Generar Plan ya no se cae en el paso de salida más larga.</li>
-        <li>Los planes con fase Pico ya no marcan tres semanas seguidas como "Semana pico" — solo la semana de mayor volumen real recibe la etiqueta.</li>
-        <li>Volver desde la configuración del plan vuelve a tu paso anterior en vez de soltarte en Inicio.</li>
-        <li>Los botones inferiores ya no quedan recortados por la barra de navegación de 3 botones de Android en Welcome / selector de plan / pantallas de onboarding.</li>
-        <li>La pista "toca una sesión" se movió bajo el divisor para que se refiera claramente a la lista de días, no a la tira de semana de arriba.</li>
-      </ul>
     </div>
   </section>
 

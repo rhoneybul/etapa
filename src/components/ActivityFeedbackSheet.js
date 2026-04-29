@@ -32,6 +32,15 @@
  * Props:
  *   visible           — boolean, controls Modal mount
  *   activity          — the activity being reviewed (used for the meta line)
+ *   saving            — boolean. True while the parent is still persisting
+ *                       the activity-completion flag (markActivityComplete
+ *                       round-trip in flight). When true the sheet renders
+ *                       a small "Saving your ride…" banner above the form
+ *                       and disables the Save button so the rider can't
+ *                       race the activity-done save with the feedback save.
+ *                       The form itself stays visible and interactive so
+ *                       they can start filling it in while the round-trip
+ *                       lands.
  *   onSave            — ({ effort, rpe, feel, note }) => void
  *   onSkip            — () => void  — completion stands, no feedback recorded
  *   onClose           — () => void  — backdrop tap; treated the same as Skip
@@ -85,7 +94,7 @@ function buildMetaLine(activity) {
 }
 
 export default function ActivityFeedbackSheet({
-  visible, activity, onSave, onSkip, onClose, onChatWithCoach,
+  visible, activity, saving = false, onSave, onSkip, onClose, onChatWithCoach,
 }) {
   // Local form state — parent owns nothing here. We reset on close so the
   // next session's sheet doesn't inherit a stale answer.
@@ -249,6 +258,21 @@ export default function ActivityFeedbackSheet({
                 inputs ghosted under the loading spinner. */}
             {phase === 'form' ? (
               <>
+            {/* ── Saving banner ── visible only while the parent is still
+                persisting the activity-completion flag (the round-trip
+                fired when the rider tapped the check circle to mark the
+                session done). The popup opens optimistically so the
+                rider sees something the moment they tap, but the Save
+                button stays disabled until the activity-done save lands
+                — otherwise the feedback save could hit the server
+                before its activity row is marked completed. */}
+            {saving ? (
+              <View style={s.savingBanner} accessibilityRole="alert">
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={s.savingBannerText}>Saving your ride…</Text>
+              </View>
+            ) : null}
+
             {/* ── Effort ── five horizontal segments. We render them as
                 equal-width pills inside a row so the chosen one is
                 obvious (pink fill) and the others stay quiet. */}
@@ -312,12 +336,14 @@ export default function ActivityFeedbackSheet({
             <Text style={s.footerCaption}>This goes straight to your coach</Text>
 
             <TouchableOpacity
-              style={s.saveBtn}
+              style={[s.saveBtn, saving && s.saveBtnDisabled]}
               onPress={handleSave}
-              activeOpacity={0.85}
-              accessibilityLabel="Save feedback"
+              activeOpacity={saving ? 1 : 0.85}
+              disabled={saving}
+              accessibilityLabel={saving ? 'Saving your ride…' : 'Save feedback'}
+              accessibilityState={{ disabled: saving }}
             >
-              <Text style={s.saveBtnText}>Save</Text>
+              <Text style={s.saveBtnText}>{saving ? 'Saving your ride…' : 'Save'}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -436,7 +462,26 @@ const s = StyleSheet.create({
     backgroundColor: colors.primary, paddingVertical: 14,
     borderRadius: 12, alignItems: 'center', marginTop: 14,
   },
+  // Disabled state while the activity-completion save is mid-flight.
+  // Lower opacity reads as "not yet" rather than "broken".
+  saveBtnDisabled: { opacity: 0.5 },
   saveBtnText: { color: '#fff', fontSize: 14, fontWeight: '600', fontFamily: FF.semibold },
+
+  // ── Saving banner (form phase, while activity-done save is in flight) ──
+  // Pink-tinted strip at the top of the form. Spinner + plain English so
+  // the rider knows their tap registered and the round-trip is still
+  // resolving. Disappears as soon as the parent sets saving=false.
+  savingBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 10, paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: colors.primary + '14',
+    borderWidth: 0.5, borderColor: colors.primary + '50',
+    marginBottom: 14,
+  },
+  savingBannerText: {
+    flex: 1, fontSize: 12, color: colors.text, fontFamily: FF.regular,
+  },
 
   skipBtn: {
     paddingVertical: 13, borderRadius: 12,

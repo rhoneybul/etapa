@@ -581,7 +581,14 @@ function reasonIsGrounded(reason, riderText) {
 // scheduled_at is the time the check-in was MEANT to fire (now() is fine
 // when called from the cron at the rider's scheduled minute, but admin
 // manual sends use now() too — that's accurate either way).
-async function sendCheckin(userId, { trigger = 'scheduled' } = {}) {
+// `force` opts out of the same-week dedupe — admins use this to manually
+// re-send a check-in even when the rider already has one pending or has
+// already responded. Existing same-week rows get marked `expired` so
+// the pending hydrator doesn't surface the stale one alongside the new
+// one. Returns a structured result so the caller can tell what happened
+// (created vs. deduped) — admin UI uses that to show a meaningful
+// confirmation toast.
+async function sendCheckin(userId, { trigger = 'scheduled', force = false } = {}) {
   // Look up the user's active plan. We require an active plan because
   // suggestions are scoped to the next week of activities.
   const { data: plans } = await supabase
@@ -593,19 +600,18 @@ async function sendCheckin(userId, { trigger = 'scheduled' } = {}) {
   const plan = plans?.[0] || null;
   if (!plan) {
     console.log('[checkins] sendCheckin skipped — no active plan for user', userId);
-    return null;
+    return { id: null, status: 'no_active_plan' };
   }
   // Don't fire if the rider's plan is already complete (current_week past
   // the plan's total weeks). Surface a different ritual for that ("plan
-  // complete, pick a new one") later.
+  // complete, pick a new one") later. Force still respects this — an
+  // admin overriding the dedupe shouldn't fire a check-in for a plan
+  // that's already over.
   if (plan.weeks && plan.current_week && plan.current_week > plan.weeks) {
     console.log('[checkins] sendCheckin skipped — plan already complete for user', userId);
-    return null;
+    return { id: null, status: 'plan_complete' };
   }
 
-  // Same-plan, same-week dedupe. Includes responded check-ins so a rider
-  // who already answered this week doesn't get a second one if they
-  // change their schedule.
   const weekNum = plan.current_week || 1;
   const { data: existing } = await supabase
     .from('coach_checkins')
@@ -615,9 +621,27 @@ async function sendCheckin(userId, { trigger = 'scheduled' } = {}) {
     .eq('week_num', weekNum)
     .in('status', ['pending', 'sent', 'responded'])
     .limit(1);
-  if (existing?.length) {
+
+  if (existing?.length && !force) {
+    // Same-plan, same-week dedupe. Includes responded check-ins so a
+    // rider who already answered this week doesn't get a second one if
+    // they change their schedule.
     console.log('[checkins] sendCheckin skipped — already a check-in for week', weekNum, 'user', userId);
-    return existing[0].id;
+    return { id: existing[0].id, status: 'deduped', existingStatus: existing[0].status };
+  }
+
+  if (existing?.length && force) {
+    // Override: mark the existing same-week row as expired and proceed
+    // to insert a fresh one. We don't delete — preserving the row keeps
+    // the rider's response history intact and lets the admin see what
+    // got superseded. expired_at stamped now so the lifecycle audit
+    // trail is honest.
+    const expireNow = new Date().toISOString();
+    await supabase
+      .from('coach_checkins')
+      .update({ status: 'expired', expired_at: expireNow })
+      .eq('id', existing[0].id);
+    console.log('[checkins] sendCheckin force-expired previous check-in', existing[0].id, 'for user', userId);
   }
 
   const id = uid();
@@ -630,7 +654,7 @@ async function sendCheckin(userId, { trigger = 'scheduled' } = {}) {
     status: 'sent',
     scheduled_at: now.toISOString(),
     sent_at: now.toISOString(),
-    trigger,
+    trigger: force ? `${trigger}_force` : trigger,
   };
   const { error } = await supabase.from('coach_checkins').insert(row);
   if (error) throw error;
@@ -642,7 +666,7 @@ async function sendCheckin(userId, { trigger = 'scheduled' } = {}) {
     data: { checkinId: id, planId: plan.id, scope: 'checkin' },
   });
 
-  return id;
+  return { id, status: 'created' };
 }
 
 // ── Schedule prefs ─────────────────────────────────────────────────────────

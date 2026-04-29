@@ -849,6 +849,61 @@ export default function SettingsScreen({ navigation }) {
             </View>
             <Text style={s.chevron}>{'\u203A'}</Text>
           </TouchableOpacity>
+          <View style={s.divider} />
+          {/* Default cycling type — sets the primary type on the active
+              goal. Affects future plan-gen, coach vocabulary, and ride
+              tips. The rider can still swap individual sessions via the
+              bike chip on each ride. We don't auto-regenerate the plan;
+              the change applies to advice and any new plan the rider
+              asks for.
+              Lives in COACHING (was previously sat under NOTIFICATIONS,
+              which made no sense — cycling type is a plan/coaching
+              setting, not a notification preference). */}
+          <TouchableOpacity
+            style={s.row}
+            onPress={() => {
+              if (!activeGoal) return;
+              const types = [
+                { key: 'road',   label: 'Road' },
+                { key: 'gravel', label: 'Gravel' },
+                { key: 'mtb',    label: 'MTB' },
+                { key: 'ebike',  label: 'E-bike' },
+                { key: 'indoor', label: 'Indoor' },
+              ];
+              Alert.alert(
+                'Default cycling type',
+                'Sets the primary type for your plan. You can still swap individual rides.',
+                [
+                  ...types.map(t => ({
+                    text: t.label,
+                    onPress: async () => {
+                      try {
+                        await saveGoal({ ...activeGoal, cyclingType: t.key, cyclingTypes: [t.key] });
+                        await loadActiveGoal();
+                      } catch (err) {
+                        console.warn('[settings] cyclingType update failed:', err?.message);
+                      }
+                    },
+                  })),
+                  { text: 'Cancel', style: 'cancel' },
+                ],
+              );
+            }}
+          >
+            <View style={s.rowLeft}>
+              <View>
+                <Text style={s.rowTitle}>Default cycling type</Text>
+                <Text style={s.rowSub}>
+                  {(() => {
+                    const t = activeGoal?.cyclingType;
+                    if (!t || t === 'mixed') return 'Road';
+                    return ({ road: 'Road', gravel: 'Gravel', mtb: 'MTB', ebike: 'E-bike', indoor: 'Indoor' }[t]) || t;
+                  })()}
+                </Text>
+              </View>
+            </View>
+            <Text style={s.chevron}>{'\u203A'}</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Subscription — the biggest layout-shift offender on this screen.
@@ -1079,58 +1134,6 @@ export default function SettingsScreen({ navigation }) {
               />
             )}
           </View>
-          <View style={s.divider} />
-          {/* Default cycling type — sets the primary type on the active
-              goal. Affects future plan-gen, coach vocabulary, and ride
-              tips. The rider can still swap individual sessions via
-              the bike chip on each ride. We don't auto-regenerate the
-              plan; the change applies to advice and any new plan the
-              rider asks for. */}
-          <TouchableOpacity
-            style={s.row}
-            onPress={() => {
-              if (!activeGoal) return;
-              const types = [
-                { key: 'road',   label: 'Road' },
-                { key: 'gravel', label: 'Gravel' },
-                { key: 'mtb',    label: 'MTB' },
-                { key: 'ebike',  label: 'E-bike' },
-                { key: 'indoor', label: 'Indoor' },
-              ];
-              Alert.alert(
-                'Default cycling type',
-                'Sets the primary type for your plan. You can still swap individual rides.',
-                [
-                  ...types.map(t => ({
-                    text: t.label,
-                    onPress: async () => {
-                      try {
-                        await saveGoal({ ...activeGoal, cyclingType: t.key, cyclingTypes: [t.key] });
-                        await loadActiveGoal();
-                      } catch (err) {
-                        console.warn('[settings] cyclingType update failed:', err?.message);
-                      }
-                    },
-                  })),
-                  { text: 'Cancel', style: 'cancel' },
-                ],
-              );
-            }}
-          >
-            <View style={s.rowLeft}>
-              <View>
-                <Text style={s.rowTitle}>Default cycling type</Text>
-                <Text style={s.rowSub}>
-                  {(() => {
-                    const t = activeGoal?.cyclingType;
-                    if (!t || t === 'mixed') return 'Road';
-                    return ({ road: 'Road', gravel: 'Gravel', mtb: 'MTB', ebike: 'E-bike', indoor: 'Indoor' }[t]) || t;
-                  })()}
-                </Text>
-              </View>
-            </View>
-            <Text style={s.chevron}>{'\u203A'}</Text>
-          </TouchableOpacity>
           <View style={s.divider} />
           <TouchableOpacity
             style={s.row}

@@ -504,18 +504,48 @@ export default function CalendarScreen({ navigation, route }) {
       });
   };
 
-  // When entering review mode, jump to the first affected month
+  // When entering review mode, jump to the affected date AND select it
+  // so the day-detail panel below the grid auto-shows the activities the
+  // coach is proposing to change. Picking which day to focus on:
+  //
+  //   1. If there are *added* sessions, focus the first one — additions
+  //      are "new things showing up" and that's the most informative
+  //      view ("oh, the coach is suggesting a recovery spin on Mon").
+  //   2. Else, the *destination* of the first move (modified.after) —
+  //      shows where the session is landing in its new home, which is
+  //      typically what the rider cares about ("the long ride moved
+  //      to Sunday").
+  //   3. Else, the first *removed* day — last resort, less common path.
+  //
+  // Falls back to the previous "first key from the affectedDayKeys set"
+  // logic if for some reason none of the buckets above resolved a date.
   useEffect(() => {
-    if (reviewMode && pendingChanges && changeDiff && changeDiff.affectedDayKeys.size > 0) {
-      const plan = plans.find(p => p.id === pendingChanges.planId);
-      if (plan?.startDate) {
-        // Get the first affected day
-        const firstKey = [...changeDiff.affectedDayKeys].sort()[0];
-        const [week, dayOfWeek] = firstKey.split('-').map(Number);
-        const d = getActivityDate(plan.startDate, week, dayOfWeek);
-        setViewDate(new Date(d.getFullYear(), d.getMonth(), 1));
-      }
+    if (!(reviewMode && pendingChanges && changeDiff && changeDiff.affectedDayKeys.size > 0)) return;
+    const plan = plans.find(p => p.id === pendingChanges.planId);
+    if (!plan?.startDate) return;
+
+    const dateFromActivity = (a) =>
+      a && a.week != null && a.dayOfWeek != null
+        ? getActivityDate(plan.startDate, a.week, a.dayOfWeek)
+        : null;
+
+    let focusDate =
+      dateFromActivity(changeDiff.added?.[0]) ||
+      dateFromActivity(changeDiff.modified?.[0]?.after) ||
+      dateFromActivity(changeDiff.removed?.[0]);
+
+    if (!focusDate) {
+      // Fallback — same logic as before, derive from the affectedDayKeys set.
+      const firstKey = [...changeDiff.affectedDayKeys].sort()[0];
+      const [week, dayOfWeek] = firstKey.split('-').map(Number);
+      focusDate = getActivityDate(plan.startDate, week, dayOfWeek);
     }
+
+    setViewDate(new Date(focusDate.getFullYear(), focusDate.getMonth(), 1));
+    // Selecting the date opens the day-detail panel under the grid for
+    // that day, so the rider lands on the calendar AT the change rather
+    // than having to hunt for it. Normalise to noon to dodge DST edges.
+    setSelectedDate(new Date(focusDate.getFullYear(), focusDate.getMonth(), focusDate.getDate(), 12, 0, 0));
   }, [reviewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filtered plans
@@ -1428,7 +1458,9 @@ const s = StyleSheet.create({
   actTitle: { fontSize: 15, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
   actTitleDone: { textDecorationLine: 'line-through', color: colors.textMuted },
   actMeta: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 2 },
-  checkDone: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#22C55E', alignItems: 'center', justifyContent: 'center' },
+  // Pink (brand) — matches the completion circle on Week view, Home,
+  // and Activity Detail so the "completed" idiom is one colour app-wide.
+  checkDone: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   checkMark: { fontSize: 12, color: '#fff', fontWeight: '700' },
 
   // Wrapper around the shared CoachChatCard when it lives INSIDE the

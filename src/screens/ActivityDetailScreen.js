@@ -8,13 +8,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert,
   ActivityIndicator, KeyboardAvoidingView, Platform, StatusBar, Keyboard,
-  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import { getPlans, getGoals, getPlanConfig, getUserPrefs, markActivityComplete, updateActivity, savePlan } from '../services/storageService';
 import { editActivityWithAI, explainActivity as explainActivityApi, explainTips as explainTipsApi } from '../services/llmPlanService';
-import { buildWorkoutExportUrl } from '../services/api';
+// buildWorkoutExportUrl is no longer imported here — ExportInstructionsModal
+// owns minting the signed URL + downloading the file directly.
 import { getSessionColor, getSessionLabel, SESSION_COLORS, EFFORT_LABELS as EFFORT_GUIDE_LABELS } from '../utils/sessionLabels';
 import { formatRpe, formatHeartRate, formatPower, shouldShowPower } from '../utils/intensity';
 import { useUnits } from '../utils/units';
@@ -267,36 +267,19 @@ export default function ActivityDetailScreen({ navigation, route }) {
   // True briefly while we're building the export URL — keeps the share
   // button from being double-tapped while the auth-token round trip is
   // in flight.
-  const [exporting, setExporting] = useState(false);
-  // ExportInstructionsModal state. We hold the *pending format* here so
-  // tapping "Got it — export the file" inside the modal can fire the
-  // export with the format the user originally chose. Null = closed.
-  const [pendingExportFormat, setPendingExportFormat] = useState(null);
-
-  // Last-minted export URL — cached so re-tapping export within the
-  // 5-minute TTL re-opens the same URL instead of round-tripping the
-  // server. mintedAt drives the "Re-mint link?" affordance after 4
-  // minutes (we mint a fresh one to be safe). Cleared when the activity
-  // changes (so swaps invalidate the cache).
-  const [recentExport, setRecentExport] = useState(null); // { url, format, mintedAt, opened }
-  useEffect(() => { setRecentExport(null); }, [activity?.id]);
-  // Show a "File saved — need help?" toast on focus return after the
-  // rider's been to the browser. Six seconds, dismissible by tapping.
-  const [exportToast, setExportToast] = useState(false);
-  const exportToastTimerRef = useRef(null);
-  useEffect(() => {
-    const unsub = navigation.addListener('focus', () => {
-      // Only show the toast if the rider just opened a URL (recentExport
-      // exists with opened=true). Stops the toast firing on the very
-      // first navigation to the screen.
-      if (recentExport?.opened) {
-        setExportToast(true);
-        if (exportToastTimerRef.current) clearTimeout(exportToastTimerRef.current);
-        exportToastTimerRef.current = setTimeout(() => setExportToast(false), 6000);
-      }
-    });
-    return unsub;
-  }, [navigation, recentExport]);
+  // ExportInstructionsModal — flag-only state now. The modal owns the
+  // full lifecycle (mint signed URL → download to FileSystem.documentDirectory
+  // → display the workout content + optional in-app share). The previous
+  // version of this screen had a pendingExportFormat / recentExport URL
+  // cache / "browser-return" toast all wired up because the export used
+  // to open Linking.openURL(url) and kick the rider to Safari. That
+  // experience is gone — everything happens inside the modal — so all of
+  // that scaffolding has been deleted.
+  const [exportOpen, setExportOpen] = useState(false);
+  // Kept around because the JSX still references `exporting` for the
+  // disabled-state styling on the export row. Always false now since the
+  // modal manages its own loading UI; the row stays interactive.
+  const exporting = false;
 
   const scrollRef = useRef(null);
 
@@ -602,77 +585,14 @@ export default function ActivityDetailScreen({ navigation, route }) {
   const canExport = isRide
     && (!!activity?.structure || (typeof activity?.durationMins === 'number' && activity.durationMins > 0));
 
-  // Format chosen — decide whether to show the instructions modal or
-  // skip straight to the export. We surface the modal by default and
-  // honour the rider's "don't show this again" pref. Power users tap
-  // it once, opt out, and never see it again.
-  const handleExportFormatChosen = (format) => {
-    if (userPrefs?.hideExportInstructions) {
-      runExport(format);
-    } else {
-      setPendingExportFormat(format);
-    }
-  };
-
-  // Actually fire the export. Mints a one-shot signed URL on the server
-  // (POST /export-url) and opens it via the OS browser. iOS will then
-  // offer an "Open with…" sheet for apps that registered .zwo / .mrc;
-  // Android browsers download the file and offer an Intent picker. We
-  // don't need a native share dependency for this.
-  //
-  // URL caching: the signed URL is valid for 5 minutes. If the rider
-  // re-taps export within ~4 minutes (we leave a 1-minute safety
-  // buffer) AND the format matches, we re-open the cached URL instead
-  // of round-tripping to /export-url. Saves 200ms and a tiny bit of
-  // server load; mostly it just makes "I want to send the same file
-  // to a different app" a one-tap action.
-  const URL_REUSE_WINDOW_MS = 4 * 60 * 1000;
-  const runExport = async (format) => {
-    if (!plan?.id || !activity?.id || exporting) return;
-    setExporting(true);
-    try {
-      // Reuse cached URL when fresh + same format.
-      let url = null;
-      if (
-        recentExport
-        && recentExport.format === format
-        && Date.now() - recentExport.mintedAt < URL_REUSE_WINDOW_MS
-      ) {
-        url = recentExport.url;
-        analytics.events.exportRecentReused?.({ activityId: activity.id, format });
-      } else {
-        url = await buildWorkoutExportUrl(plan.id, activity.id, format);
-      }
-      if (!url) {
-        Alert.alert(
-          'Sign-in needed',
-          'Your sign-in expired. Pull-to-refresh on Home, then try the export again.',
-        );
-        return;
-      }
-      const supported = await Linking.canOpenURL(url);
-      if (!supported) {
-        Alert.alert('Couldn\'t open the link', 'Your device blocked the export URL.');
-        return;
-      }
-      analytics.events.activityExported?.({ activityId: activity.id, format, reused: url === recentExport?.url });
-      // Stash the URL so a subsequent tap can reuse it. opened=true
-      // tells the focus-listener above to surface the success toast
-      // when the rider returns from the browser.
-      setRecentExport({ url, format, mintedAt: Date.now(), opened: true });
-      await Linking.openURL(url);
-    } catch (err) {
-      Alert.alert('Export failed', 'We couldn\'t generate the workout file. Try again in a moment.');
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  // The format picker step is gone — .zwo is the right format for 99%
-  // of riders (Zwift, SYSTM, Rouvy, MyWhoosh, TrainerRoad, intervals.icu
-  // all read it). Riders who specifically need .mrc can pick that path
-  // from inside ExportInstructionsModal, which surfaces it as a
-  // secondary "Need MRC?" link. One less decision in the main flow.
+  // The export action is now a single "open the modal" affordance.
+  // ExportInstructionsModal handles minting the signed URL, downloading
+  // the .zwo file into FileSystem.documentDirectory, parsing the structure
+  // for the in-modal preview, and the optional in-app share. Nothing
+  // here mints URLs, calls Linking.openURL, or fires the share sheet.
+  // Format picker is gone — .zwo is the right format for 99% of riders
+  // (Zwift, Rouvy, Wahoo SYSTM, MyWhoosh, TrainerRoad, intervals.icu
+  // all read it).
   // Plan default ("from-bike" for the swap calc). Order of preference:
   // (1) the activity's own bikeType (set by the plan generator or a
   // previous swap), (2) anything in editValues mid-edit, (3) the goal's
@@ -1088,9 +1008,8 @@ export default function ActivityDetailScreen({ navigation, route }) {
         {canExport && (
           <TouchableOpacity
             style={[s.exportRow, exporting && s.exportRowExporting]}
-            onPress={() => handleExportFormatChosen('zwo')}
+            onPress={() => setExportOpen(true)}
             activeOpacity={0.85}
-            disabled={exporting}
             accessibilityLabel="Save this session as a workout file for your trainer app"
           >
             <View style={s.exportRowIcon}>
@@ -1192,40 +1111,19 @@ export default function ActivityDetailScreen({ navigation, route }) {
         }}
         onCancel={() => setPendingBikeSwap(null)}
       />
-      {/* First-time export instructions. The rider picks their app
-          inside the modal and (optionally) the .mrc fallback. Modal
-          calls onProceed with the chosen format (.zwo by default). */}
+      {/* Workout file modal — owns the full export lifecycle now.
+          Mints the signed URL, downloads the .zwo into the app's
+          documentDirectory, displays the workout structure inline, and
+          offers an optional in-app share via expo-sharing. No browser
+          redirect, no share-sheet auto-fire, no per-app instructions
+          page. The "File ready in your downloads" toast that used to
+          live here is also gone — the modal IS the confirmation UI. */}
       <ExportInstructionsModal
-        visible={!!pendingExportFormat}
-        onProceed={(format) => {
-          setPendingExportFormat(null);
-          // Refresh prefs so subsequent exports honour the new "don't
-          // show again" pref without needing to refocus the screen.
-          getUserPrefs().then(setUserPrefs).catch(() => {});
-          runExport(format || 'zwo');
-        }}
-        onCancel={() => setPendingExportFormat(null)}
+        visible={exportOpen}
+        activity={activity}
+        planId={plan?.id || null}
+        onCancel={() => setExportOpen(false)}
       />
-      {/* Success toast — appears 6s after the rider returns from the
-          browser. Tapping "Need help?" reopens the instructions modal
-          even if they had previously opted out. */}
-      {exportToast && (
-        <View style={s.exportToast} pointerEvents="box-none">
-          <View style={s.exportToastInner}>
-            <Text style={s.exportToastText}>File ready in your downloads.</Text>
-            <TouchableOpacity
-              onPress={() => {
-                setExportToast(false);
-                setPendingExportFormat('zwo');
-                analytics.events.exportInstructionsReopened?.();
-              }}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Text style={s.exportToastBtn}>Need help?</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
     </View>
   );
 }

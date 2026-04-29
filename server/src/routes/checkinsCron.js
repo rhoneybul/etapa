@@ -186,15 +186,22 @@ router.post('/sweep', async (req, res) => {
   }
 });
 
-// Admin manual-send endpoint. Body: { userId }. Auth via CRON_SECRET or
-// the admin router (the latter is mounted in admin.js and forwards here).
+// Admin manual-send endpoint. Body: { userId, force? }. Auth via
+// CRON_SECRET or the admin router (the latter is mounted in admin.js
+// and forwards here). When `force=true` the same-week dedupe is
+// overridden — useful when an admin needs to re-fire a check-in that
+// got stuck pending or that the rider responded to but then asked the
+// coach to re-do.
 router.post('/admin-send', async (req, res) => {
   if (!authed(req)) return res.status(401).json({ error: 'Unauthorised' });
   try {
-    const { userId } = req.body || {};
+    const { userId, force } = req.body || {};
     if (!userId) return res.status(400).json({ error: 'userId required' });
-    const id = await checkinsRouter.sendCheckin(userId, { trigger: 'manual' });
-    res.json({ ok: true, id });
+    const result = await checkinsRouter.sendCheckin(userId, { trigger: 'manual', force: !!force });
+    if (!result?.id) {
+      return res.status(400).json({ error: result?.status || 'send_failed' });
+    }
+    res.json({ ok: true, id: result.id, status: result.status });
   } catch (err) {
     res.status(500).json({ error: err?.message || 'Send failed' });
   }

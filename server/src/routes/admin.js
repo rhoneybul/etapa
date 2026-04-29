@@ -2847,38 +2847,147 @@ Write a brief, friendly message (2-3 sentences max) welcoming a new rider and en
 
 // ── POST /api/admin/users/:id/weekly-checkin ────────────────────────────────
 // Manually fire the structured weekly check-in for a single user. Same code
-// path the cron uses — calls checkins.sendCheckin which itself dedupes on
-// "already a check-in this week" so an admin tap can't blow away a fresh
-// pending one. Distinct from /coach-checkin above which sends the older
-// post-session encouragement message.
+// path the cron uses — calls checkins.sendCheckin. By default it dedupes
+// on "already a check-in this week" so an admin tap can't blow away a
+// fresh pending one. Pass `force: true` in the body to override the
+// dedupe — sendCheckin will then expire the existing same-week row and
+// create + push a fresh one. Useful when a check-in got stuck pending,
+// a rider asked to re-do their answers, or QA needs to fire the flow on
+// demand.
 //
-// 200 { ok, id }              — fired (or returned the existing same-week id)
-// 400 { error: 'no_active_plan' } — user has no plan, nothing to check in on
-// 400 { error: 'plan_complete' }  — plan is past its final week
+// Distinct from /coach-checkin above which sends the older post-session
+// encouragement message.
+//
+// Body: { force?: boolean }
+//
+// 200 { ok, id, status: 'created' }    — fresh check-in fired (push sent)
+// 200 { ok, id, status: 'deduped',     — existing same-week id returned;
+//       existingStatus, deduped: true }  no new push fired (use force to override)
+// 400 { error: 'no_active_plan' }      — user has no plan, nothing to check in on
+// 400 { error: 'plan_complete' }       — plan is past its final week
 router.post('/users/:id/weekly-checkin', async (req, res, next) => {
   try {
     const userId = req.params.id;
+    const force = !!req.body?.force;
     const checkinsRouter = require('./checkins');
-    const id = await checkinsRouter.sendCheckin(userId, { trigger: 'manual' });
-    if (!id) {
-      // sendCheckin returns null when it skips. Re-look at the user's
-      // plan to give the admin a useful reason rather than a silent OK.
-      const { data: plans } = await supabase
-        .from('plans')
-        .select('id, current_week, weeks')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(1);
-      const plan = plans?.[0] || null;
-      if (!plan) return res.status(400).json({ error: 'no_active_plan' });
-      if (plan.weeks && plan.current_week && plan.current_week > plan.weeks) {
-        return res.status(400).json({ error: 'plan_complete' });
-      }
-      // Otherwise the user already has a same-week check-in pending —
-      // not really an error, the admin probably just wants to know.
-      return res.json({ ok: true, deduped: true });
+    const result = await checkinsRouter.sendCheckin(userId, { trigger: 'manual', force });
+
+    if (!result?.id) {
+      // No id = sendCheckin couldn't proceed at all. Map the structured
+      // status back to the existing 400 error contract so the admin UI
+      // doesn't have to learn new failure modes.
+      if (result?.status === 'no_active_plan') return res.status(400).json({ error: 'no_active_plan' });
+      if (result?.status === 'plan_complete') return res.status(400).json({ error: 'plan_complete' });
+      return res.status(400).json({ error: result?.status || 'send_failed' });
     }
-    res.json({ ok: true, id });
+
+    if (result.status === 'deduped') {
+      // Existing check-in returned without a fresh push. Surface
+      // deduped:true + the existing row's status so the admin UI can
+      // render an honest "already pending — tap Re-send to override"
+      // message. id is still returned so the admin can deep-link to
+      // the existing row in the dashboard.
+      return res.json({
+        ok: true,
+        id: result.id,
+        deduped: true,
+        existingStatus: result.existingStatus || null,
+        hint: 'A check-in already exists for this week. Pass { force: true } to override and re-send.',
+      });
+    }
+
+    res.json({ ok: true, id: result.id, status: result.status });
+  } catch (err) { next(err); }
+});
+
+// ── GET /api/admin/checkins ──────────────────────────────────────────────────
+// All weekly check-ins across users, joined with user email + plan name.
+// Default limit 100; optional ?limit, ?status, ?userId.
+//
+// status filter values match the coach_checkins.status enum: pending, sent,
+// responded, dismissed, expired.
+//
+// Returns rows in a flat shape the admin dashboard list page can render
+// without further reshaping. responses + suggestions are surfaced as
+// nested JSON so the dashboard can show the rider's words and the
+// coach's proposed changes inline.
+router.get('/checkins', async (req, res, next) => {
+  try {
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+    const statusFilter = typeof req.query.status === 'string' && req.query.status.trim()
+      ? String(req.query.status).trim()
+      : null;
+    const userIdFilter = typeof req.query.userId === 'string' && req.query.userId.trim()
+      ? String(req.query.userId).trim()
+      : null;
+
+    let query = supabase
+      .from('coach_checkins')
+      .select('*')
+      .order('scheduled_at', { ascending: false })
+      .limit(limit);
+    if (statusFilter) query = query.eq('status', statusFilter);
+    if (userIdFilter) query = query.eq('user_id', userIdFilter);
+
+    const { data: rows, error } = await query;
+    if (error) throw error;
+
+    // Pull email + display name for the user_ids in this batch. listUsers
+    // is the same primitive other admin endpoints use; we filter to the
+    // ids we care about so the join stays cheap on a large user table.
+    const userIds = [...new Set((rows || []).map(r => r.user_id).filter(Boolean))];
+    let userById = new Map();
+    if (userIds.length) {
+      try {
+        const { data } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+        const wanted = new Set(userIds);
+        for (const u of data?.users || []) {
+          if (wanted.has(u.id)) userById.set(u.id, u);
+        }
+      } catch (e) {
+        console.warn('[admin/checkins] listUsers failed:', e?.message);
+      }
+    }
+
+    // Plan names for context — riders can have multiple plans, so the
+    // plan_id on a check-in is the canonical "which plan was this for".
+    const planIds = [...new Set((rows || []).map(r => r.plan_id).filter(Boolean))];
+    let planById = new Map();
+    if (planIds.length) {
+      try {
+        const { data } = await supabase
+          .from('plans')
+          .select('id, name')
+          .in('id', planIds);
+        for (const p of data || []) planById.set(p.id, p);
+      } catch (e) {
+        console.warn('[admin/checkins] plans lookup failed:', e?.message);
+      }
+    }
+
+    res.json((rows || []).map(row => {
+      const user = userById.get(row.user_id) || null;
+      const plan = planById.get(row.plan_id) || null;
+      return {
+        id: row.id,
+        userId: row.user_id,
+        userEmail: user?.email || null,
+        planId: row.plan_id,
+        planName: plan?.name || null,
+        weekNum: row.week_num,
+        status: row.status,
+        scheduledAt: row.scheduled_at,
+        sentAt: row.sent_at,
+        respondedAt: row.responded_at,
+        dismissedAt: row.dismissed_at,
+        expiredAt: row.expired_at,
+        reminderCount: row.reminder_count,
+        trigger: row.trigger,
+        responses: row.responses || null,
+        suggestions: row.suggestions || null,
+        createdAt: row.created_at,
+      };
+    }));
   } catch (err) { next(err); }
 });
 

@@ -129,6 +129,27 @@ function chatLangKey(planId, weekNum, coachId, activityId) {
   return `@etapa_coach_chat_lang_${planId}${a}${w}${c}`;
 }
 
+// Client-side hard cap on how long we'll wait for a coach reply before
+// surfacing a "timed out" bubble. Must be ≥ the server's COACH_CHAT_TIMEOUT_MS
+// (currently 180s — see server/src/routes/ai.js) plus a buffer for SSE
+// reconnects + poll latency. Was 90s historically, which fired while the
+// server was still mid-call and made the rider think Claude had failed
+// when it hadn't. 200s = 180s server cap + 20s buffer; if the server cap
+// ever moves, bump this with it.
+const COACH_CHAT_CLIENT_TIMEOUT_MS = 200 * 1000;
+const COACH_CHAT_CLIENT_TIMEOUT_SECS = Math.round(COACH_CHAT_CLIENT_TIMEOUT_MS / 1000);
+// Friendly "X minutes Y seconds" rendering for the user-facing message —
+// "200 seconds" reads odd, "3m 20s" tells the rider what to expect at a
+// glance. Keep this pure + locale-free so it works on every device.
+function formatTimeoutForRider(ms) {
+  const total = Math.round(ms / 1000);
+  if (total < 60) return `${total}s`;
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return s === 0 ? `${m}m` : `${m}m ${s}s`;
+}
+const COACH_CHAT_CLIENT_TIMEOUT_LABEL = formatTimeoutForRider(COACH_CHAT_CLIENT_TIMEOUT_MS);
+
 export default function CoachChatScreen({ navigation, route }) {
   const _screenGuard = useScreenGuard('CoachChatScreen', navigation);
   const planId = route.params?.planId;
@@ -480,10 +501,14 @@ export default function CoachChatScreen({ navigation, route }) {
                   // Poll itself failed (network) — fall through to age check.
                 }
               }
-              if (ageMs > 90_000) {
+              // Same cap as the live in-flight timeout (see
+              // COACH_CHAT_CLIENT_TIMEOUT_MS above). Pending bubbles older
+              // than this on screen mount → orphaned send, mark them
+              // failed so the retry affordance shows up.
+              if (ageMs > COACH_CHAT_CLIENT_TIMEOUT_MS) {
                 return {
                   ...m, pending: false, failed: true,
-                  content: 'Message timed out — tap retry to try again.',
+                  content: `Message timed out after ${COACH_CHAT_CLIENT_TIMEOUT_LABEL} — tap retry to try again.`,
                 };
               }
               return m; // young + still pending — leave it
@@ -1030,11 +1055,19 @@ export default function CoachChatScreen({ navigation, route }) {
       }
     }, 2000);
 
-    // 4) Hard 90s client-side cap — server's 60s Claude abort + 30s buffer.
-    // If something is truly stuck we fail here so the user isn't waiting.
+    // 4) Client-side hard cap. Sized to outlast the server's
+    // COACH_CHAT_TIMEOUT_MS (currently 180s) by a comfortable margin so
+    // a slow Claude call resolves through the normal SSE / poll path
+    // rather than having the client give up first and show "timed out"
+    // while the server is still mid-call. Failure message includes the
+    // actual duration so a rider seeing it twice in a row knows whether
+    // to ping support or just retry.
     const timeout = setTimeout(() => {
-      handleTerminal({ ok: false, error: 'Message timed out — tap retry to try again.' });
-    }, 90000);
+      handleTerminal({
+        ok: false,
+        error: `Message timed out after ${COACH_CHAT_CLIENT_TIMEOUT_LABEL} — tap retry to try again.`,
+      });
+    }, COACH_CHAT_CLIENT_TIMEOUT_MS);
 
     activeJobsRef.current.set(jobId, { closeStream, pollInterval, timeout });
   };

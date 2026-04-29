@@ -84,6 +84,11 @@ export default function WeekViewScreen({ navigation, route }) {
   // feedback recorded.
   const [feedbackSheetOpen, setFeedbackSheetOpen] = useState(false);
   const [feedbackActivity, setFeedbackActivity] = useState(null);
+  // True while the activity-completion server round-trip is mid-flight.
+  // The feedback sheet opens optimistically the moment the rider taps,
+  // so it shows a "Saving your ride…" banner + disabled Save button
+  // while this is true, and clears the moment the round-trip resolves.
+  const [markingDone, setMarkingDone] = useState(false);
 
   // Toast — non-modal "Saved — your coach will see this on Sunday."
   // confirmation after a feedback save. Same dismiss-on-timeout pattern
@@ -257,31 +262,40 @@ export default function WeekViewScreen({ navigation, route }) {
 
   const handleComplete = async (id) => {
     const act = activities.find(a => a.id === id);
+    const wasCompleted = !!act?.completed;
     if (act) {
-      if (!act.completed) {
+      if (!wasCompleted) {
         analytics.events.activityCompleted({ activityType: act.type, subType: act.subType, effort: act.effort, week, distanceKm: act.distanceKm, durationMins: act.durationMins });
       } else {
         analytics.events.activityUncompleted({ activityType: act.type, week });
       }
     }
-    await markActivityComplete(id);
-    await loadPlan();
 
-    // ── Open the feedback sheet on transition false → true ──────────
-    // We check `act?.completed` which is the PRE-toggle state captured
-    // above. If the rider was un-marking a session we don't prompt —
-    // they're not finishing, they're correcting a tap. Existing
-    // feedback (if any) stays on the activity unchanged.
-    if (act && !act.completed) {
+    // ── Open the feedback sheet IMMEDIATELY on transition false → true.
+    // Previously we awaited markActivityComplete + loadPlan before
+    // opening, which produced a perceptible delay between the rider's
+    // tap and the popup appearing. Now we open the sheet right away
+    // and pass `saving` so it can show a "Saving your ride…" banner
+    // while the round-trip is in flight. Un-marking ("oh, I didn't
+    // actually finish") doesn't prompt — they're correcting a tap.
+    if (act && !wasCompleted) {
       setFeedbackActivity(act);
+      setMarkingDone(true);
       setFeedbackSheetOpen(true);
+    }
+
+    try {
+      await markActivityComplete(id);
+      await loadPlan();
+    } finally {
+      setMarkingDone(false);
     }
 
     // ── Trigger week-complete celebration ─────────────────────────────
     // We check *after* loadPlan has refreshed the plan so the completion
     // state is accurate. Only fire when the user is marking DONE (not
     // un-marking), and only once per week per session.
-    if (act && !act.completed && !celebratedWeeksRef.current.has(week)) {
+    if (act && !wasCompleted && !celebratedWeeksRef.current.has(week)) {
       // Re-read fresh plan to count incomplete — storageService is the source of truth
       const fresh = await getPlan(planId).catch(() => null);
       if (fresh) {
@@ -922,6 +936,7 @@ export default function WeekViewScreen({ navigation, route }) {
         <ActivityFeedbackSheet
           visible={feedbackSheetOpen}
           activity={feedbackActivity}
+          saving={markingDone}
           onSave={handleFeedbackSave}
           onSkip={handleFeedbackSkip}
           onClose={handleFeedbackSkip}
@@ -1175,7 +1190,9 @@ const s = StyleSheet.create({
   activityMeta: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted, marginTop: 2 },
 
   checkBtn: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  checkBtnDone: { borderColor: '#22C55E', backgroundColor: '#22C55E' },
+  // Pink (brand) when complete — matches the activity-detail circle and
+  // the home-card badge so "completed" reads the same colour everywhere.
+  checkBtnDone: { borderColor: colors.primary, backgroundColor: colors.primary },
   checkMark: { fontSize: 14, color: '#fff', fontWeight: '700' },
 
   emptyWeek: { padding: 40, alignItems: 'center' },
