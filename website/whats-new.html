@@ -257,6 +257,119 @@ a:hover { color: var(--accent-hover); }
   }
   .feature:nth-child(even of .feature) > * { direction: ltr; }
 
+  /* ───────── Expandable feature card (details/summary) ─────────
+     Wraps a .feature in a <details>; the summary becomes the always-
+     visible header, the rest renders only when expanded. Lets the
+     page read as a tight list of headlines on first paint and lets
+     the rider drill into anything they want without scrolling past
+     paragraphs they're not interested in. The first card uses [open]
+     so the highest-priority thing is visible without a click.
+
+     Native <details> styling differs across browsers — we reset the
+     marker, draw our own chevron, and animate the rotation on open. */
+  details.feature-details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 0;
+    margin-bottom: 16px;
+    overflow: hidden;
+    transition: border-color var(--dur-base) var(--ease-out);
+  }
+  details.feature-details[open] {
+    border-color: var(--border-strong);
+  }
+  details.feature-details > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 28px 32px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    column-gap: 24px;
+    align-items: start;
+    user-select: none;
+  }
+  details.feature-details > summary::-webkit-details-marker { display: none; }
+  details.feature-details > summary:hover { background: rgba(255,255,255,0.015); }
+  /* When the card is open the summary keeps its layout but loses the
+     bottom padding so the expanded content sits flush against it. */
+  details.feature-details[open] > summary { padding-bottom: 8px; }
+  .feature-summary-text .eyebrow {
+    font-size: var(--fs-label); font-weight: var(--w-semibold);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .feature-summary-text .eyebrow .experimental {
+    font-size: 10px; font-weight: var(--w-semibold);
+    letter-spacing: 0.5px; text-transform: uppercase;
+    color: #F0B72F;
+    background: rgba(240, 183, 47, 0.12);
+    border: 0.5px solid rgba(240, 183, 47, 0.4);
+    padding: 3px 8px; border-radius: 100px;
+  }
+  .feature-summary-text h3 {
+    font-size: 22px;
+    margin-bottom: 6px;
+    letter-spacing: var(--tracking-tight);
+    line-height: 1.25;
+  }
+  .feature-summary-text .teaser {
+    font-size: 14px;
+    color: var(--fg-2);
+    margin: 0;
+    line-height: 1.5;
+    max-width: 56ch;
+  }
+  /* Chevron — rotates 180° when the details element opens. CSS-only,
+     no JS required. */
+  .feature-chevron {
+    width: 24px; height: 24px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    display: grid; place-items: center;
+    color: var(--fg-3);
+    transition: transform var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
+    flex-shrink: 0;
+  }
+  details.feature-details[open] .feature-chevron {
+    transform: rotate(180deg);
+    color: var(--accent);
+  }
+  .feature-chevron::before {
+    content: '';
+    width: 7px; height: 7px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: translateY(-2px) rotate(45deg);
+  }
+  /* Inner expanded body — paragraph + bullets + screenshot. Keeps the
+     same two-column grid as the original .feature so existing copy +
+     screenshot pairs render the same way. */
+  .feature-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    align-items: center;
+    padding: 0 32px 32px;
+  }
+  .feature-body p {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--fg-2);
+    max-width: 44ch;
+  }
+  .feature-body p + p { margin-top: 12px; }
+  .feature-body ul.feature-bullets {
+    margin: 14px 0 0; padding-left: 18px;
+    color: var(--fg-2);
+    line-height: 1.7;
+    font-size: 14.5px;
+  }
+  .feature-body ul.feature-bullets li { margin-bottom: 6px; }
+
   .feature-copy .eyebrow {
     font-size: var(--fs-label); font-weight: var(--w-semibold);
     letter-spacing: var(--tracking-wide); text-transform: uppercase;
@@ -455,6 +568,9 @@ a:hover { color: var(--accent-hover); }
     .page { padding: 40px 24px 72px; }
     .hero { padding: 40px 28px 32px; margin-bottom: 56px; }
     .feature { padding: 28px; gap: 32px; grid-template-columns: 1fr; }
+    details.feature-details > summary { padding: 22px 24px; }
+    details.feature-details[open] > summary { padding-bottom: 6px; }
+    .feature-body { grid-template-columns: 1fr; gap: 28px; padding: 0 24px 24px; }
     .feature:nth-child(even of .feature) { direction: ltr; }
     .feature-shot { max-width: 260px; }
     ul.touches { grid-template-columns: 1fr; }
@@ -499,78 +615,185 @@ a:hover { color: var(--accent-hover); }
 
   <!-- ============================================================
        RELEASE · 29 April 2026
-       Single combined release. We collapsed the prior 27 + 28 April
-       entries into this one snapshot — older changelogs lived in
-       git if anyone needs the audit trail. Three headline cards,
-       no smaller-things list, no bug roll-up. Each card maps 1:1
-       to a line in the release headline above.
+       Single combined release — folds the prior 28 + 29 April content
+       into one moment. Ordered by what we want a rider to read first:
+       Weekly check-in (most important — drives the ongoing coaching
+       conversation), Send to your trainer (rebuilt for honesty + an
+       in-app download flow), Pick your bike (cycling type setting +
+       per-session swap), Calendar (block out days + see coach
+       changes before applying). Smaller things and bug fixes round
+       out below. Each feature is a <details> so the page reads as a
+       tight list of headlines until the rider taps through; the most
+       important card has [open] so its content shows on first paint.
        ============================================================ -->
   <section class="release">
     <div class="release-head">
       <div class="release-date"><span class="dot"></span>29 April 2026</div>
       <h2 class="release-headline">
-        <span>How a ride felt now travels with the ride.</span>
-        <span>A calendar that hears "I'm away."</span>
-        <span>An export sheet that's honest about what it does.</span>
+        <span>A weekly check-in that already knows what you said.</span>
+        <span>Save your workout file inside the app.</span>
+        <span>Pick the bike that fits your riding.</span>
+        <span>Block out days. See coach changes before they apply.</span>
       </h2>
     </div>
 
-    <!-- ───── Feature 1: Post-ride feedback → check-in echo ─────
-         The closed loop. Captures the moment a ride ends — effort,
-         feel, optional note — gives a one-shot coach reaction, then
-         echoes the rider's words back in the weekly check-in so
-         next-week suggestions quote them verbatim. -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">
-          <span>Feedback loop</span>
-          <span class="experimental">New</span>
+    <!-- ───── 1 · Weekly check-in (most important) ─────
+         Combines the original "two-minute Sunday ritual" with the
+         29 April upgrades — post-ride feedback now flows in, the
+         rider sees their own words echoed back, and the coach quotes
+         them when proposing changes. Open by default. -->
+    <details class="feature-details" open>
+      <summary>
+        <div class="feature-summary-text">
+          <div class="eyebrow">
+            <span>Weekly check-in</span>
+            <span class="experimental">Updated</span>
+          </div>
+          <h3>Two minutes on Sunday — your plan reshapes itself for next week, with what you said after each ride already in there.</h3>
+          <p class="teaser">Tap done after a ride, drop one line, the check-in already has it. Coach quotes you back when proposing changes.</p>
         </div>
-        <h3>Tap done, your coach replies — and Sunday's check-in already knows what you said</h3>
-        <p>The moment you mark a session complete, a quick popup asks how it actually went: effort, how the legs felt, and an optional line. Your coach reads it on the spot and answers with one short response — tap "Chat with [coach]" if you want to dig in further. Whatever you wrote there gets echoed back in your weekly check-in (pink "YOU SAID" pill under each session) and goes to the coach as structured data, so next-week suggestions quote your actual words rather than paraphrasing.</p>
-        <ul style="margin: 12px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
-          <li>Five-segment effort scale: Way too easy → Just right → Way too hard. No FTP test, no zone numbers.</li>
-          <li>The reaction is intentionally one shot — actual plan changes still happen at the weekly check-in.</li>
-          <li>Reschedule pill in the check-in header lets you push it to a later day mid-week without skipping it.</li>
-        </ul>
+        <div class="feature-chevron" aria-hidden="true"></div>
+      </summary>
+      <div class="feature-body">
+        <div>
+          <p>Once a week your coach asks how things actually went. You tick what you did, drop one line about anything coming up ("can't ride Wednesday"), and the coach proposes concrete tweaks to next week — apply or skip each one with a tap.</p>
+          <p>Whatever you wrote after each ride this week is shown back to you in the check-in — pink "YOU SAID" pill under each session — so you don't retype the same thing. Your coach reads it as structured data and quotes you directly when suggesting tweaks ("you marked Tuesday way too hard" not "I see you struggled").</p>
+          <ul class="feature-bullets">
+            <li>Tap done after any session and a quick popup asks effort, feel, and an optional note. Your coach replies on the spot with one short response, and you can jump into chat to dig in further.</li>
+            <li>Each session row shows its calendar date so you can place it in the week.</li>
+            <li>"Reschedule" pill in the header — push the check-in to a later day mid-week without skipping it entirely.</li>
+            <li>Pick the day and time in <em>Settings → Weekly check-in</em>.</li>
+            <li>Your coach <strong style="color: var(--fg);">never gives medical advice.</strong> Anything injury-related gets pointed at a physio, full stop.</li>
+          </ul>
+        </div>
+        <div class="feature-shot"
+             data-caption="Weekly check-in: home banner → questionnaire with 'YOU SAID' echoes from post-ride feedback → AI suggestions card with Apply / Skip per change.">
+          <img src="/whats-new-assets/screens/weekly-checkin.png" alt="Weekly check-in flow on iOS" />
+        </div>
       </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Activity feedback sheet — effort segments, Strong/OK/Off, optional note → coach reaction bubble → Chat / Done. Then the check-in echoing 'YOU SAID' under each session."></div>
+    </details>
+
+    <!-- ───── 2 · Send to your trainer ─────
+         Rebuilt for the in-app download flow. No browser kick-out, no
+         per-app instructions page, no auto-fired share sheet. The
+         file lands inside Etapa, the modal shows what's in it, and a
+         single Share button covers every onward path. -->
+    <details class="feature-details">
+      <summary>
+        <div class="feature-summary-text">
+          <div class="eyebrow">
+            <span>Send to your trainer</span>
+            <span class="experimental">Updated</span>
+          </div>
+          <h3>Save the workout file inside Etapa — read it, share it where you ride, no browser kick-out.</h3>
+          <p class="teaser">Tap, the file lands in Etapa, you see exactly what's in it, share to Zwift / Rouvy / Wahoo / Files when you're ready.</p>
+        </div>
+        <div class="feature-chevron" aria-hidden="true"></div>
+      </summary>
+      <div class="feature-body">
+        <div>
+          <p>Open any structured ride and tap <em>Send to trainer</em>. We download a real .zwo workout file straight into Etapa — no browser, no Files-app dance. The modal shows exactly what's in your workout: warm-up, main set with target zones, cool-down, all with durations.</p>
+          <p>From there a single <strong style="color: var(--fg);">Share</strong> button opens the system share sheet on the local file. Pick Zwift, Rouvy, Wahoo SYSTM, intervals.icu, Files, AirDrop, Messages — whatever fits how you ride.</p>
+          <ul class="feature-bullets">
+            <li>The file lives inside Etapa permanently. Re-share it any time without re-downloading.</li>
+            <li>Format auto-picked: .zwo for Zwift / Rouvy / intervals.icu, .fit for Wahoo SYSTM.</li>
+            <li>FTP set in your trainer app once → every workout plays back at the right watts.</li>
+          </ul>
+        </div>
+        <div class="feature-shot"
+             data-placeholder="1"
+             data-caption="Workout file modal — 'Saved to Etapa' card, parsed warm-up / main / cool-down structure with durations and target zones, single Share button at the bottom."></div>
+      </div>
+    </details>
+
+    <!-- ───── 3 · Pick your bike (cycling type) ─────
+         Restored verbatim from the 28 April release — copy still
+         accurate. The setting moved into the COACHING section of
+         Settings (was under NOTIFICATIONS, made no sense there). -->
+    <details class="feature-details">
+      <summary>
+        <div class="feature-summary-text">
+          <div class="eyebrow">Cycling type</div>
+          <h3>Pick the bike that fits your riding — swap any session in one tap.</h3>
+          <p class="teaser">Road, gravel, MTB, e-bike, or indoor. Plan reads native to the bike you ride.</p>
+        </div>
+        <div class="feature-chevron" aria-hidden="true"></div>
+      </summary>
+      <div class="feature-body">
+        <div>
+          <p>Pick the one that defines your training and the plan reads native to it (singletrack for MTB, mixed surface for gravel, structured indoor for trainer riders).</p>
+          <ul class="feature-bullets">
+            <li>Tap the bike chip on any ride to swap just that session — same effort, sensible distance.</li>
+            <li>Changing every Thursday to gravel? It'll offer to apply across all upcoming weeks.</li>
+            <li>Change your default any time in <em>Settings → Coaching → Default cycling type</em>.</li>
+          </ul>
+        </div>
+        <div class="feature-shot"
+             data-caption="Activity detail — bike chip swap → suggested distance for the new bike → optional 'apply to all upcoming Thursdays?' prompt.">
+          <img src="/whats-new-assets/screens/bike-swap-suggestion.png" alt="Bike swap confirmation sheet with adjusted distance and duration" />
+        </div>
+      </div>
+    </details>
+
+    <!-- ───── 4 · Calendar — block out days + diff view ─────
+         Two changes that travel together. Mark days you can't ride;
+         the planner routes around them. Coach proposals show as a
+         visual diff before applying. -->
+    <details class="feature-details">
+      <summary>
+        <div class="feature-summary-text">
+          <div class="eyebrow">Calendar</div>
+          <h3>Block out days, see coach changes before they apply.</h3>
+          <p class="teaser">Mark days unavailable when life intrudes. Coach proposals appear as a diff on the calendar — accept, review, or skip.</p>
+        </div>
+        <div class="feature-chevron" aria-hidden="true"></div>
+      </summary>
+      <div class="feature-body">
+        <div>
+          <p>Heading away for work? Tap "Mark unavailable" in the calendar header, pick the days, drop a one-line reason. Hatched cells make it obvious those days are off-limits, and the planner routes around them.</p>
+          <p>When your coach proposes changes for next week, they show as a diff on the calendar — added sessions in pink with a left border, moves marked "MOVED FROM SAT", removals struck through. Apply all in one tap, review them one-by-one, or skip.</p>
+          <ul class="feature-bullets">
+            <li>"See on calendar" from a coach chat message lands you on the exact date the change applies to, day-detail panel already open.</li>
+            <li>Holds work travel, family weekends, scheduled rest — all handled the same way.</li>
+          </ul>
+        </div>
+        <div class="feature-shot"
+             data-placeholder="1"
+             data-caption="Calendar — hatched unavailable days + pink-bordered added sessions and struck-through removals from the coach's diff."></div>
+      </div>
+    </details>
+
+    <!-- ───── Smaller things — combined from both releases ─────
+         Anything that doesn't warrant its own card but shouldn't go
+         missing from the changelog. Two-column wrapping list. -->
+    <div class="subsection">
+      <div class="subsection-label"><span class="dot"></span>Smaller things</div>
+      <h4>Quiet improvements worth a line</h4>
+      <ul class="touches">
+        <li><strong>Weekly summary you can actually share</strong>Right after the check-in, get a card of your week — km, sessions, longest ride, 4-week trend, a quote from your coach — and tap Share to send it anywhere or save it to Photos.</li>
+        <li><strong>Ride tip on every session</strong>Each ride opens with personalised warm-up, fuel, pacing, cool-down, and recovery tips written for that exact session.</li>
+        <li><strong>Coach proposes changes inline in chat</strong>When your coach says "I'll move that long ride", the message embeds a structured add / move / remove card with Apply and See on calendar buttons.</li>
+        <li><strong>Mark-as-done feels instant</strong>The feedback popup opens the moment you tap, with a "Saving your ride…" banner while the round-trip lands. No waiting before you start typing.</li>
+        <li><strong>Per-session coach chat</strong>Open the coach from a ride and the conversation stays scoped to that session.</li>
+        <li><strong>Honest about weather</strong>The placeholder weather hint that lived under ride tips is gone — we'll add it back when there's real weather data, not before.</li>
+        <li><strong>Default cycling type now in Coaching</strong>Moved out of Notifications (where it never belonged) and lives next to Change Coach, where it fits the conversation.</li>
+        <li><strong>Kinder forms</strong>Recurring rides, longest-ride input, event details, and the check-in textarea all behave properly above the keyboard now.</li>
+      </ul>
     </div>
 
-    <!-- ───── Feature 2: Calendar ─────
-         Block out days the rider can't ride, and visualise the
-         coach's proposed plan changes as a diff before applying. -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Calendar</div>
-        <h3>Block out days, see coach changes before they apply</h3>
-        <p>Heading away for work? Tap "Mark unavailable" in the calendar header, pick the days, drop a one-line reason. Hatched cells make those days obviously off-limits and the planner routes around them.</p>
-        <p>When your coach proposes changes for next week, they show as a diff on the calendar — added sessions in pink with a left border, moves marked "MOVED FROM SAT", removals struck through. Apply all in one tap, review one-by-one, or skip.</p>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Calendar — hatched unavailable days + pink-bordered added sessions and struck-through removals from the coach's diff."></div>
-    </div>
-
-    <!-- ───── Feature 3: Send to trainer ─────
-         Rebuilt picker — phone-only vs needs-a-laptop grouping,
-         per-app numbered steps, single Save & share CTA. No BLE
-         fiction. -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Send to your trainer</div>
-        <h3>Pick where you ride. We make the file, you make the ride.</h3>
-        <p>The trainer-export sheet now groups destinations by your reality: <strong style="color: var(--fg);">phone-only</strong> (intervals.icu — the easy path) versus <strong style="color: var(--fg);">needs a laptop somewhere</strong> (Zwift, Rouvy, Wahoo SYSTM). Pick one, see three numbered steps for that exact app, hit Save &amp; share. One CTA. No "send straight to your trainer over Bluetooth" pretense — smart trainers don't play back files, a trainer app does, and we route the file to the right one.</p>
-        <ul style="margin: 12px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
-          <li>Format auto-picked: .zwo for Zwift / Rouvy / intervals.icu, .fit for Wahoo SYSTM.</li>
-          <li>iOS Zwift gotcha (the share-sheet "Copy to Zwift" that doesn't actually work) is called out before the steps so you don't trip on it.</li>
-        </ul>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Send to trainer sheet — Phone-only group (intervals.icu) above the Needs-a-laptop group, then per-app steps with a single Save & share CTA."></div>
+    <!-- ───── Bugs squashed — combined ───── -->
+    <div class="bugs">
+      <div class="bugs-label">Bugs squashed</div>
+      <ul>
+        <li>Coach chat no longer fires "timed out" while Claude is still working — client cap raised to outlast the server's 180s call, and the error message tells you the actual duration.</li>
+        <li>Reschedule + ride-tip routes are now actually wired server-side — both used to silently no-op when the client tried to call them.</li>
+        <li>Accepted coach changes always show on Home now — the cache check that used to short-circuit on identical activity counts is gone.</li>
+        <li>The check-in's text input no longer hides under the keyboard mid-type.</li>
+        <li>Completed-session check colour is unified across Week, Home, Calendar, and the today-hero badge — pink everywhere now.</li>
+        <li>App opens no longer fire phantom "new sign-up" notifications for existing users.</li>
+        <li>Bike chip is hidden on strength sessions (where swapping a bike type makes no sense).</li>
+        <li>Activity-detail edits round-trip through the server, so swaps stick on every device.</li>
+      </ul>
     </div>
   </section>
 

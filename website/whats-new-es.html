@@ -219,6 +219,105 @@ a:hover { color: var(--accent-hover); }
   .feature:nth-child(even of .feature) { direction: rtl; }
   .feature:nth-child(even of .feature) > * { direction: ltr; }
 
+  /* ───────── Tarjeta de función expandible (details/summary) ─────────
+     Espejo del CSS de la versión inglesa. La <summary> es la cabecera
+     siempre visible; el resto se muestra solo al expandir. La primera
+     tarjeta usa [open] para que la novedad más importante esté visible
+     sin tener que hacer clic. */
+  details.feature-details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 0;
+    margin-bottom: 16px;
+    overflow: hidden;
+    transition: border-color var(--dur-base) var(--ease-out);
+  }
+  details.feature-details[open] { border-color: var(--border-strong); }
+  details.feature-details > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 28px 32px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    column-gap: 24px;
+    align-items: start;
+    user-select: none;
+  }
+  details.feature-details > summary::-webkit-details-marker { display: none; }
+  details.feature-details > summary:hover { background: rgba(255,255,255,0.015); }
+  details.feature-details[open] > summary { padding-bottom: 8px; }
+  .feature-summary-text .eyebrow {
+    font-size: var(--fs-label); font-weight: var(--w-semibold);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .feature-summary-text .eyebrow .experimental {
+    font-size: 10px; font-weight: var(--w-semibold);
+    letter-spacing: 0.5px; text-transform: uppercase;
+    color: #F0B72F;
+    background: rgba(240, 183, 47, 0.12);
+    border: 0.5px solid rgba(240, 183, 47, 0.4);
+    padding: 3px 8px; border-radius: 100px;
+  }
+  .feature-summary-text h3 {
+    font-size: 22px;
+    margin-bottom: 6px;
+    letter-spacing: var(--tracking-tight);
+    line-height: 1.25;
+  }
+  .feature-summary-text .teaser {
+    font-size: 14px;
+    color: var(--fg-2);
+    margin: 0;
+    line-height: 1.5;
+    max-width: 56ch;
+  }
+  .feature-chevron {
+    width: 24px; height: 24px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    display: grid; place-items: center;
+    color: var(--fg-3);
+    transition: transform var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
+    flex-shrink: 0;
+  }
+  details.feature-details[open] .feature-chevron {
+    transform: rotate(180deg);
+    color: var(--accent);
+  }
+  .feature-chevron::before {
+    content: '';
+    width: 7px; height: 7px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: translateY(-2px) rotate(45deg);
+  }
+  .feature-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    align-items: center;
+    padding: 0 32px 32px;
+  }
+  .feature-body p {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--fg-2);
+    max-width: 44ch;
+  }
+  .feature-body p + p { margin-top: 12px; }
+  .feature-body ul.feature-bullets {
+    margin: 14px 0 0; padding-left: 18px;
+    color: var(--fg-2);
+    line-height: 1.7;
+    font-size: 14.5px;
+  }
+  .feature-body ul.feature-bullets li { margin-bottom: 6px; }
+
   .feature-copy .eyebrow {
     font-size: var(--fs-label); font-weight: var(--w-semibold);
     letter-spacing: var(--tracking-wide); text-transform: uppercase;
@@ -371,6 +470,9 @@ a:hover { color: var(--accent-hover); }
     .page { padding: 40px 24px 72px; }
     .hero { padding: 40px 28px 32px; margin-bottom: 56px; }
     .feature { padding: 28px; gap: 32px; grid-template-columns: 1fr; }
+    details.feature-details > summary { padding: 22px 24px; }
+    details.feature-details[open] > summary { padding-bottom: 6px; }
+    .feature-body { grid-template-columns: 1fr; gap: 28px; padding: 0 24px 24px; }
     .feature:nth-child(even of .feature) { direction: ltr; }
     .feature-shot { max-width: 280px; }
     ul.touches { grid-template-columns: 1fr; }
@@ -412,70 +514,166 @@ a:hover { color: var(--accent-hover); }
 
   <!-- ============================================================
        LANZAMIENTO · 29 de abril de 2026
-       Lanzamiento único combinado. Hemos colapsado las entradas
-       previas de 27 y 28 de abril en este snapshot — los changelogs
-       antiguos viven en git si alguien necesita el rastro de
-       auditoría. Tres tarjetas titular, sin lista de detalles, sin
-       resumen de errores. Cada tarjeta mapea 1:1 con una línea del
-       titular del lanzamiento.
+       Lanzamiento único combinado — fusiona el contenido previo de
+       28 + 29 de abril en un solo momento. Ordenado por prioridad
+       lectora: check-in semanal (lo más importante), Enviar al
+       rodillo, Tipo de bici, Calendario. Cada función es <details>
+       para que la página se lea como una lista de titulares hasta
+       que el ciclista la abra; la más importante usa [open] para
+       mostrar contenido en la primera vista.
        ============================================================ -->
   <section class="release">
     <div class="release-head">
       <div class="release-date"><span class="dot"></span>29 de abril de 2026</div>
       <h2 class="release-headline">
-        <span>Cómo te ha sentado una salida ahora viaja con la salida.</span>
-        <span>Un calendario que escucha cuando dices "no estoy".</span>
-        <span>Una pantalla de exportar que dice la verdad.</span>
+        <span>Un check-in semanal que ya sabe lo que dijiste.</span>
+        <span>Guarda el archivo del entrenamiento dentro de la app.</span>
+        <span>Elige la bici que se adapta a tu forma de rodar.</span>
+        <span>Bloquea días. Mira los cambios del entrenador antes de aplicarlos.</span>
       </h2>
     </div>
 
-    <!-- ───── Función 1: Feedback post-salida → eco en el check-in ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">
-          <span>Bucle de feedback</span>
-          <span class="experimental">Nuevo</span>
+    <!-- ───── 1 · Check-in semanal (la más importante) ───── -->
+    <details class="feature-details" open>
+      <summary>
+        <div class="feature-summary-text">
+          <div class="eyebrow">
+            <span>Check-in semanal</span>
+            <span class="experimental">Actualizado</span>
+          </div>
+          <h3>Dos minutos el domingo — tu plan se reorganiza para la próxima semana, con lo que dijiste tras cada salida ya dentro.</h3>
+          <p class="teaser">Marca hecho tras una salida, deja una línea, y el check-in ya la tiene. Tu entrenador te cita literalmente al proponer cambios.</p>
         </div>
-        <h3>Marcas hecho, tu entrenador responde — y el check-in del domingo ya sabe lo que dijiste</h3>
-        <p>En cuanto marcas una sesión completada, una pequeña ventana te pregunta cómo fue: esfuerzo, cómo se sintieron las piernas, y una línea opcional. Tu entrenador la lee al instante y responde con una frase corta — toca "Hablar con [entrenador]" si quieres profundizar. Lo que escribiste ahí se te muestra de vuelta en el check-in semanal (pastilla rosa "DIJISTE" debajo de cada sesión) y le llega a tu entrenador como datos estructurados, así las propuestas para la próxima semana citan tus palabras literales en vez de parafrasear.</p>
-        <ul style="margin: 12px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
-          <li>Escala de esfuerzo en cinco segmentos: Demasiado fácil → Justo → Demasiado duro. Sin test de FTP, sin números de zona.</li>
-          <li>La reacción es deliberadamente única — los cambios al plan siguen pasando en el check-in semanal.</li>
-          <li>Pastilla "Reprogramar" en la cabecera del check-in: empújalo a un día posterior sin saltártelo.</li>
-        </ul>
+        <div class="feature-chevron" aria-hidden="true"></div>
+      </summary>
+      <div class="feature-body">
+        <div>
+          <p>Una vez por semana tu entrenador te pregunta cómo fue todo. Marcas lo que hiciste, dejas una línea sobre algo que viene ("no puedo rodar el miércoles"), y el entrenador propone ajustes concretos para la próxima semana — aplicas o saltas cada uno con un toque.</p>
+          <p>Lo que escribiste tras cada salida esta semana se te muestra de vuelta en el check-in — pastilla rosa "DIJISTE" debajo de cada sesión — para no repetir lo mismo. Tu entrenador lo lee como datos estructurados y te cita literalmente al sugerir ajustes ("marcaste el martes como demasiado duro" en vez de "veo que te costó").</p>
+          <ul class="feature-bullets">
+            <li>Marca hecho tras cualquier sesión y una pequeña ventana te pregunta esfuerzo, sensación y una nota opcional. Tu entrenador responde al instante con una frase corta, y puedes saltar al chat para profundizar.</li>
+            <li>Cada fila de sesión muestra su fecha de calendario para que la sitúes en la semana.</li>
+            <li>Pastilla "Reprogramar" en la cabecera — empuja el check-in a un día posterior sin saltártelo.</li>
+            <li>Elige el día y la hora en <em>Ajustes → Check-in semanal</em>.</li>
+            <li>Tu entrenador <strong style="color: var(--fg);">nunca da consejo médico.</strong> Cualquier cosa relacionada con lesiones se deriva al fisio, sin excepción.</li>
+          </ul>
+        </div>
+        <div class="feature-shot"
+             data-caption="Check-in semanal: banner en inicio → cuestionario con ecos 'DIJISTE' del feedback post-salida → tarjeta de sugerencias con Aplicar / Saltar por cambio.">
+          <img src="/whats-new-assets/screens/weekly-checkin.png" alt="Flujo de check-in semanal en iOS" />
+        </div>
       </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Hoja de feedback de actividad — segmentos de esfuerzo, Fuerte/OK/Mal, nota opcional → burbuja de reacción del entrenador → Hablar / Hecho. Después el check-in con el eco 'DIJISTE' bajo cada sesión."></div>
+    </details>
+
+    <!-- ───── 2 · Enviar al rodillo ───── -->
+    <details class="feature-details">
+      <summary>
+        <div class="feature-summary-text">
+          <div class="eyebrow">
+            <span>Enviar a tu rodillo</span>
+            <span class="experimental">Actualizado</span>
+          </div>
+          <h3>Guarda el archivo del entrenamiento dentro de Etapa — léelo, compártelo donde rodes, sin pasar por el navegador.</h3>
+          <p class="teaser">Tocas, el archivo queda dentro de Etapa, ves exactamente qué contiene, lo compartes a Zwift / Rouvy / Wahoo / Archivos cuando quieras.</p>
+        </div>
+        <div class="feature-chevron" aria-hidden="true"></div>
+      </summary>
+      <div class="feature-body">
+        <div>
+          <p>Abre cualquier salida estructurada y toca <em>Enviar al rodillo</em>. Descargamos un archivo de entrenamiento .zwo real directamente dentro de Etapa — sin navegador, sin pasar por la app de Archivos. La ventana muestra exactamente qué hay en tu entrenamiento: calentamiento, parte principal con zonas objetivo, vuelta a la calma, todo con duraciones.</p>
+          <p>Desde ahí, un único botón <strong style="color: var(--fg);">Compartir</strong> abre la hoja del sistema sobre el archivo local. Eliges Zwift, Rouvy, Wahoo SYSTM, intervals.icu, Archivos, AirDrop, Mensajes — lo que encaje con cómo rodas.</p>
+          <ul class="feature-bullets">
+            <li>El archivo vive permanentemente dentro de Etapa. Vuelve a compartirlo cuando quieras sin volver a descargarlo.</li>
+            <li>El formato se elige solo: .zwo para Zwift / Rouvy / intervals.icu, .fit para Wahoo SYSTM.</li>
+            <li>FTP configurado una vez en tu app de rodillo → cada entrenamiento se reproduce a los vatios correctos.</li>
+          </ul>
+        </div>
+        <div class="feature-shot"
+             data-placeholder="1"
+             data-caption="Ventana de archivo de entrenamiento — tarjeta 'Guardado en Etapa', estructura calentamiento / parte principal / vuelta a la calma con duraciones y zonas objetivo, botón único Compartir abajo."></div>
+      </div>
+    </details>
+
+    <!-- ───── 3 · Tipo de bici ───── -->
+    <details class="feature-details">
+      <summary>
+        <div class="feature-summary-text">
+          <div class="eyebrow">Tipo de bici</div>
+          <h3>Elige la bici que define tu forma de rodar — cambia cualquier sesión con un toque.</h3>
+          <p class="teaser">Carretera, gravel, MTB, e-bike o indoor. Tu plan se lee nativo a la bici que rodas.</p>
+        </div>
+        <div class="feature-chevron" aria-hidden="true"></div>
+      </summary>
+      <div class="feature-body">
+        <div>
+          <p>Elige la que define tu entrenamiento y el plan se lee nativo a esa bici (singletrack para MTB, superficie mixta para gravel, indoor estructurado para quienes ruedan en rodillo).</p>
+          <ul class="feature-bullets">
+            <li>Toca la pastilla de bici en cualquier salida para cambiar solo esa sesión — mismo esfuerzo, distancia razonable.</li>
+            <li>¿Cambias todos los jueves a gravel? Te ofrecerá aplicarlo a todas las semanas próximas.</li>
+            <li>Cambia tu predeterminada cuando quieras en <em>Ajustes → Coaching → Tipo de bici predeterminado</em>.</li>
+          </ul>
+        </div>
+        <div class="feature-shot"
+             data-caption="Detalle de actividad — cambio de pastilla de bici → distancia sugerida para la nueva bici → opcional '¿aplicar a todos los jueves próximos?'.">
+          <img src="/whats-new-assets/screens/bike-swap-suggestion.png" alt="Hoja de confirmación de cambio de bici con distancia y duración ajustadas" />
+        </div>
+      </div>
+    </details>
+
+    <!-- ───── 4 · Calendario ───── -->
+    <details class="feature-details">
+      <summary>
+        <div class="feature-summary-text">
+          <div class="eyebrow">Calendario</div>
+          <h3>Bloquea días y mira los cambios del entrenador antes de aplicarlos.</h3>
+          <p class="teaser">Marca días no disponibles cuando la vida se cruza. Las propuestas del entrenador aparecen como un diff en el calendario — aceptar, revisar o saltar.</p>
+        </div>
+        <div class="feature-chevron" aria-hidden="true"></div>
+      </summary>
+      <div class="feature-body">
+        <div>
+          <p>¿Te vas de viaje por trabajo? Toca "Marcar no disponible" en la cabecera del calendario, elige los días, deja una línea de motivo. Las celdas rayadas dejan claro que esos días están bloqueados, y el planificador los rodea.</p>
+          <p>Cuando tu entrenador propone cambios para la próxima semana, aparecen como un diff sobre el calendario — sesiones añadidas en rosa con borde, movimientos marcados "MOVIDO DE SAB", eliminaciones tachadas. Aplica todo de un toque, revísalo de uno en uno o salta.</p>
+          <ul class="feature-bullets">
+            <li>"Ver en el calendario" desde un mensaje del chat te lleva a la fecha exacta donde aplica el cambio, con el panel del día ya abierto.</li>
+            <li>Soporta viajes de trabajo, fines de semana familiares, descansos programados — todo se gestiona igual.</li>
+          </ul>
+        </div>
+        <div class="feature-shot"
+             data-placeholder="1"
+             data-caption="Calendario — días rayados como no disponibles + sesiones añadidas con borde rosa y eliminaciones tachadas del diff del entrenador."></div>
+      </div>
+    </details>
+
+    <!-- ───── Detalles ───── -->
+    <div class="subsection">
+      <div class="subsection-label"><span class="dot"></span>Detalles</div>
+      <h4>Mejoras silenciosas que merecen una línea</h4>
+      <ul class="touches">
+        <li><strong>Resumen semanal que puedes compartir de verdad</strong>Tras el check-in, una tarjeta con tu semana — km, sesiones, salida más larga, tendencia de 4 semanas, una cita de tu entrenador — que puedes compartir o guardar a Fotos.</li>
+        <li><strong>Tip de salida en cada sesión</strong>Cada salida abre con tips personalizados de calentamiento, comida, ritmo, vuelta a la calma y recuperación, escritos para esa sesión exacta.</li>
+        <li><strong>El entrenador propone cambios en el chat</strong>Cuando tu entrenador dice "muevo esa salida larga", el mensaje incrusta una tarjeta estructurada de añadir / mover / quitar con botones Aplicar y Ver en el calendario.</li>
+        <li><strong>Marcar como hecha se siente instantáneo</strong>La ventana de feedback se abre en cuanto tocas, con un banner "Guardando tu salida…" mientras se sincroniza. No esperas para empezar a escribir.</li>
+        <li><strong>Chat por sesión</strong>Abre el entrenador desde una salida y la conversación queda en el contexto de esa sesión.</li>
+        <li><strong>Honestos con el tiempo</strong>El placeholder de tiempo bajo los tips de salida ya no está — lo traemos cuando haya datos meteorológicos reales, no antes.</li>
+        <li><strong>Tipo de bici predeterminado ahora en Coaching</strong>Movido fuera de Notificaciones (donde nunca encajó) y vive junto a Cambiar entrenador, donde forma parte de la conversación.</li>
+        <li><strong>Formularios más amables</strong>Las salidas recurrentes, la entrada de salida más larga, los detalles de evento y el textarea del check-in se comportan correctamente sobre el teclado.</li>
+      </ul>
     </div>
 
-    <!-- ───── Función 2: Calendario ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Calendario</div>
-        <h3>Bloquea días, mira los cambios del entrenador antes de aplicarlos</h3>
-        <p>¿Te vas de viaje por trabajo? Toca "Marcar no disponible" en la cabecera del calendario, elige los días, deja una línea de motivo. Las celdas rayadas dejan claro que esos días están bloqueados, y el planificador los rodea.</p>
-        <p>Cuando tu entrenador propone cambios para la próxima semana, aparecen como un diff sobre el calendario — sesiones añadidas en rosa con borde, movimientos marcados "MOVIDO DE SAB", eliminaciones tachadas. Aplica todo de un toque, revísalo de uno en uno, o salta.</p>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Calendario — días rayados como no disponibles + sesiones añadidas con borde rosa y eliminaciones tachadas del diff del entrenador."></div>
-    </div>
-
-    <!-- ───── Función 3: Enviar al rodillo ───── -->
-    <div class="feature">
-      <div class="feature-copy">
-        <div class="eyebrow">Enviar a tu rodillo</div>
-        <h3>Elige dónde rodar. Nosotros hacemos el archivo, tú haces la salida.</h3>
-        <p>La pantalla para exportar al rodillo agrupa los destinos según cómo eliges de verdad: <strong style="color: var(--fg);">solo móvil</strong> (intervals.icu — el camino fácil) frente a <strong style="color: var(--fg);">necesitas un portátil en algún momento</strong> (Zwift, Rouvy, Wahoo SYSTM). Eliges uno, ves tres pasos numerados para esa app concreta, y le das a Guardar y compartir. Un solo botón. Sin fingir que mandamos el archivo "directo al rodillo por Bluetooth" — los rodillos inteligentes no reproducen archivos, lo hace una app de rodillo, y nosotros entregamos el archivo a la correcta.</p>
-        <ul style="margin: 12px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
-          <li>El formato se elige solo: .zwo para Zwift / Rouvy / intervals.icu, .fit para Wahoo SYSTM.</li>
-          <li>El truco de iOS con Zwift (el "Copiar a Zwift" del share-sheet que no funciona de verdad) sale antes de los pasos para que no tropieces.</li>
-        </ul>
-      </div>
-      <div class="feature-shot"
-           data-placeholder="1"
-           data-caption="Pantalla de enviar al rodillo — grupo Solo móvil (intervals.icu) arriba del grupo Necesita un portátil, después pasos por app con un único botón Guardar y compartir."></div>
+    <!-- ───── Errores aplastados ───── -->
+    <div class="bugs">
+      <div class="bugs-label">Errores aplastados</div>
+      <ul>
+        <li>El chat ya no marca "tiempo agotado" mientras Claude sigue trabajando — el límite del cliente se subió para superar la llamada de 180s del servidor, y el mensaje de error ahora dice la duración real.</li>
+        <li>Las rutas de reprogramar y de tip de salida ahora están conectadas de verdad en el servidor — antes no hacían nada cuando la app las llamaba.</li>
+        <li>Los cambios del entrenador aceptados siempre aparecen en Inicio ahora — la caché que cortocircuitaba con conteos de actividad idénticos ya no está.</li>
+        <li>El campo de texto del check-in ya no se esconde bajo el teclado mientras escribes.</li>
+        <li>El color de la marca de sesión completada está unificado en Semana, Inicio, Calendario y la insignia de hoy — rosa en todas partes.</li>
+        <li>Abrir la app ya no dispara notificaciones fantasma de "nuevo registro" para usuarios existentes.</li>
+        <li>La pastilla de bici se oculta en sesiones de fuerza (donde cambiar el tipo de bici no tiene sentido).</li>
+        <li>Las ediciones en el detalle de actividad llegan al servidor, así que los cambios persisten en cada dispositivo.</li>
+      </ul>
     </div>
   </section>
 
