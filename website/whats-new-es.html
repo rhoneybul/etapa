@@ -397,7 +397,7 @@ a:hover { color: var(--accent-hover); }
     <dl class="meta">
       <div>
         <dt>Última actualización</dt>
-        <dd class="accent">27 de abril de 2026</dd>
+        <dd class="accent">29 de abril de 2026</dd>
       </div>
       <div>
         <dt>Disponible en</dt>
@@ -409,6 +409,113 @@ a:hover { color: var(--accent-hover); }
       </div>
     </dl>
   </header>
+
+  <!-- ============================================================
+       LANZAMIENTO · 29 de abril de 2026
+       Espejo del bloque inglés — mantén ambos en paralelo cuando
+       añadas funciones nuevas. Las imágenes usan data-placeholder="1"
+       hasta que se incorporen capturas reales.
+       ============================================================ -->
+  <section class="release">
+    <div class="release-head">
+      <div class="release-date"><span class="dot"></span>29 de abril de 2026</div>
+      <h2 class="release-headline">
+        <span>Cómo te ha sentado una salida ahora viaja con la salida.</span>
+        <span>Un calendario que escucha cuando dices "no estoy".</span>
+        <span>Una pantalla de exportar que dice la verdad.</span>
+      </h2>
+    </div>
+
+    <!-- ───── Función 1: Feedback post-salida + reacción del entrenador ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">
+          <span>Feedback post-salida</span>
+          <span class="experimental">Nuevo</span>
+        </div>
+        <h3>Marcas hecho — tu entrenador responde al momento</h3>
+        <p>En cuanto marcas una sesión completada, una pequeña ventana te pregunta cómo fue: esfuerzo, cómo se sintieron las piernas, y una línea opcional. Tu entrenador la lee y responde ahí mismo con una frase corta. Si quieres profundizar, toca "Hablar con [entrenador]" y la conversación continúa con la sesión correcta ya en contexto.</p>
+        <ul style="margin: 12px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
+          <li>El esfuerzo se elige en cinco segmentos: Demasiado fácil → Justo → Demasiado duro. Sin test de FTP, sin números de zona.</li>
+          <li>La reacción es deliberadamente única — los cambios al plan siguen pasando en el check-in semanal. Esto es acuse de recibo, no renegociación.</li>
+          <li>Saltar es una opción real. La sesión queda completada igual.</li>
+        </ul>
+      </div>
+      <div class="feature-shot"
+           data-placeholder="1"
+           data-caption="Hoja de feedback de actividad — segmentos de esfuerzo, Fuerte/OK/Mal, nota opcional → burbuja de reacción del entrenador → Hablar / Hecho."></div>
+    </div>
+
+    <!-- ───── Función 2: El feedback alimenta el check-in semanal ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">Mejoras en el check-in semanal</div>
+        <h3>El check-in del domingo ya sabe lo que dijiste</h3>
+        <p>Lo que escribiste después de cada salida esta semana se te muestra de vuelta en el check-in — pastilla rosa "DIJISTE" debajo de cada sesión — para que no repitas lo mismo. Tu entrenador lo lee como datos estructurados y te cita literal cuando propone ajustes ("marcaste el martes como demasiado duro" en vez de "veo que te costó").</p>
+        <ul style="margin: 12px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
+          <li>Cada fila de sesión muestra su fecha de calendario para que la sitúes en la semana.</li>
+          <li>Pastilla "Reprogramar" en la cabecera — empuja el check-in a un día posterior sin saltártelo.</li>
+          <li>El teclado ya no tapa lo que escribes, en ninguna plataforma.</li>
+        </ul>
+      </div>
+      <div class="feature-shot"
+           data-placeholder="1"
+           data-caption="Pantalla de check-in — pastilla de fecha bajo cada sesión, eco 'DIJISTE' del feedback post-salida, pastilla Reprogramar en la cabecera."></div>
+    </div>
+
+    <!-- ───── Función 3: Calendario — días no disponibles + vista diff ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">Calendario</div>
+        <h3>Bloquea días, mira los cambios del entrenador antes de aplicarlos</h3>
+        <p>¿Te vas de viaje por trabajo? Toca "Marcar no disponible" en la cabecera del calendario, elige los días, deja una línea de motivo. Las celdas rayadas dejan claro que esos días están bloqueados, y el planificador los rodea.</p>
+        <p>Cuando tu entrenador propone cambios para la próxima semana, aparecen como un diff sobre el calendario — sesiones añadidas en rosa con borde, movimientos marcados "MOVIDO DE SAB", eliminaciones tachadas. Aplica todo de un toque, revísalo de uno en uno, o salta.</p>
+      </div>
+      <div class="feature-shot"
+           data-placeholder="1"
+           data-caption="Calendario — días rayados como no disponibles + sesiones añadidas con borde rosa y eliminaciones tachadas del diff del entrenador."></div>
+    </div>
+
+    <!-- ───── Función 4: Enviar al rodillo — reconstruido para claridad ───── -->
+    <div class="feature">
+      <div class="feature-copy">
+        <div class="eyebrow">Enviar a tu rodillo</div>
+        <h3>Una pantalla de exportar que no finge</h3>
+        <p>La pantalla para exportar al rodillo agrupa los destinos según cómo eliges de verdad: <strong style="color: var(--fg);">solo móvil</strong> (intervals.icu — el camino fácil) frente a <strong style="color: var(--fg);">necesitas un portátil en algún momento</strong> (Zwift, Rouvy, Wahoo SYSTM). Eliges uno, ves tres pasos numerados para esa app concreta, y le das a Guardar y compartir. Un solo botón. Sin fingir que mandamos el archivo "directo al rodillo por Bluetooth" — los rodillos inteligentes no reproducen archivos, lo hace una app de rodillo, y nosotros entregamos el archivo a la correcta.</p>
+        <ul style="margin: 12px 0 0; padding-left: 18px; color: var(--fg-2); line-height: 1.7;">
+          <li>El formato se elige solo: .zwo para Zwift / Rouvy / intervals.icu, .fit para Wahoo SYSTM.</li>
+          <li>El truco de iOS con Zwift (el "Copiar a Zwift" del share-sheet que no funciona de verdad) sale antes de los pasos para que no tropieces.</li>
+          <li>"Otro / guardar en Archivos" deja el .zwo donde tú quieras.</li>
+        </ul>
+      </div>
+      <div class="feature-shot"
+           data-placeholder="1"
+           data-caption="Pantalla de enviar al rodillo — grupo Solo móvil (intervals.icu) arriba del grupo Necesita un portátil, después pasos por app con un único botón Guardar y compartir."></div>
+    </div>
+
+    <!-- ───── Mejoras pequeñas ───── -->
+    <div class="subsection">
+      <div class="subsection-label"><span class="dot"></span>Detalles</div>
+      <h4>Cosas pequeñas que vas a notar</h4>
+      <ul class="touches">
+        <li><strong>Resumen semanal que puedes compartir de verdad</strong>Botón "Guardar imagen" que captura la tarjeta a tu carrete, además de una franja de tendencia de 4 semanas y una cita atribuida a tu entrenador — ya no es solo texto.</li>
+        <li><strong>Tip de salida en cada sesión</strong>Una frase generada para esa sesión exacta, con un esqueleto shimmer mientras carga. Modelo más rápido detrás para que aparezca en menos de un segundo.</li>
+        <li><strong>El entrenador propone cambios en el chat</strong>Cuando tu entrenador dice "muevo esa salida larga", el mensaje incrusta una tarjeta estructurada de añadir / mover / quitar con botones Aplicar y Ver en el calendario.</li>
+        <li><strong>Reprograma el check-in semanal</strong>Empuja el aviso a Mañana, En 3 días o Lunes que viene desde el propio check-in.</li>
+        <li><strong>Fechas en el check-in</strong>Cada fila de sesión muestra el día de calendario para que la sitúes ("Sáb 2 mayo — esa fue la salida larga").</li>
+        <li><strong>Honestos con el tiempo</strong>La pista de tiempo placeholder que vivía bajo los tips de salida ya no está — la traeremos cuando haya datos meteorológicos reales, no antes.</li>
+      </ul>
+    </div>
+
+    <!-- ───── Errores aplastados ───── -->
+    <div class="bugs">
+      <div class="bugs-label">Errores aplastados</div>
+      <ul>
+        <li>Las rutas de reprogramar y de tip de salida ahora están conectadas en el servidor — antes no hacían nada cuando la app las llamaba.</li>
+        <li>El campo de texto del check-in ya no se esconde bajo el teclado mientras escribes.</li>
+      </ul>
+    </div>
+  </section>
 
   <section class="release">
     <div class="release-head">
