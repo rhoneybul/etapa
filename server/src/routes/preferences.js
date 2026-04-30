@@ -40,7 +40,7 @@ router.put('/', async (req, res) => {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
-    const { coach_checkin, push_enabled, display_name, onboarding_done } = req.body;
+    const { coach_checkin, push_enabled, display_name, onboarding_done, prefs } = req.body;
 
     const updates = { updated_at: new Date().toISOString() };
     if (coach_checkin !== undefined) {
@@ -63,6 +63,17 @@ router.put('/', async (req, res) => {
     }
     if (onboarding_done !== undefined) {
       updates.onboarding_done = !!onboarding_done;
+    }
+
+    // Handle JSONB prefs merge for forward-compat fields
+    if (prefs && typeof prefs === 'object') {
+      const { data: existing } = await supabase
+        .from('user_preferences')
+        .select('prefs')
+        .eq('user_id', userId)
+        .maybeSingle();
+      const merged = { ...(existing?.prefs || {}), ...prefs };
+      updates.prefs = merged;
     }
 
     const { data, error } = await supabase

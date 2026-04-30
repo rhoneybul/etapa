@@ -133,7 +133,7 @@ export const GETTING_STARTED_SECTIONS = [
     tiers: [
       {
         tier: 'minimum',
-        body: 'Your phone + Etapa. That\'s genuinely it. Etapa tracks your ride via GPS, records your data, and shows you exactly how far you went. No gadget needed.',
+        body: 'Your phone + Etapa is genuinely all you need to plan and follow your sessions. For ride recording, Strava\'s free tier on your phone covers most beginners — connect it to Etapa and your coach sees what you actually did.',
         wheresToBuy: 'Already in your pocket',
       },
       {

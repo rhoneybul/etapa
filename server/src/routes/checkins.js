@@ -132,6 +132,41 @@ router.post('/tip/:tipId/opt-out', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── POST /tip/:tipId/re-enable ───────────────────────────────────────────
+// User re-enables a previously opted-out coach tip.
+// Removes tipId from user_prefs.coachTipHistory.optedOutIds.
+router.post('/tip/:tipId/re-enable', async (req, res, next) => {
+  try {
+    const tipId = req.params.tipId;
+    if (!tipId) return res.status(400).json({ error: 'tipId required' });
+
+    // Load user prefs
+    const { data: userPrefs } = await supabase
+      .from('user_preferences')
+      .select('prefs')
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+    const prefs = userPrefs?.prefs || {};
+    const tipHistory = prefs.coachTipHistory || { sentIds: [], optedOutIds: [] };
+
+    // Remove tipId from optedOutIds
+    const optedOutIds = (tipHistory.optedOutIds || []).filter(id => id !== tipId);
+
+    // Update prefs
+    const updatedTipHistory = {
+      sentIds: tipHistory.sentIds || [],
+      optedOutIds,
+    };
+    const updatedPrefs = { ...prefs, coachTipHistory: updatedTipHistory };
+
+    await supabase
+      .from('user_preferences')
+      .upsert({ user_id: req.user.id, prefs: updatedPrefs }, { onConflict: 'user_id' });
+
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 // ── POST /respond ──────────────────────────────────────────────────────────
 // Body: { sessionsDone: [activityId, ...], sessionComments: { [activityId]: string },
 //         modifications: string, lifeEvents: string,

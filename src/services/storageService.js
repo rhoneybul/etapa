@@ -565,12 +565,43 @@ export async function setUserPrefs(prefs) {
   const updated = { ...current, ...prefs };
   await setJSON(KEYS.USER_PREFS, updated);
 
-  // Sync display name to server (fire-and-forget)
+  // Sync displayName via the typed column path (existing)
   if (prefs.displayName !== undefined) {
     api.preferences.update({ display_name: prefs.displayName }).catch(() => {});
   }
 
+  // Sync everything else into the prefs JSONB blob. Strip displayName
+  // (handled above) and only include fields that should go into JSONB.
+  const { displayName, ...jsonPrefs } = prefs;
+  if (Object.keys(jsonPrefs).length > 0) {
+    api.preferences.update({ prefs: jsonPrefs }).catch(() => {});
+  }
+
   return updated;
+}
+
+/**
+ * Hydrate user preferences from server on app boot.
+ * Server is the source of truth for the JSONB blob; merge typed columns back in too.
+ */
+export async function hydratePrefsFromServer() {
+  try {
+    const server = await api.preferences.get();
+    if (!server) return;
+    const local = await getUserPrefs();
+    // Server is source of truth for the JSONB blob; merge typed columns back in
+    const serverPrefs = server.prefs || {};
+    const merged = {
+      ...local,
+      ...serverPrefs,
+      // Typed columns map back to their client-side names
+      ...(server.display_name && { displayName: server.display_name }),
+      prefsVersion: 1, // Add version sentinel for future migrations
+    };
+    await setJSON(KEYS.USER_PREFS, merged);
+  } catch (e) {
+    // Offline / server error — local stays as-is. Next online write will reconcile.
+  }
 }
 
 // ── Onboarding state ────────────────────────────────────────────────────────
@@ -645,6 +676,8 @@ export async function setGearInventory(inventory) {
 // All mutations dedupe on `date` — the most recent reason wins for a given
 // day. Getters always return an array so callers can spread / map without
 // nullish-checking.
+//
+// Now synced to server under prefs.unavailableDates for cross-device sync.
 
 export async function getUnavailableDates() {
   const raw = (await getJSON(KEYS.UNAVAILABLE_DATES)) || [];
@@ -661,6 +694,8 @@ export async function setUnavailableDates(arr) {
     return { date: e.date, reason: typeof e.reason === 'string' ? e.reason : '' };
   }).filter(e => /^\d{4}-\d{2}-\d{2}$/.test(e.date));
   await setJSON(KEYS.UNAVAILABLE_DATES, normalised);
+  // Sync to server
+  setUserPrefs({ unavailableDates: normalised }).catch(() => {});
   return normalised;
 }
 
@@ -680,6 +715,8 @@ export async function addUnavailableDates(dateArr, reason) {
   // every redraw and a stable order makes the diff cheaper.
   const merged = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
   await setJSON(KEYS.UNAVAILABLE_DATES, merged);
+  // Sync to server
+  setUserPrefs({ unavailableDates: merged }).catch(() => {});
   return merged;
 }
 
@@ -688,6 +725,8 @@ export async function removeUnavailableDate(date) {
   const existing = await getUnavailableDates();
   const filtered = existing.filter(e => e.date !== date);
   await setJSON(KEYS.UNAVAILABLE_DATES, filtered);
+  // Sync to server
+  setUserPrefs({ unavailableDates: filtered }).catch(() => {});
   return filtered;
 }
 

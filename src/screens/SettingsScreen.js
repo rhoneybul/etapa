@@ -505,6 +505,29 @@ export default function SettingsScreen({ navigation }) {
     goPaywall({ nextScreen: 'Home' });
   };
 
+  const handleResetGearInventory = async () => {
+    Alert.alert(
+      'Reset gear inventory?',
+      'Forget what you\'ve ticked off in the Getting Started guide? You can re-do it any time.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const updated = await setUserPrefs({ gearInventory: {}, gearInventoryCapturedAt: null });
+              setUserPrefsState(updated);
+              Alert.alert('Gear inventory reset', 'You can go through the Getting Started guide again.');
+            } catch (err) {
+              Alert.alert('Error', 'Could not reset gear inventory. Please try again.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const handleSignOut = async () => {
     analytics.events.signedOut();
     analytics.reset();
@@ -949,6 +972,19 @@ export default function SettingsScreen({ navigation }) {
                     return ({ road: 'Road', gravel: 'Gravel', mtb: 'MTB', ebike: 'E-bike', indoor: 'Indoor' }[t]) || t;
                   })()}
                 </Text>
+              </View>
+            </View>
+            <Text style={s.chevron}>{'\u203A'}</Text>
+          </TouchableOpacity>
+          <View style={s.divider} />
+          <TouchableOpacity
+            style={s.row}
+            onPress={handleResetGearInventory}
+          >
+            <View style={s.rowLeft}>
+              <View>
+                <Text style={s.rowTitle}>Reset gear inventory</Text>
+                <Text style={s.rowSub}>Start the Getting Started guide over</Text>
               </View>
             </View>
             <Text style={s.chevron}>{'\u203A'}</Text>

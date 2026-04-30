@@ -97,6 +97,7 @@ export const api = {
     // fallback any more, the server is the source of truth.
     reschedule:   (id, isoDate)      => request('POST', `/api/checkins/${id}/reschedule`, { isoDate }),
     optOutTip:    (tipId)            => request('POST', `/api/checkins/tip/${encodeURIComponent(tipId)}/opt-out`),
+    reEnableTip:  (tipId)            => request('POST', `/api/checkins/tip/${encodeURIComponent(tipId)}/re-enable`),
   },
   // Per-user check-in schedule (day, time, timezone, enabled).
   checkinPrefs: {

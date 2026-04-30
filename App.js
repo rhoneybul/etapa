@@ -49,7 +49,7 @@ import { useFonts, Poppins_300Light, Poppins_400Regular, Poppins_500Medium, Popp
 import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
 import { getSession, getCurrentUser, signOut, onAuthStateChange } from './src/services/authService';
-import { ensureUserData, hydrateFromServer, getUserPrefs } from './src/services/storageService';
+import { ensureUserData, hydrateFromServer, hydratePrefsFromServer, getUserPrefs } from './src/services/storageService';
 // Stripe removed — all payments go through Apple IAP via RevenueCat
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from './src/services/revenueCatService';
 import analytics from './src/services/analyticsService';
@@ -260,6 +260,9 @@ function App() {
         // used previously, this clears stale local data before hydrating.
         const cleared = await ensureUserData(session.user?.id).catch(() => false);
         await hydrateFromServer({ force: cleared }).catch(() => {});
+
+        // Hydrate user preferences from server (cross-device sync)
+        await hydratePrefsFromServer().catch(() => {});
 
         // Register for push notifications
         registerForPushNotifications().catch(() => {});

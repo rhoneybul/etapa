@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, SafeAreaView,
-  SegmentedControlIOS, Platform, Switch,
+  Switch,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
@@ -88,23 +88,16 @@ function TierCard({ tier, body, wheresToBuy, isCollapsed, onToggle }) {
   );
 }
 
-// Gear inventory row — item label + toggle (Got it / Nope)
+// Gear inventory row — item label + toggle (Got it / Nope).
+//
+// Was previously branched on Platform.OS to use SegmentedControlIOS on
+// iOS and Switch on Android. SegmentedControlIOS was removed from
+// react-native years ago — the import resolved to undefined on real-
+// device builds and crashed the screen on first paint (Metro is more
+// lenient about undefined symbols, which is why dev didn't trip it).
+// Unified on Switch for both platforms — simpler, no native dep, and
+// the visual reads cleanly in the existing card styling.
 function GearRow({ label, hasIt, onToggle }) {
-  if (Platform.OS === 'ios') {
-    return (
-      <View style={s.gearRow}>
-        <Text style={s.gearLabel}>{label}</Text>
-        <SegmentedControlIOS
-          values={['Nope', 'Got it']}
-          selectedIndex={hasIt ? 1 : 0}
-          onChange={(e) => onToggle(e.nativeEvent.selectedSegmentIndex === 1)}
-          style={s.gearToggle}
-        />
-      </View>
-    );
-  }
-
-  // Android fallback — simple switch
   return (
     <View style={s.gearRow}>
       <Text style={s.gearLabel}>{label}</Text>
@@ -191,13 +184,15 @@ function SectionCard({ section, inventory, onGearChange, isFirstLoad, navigation
             />
           ))}
 
-          {/* Ask your coach button */}
+          {/* Ask your coach button — icon dropped (chat-question
+              glyph wasn't pulling its weight against the text label
+              and read as decoration). Plain pink-tinted text button
+              now. */}
           <TouchableOpacity
             style={s.askCoachBtn}
             onPress={handleAskCoach}
             activeOpacity={0.8}
           >
-            <MaterialCommunityIcons name="chat-question-outline" size={16} color="#E8458B" />
             <Text style={s.askCoachText}>Ask your coach about this</Text>
           </TouchableOpacity>
         </>
