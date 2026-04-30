@@ -16,6 +16,7 @@ import { colors, fontFamily, BOTTOM_INSET } from '../theme';
 import { saveGoal, getGearInventory } from '../services/storageService';
 import { isSubscribed } from '../services/subscriptionService';
 import analytics from '../services/analyticsService';
+import useScreenGuard from '../hooks/useScreenGuard';
 
 const FF = fontFamily;
 
@@ -150,6 +151,12 @@ function suggestGoalKey(rideKey, activityKey) {
 }
 
 export default function BeginnerProgramScreen({ navigation, route }) {
+  // Remote-first guard — admin can flip the beginner programme entry
+  // off (or redirect to a different route) via
+  // workflows.screens.BeginnerProgramScreen in remote config. Cheap;
+  // no-ops on a network blip so a config miss never blocks new riders.
+  const _screenGuard = useScreenGuard('BeginnerProgramScreen', navigation);
+
   // Pre-pick quiz REMOVED. The old flow asked two questions here:
   //   Q1 "What's your longest recent ride?"
   //   Q2 "What does a typical week of movement look like?"
@@ -305,6 +312,12 @@ export default function BeginnerProgramScreen({ navigation, route }) {
   // ACTIVITY_OPTIONS are retained in the module in case a future flow
   // wants to resurrect the in-screen quiz; they're just not reachable
   // from the main component anymore.
+
+  // Honour the remote-config screen guard before any render path —
+  // skips the calculating shell + main render if the dashboard has
+  // flipped this entry off.
+  if (_screenGuard.blocked) return _screenGuard.render();
+
   if (phase === 'calculating') {
     return <CalculatingShell />;
   }

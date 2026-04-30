@@ -15,6 +15,7 @@ import { GETTING_STARTED_SECTIONS } from '../data/gettingStarted';
 import { GEAR_ITEMS } from '../data/gearInventory';
 import { getCoach } from '../data/coaches';
 import analytics from '../services/analyticsService';
+import useScreenGuard from '../hooks/useScreenGuard';
 
 const FF = fontFamily;
 
@@ -202,6 +203,13 @@ function SectionCard({ section, inventory, onGearChange, isFirstLoad, navigation
 }
 
 export default function GettingStartedScreen({ navigation, route }) {
+  // Remote-first guard — lets the admin dashboard temporarily disable
+  // this screen or redirect riders elsewhere via
+  // workflows.screens.GettingStartedScreen in remote config. Cheap;
+  // returns blocked=false on a network error so we never lock anyone
+  // out of getting into the beginner programme because of a config blip.
+  const _screenGuard = useScreenGuard('GettingStartedScreen', navigation);
+
   const isFirstTime = route?.params?.firstTime === true;
   const onComplete = route?.params?.onComplete;
 
@@ -224,6 +232,11 @@ export default function GettingStartedScreen({ navigation, route }) {
     analytics.capture?.('getting_started_completed', { isFirstTime });
     onComplete?.();
   };
+
+  // Honour the remote-config screen guard before doing any work — if
+  // the dashboard has flipped the screen off (or pointed a redirectTo
+  // at it), short-circuit and render the guard's panel.
+  if (_screenGuard.blocked) return _screenGuard.render();
 
   if (loading) {
     return (

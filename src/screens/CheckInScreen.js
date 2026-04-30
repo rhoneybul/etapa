@@ -33,6 +33,7 @@ import { getPlans, updateActivity, getActivityDate } from '../services/storageSe
 import analytics from '../services/analyticsService';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import RescheduleCheckInSheet from '../components/RescheduleCheckInSheet';
+import useScreenGuard from '../hooks/useScreenGuard';
 
 // Per-checkin draft key — answers persist across backgrounding so a rider
 // who started writing comments doesn't lose them on a notification tap or
@@ -42,6 +43,12 @@ const draftKey = (checkinId) => `@etapa_checkin_draft_${checkinId}`;
 const FF = fontFamily;
 
 export default function CheckInScreen({ navigation, route }) {
+  // Remote-first guard — admin can flip the weekly check-in screen off
+  // or redirect riders elsewhere via workflows.screens.CheckInScreen
+  // without a new build. Cheap; no-ops on a network blip so a config
+  // miss never locks anyone out of their check-in.
+  const _screenGuard = useScreenGuard('CheckInScreen', navigation);
+
   const checkinId = route.params?.checkinId;
   const [phase, setPhase] = useState('loading'); // loading | form | submitting | review | error
 
@@ -434,6 +441,11 @@ export default function CheckInScreen({ navigation, route }) {
   };
 
   // ── Renders ────────────────────────────────────────────────────────────
+
+  // Honour the remote-config screen guard before any phase-dependent
+  // render branches — if the dashboard has flipped this screen off,
+  // we render the guard's panel and never load the check-in row.
+  if (_screenGuard.blocked) return _screenGuard.render();
 
   if (phase === 'loading') {
     return (
