@@ -245,6 +245,39 @@ export default function PlanReadyScreen({ navigation, route }) {
             </View>
           </Animated.View>
 
+          {/* Extend to 12 weeks — shown only when this is a beginner
+              plan that the rider chose a shorter length for at intake.
+              The recommendation has always been 12 for getting into
+              cycling, but they can take a shorter run if that fits
+              better. This card surfaces the option to step back up
+              now that they've seen what the plan looks like, and
+              tells them what they originally picked so they're never
+              guessing where they came from.
+
+              The "(same price)" reassurance kills the most common
+              friction — the worry that opting in to a longer plan
+              means paying more. The subscription doesn't care about
+              plan length. */}
+          {goal?.goalType === 'beginner' && plan.weeks < 12 && (
+            <Animated.View style={[s.extendCard, { opacity: statsFade }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.extendEyebrow}>WANT A LONGER BUILD?</Text>
+                <Text style={s.extendTitle}>Extend to the 12-week programme</Text>
+                <Text style={s.extendBody}>
+                  You picked {goal?.originalBeginnerWeeks || plan.weeks} weeks. We recommend a full 12 weeks for getting into cycling — same price, just more time to build comfortably. Switch any time.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={s.extendBtn}
+                onPress={() => navigation.navigate('RegeneratePlan', { plan, prefillWeeks: 12 })}
+                activeOpacity={0.85}
+                accessibilityLabel="Extend plan to 12 weeks"
+              >
+                <Text style={s.extendBtnText}>Extend</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+
           {/* ── The thinking behind your plan ──────────────────────────────
               One consolidated card: intro (from/to), session rationales,
               recovery weeks, and the weekly volume chart.
@@ -581,6 +614,37 @@ const s = StyleSheet.create({
   },
   statValue: { fontSize: 22, fontWeight: '700', fontFamily: FF.semibold, color: colors.text },
   statLabel: { fontSize: 10, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.5 },
+
+  // Extend-to-12-weeks card. Shown only on beginner plans where the
+  // rider chose a shorter run. Pink-tinted block, label-on-left + small
+  // pink Extend button on the right. Sits below the stats grid so it's
+  // the next thing the rider sees after their plan summary.
+  extendCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: 'rgba(232,69,139,0.08)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.32)',
+    borderRadius: 14, padding: 14,
+    marginBottom: 16,
+  },
+  extendEyebrow: {
+    fontSize: 9, fontWeight: '600', fontFamily: FF.semibold,
+    color: '#E8458B', letterSpacing: 0.6, marginBottom: 4,
+  },
+  extendTitle: {
+    fontSize: 14, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.text, marginBottom: 4,
+  },
+  extendBody: {
+    fontSize: 12, fontFamily: FF.regular,
+    color: colors.textMid, lineHeight: 17,
+  },
+  extendBtn: {
+    backgroundColor: '#E8458B',
+    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9,
+  },
+  extendBtnText: {
+    color: '#fff', fontSize: 13, fontWeight: '600', fontFamily: FF.semibold,
+  },
 
   // Breakdown
   breakdownCard: {

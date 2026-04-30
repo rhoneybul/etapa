@@ -86,6 +86,16 @@ const CHAT_STRINGS = {
       'How will the taper work?',
     ],
     coachLabel: 'Coach',
+    coachSuggestedChanges: 'Coach has suggested changes to your plan',
+    applyChanges: 'Apply changes',
+    dismiss: 'Dismiss',
+    preparingChanges: 'Preparing changes…',
+    messagesThisWeek: (used, limit) => `${used}/${limit} coach messages this week`,
+    weeklyLimitReachedFull: (used, limit) => `Weekly coach limit reached (${used}/${limit})`,
+    weeklyLimitMessage: (used, max) => `You've sent ${used} of ${max} coach messages this week. The count resets as individual messages age out — come back in a day or two and you'll have some back.`,
+    weeklyLimitTitle: 'Weekly limit reached',
+    failedToSendTapRetry: 'Failed to send · tap to retry',
+    cancel: 'Cancel',
   },
   Spanish: {
     scopeLabelPlan: 'Tu plan',
@@ -115,6 +125,16 @@ const CHAT_STRINGS = {
       '¿Cómo funcionará la fase de descarga?',
     ],
     coachLabel: 'Entrenador',
+    coachSuggestedChanges: 'Tu entrenador ha sugerido cambios en tu plan',
+    applyChanges: 'Aplicar cambios',
+    dismiss: 'Descartar',
+    preparingChanges: 'Preparando cambios…',
+    messagesThisWeek: (used, limit) => `${used}/${limit} mensajes del entrenador esta semana`,
+    weeklyLimitReachedFull: (used, limit) => `Límite semanal alcanzado (${used}/${limit})`,
+    weeklyLimitMessage: (used, max) => `Has enviado ${used} de ${max} mensajes al entrenador esta semana. El contador se reinicia a medida que los mensajes envejecen — vuelve en un día o dos y tendrás más disponibles.`,
+    weeklyLimitTitle: 'Límite semanal alcanzado',
+    failedToSendTapRetry: 'No se pudo enviar · toca para reintentar',
+    cancel: 'Cancelar',
   },
   Catalan: {
     scopeLabelPlan: 'El teu pla',
@@ -144,6 +164,16 @@ const CHAT_STRINGS = {
       'Com funcionarà la fase de descàrrega?',
     ],
     coachLabel: 'Entrenador',
+    coachSuggestedChanges: 'El teu entrenador ha suggerit canvis al teu pla',
+    applyChanges: 'Aplicar canvis',
+    dismiss: 'Descartar',
+    preparingChanges: 'Preparant canvis…',
+    messagesThisWeek: (used, limit) => `${used}/${limit} missatges de l'entrenador aquesta setmana`,
+    weeklyLimitReachedFull: (used, limit) => `Límit setmanal assolit (${used}/${limit})`,
+    weeklyLimitMessage: (used, max) => `Has enviat ${used} de ${max} missatges a l'entrenador aquesta setmana. El comptador es reinicia a mesura que els missatges envelleixen — torna en un dia o dos i en tindràs més disponibles.`,
+    weeklyLimitTitle: 'Límit setmanal assolit',
+    failedToSendTapRetry: 'No s\'ha pogut enviar · toca per reintentar',
+    cancel: 'Cancelar',
   },
   Danish: {
     scopeLabelPlan: 'Din plan',
@@ -173,6 +203,16 @@ const CHAT_STRINGS = {
       'Hvordan virker den progressive nedtrapning?',
     ],
     coachLabel: 'Træner',
+    coachSuggestedChanges: 'Din træner har foreslået ændringer til din plan',
+    applyChanges: 'Anvend ændringer',
+    dismiss: 'Afvis',
+    preparingChanges: 'Forbereder ændringer…',
+    messagesThisWeek: (used, limit) => `${used}/${limit} trænerbeskeder denne uge`,
+    weeklyLimitReachedFull: (used, limit) => `Ugentlig grænse nået (${used}/${limit})`,
+    weeklyLimitMessage: (used, max) => `Du har sendt ${used} af ${max} trænerbeskeder denne uge. Tællingen nulstilles, når beskeder bliver gamle — kom tilbage om en dag eller to, og du får flere tilbage.`,
+    weeklyLimitTitle: 'Ugentlig grænse nået',
+    failedToSendTapRetry: 'Kunne ikke sendes · tryk for at prøve igen',
+    cancel: 'Annuller',
   },
   German: {
     scopeLabelPlan: 'Dein Plan',
@@ -202,6 +242,16 @@ const CHAT_STRINGS = {
       'Wie funktioniert das Tapering?',
     ],
     coachLabel: 'Trainer',
+    coachSuggestedChanges: 'Dein Trainer hat Änderungen an deinem Plan vorgeschlagen',
+    applyChanges: 'Änderungen übernehmen',
+    dismiss: 'Verwerfen',
+    preparingChanges: 'Änderungen werden vorbereitet…',
+    messagesThisWeek: (used, limit) => `${used}/${limit} Trainernachrichten diese Woche`,
+    weeklyLimitReachedFull: (used, limit) => `Wöchentliches Limit erreicht (${used}/${limit})`,
+    weeklyLimitMessage: (used, max) => `Du hast ${used} von ${max} Trainernachrichten diese Woche gesendet. Die Zählung wird zurückgesetzt, wenn Nachrichten älter werden — komm in ein oder zwei Tagen zurück und du hast mehr verfügbar.`,
+    weeklyLimitTitle: 'Wöchentliches Limit erreicht',
+    failedToSendTapRetry: 'Konnte nicht gesendet werden · antippen zum Erneut versuchen',
+    cancel: 'Abbrechen',
   },
   French: {
     scopeLabelPlan: 'Ton plan',
@@ -231,6 +281,16 @@ const CHAT_STRINGS = {
       'Comment fonctionnera l\'affutage ?',
     ],
     coachLabel: 'Coach',
+    coachSuggestedChanges: 'Ton coach a suggéré des changements à ton plan',
+    applyChanges: 'Appliquer les changements',
+    dismiss: 'Rejeter',
+    preparingChanges: 'Préparation des changements…',
+    messagesThisWeek: (used, limit) => `${used}/${limit} messages de coach cette semaine`,
+    weeklyLimitReachedFull: (used, limit) => `Limite hebdomadaire atteinte (${used}/${limit})`,
+    weeklyLimitMessage: (used, max) => `Tu as envoyé ${used} sur ${max} messages de coach cette semaine. Le compte se réinitialise à mesure que les messages vieillissent — reviens dans un jour ou deux et tu en auras d'autres disponibles.`,
+    weeklyLimitTitle: 'Limite hebdomadaire atteinte',
+    failedToSendTapRetry: 'Échec de l\'envoi · appuie pour réessayer',
+    cancel: 'Annuler',
   },
   Italian: {
     scopeLabelPlan: 'Il tuo piano',
@@ -260,6 +320,16 @@ const CHAT_STRINGS = {
       'Come funziona l\'assottigliamento?',
     ],
     coachLabel: 'Allenatore',
+    coachSuggestedChanges: 'Il tuo allenatore ha suggerito cambiamenti al tuo piano',
+    applyChanges: 'Applica i cambiamenti',
+    dismiss: 'Scarta',
+    preparingChanges: 'Preparazione dei cambiamenti…',
+    messagesThisWeek: (used, limit) => `${used}/${limit} messaggi dell'allenatore questa settimana`,
+    weeklyLimitReachedFull: (used, limit) => `Limite settimanale raggiunto (${used}/${limit})`,
+    weeklyLimitMessage: (used, max) => `Hai inviato ${used} di ${max} messaggi dell'allenatore questa settimana. Il conteggio si azzera man mano che i messaggi invecchiano — torna tra un giorno o due e ne avrai altri disponibili.`,
+    weeklyLimitTitle: 'Limite settimanale raggiunto',
+    failedToSendTapRetry: 'Invio non riuscito · tocca per riprovare',
+    cancel: 'Annulla',
   },
 };
 
@@ -389,6 +459,13 @@ export default function CoachChatScreen({ navigation, route }) {
   // on the right reply when they have multiple unread. Consumed once,
   // then cleared so a re-focus doesn't re-scroll.
   const scrollToTs = route.params?.scrollToTs || null;
+  // Optional pre-filled message text to seed the input with when the
+  // chat opens. Used by the Getting Started guide's "Ask your coach
+  // about this" buttons to drop the rider straight into the chat with
+  // a section-relevant question already typed. The rider can edit
+  // before sending. Consumed once on mount (see effect below) then
+  // ignored so a re-focus doesn't re-fill.
+  const prefillMessage = route.params?.prefillMessage || null;
   // Map of msg.ts → Y position within the ScrollView, captured via
   // onLayout. Populated as each bubble mounts; used by the scroll-to-
   // message effect below.
@@ -470,6 +547,7 @@ export default function CoachChatScreen({ navigation, route }) {
   const [chatLanguage, setChatLanguage] = useState(null);
   const [langPickerOpen, setLangPickerOpen] = useState(false);
   const [userName, setUserName] = useState(null);
+  const [userLocation, setUserLocation] = useState(null); // { country: string or null, ... }
   const [stravaActivities, setStravaActivities] = useState([]);
   // Weekly coach-message limit: { used, limit, remaining, unlimited }
   const [limits, setLimits] = useState(null);
@@ -590,6 +668,18 @@ export default function CoachChatScreen({ navigation, route }) {
     return () => anim.stop();
   }, [loadingChat, loadingPulse]);
 
+  // Seed the input with a pre-filled question on first mount when the
+  // rider arrives via the Getting Started guide's "Ask your coach
+  // about this" links. We don't want to overwrite anything the rider
+  // has already typed (in case of a re-render with the same param);
+  // a ref tracks whether we've already applied it.
+  const prefillAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!prefillMessage || prefillAppliedRef.current) return;
+    setInput(prefillMessage);
+    prefillAppliedRef.current = true;
+  }, [prefillMessage]);
+
   // ── Telemetry refs ─────────────────────────────────────────────────────────
   // Opened-at timestamp — used to compute session duration on close.
   const sessionOpenedAtRef = useRef(Date.now());
@@ -619,10 +709,12 @@ export default function CoachChatScreen({ navigation, route }) {
       api.notifications.markAllRead('coach_reply').catch(() => {});
 
       // Fetch user name for personalised coaching — prefer local display name
+      // Also read user location (country) for region-aware coach context
       try {
         const [user, userPrefs] = await Promise.all([getCurrentUser(), getUserPrefs()]);
         const name = userPrefs?.displayName || user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || null;
         setUserName(name);
+        setUserLocation(userPrefs?.location || null);
       } catch {}
 
       const plans = await getPlans();
@@ -1096,6 +1188,8 @@ export default function CoachChatScreen({ navigation, route }) {
       // staying in coach persona. Falls back server-side to the coach's
       // primary language if missing or unsupported.
       language: chatLanguage || null,
+      // User's country code for region-aware coaching recommendations
+      country: userLocation?.country || null,
       weekSummaries,
       allActivities,
     };
@@ -1154,7 +1248,7 @@ export default function CoachChatScreen({ navigation, route }) {
         scope: weekNum ? 'week' : 'plan',
       });
       const msg = startRes.rateLimitKind === 'coach_msgs_per_week'
-        ? `You've sent ${startRes.rateLimitUsed ?? '?'} of ${startRes.rateLimitMax ?? '25'} coach messages this week. The count resets as individual messages age out — come back in a day or two and you'll have some back.`
+        ? tr(chatLanguage, 'weeklyLimitMessage', startRes.rateLimitUsed ?? '?', startRes.rateLimitMax ?? '25')
         : "You've reached today's coach limit. It resets in 24 hours — thanks for chatting so much. Come back tomorrow.";
       setMessages(prev => prev.map(m => m.pendingKey === pendingKey
         ? { ...m, pending: false, content: msg, rateLimited: true }
@@ -1609,8 +1703,24 @@ export default function CoachChatScreen({ navigation, route }) {
             })()}
           </View>
           {messages.length > 0 ? (
-            <TouchableOpacity onPress={handleClearChat} hitSlop={HIT}>
-              <Text style={s.clearBtn}>{tr(chatLanguage, 'clear')}</Text>
+            // Clear-chat button. Was a localised "Clear" text label,
+            // but Spanish "Limpiar" / German "Löschen" / etc. wrapped
+            // onto two lines in the tight header slot. Swapped for a
+            // language-neutral trash icon — accessibility label still
+            // carries the localised verb so screen readers + the
+            // long-press hint still work in every language.
+            <TouchableOpacity
+              onPress={handleClearChat}
+              hitSlop={HIT}
+              style={s.clearIconBtn}
+              accessibilityLabel={tr(chatLanguage, 'clear')}
+              accessibilityRole="button"
+            >
+              <MaterialCommunityIcons
+                name="trash-can-outline"
+                size={20}
+                color={colors.textMid}
+              />
             </TouchableOpacity>
           ) : <View style={{ width: 40 }} />}
         </View>
@@ -1798,7 +1908,7 @@ export default function CoachChatScreen({ navigation, route }) {
                         text: tr(chatLanguage, 'resend'),
                         onPress: () => handleResend(msg.content),
                       }] : []),
-                      { text: 'Cancel', style: 'cancel' },
+                      { text: tr(chatLanguage, 'cancel'), style: 'cancel' },
                     ];
                     Alert.alert(
                       isUser ? 'Your message' : 'Coach message',
@@ -1994,7 +2104,7 @@ export default function CoachChatScreen({ navigation, route }) {
             {preparingUpdate && !pendingUpdate && (
               <View style={s.updateBarPreparing}>
                 <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={s.updateBarPreparingText}>Preparing changes…</Text>
+                <Text style={s.updateBarPreparingText}>{tr(chatLanguage, 'preparingChanges')}</Text>
               </View>
             )}
 
@@ -2003,7 +2113,7 @@ export default function CoachChatScreen({ navigation, route }) {
               <View style={s.updateBar}>
                 <View style={s.updateDot} />
                 <Text style={s.updateBarText}>
-                  Coach has suggested changes to your plan
+                  {tr(chatLanguage, 'coachSuggestedChanges')}
                 </Text>
                 <View style={s.updateActions}>
                   <TouchableOpacity
@@ -2014,7 +2124,7 @@ export default function CoachChatScreen({ navigation, route }) {
                   >
                     {applyingUpdate
                       ? <ActivityIndicator size="small" color="#fff" />
-                      : <Text style={s.updateApplyText}>Apply changes</Text>
+                      : <Text style={s.updateApplyText}>{tr(chatLanguage, 'applyChanges')}</Text>
                     }
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -2023,7 +2133,7 @@ export default function CoachChatScreen({ navigation, route }) {
                     disabled={applyingUpdate}
                     activeOpacity={0.7}
                   >
-                    <Text style={s.updateDismissText}>Dismiss</Text>
+                    <Text style={s.updateDismissText}>{tr(chatLanguage, 'dismiss')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -2045,8 +2155,8 @@ export default function CoachChatScreen({ navigation, route }) {
                 limits.remaining === 0 && s.limitIndicatorTextBlocked,
               ]}>
                 {limits.remaining === 0
-                  ? `Weekly coach limit reached (${limits.used}/${limits.limit})`
-                  : `${limits.used}/${limits.limit} coach messages this week`}
+                  ? tr(chatLanguage, 'weeklyLimitReachedFull', limits.used, limits.limit)
+                  : tr(chatLanguage, 'messagesThisWeek', limits.used, limits.limit)}
               </Text>
             </View>
           )}
@@ -2156,6 +2266,10 @@ const s = StyleSheet.create({
   headerLangText: { fontSize: 11, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary },
   headerLangChevron: { fontSize: 9, color: colors.primary, marginLeft: 3, marginTop: 1 },
   clearBtn: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.textMuted, width: 40, textAlign: 'right' },
+  // Trash icon button (replaces the Clear text). Same 40px slot as
+  // the old text version so the header layout stays balanced; the
+  // icon sits flush right.
+  clearIconBtn: { width: 40, alignItems: 'flex-end', paddingVertical: 6 },
 
   // Language picker sheet — modal centred over the chat. Tap-outside
   // closes; tap-on-sheet does nothing (stopPropagation in the inner

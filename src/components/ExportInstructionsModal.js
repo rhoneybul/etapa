@@ -164,14 +164,18 @@ export default function ExportInstructionsModal({ visible, activity, planId, onC
   // session, so a parent re-render with the same props doesn't re-fire.
   const startedRef = useRef(false);
 
-  // Reset state every time the modal closes so the next open starts
-  // fresh. We don't auto-cleanup the file on disk — riders who later
-  // browse "On My iPhone → Etapa" via Files should still find it there.
+  // Reset ALL state every time the modal closes so the next open starts
+  // fresh. Critically `sharing` was previously left set — when expo-
+  // sharing's shareAsync didn't resolve cleanly (e.g. rider dismissed
+  // the system share sheet via swipe rather than tapping a target),
+  // the Share button stayed stuck on "Opening…" the next time the
+  // modal opened. Reset it here too.
   useEffect(() => {
     if (!visible) {
       setPhase('idle');
       setErrorMsg('');
       setFileInfo(null);
+      setSharing(false);
       startedRef.current = false;
     }
   }, [visible]);
@@ -205,12 +209,15 @@ export default function ExportInstructionsModal({ visible, activity, planId, onC
         return;
       }
 
-      // 2) Ensure the local workouts directory exists. We use the app's
-      // documentDirectory because (a) it survives across app launches
-      // and (b) on iOS with UIFileSharingEnabled it's visible under
-      // Files → On My iPhone → Etapa. makeDirectoryAsync with
-      // intermediates:true is idempotent — a pre-existing dir is fine.
-      const dir = FileSystem.documentDirectory + 'workouts/';
+      // 2) Write the workout into the app's cache directory. We
+      // deliberately use cacheDirectory (not documentDirectory) because
+      // we no longer try to make this file permanent: every open of
+      // this drawer downloads a fresh copy. Cache is cleaned up by the
+      // OS when storage is tight; users sharing the file mid-session
+      // hits the cached file, which is all we need. makeDirectoryAsync
+      // with intermediates:true is idempotent — a pre-existing dir is
+      // fine.
+      const dir = (FileSystem.cacheDirectory || FileSystem.documentDirectory) + 'workouts/';
       try {
         await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
       } catch (err) {
@@ -324,15 +331,23 @@ export default function ExportInstructionsModal({ visible, activity, planId, onC
   const handleShare = async () => {
     if (!fileInfo?.uri || sharing) return;
     setSharing(true);
+    // Defensive watchdog: if expo-sharing's promise never resolves
+    // (some platforms don't fire the resolution when the rider
+    // dismisses the share sheet by swiping it away), the Share
+    // button would otherwise stay disabled on "Opening…" forever.
+    // Force-clear after 30s as a backstop. The sharing flow is
+    // strictly user-driven so any real interaction lands well
+    // under that.
+    const watchdog = setTimeout(() => setSharing(false), 30000);
     try {
       const sh = await getSharing();
       if (!sh || typeof sh.shareAsync !== 'function') {
-        setErrorMsg('Sharing isn\'t available on this device. The file is still saved.');
+        setErrorMsg("Sharing isn't available on this device.");
         return;
       }
       const isAvailable = sh.isAvailableAsync ? await sh.isAvailableAsync() : true;
       if (!isAvailable) {
-        setErrorMsg('Sharing isn\'t available on this device. The file is still saved.');
+        setErrorMsg("Sharing isn't available on this device.");
         return;
       }
       await sh.shareAsync(fileInfo.uri, {
@@ -345,9 +360,10 @@ export default function ExportInstructionsModal({ visible, activity, planId, onC
       // Cancellation is not an error — only surface real errors.
       const msg = err?.message || '';
       if (!/cancel/i.test(msg)) {
-        setErrorMsg('Share failed. The file is saved — try opening Files instead.');
+        setErrorMsg('Share failed. Please try again in a moment.');
       }
     } finally {
+      clearTimeout(watchdog);
       setSharing(false);
     }
   };
@@ -411,15 +427,18 @@ export default function ExportInstructionsModal({ visible, activity, planId, onC
             {/* ── Ready: file saved + workout content ─────────────── */}
             {phase === 'ready' && fileInfo && (
               <>
-                {/* Saved-to-Etapa confirmation card. Pink-tinted so the
+                {/* Ready-to-share confirmation card. Pink-tinted so the
                     rider's eye lands on the "yes, it worked" signal
-                    before they read the structure below. */}
+                    before they read the structure below. The file
+                    lives in the app's cache for this session — we
+                    download fresh every open, so there's no "saved
+                    forever" framing anymore. */}
                 <View style={s.savedCard}>
                   <View style={s.savedIcon}>
                     <MaterialCommunityIcons name="check" size={16} color="#FFFFFF" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.savedTitle}>Saved to Etapa</Text>
+                    <Text style={s.savedTitle}>Workout file ready</Text>
                     <Text style={s.savedSub}>
                       {fileInfo.name}{fileInfo.sizeBytes ? ` \u00B7 ${formatBytes(fileInfo.sizeBytes)}` : ''}
                     </Text>
@@ -456,13 +475,12 @@ export default function ExportInstructionsModal({ visible, activity, planId, onC
                   </>
                 )}
 
-                {/* Where the file lives — single line, plain English.
-                    On iOS this directory is exposed via the Files app
-                    (On My iPhone → Etapa) so riders who prefer to
-                    drag-drop from there can find it without us nudging
-                    them out of the app. */}
+                {/* Single-line guidance to point at the Share CTA. We
+                    download fresh every time, so there's nothing
+                    persisted in Files / On My iPhone any more — riders
+                    just tap Share. */}
                 <Text style={s.fileLocationText}>
-                  This file is saved inside Etapa. Tap <Text style={{ fontWeight: '600' }}>Share</Text> below to send it to Zwift, Rouvy, Wahoo, Files, or any other app.
+                  Tap <Text style={{ fontWeight: '600' }}>Share</Text> below to send this file to Zwift, Rouvy, Wahoo, or any other app.
                 </Text>
 
                 <TouchableOpacity

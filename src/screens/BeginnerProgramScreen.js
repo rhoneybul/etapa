@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, BOTTOM_INSET } from '../theme';
-import { saveGoal } from '../services/storageService';
+import { saveGoal, getGearInventory } from '../services/storageService';
 import { isSubscribed } from '../services/subscriptionService';
 import analytics from '../services/analyticsService';
 
@@ -32,15 +32,35 @@ const GOAL_OPTIONS = [
     label: 'Build real endurance',
     distance: 50,
     time: null,
-    sub: "Push further and finish the 12 weeks able to ride 40–50 km without stopping.",
+    sub: "Push further and finish able to ride 40–50 km without stopping.",
   },
   {
     key: 'century',
     label: 'Ride my first 100 km',
     distance: 100,
     time: null,
-    sub: "An ambitious target — you'll train consistently and build toward a full century by week 12.",
+    sub: "An ambitious target — you'll train consistently and build toward a full century.",
   },
+];
+
+// Plan length options for the beginner programme.
+//
+// Why a picker (and why 12 is recommended): a 12-week build is the
+// sweet spot for actually getting into cycling — long enough for the
+// body to adapt to volume, short enough to stay motivated. But some
+// riders only want a 4 / 6 / 8 week toe-in-the-water. Letting them
+// pick a shorter run keeps the door open without compromising the
+// recommendation.
+//
+// Pricing note (rendered in the UI): the subscription is the same
+// regardless of which length they pick, so they're never paying more
+// for "more weeks". The card explicitly says this so a 4-week pick
+// doesn't feel like a worse deal.
+const DURATION_OPTIONS = [
+  { weeks: 4,  label: '4 weeks',  sub: 'A short toe-in-the-water' },
+  { weeks: 6,  label: '6 weeks',  sub: 'A focused short build' },
+  { weeks: 8,  label: '8 weeks',  sub: 'A solid, balanced build' },
+  { weeks: 12, label: '12 weeks', sub: 'Recommended for getting into cycling', recommended: true },
 ];
 
 // Suggest days-per-week based on goal distance (used as default on scheduling screen)
@@ -161,6 +181,12 @@ export default function BeginnerProgramScreen({ navigation, route }) {
   const [autoSuggested, setAutoSuggested] = useState(false);
 
   const [goalOption, setGoalOption] = useState(null);
+  // Plan length the rider wants. Defaults to 12 because that's the
+  // recommended build for getting into cycling — but they can drop to
+  // 4 / 6 / 8 if they'd rather start smaller. Persisted alongside the
+  // goal so the post-generation "extend to 12 weeks" affordance can
+  // show the rider what they originally chose.
+  const [durationWeeks, setDurationWeeks] = useState(12);
   // Bike / cycling type — now sourced from the PlanPicker intake. The
   // old in-screen bike-type picker was removed because (a) it duplicated
   // the question already asked on PlanPickerScreen and (b) its value
@@ -219,6 +245,11 @@ export default function BeginnerProgramScreen({ navigation, route }) {
         targetDate: null,
         eventName: null,
         planName: `Get into Cycling — ${chosen.label}`,
+        // Remember what the rider picked at intake so the post-
+        // generation "extend to 12 weeks" affordance can show
+        // "you originally chose X weeks" without guessing from the
+        // current plan length (which may have been edited later).
+        originalBeginnerWeeks: durationWeeks,
       });
 
       const suggestedDays = SUGGESTED_DAYS[goalOption] || 3;
@@ -227,22 +258,42 @@ export default function BeginnerProgramScreen({ navigation, route }) {
         beginnerDefaults: {
           fitnessLevel: 'beginner',
           daysPerWeek: suggestedDays,
-          weeks: 12,
+          // Honour the rider's chosen length instead of the old
+          // hardcoded 12. PlanConfigScreen reads this as a pre-fill
+          // for the duration step; the rider can still tweak it
+          // before generation if they change their mind.
+          weeks: durationWeeks,
         },
       };
 
-      analytics.capture?.('beginner_program_goal_selected', { goalOption });
+      analytics.capture?.('beginner_program_goal_selected', { goalOption, durationWeeks });
 
-      // Check subscription — if already subscribed, go straight to PlanConfig.
-      // Otherwise, let them configure & generate the plan first, then show
-      // the paywall on PlanReady so they can see what they're paying for.
-      // TODO: remove __DEV__ bypass before release
-      const subscribed = __DEV__ ? false : await isSubscribed();
-      navigation.replace('PlanConfig', {
-        ...planConfig,
-        requirePaywall: !subscribed,
-        defaultPlan: 'starter',
-      });
+      // Check if rider has already gone through the gear inventory.
+      // If not, route through GettingStartedScreen first.
+      const inventory = await getGearInventory();
+      const hasSeenGearInventory = !!inventory.gearInventoryCapturedAt;
+
+      if (!hasSeenGearInventory) {
+        navigation.navigate('GettingStarted', {
+          firstTime: true,
+          onComplete: () => {
+            const subscribed = __DEV__ ? false : isSubscribed();
+            navigation.replace('PlanConfig', {
+              ...planConfig,
+              requirePaywall: !subscribed,
+              defaultPlan: 'starter',
+            });
+          },
+        });
+      } else {
+        // Already done gear inventory, go straight to PlanConfig
+        const subscribed = __DEV__ ? false : await isSubscribed();
+        navigation.replace('PlanConfig', {
+          ...planConfig,
+          requirePaywall: !subscribed,
+          defaultPlan: 'starter',
+        });
+      }
     } finally {
       setContinuing(false);
     }
@@ -276,8 +327,20 @@ export default function BeginnerProgramScreen({ navigation, route }) {
             </View>
             <Text style={s.title}>Get into Cycling</Text>
             <Text style={s.subtitle}>
-              A 12-week program designed to get you riding regularly and loving it.{'\n'}
+              A gentle, progressive program designed to get you riding regularly and loving it.{'\n'}
               No experience needed — just a bike and some enthusiasm.
+            </Text>
+          </View>
+
+          {/* Reassurance card — the most common worry on this screen is
+              "what if I miss a session, am I behind?". Get ahead of it
+              with explicit copy: this is a guide, not a contract. The
+              card sits before "What's included" so the rider reads it
+              before the plan starts to feel like a commitment. */}
+          <View style={s.relaxCard}>
+            <Text style={s.relaxTitle}>This is meant to be relaxed</Text>
+            <Text style={s.relaxBody}>
+              Miss a session? Fine. Skip a week? Also fine. Life happens. The plan adapts around you — you don&apos;t have to do every ride to get where you&apos;re going. Show up when you can, enjoy it when you do, and the rest takes care of itself.
             </Text>
           </View>
 
@@ -286,7 +349,7 @@ export default function BeginnerProgramScreen({ navigation, route }) {
             <Text style={s.sectionTitle}>What's included</Text>
             <View style={s.featureList}>
               {[
-                'A gentle, progressive 12-week plan',
+                'A gentle, progressive plan that builds week by week',
                 'Sessions tailored to your available days',
                 'Clear ride instructions (no jargon)',
                 'Tips on nutrition, hydration & gear',
@@ -336,6 +399,42 @@ export default function BeginnerProgramScreen({ navigation, route }) {
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
                       <Text style={[s.dayLabel, isSelected && s.dayLabelSelected]}>{opt.label}</Text>
                       <Text style={[s.goalDistanceBadge, isSelected && s.goalDistanceBadgeSelected]}>{opt.distance} km</Text>
+                    </View>
+                    <Text style={[s.daySub, isSelected && s.daySubSelected]}>{opt.sub}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Duration picker — used to be hardcoded to 12 weeks. Now
+              the rider can pick 4 / 6 / 8 / 12 with 12 marked as
+              recommended. The same-price note removes the worry that
+              picking a shorter plan means worse value. */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>How long should the plan be?</Text>
+            <Text style={s.sectionSub}>
+              Subscription is the same price whichever you pick. We recommend 12 weeks for actually getting into cycling — but pick whatever feels right.
+            </Text>
+            <View style={s.daysOptions}>
+              {DURATION_OPTIONS.map(opt => {
+                const isSelected = durationWeeks === opt.weeks;
+                return (
+                  <TouchableOpacity
+                    key={opt.weeks}
+                    style={[s.dayCard, isSelected && s.dayCardSelected]}
+                    onPress={() => setDurationWeeks(opt.weeks)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3, flexWrap: 'wrap', gap: 6 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={[s.dayLabel, isSelected && s.dayLabelSelected]}>{opt.label}</Text>
+                        {opt.recommended ? (
+                          <View style={s.recPill}>
+                            <Text style={s.recPillText}>RECOMMENDED</Text>
+                          </View>
+                        ) : null}
+                      </View>
                     </View>
                     <Text style={[s.daySub, isSelected && s.daySubSelected]}>{opt.sub}</Text>
                   </TouchableOpacity>
@@ -573,6 +672,35 @@ const s = StyleSheet.create({
   },
   suggestionBannerStrong: {
     fontFamily: FF.semibold, color: '#E8458B',
+  },
+
+  // Reassurance card — soft pink-tinted block reminding the rider that
+  // the plan is a guide, not a contract. Sits below the hero so it's
+  // the first thing they see after the title. Slightly warmer than the
+  // suggestion banner because the role is different (calming rather
+  // than informing).
+  relaxCard: {
+    backgroundColor: 'rgba(232,69,139,0.05)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.18)',
+    borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14,
+    marginBottom: 28,
+  },
+  relaxTitle: {
+    fontSize: 14, fontFamily: FF.semibold, color: '#E8458B',
+    marginBottom: 6,
+  },
+  relaxBody: {
+    fontSize: 13.5, fontFamily: FF.regular, color: colors.textMid, lineHeight: 20,
+  },
+
+  // Recommended pill on the duration card
+  recPill: {
+    backgroundColor: 'rgba(232,69,139,0.16)',
+    paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4,
+  },
+  recPillText: {
+    fontSize: 9, fontFamily: FF.semibold, fontWeight: '600',
+    color: '#E8458B', letterSpacing: 0.6,
   },
 
   // CTAs

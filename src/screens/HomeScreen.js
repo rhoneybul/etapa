@@ -825,9 +825,29 @@ export default function HomeScreen({ navigation, route }) {
   }, []);
   useEffect(() => { refreshCoachUnread(); }, [refreshCoachUnread]);
   useEffect(() => {
-    const unsub = navigation.addListener('focus', refreshCoachUnread);
+    // Refresh on focus, plus a follow-up after 800ms. The follow-up
+    // catches a race where the user opens the chat (which fires a
+    // fire-and-forget markAllRead) and bounces straight back before
+    // the server-side mark-as-read commits — without it, the focus
+    // refresh reads the still-unread state, leaves the badge on, and
+    // it only clears next time the rider focuses Home.
+    const unsub = navigation.addListener('focus', () => {
+      refreshCoachUnread();
+      setTimeout(refreshCoachUnread, 800);
+    });
     return unsub;
   }, [navigation, refreshCoachUnread]);
+
+  // Optimistic local clear — when the rider taps any "Open chat"
+  // affordance on Home, we set coachUnread to 0 immediately so the
+  // pink "1" disappears the moment they open the conversation. The
+  // server-side markAllRead still runs from CoachChatScreen on
+  // mount; by the time the rider returns to Home's focus listener
+  // the server state matches what we already showed locally.
+  const goToCoachChat = useCallback((planId) => {
+    setCoachUnread(0);
+    navigation.navigate('CoachChat', { planId });
+  }, [navigation]);
 
   // Deselect day when navigating to a different week
   useEffect(() => { setSelectedDayIdx(null); }, [currentWeek]);
@@ -2057,7 +2077,7 @@ export default function HomeScreen({ navigation, route }) {
           {activePlan && activePlan.paymentStatus !== 'pending' && (
             <CoachChatCard
               coach={getCoach(activePlanConfig?.coachId)}
-              onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
+              onPress={() => goToCoachChat(activePlan.id)}
               unreadCount={coachUnread}
               refreshing={refreshingConfig}
               style={s.coachCardWrap}
@@ -2412,7 +2432,7 @@ export default function HomeScreen({ navigation, route }) {
                     )}
                     <TouchableOpacity
                       style={[s.todayHeroCoachBtn, isRest && s.todayHeroCoachBtnRest]}
-                      onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
+                      onPress={() => goToCoachChat(activePlan.id)}
                       activeOpacity={0.85}
                     >
                       <Text style={s.todayHeroCoachBtnText}>Ask?</Text>
@@ -2524,7 +2544,7 @@ export default function HomeScreen({ navigation, route }) {
                   <View style={s.todayHeroActions}>
                     <TouchableOpacity
                       style={s.todayHeroCoachBtn}
-                      onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
+                      onPress={() => goToCoachChat(activePlan.id)}
                       activeOpacity={0.85}
                     >
                       <Text style={s.todayHeroCoachBtnText}>Ask {coachFirstName}</Text>
@@ -2571,7 +2591,7 @@ export default function HomeScreen({ navigation, route }) {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={s.todayHeroCoachBtn}
-                    onPress={() => navigation.navigate('CoachChat', { planId: activePlan.id })}
+                    onPress={() => goToCoachChat(activePlan.id)}
                     activeOpacity={0.85}
                   >
                     <Text style={s.todayHeroCoachBtnText}>Ask {coachFirstName}</Text>

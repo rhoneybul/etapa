@@ -72,6 +72,11 @@ function readRemoteOptions() {
 
 export default function RegeneratePlanScreen({ navigation, route }) {
   const { plan } = route.params || {};
+  // Optional pre-fill for the duration picker. Set when the rider arrives
+  // here from the "Extend to 12 weeks" CTA on PlanReadyScreen — we want
+  // the 12-week option already selected so the action is one tap. Falls
+  // through to the existing-config behaviour when not provided.
+  const prefillWeeks = Number(route.params?.prefillWeeks) || null;
   const [goal, setGoal] = useState(null);
   const [existingConfig, setExistingConfig] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -97,13 +102,16 @@ export default function RegeneratePlanScreen({ navigation, route }) {
         setGoal(g);
         setExistingConfig(c);
         setLevel(c?.fitnessLevel || 'intermediate');
-        setWeeks(c?.weeks || plan.weeks || 8);
+        // Honour an explicit prefillWeeks first (came from "Extend to 12"
+        // CTA) so the rider lands with the target already selected.
+        // Otherwise fall back to the current config / plan's weeks.
+        setWeeks(prefillWeeks || c?.weeks || plan.weeks || 8);
         setDaysPerWeek(c?.daysPerWeek || c?.sessionsPerWeek || 3);
       } finally {
         setLoading(false);
       }
     })();
-  }, [plan?.goalId, plan?.configId]);
+  }, [plan?.goalId, plan?.configId, prefillWeeks]);
 
   const canSubmit = !!level && !!weeks && !!daysPerWeek && !submitting && !loading;
 
@@ -224,6 +232,15 @@ export default function RegeneratePlanScreen({ navigation, route }) {
         </View>
 
         <Text style={s.question}>How long a plan?</Text>
+        {/* When the rider originally chose a beginner length at intake,
+            surface it here as a small subline so they know what they're
+            changing FROM. Useful context when they came in via the
+            "Extend to 12 weeks" CTA on PlanReadyScreen. */}
+        {goal?.originalBeginnerWeeks && goal.originalBeginnerWeeks !== weeks ? (
+          <Text style={s.questionSub}>
+            You originally picked {goal.originalBeginnerWeeks} weeks at sign-up.
+          </Text>
+        ) : null}
         <View style={s.pillRow}>
           {DURATIONS.map(opt => {
             const selected = weeks === opt.key;
@@ -308,6 +325,13 @@ const s = StyleSheet.create({
     fontSize: 18, fontFamily: FF.semibold, fontWeight: '600',
     color: colors.text,
     marginTop: 20, marginBottom: 14,
+  },
+  // Context line shown above a duration / level picker when we want
+  // to remind the rider what they originally picked. Sits between the
+  // question and the pill row.
+  questionSub: {
+    fontSize: 13, fontFamily: FF.regular, color: colors.textMuted,
+    marginTop: -8, marginBottom: 12,
   },
 
   optionGridTwoCol: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

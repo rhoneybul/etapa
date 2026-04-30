@@ -2798,6 +2798,7 @@ Never, ever write "I'll" / "I've" / "I'm" + a verb of change ("shift", "move", "
 function buildCoachSystemPrompt(context = {}) {
   const coachId = context?.coachId || null;
   const language = context?.language || null;
+  const country = context?.country || null;
   let systemPrompt = COACH_SYSTEM_PROMPT;
   systemPrompt += getCoachPromptBlock(coachId, language);
   systemPrompt += '\n\n';
@@ -2807,6 +2808,13 @@ function buildCoachSystemPrompt(context = {}) {
   systemPrompt += 'Keep responses concise (2-4 paragraphs max). Use plain language. ';
   systemPrompt += 'You can use **bold** for emphasis but avoid other markdown.\n';
   systemPrompt += 'IMPORTANT: Base your answers ONLY on the plan data provided below. Do not guess or invent session details.\n\n';
+
+  // Region-aware coaching directive
+  const countryNames = { GB: 'the UK', US: 'the US', CA: 'Canada', AU: 'Australia', NZ: 'New Zealand', IE: 'Ireland', FR: 'France', DE: 'Germany', ES: 'Spain', IT: 'Italy', NL: 'the Netherlands', BE: 'Belgium', CH: 'Switzerland', AT: 'Austria' };
+  const countryLabel = country ? (countryNames[country] || country) : null;
+  if (countryLabel) {
+    systemPrompt += `The rider is based in ${countryLabel}. When recommending bike shops, brands, events, organisations, sportives, clubs, or any region-specific advice, bias your suggestions toward this region. Mention local-relevant options where you can — e.g. British Cycling for UK riders, REI / Bikes Direct for US, Decathlon for France/Spain/UK/many EU countries, 99 Bikes for Australia. Always still surface universal advice first, then add the region-specific colour.\n\n`;
+  }
 
   systemPrompt += `## Plan modification capability
 When the athlete asks you to change, restructure, fix, or improve their plan (or a specific week), you can MODIFY the plan directly.

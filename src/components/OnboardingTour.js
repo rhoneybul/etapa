@@ -71,6 +71,12 @@ const STEPS = [
     dummyCard: { type: 'sessionBreakdown' },
   },
   {
+    id: 'location',
+    title: 'Where are you based?',
+    body: 'So we can surface events, advice, and tips relevant to your region. You can change this anytime in Settings.',
+    dummyCard: { type: 'location' },
+  },
+  {
     id: 'ready',
     title: 'One last thing — km or miles?',
     body: 'Just so we know how to show your distances. You can change this anytime in Settings.',
@@ -281,7 +287,64 @@ function SessionBreakdownCard() {
 }
 
 /**
- * Step 5 — Units picker.
+ * Step 4b — Location picker.
+ * List of common countries. Tapping one saves to userPrefs.location.country
+ * immediately. Skip option available to advance without setting.
+ */
+const COUNTRIES = [
+  { code: 'GB', name: 'United Kingdom' },
+  { code: 'IE', name: 'Ireland' },
+  { code: 'FR', name: 'France' },
+  { code: 'DE', name: 'Germany' },
+  { code: 'ES', name: 'Spain' },
+  { code: 'IT', name: 'Italy' },
+  { code: 'NL', name: 'Netherlands' },
+  { code: 'BE', name: 'Belgium' },
+  { code: 'CH', name: 'Switzerland' },
+  { code: 'AT', name: 'Austria' },
+  { code: 'US', name: 'United States' },
+  { code: 'CA', name: 'Canada' },
+  { code: 'AU', name: 'Australia' },
+  { code: 'NZ', name: 'New Zealand' },
+  { code: 'OTHER', name: 'Other / Prefer not to say' },
+];
+
+function LocationCard({ selectedCountry, pendingCountry, onSelect }) {
+  return (
+    <View style={cs.card}>
+      <Text style={cs.cardLabel}>YOUR LOCATION</Text>
+      <View style={cs.locationGrid}>
+        {COUNTRIES.map(c => {
+          const selected = c.code === selectedCountry;
+          const saving = c.code === pendingCountry;
+          return (
+            <TouchableOpacity
+              key={c.code}
+              style={[cs.locationBtn, (selected || saving) && cs.locationBtnSelected]}
+              onPress={() => onSelect(c.code)}
+              activeOpacity={0.85}
+              disabled={pendingCountry !== null && pendingCountry !== c.code}
+            >
+              <Text style={[cs.locationBtnText, (selected || saving) && cs.locationBtnTextSelected]} numberOfLines={2}>
+                {c.name}
+              </Text>
+              {saving && (
+                <ActivityIndicator
+                  size="small"
+                  color={colors.primary}
+                  style={cs.locationSpinner}
+                />
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Step 6 — Units picker.
  * Big km / mi toggle, saves to userPrefs.units IMMEDIATELY on tap so the
  * choice persists even if the user bails before hitting Get Started. The
  * Get Started CTA lives in the main tour chrome (the "nextBtn" with
@@ -357,14 +420,15 @@ function NameCard({ value, saving, onChange, onSubmit }) {
 
 /**
  * Dispatcher — picks the right renderer for the current step's card. The
- * coach + units + name cards need handlers, the other cards are stateless.
+ * coach + location + units + name cards need handlers, the other cards are stateless.
  */
-function DummyCardRenderer({ dummyCard, selectedCoachId, pendingCoachId, onPickCoach, units, pendingUnits, onPickUnits, displayName, savingName, onChangeName, onSubmitName }) {
+function DummyCardRenderer({ dummyCard, selectedCoachId, pendingCoachId, onPickCoach, selectedCountry, pendingCountry, onPickCountry, units, pendingUnits, onPickUnits, displayName, savingName, onChangeName, onSubmitName }) {
   if (!dummyCard) return null;
   switch (dummyCard.type) {
     case 'today':              return <TodayCard />;
     case 'coachPicker':        return <CoachPickerCard selectedId={selectedCoachId} pendingId={pendingCoachId} onSelect={onPickCoach} />;
     case 'sessionBreakdown':   return <SessionBreakdownCard />;
+    case 'location':           return <LocationCard selectedCountry={selectedCountry} pendingCountry={pendingCountry} onSelect={onPickCountry} />;
     case 'units':              return <UnitsCard units={units} pending={pendingUnits} onSelect={onPickUnits} />;
     case 'name':               return <NameCard value={displayName} saving={savingName} onChange={onChangeName} onSubmit={onSubmitName} />;
     default:                    return null;
@@ -383,6 +447,7 @@ export default function OnboardingTour({ visible, onComplete }) {
   // engaging. The Next / Get started CTA on those steps is disabled
   // (and the Skip button is hidden) until a real selection lands.
   const [selectedCoachId, setSelectedCoachId] = useState(null);
+  const [selectedCountry, setSelectedCountry] = useState(null);
   const [units, setUnits] = useState(null);
   // Display name — final tour step. Like coach + units it's required;
   // unlike them it's a free-text field that only counts as "set" when
@@ -391,11 +456,12 @@ export default function OnboardingTour({ visible, onComplete }) {
   // resume.
   const [displayName, setDisplayName] = useState('');
   const [savingName, setSavingName] = useState(false);
-  // Transient "saving" state for coach + units picks. Set the moment the
+  // Transient "saving" state for coach + country + units picks. Set the moment the
   // user taps, cleared after the async prefs write settles. Drives a
   // small spinner on the tapped chip so the tap doesn't feel dead while
   // AsyncStorage flushes.
   const [pendingCoachId, setPendingCoachId] = useState(null);
+  const [pendingCountry, setPendingCountry] = useState(null);
   const [pendingUnits, setPendingUnits] = useState(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -411,6 +477,7 @@ export default function OnboardingTour({ visible, onComplete }) {
     slideAnim.setValue(30);
     getUserPrefs().then((p) => {
       if (p?.coachId) setSelectedCoachId(p.coachId);
+      if (p?.location?.country) setSelectedCountry(p.location.country);
       if (p?.units) setUnits(p.units);
       if (p?.displayName) setDisplayName(p.displayName);
     }).catch(() => {});
@@ -450,6 +517,15 @@ export default function OnboardingTour({ visible, onComplete }) {
     setUserPrefs({ coachId })
       .catch(() => {})
       .finally(() => setPendingCoachId(null));
+  };
+
+  // Same pattern for location — persisted immediately.
+  const handlePickCountry = (countryCode) => {
+    setSelectedCountry(countryCode);
+    setPendingCountry(countryCode);
+    setUserPrefs({ location: { country: countryCode } })
+      .catch(() => {})
+      .finally(() => setPendingCountry(null));
   };
 
   // Same pattern for units — persisted immediately so the rest of the
@@ -518,10 +594,12 @@ export default function OnboardingTour({ visible, onComplete }) {
   //   - 'coach'  — pick a coach personality
   //   - 'ready'  — pick km or miles
   //   - 'name'   — type at least one non-whitespace character
-  // On those steps the advance button is disabled until a valid value
+  // Location step is optional — user can skip without setting.
+  // On required steps the advance button is disabled until a valid value
   // lands AND Skip is hidden, so users can't no-op past the decisions
-  // (and now the name capture) that shape the rest of the experience.
+  // that shape the rest of the experience.
   const isCoachStep = current.id === 'coach';
+  const isLocationStep = current.id === 'location';
   const isUnitsStep = current.id === 'ready';
   const isNameStep = current.id === 'name';
   const nameValid = displayName.trim().length > 0;
@@ -534,8 +612,8 @@ export default function OnboardingTour({ visible, onComplete }) {
     <Modal visible={visible} transparent animationType="none" statusBarTranslucent>
       <View style={s.overlay}>
         {/* Skip — hidden on the coach, units, AND name steps to force
-            an active value. On every other step it's a normal escape
-            hatch. */}
+            an active value. Location step allows skip (it's optional).
+            On every other step it's a normal escape hatch. */}
         {!isCoachStep && !isUnitsStep && !isNameStep && (
           <TouchableOpacity style={s.skipBtn} onPress={handleSkip} activeOpacity={0.7}>
             <Text style={s.skipText}>Skip</Text>
@@ -561,6 +639,9 @@ export default function OnboardingTour({ visible, onComplete }) {
                   selectedCoachId={selectedCoachId}
                   pendingCoachId={pendingCoachId}
                   onPickCoach={handlePickCoach}
+                  selectedCountry={selectedCountry}
+                  pendingCountry={pendingCountry}
+                  onPickCountry={handlePickCountry}
                   units={units}
                   pendingUnits={pendingUnits}
                   onPickUnits={handlePickUnits}
@@ -931,6 +1012,31 @@ const cs = StyleSheet.create({
   intensityVal: {
     flex: 1, fontSize: 12, fontFamily: FF.regular, color: colors.text,
     lineHeight: 16,
+  },
+
+  // ── Location picker ──────────────────────────────────────────────
+  locationGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 8,
+  },
+  locationBtn: {
+    width: '48.5%',
+    paddingVertical: 12, paddingHorizontal: 10,
+    borderRadius: 10, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.bg,
+    alignItems: 'center', justifyContent: 'center',
+    minHeight: 60,
+  },
+  locationBtnSelected: {
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(232,69,139,0.08)',
+  },
+  locationBtnText: {
+    fontSize: 13, fontFamily: FF.medium, fontWeight: '500',
+    color: colors.text, textAlign: 'center', lineHeight: 16,
+  },
+  locationBtnTextSelected: { color: colors.primary },
+  locationSpinner: {
+    position: 'absolute', top: 8, right: 8,
   },
 
   // ── Units picker ─────────────────────────────────────────────────────

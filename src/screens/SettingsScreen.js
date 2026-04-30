@@ -647,6 +647,46 @@ export default function SettingsScreen({ navigation }) {
               </TouchableOpacity>
             </View>
           </View>
+          <View style={s.divider} />
+          <TouchableOpacity
+            style={s.row}
+            onPress={() => {
+              const currentCountry = userPrefs.location?.country || 'Not set';
+              const countryList = ['GB', 'IE', 'FR', 'DE', 'ES', 'IT', 'NL', 'BE', 'CH', 'AT', 'US', 'CA', 'AU', 'NZ', 'OTHER'];
+              const countryNames = ['United Kingdom', 'Ireland', 'France', 'Germany', 'Spain', 'Italy', 'Netherlands', 'Belgium', 'Switzerland', 'Austria', 'United States', 'Canada', 'Australia', 'New Zealand', 'Other / Prefer not to say'];
+              const options = countryList.map((c, i) => ({ code: c, name: countryNames[i] }));
+              Alert.alert(
+                'Select Your Location',
+                null,
+                [
+                  ...options.map(opt => ({
+                    text: opt.name,
+                    onPress: async () => {
+                      const updated = await setUserPrefs({ location: { country: opt.code } });
+                      setUserPrefsState(updated);
+                    },
+                  })),
+                  { text: 'Cancel', style: 'cancel' },
+                ],
+              );
+            }}
+          >
+            <View style={s.rowLeft}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.rowTitle}>Location</Text>
+                <Text style={s.rowSub}>
+                  {userPrefs.location?.country
+                    ? (userPrefs.location.country === 'OTHER' ? 'Other / Prefer not to say' :
+                      ['GB', 'IE', 'FR', 'DE', 'ES', 'IT', 'NL', 'BE', 'CH', 'AT', 'US', 'CA', 'AU', 'NZ'].includes(userPrefs.location.country)
+                        ? ['United Kingdom', 'Ireland', 'France', 'Germany', 'Spain', 'Italy', 'Netherlands', 'Belgium', 'Switzerland', 'Austria', 'United States', 'Canada', 'Australia', 'New Zealand'][
+                          ['GB', 'IE', 'FR', 'DE', 'ES', 'IT', 'NL', 'BE', 'CH', 'AT', 'US', 'CA', 'AU', 'NZ'].indexOf(userPrefs.location.country)]
+                        : userPrefs.location.country)
+                    : 'Not set'}
+                </Text>
+              </View>
+            </View>
+            <Text style={s.chevron}>{'\u203A'}</Text>
+          </TouchableOpacity>
 
           {/* Training intensity fields — optional. When set, interval
               sessions on ActivityDetail show real numbers instead of
@@ -1314,6 +1354,16 @@ export default function SettingsScreen({ navigation }) {
         {/* Support */}
         <Text style={s.sectionLabel}>SUPPORT</Text>
         <View style={s.card}>
+          <TouchableOpacity style={s.row} onPress={() => navigation.navigate('GettingStarted')}>
+            <View style={s.rowLeft}>
+              <View>
+                <Text style={s.rowTitle}>Getting started guide</Text>
+                <Text style={s.rowSub}>Gear, routes, food & community</Text>
+              </View>
+            </View>
+            <Text style={s.chevron}>{'\u203A'}</Text>
+          </TouchableOpacity>
+          <View style={s.divider} />
           <TouchableOpacity style={s.row} onPress={() => Linking.openURL('https://getetapa.com/support')}>
             <View style={s.rowLeft}>
               <View>

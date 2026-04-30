@@ -544,7 +544,7 @@ export function getWeekMonthLabel(planStartDate, week) {
 // ── User Preferences (local — units, display name, etc.) ───────────────────
 
 export async function getUserPrefs() {
-  const local = (await getJSON(KEYS.USER_PREFS)) || { units: 'km', displayName: '' };
+  const local = (await getJSON(KEYS.USER_PREFS)) || { units: 'km', displayName: '', location: {} };
 
   // If we have no local display name, try to pull from server
   if (!local.displayName) {
@@ -612,6 +612,25 @@ export async function setOnboardingDone() {
   await AsyncStorage.setItem(KEYS.ONBOARDING_DONE, 'true');
   // Persist to server so the flag follows the user across devices.
   api.preferences.update({ onboarding_done: true }).catch(() => {});
+}
+
+// ── Gear Inventory ─────────────────────────────────────────────────────────
+// Tracks which gear items the rider owns, stored in prefs.gearInventory.
+// Shape: { bike: true, helmet: true, ... } with an optional capturedAt timestamp.
+
+export async function getGearInventory() {
+  const prefs = await getUserPrefs();
+  return prefs.gearInventory || {};
+}
+
+export async function setGearItem(id, hasIt) {
+  const current = await getGearInventory();
+  const updated = { ...current, [id]: hasIt };
+  return setUserPrefs({ gearInventory: updated, gearInventoryCapturedAt: new Date().toISOString() });
+}
+
+export async function setGearInventory(inventory) {
+  return setUserPrefs({ gearInventory: inventory, gearInventoryCapturedAt: new Date().toISOString() });
 }
 
 // ── Unavailable dates (rider-blocked days) ─────────────────────────────────

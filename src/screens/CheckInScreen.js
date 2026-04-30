@@ -55,6 +55,8 @@ export default function CheckInScreen({ navigation, route }) {
   // Reschedule sheet — opened from the new "Reschedule" pill in the
   // header. See RescheduleCheckInSheet for the UX.
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  // Coach intro tips — tracks which tip ids are visually collapsed
+  const [collapsedTipIds, setCollapsedTipIds] = useState(new Set());
 
   // Form state
   const [sessionsDone, setSessionsDone] = useState({}); // { [activityId]: true }
@@ -335,6 +337,16 @@ export default function CheckInScreen({ navigation, route }) {
     );
   };
 
+  // Handle opting out of a coach tip — adds it to optedOutIds and collapses the card
+  const handleTipOptOut = async (tipId) => {
+    try {
+      await api.checkins.optOutTip(tipId);
+      setCollapsedTipIds(prev => new Set([...prev, tipId]));
+    } catch (err) {
+      console.warn('Failed to opt out of tip:', err);
+    }
+  };
+
   // Undo snackbar state — shows "Applied. Undo." for 6s after a change.
   // Tap Undo within the window → activity reverts to the snapshot taken
   // before the change.
@@ -486,6 +498,34 @@ export default function CheckInScreen({ navigation, route }) {
             contentContainerStyle={s.scrollContent}
             keyboardShouldPersistTaps="handled"
           >
+            {/* Coach intro tips — shown at the very top of the form
+                so the rider feels they've heard from their coach
+                BEFORE being asked anything. The catalog is hand-
+                written, leveled, and time-gated server-side; tips
+                rotate so a returning rider never sees the same one
+                twice. Each tip has a "Not for me" affordance that
+                permanently opts the rider out of that tip id. */}
+            {checkin?.suggestions?.coachIntro?.tips?.length ? (
+              <View style={{ marginBottom: 20 }}>
+                <Text style={s.coachIntroGreeting}>
+                  {checkin.suggestions.coachIntro.greeting || 'Hi from your coach,'}
+                </Text>
+                {checkin.suggestions.coachIntro.tips.map(tip => (
+                  !collapsedTipIds.has(tip.id) && (
+                    <View key={tip.id} style={s.tipCard}>
+                      <Text style={s.tipBody}>{tip.body}</Text>
+                      <TouchableOpacity
+                        onPress={() => handleTipOptOut(tip.id)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={s.tipOptOut}>Not for me</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )
+                ))}
+              </View>
+            ) : null}
+
             <Text style={s.intro}>Five quick questions. Your coach will use this to shape next week.</Text>
 
             {/* Sessions done */}
@@ -698,6 +738,26 @@ export default function CheckInScreen({ navigation, route }) {
                 >
                   <Text style={s.primaryBtnText}>Done</Text>
                 </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {/* Coach intro tips — displayed above the AI-generated suggestions */}
+            {!checkin.suggestions.crisisResources && checkin.suggestions?.coachIntro ? (
+              <View style={{ marginBottom: 24 }}>
+                <Text style={s.coachIntroGreeting}>{checkin.suggestions.coachIntro.greeting}</Text>
+                {(checkin.suggestions.coachIntro.tips || []).map(tip => (
+                  !collapsedTipIds.has(tip.id) && (
+                    <View key={tip.id} style={s.tipCard}>
+                      <Text style={s.tipBody}>{tip.body}</Text>
+                      <TouchableOpacity
+                        onPress={() => handleTipOptOut(tip.id)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={s.tipOptOut}>Not for me</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )
+                ))}
               </View>
             ) : null}
 
@@ -972,6 +1032,16 @@ const s = StyleSheet.create({
   },
   crisisResourceLabel: { fontSize: 13, fontWeight: '600', color: '#F87171', fontFamily: FF.semibold, marginBottom: 3 },
   crisisResourceDetail: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, lineHeight: 17 },
+
+  // Coach intro tips
+  coachIntroGreeting: { fontSize: 16, fontWeight: '600', color: colors.text, fontFamily: FF.semibold, marginBottom: 12 },
+  tipCard: {
+    backgroundColor: colors.primary + '10',
+    borderWidth: 0.5, borderColor: colors.primary + '40',
+    borderRadius: 10, padding: 12, marginBottom: 10,
+  },
+  tipBody: { fontSize: 13, color: colors.text, fontFamily: FF.regular, lineHeight: 19 },
+  tipOptOut: { fontSize: 11, color: colors.primary, fontFamily: FF.medium, marginTop: 8, fontWeight: '500' },
 
   // Review phase
   summaryCard: {

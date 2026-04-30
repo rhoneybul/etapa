@@ -6,12 +6,12 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert,
   TextInput, Keyboard, Platform, ActivityIndicator,
-  Animated,
+  Animated, Modal, Pressable,
 } from 'react-native';
 import { Gesture, GestureDetector, ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, useBottomInset } from '../theme';
-import { getPlans, getGoals, getActivityDate, getPlanConfig, savePlan, getWeekActivities, getUserPrefs, getUnavailableDates } from '../services/storageService';
+import { getPlans, getGoals, getActivityDate, getPlanConfig, savePlan, getWeekActivities, getUserPrefs, getUnavailableDates, addUnavailableDates, removeUnavailableDate } from '../services/storageService';
 import { coachChat } from '../services/llmPlanService';
 import { getSessionColor, getSessionLabel, getMetricLabel, getActivityIcon, CROSS_TRAINING_COLOR, getCrossTrainingLabel } from '../utils/sessionLabels';
 import { getCoach } from '../data/coaches';
@@ -47,6 +47,10 @@ export default function CalendarScreen({ navigation, route }) {
   // they read clearly as "blocked" without being aggressive about it.
   const [unavailableDates, setUnavailableDatesState] = useState([]);
   const [unavailabilityOpen, setUnavailabilityOpen] = useState(false);
+  // Manager drawer — opened from the "Tell your coach when you're
+  // unavailable" pill when the rider has existing periods. Lists
+  // every saved period with a × to remove and a button to add more.
+  const [managerOpen, setManagerOpen] = useState(false);
 
   // Range selection mode for marking unavailable days
   const [rangeMode, setRangeMode] = useState(null); // null | 'awaiting_start' | 'awaiting_end' | 'review'
@@ -59,6 +63,38 @@ export default function CalendarScreen({ navigation, route }) {
     const set = new Set();
     unavailableDates.forEach(e => set.add(e.date));
     return set;
+  }, [unavailableDates]);
+
+  // Group consecutive same-reason dates into periods. The storage layer
+  // keeps each unavailable day as its own row ({ date, reason }); the
+  // rider thinks in periods ("I'm away Tue → Fri"), so we collapse a
+  // run of consecutive dates with the same reason into one entry. The
+  // manager drawer renders one row per period with a single × to
+  // remove the whole range.
+  const unavailablePeriods = useMemo(() => {
+    if (!Array.isArray(unavailableDates) || unavailableDates.length === 0) return [];
+    const sorted = [...unavailableDates].sort((a, b) => a.date.localeCompare(b.date));
+    const out = [];
+    let curr = null;
+    for (const e of sorted) {
+      if (!curr) {
+        curr = { start: e.date, end: e.date, reason: e.reason || '', dates: [e.date] };
+        continue;
+      }
+      // Consecutive day check: parse end + 1 day, compare to e.date.
+      const prev = new Date(curr.end + 'T00:00:00');
+      prev.setDate(prev.getDate() + 1);
+      const expected = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}-${String(prev.getDate()).padStart(2, '0')}`;
+      if (e.date === expected && (e.reason || '') === curr.reason) {
+        curr.end = e.date;
+        curr.dates.push(e.date);
+      } else {
+        out.push(curr);
+        curr = { start: e.date, end: e.date, reason: e.reason || '', dates: [e.date] };
+      }
+    }
+    if (curr) out.push(curr);
+    return out;
   }, [unavailableDates]);
   const [movingActivity, setMovingActivity] = useState(null); // { activity, planId, planStartDate } when moving
   const [actionActivity, setActionActivity] = useState(null); // { activity, planId } when action bar is shown
@@ -893,29 +929,43 @@ export default function CalendarScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        {/* "+ Mark unavailable" pill — sits below the month nav rather
-            than in the header proper because the header is already
-            tight (back arrow + title). Tap enters range mode where the
-            rider taps a start date, then an end date, and can add a reason.
-            Range dates are added to the local unavailable list.
-            We hide it in review mode so the review CTAs don't compete for attention. */}
+        {/* "Tell your coach when you're unavailable" pill. Reframed
+            from the old "Unavailable · N" headline — riders found
+            the count more confusing than helpful, and the framing
+            made it feel like a status badge rather than the action
+            it is.
+            -
+            Tap behaviour:
+            - If we're already in range-add mode → tap cancels (back
+              to neutral state).
+            - If the rider has saved periods → tap opens the manager
+              drawer (review / remove / add another).
+            - If they have none → tap goes straight into range-add
+              mode so the empty case is fast.
+            -
+            Hidden in review mode so the review CTAs don't compete. */}
         {!reviewMode && (
           <View style={s.unavailRow}>
             <TouchableOpacity
               style={s.unavailPill}
               onPress={() => {
-                if (!rangeMode) {
-                  setRangeMode('awaiting_start');
-                  setRangeStart(null);
-                  setRangeEnd(null);
-                  setRangeReason('');
-                } else {
-                  // Cancel range mode
+                if (rangeMode) {
+                  // Cancel any in-flight range selection
                   setRangeMode(null);
                   setRangeStart(null);
                   setRangeEnd(null);
                   setRangeReason('');
+                  return;
                 }
+                if (unavailableDates.length > 0) {
+                  setManagerOpen(true);
+                  return;
+                }
+                // Empty state → straight into add mode
+                setRangeMode('awaiting_start');
+                setRangeStart(null);
+                setRangeEnd(null);
+                setRangeReason('');
               }}
               activeOpacity={0.7}
               hitSlop={HIT}
@@ -926,9 +976,7 @@ export default function CalendarScreen({ navigation, route }) {
                   ? 'Tap a start date'
                   : rangeMode === 'awaiting_end'
                   ? 'Now tap an end date'
-                  : unavailableDates.length > 0
-                  ? `Unavailable · ${unavailableDates.length}`
-                  : '+ Mark unavailable'}
+                  : "Tell your coach when you're unavailable"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1042,7 +1090,17 @@ export default function CalendarScreen({ navigation, route }) {
                 const dayActs = dayKey ? (activityMap[dayKey] || []) : [];
                 const dragTarget = dayActs.find(a => a.type === 'ride') || dayActs[0] || null;
                 const dragPlan = dragTarget ? plans.find(p => p.id === dragTarget._planId) : null;
-                const cellDragGesture = (dragTarget && dragPlan?.startDate)
+                // Coach-suggested sessions (added or modified in the
+                // current review diff) can't be dragged — the rider
+                // needs to accept or dismiss the suggestion first.
+                // Letting them move a proposed change before agreeing
+                // to it muddles the "what is the coach actually
+                // suggesting?" mental model and creates an awkward
+                // "did I just override the coach by accident?" path.
+                const isSuggestedDragTarget = reviewMode
+                  && dragTarget
+                  && (dragTarget._diffKind === 'added' || dragTarget._diffKind === 'modified');
+                const cellDragGesture = (dragTarget && dragPlan?.startDate && !isSuggestedDragTarget)
                   ? makeDragGesture(dragTarget, dragTarget._planId, dragPlan.startDate)
                   : null;
 
@@ -1132,7 +1190,16 @@ export default function CalendarScreen({ navigation, route }) {
                             <View style={s.goalFlagDot} />
                           </View>
                         )}
-                        {items.map((item, idx) => {
+                        {/* Activity icons / metrics — hidden on
+                            unavailable days. Showing them with a
+                            strike-through implied "this is what
+                            you'd be doing if you weren't unavailable"
+                            which read as noise; the rider already
+                            knows the day is blocked. The unavailable
+                            background + struck-through date number
+                            communicate the state without listing what
+                            won't happen. */}
+                        {!isUnavailable && items.map((item, idx) => {
                           const iconName = item.isCrossTraining
                             ? getActivityIcon(item.ctKey || 'other')
                             : getActivityIcon(item._activity);
@@ -1243,7 +1310,15 @@ export default function CalendarScreen({ navigation, route }) {
           {selectedActivities.map(activity => {
             const plan = plans.find(p => p.id === activity._planId);
             const planStartDate = plan?.startDate;
-            const dragGesture = planStartDate
+            // Lock drag on coach-suggested sessions (added / modified
+            // in the current review diff). The rider needs to commit
+            // or dismiss before they can rearrange — otherwise we'd
+            // get into a state where the rider's already moved a
+            // suggestion before deciding whether they wanted it,
+            // which makes the Apply / Dismiss decision murky.
+            const isSuggested = reviewMode
+              && (activity._diffKind === 'added' || activity._diffKind === 'modified');
+            const dragGesture = (planStartDate && !isSuggested)
               ? makeDragGesture(activity, activity._planId, planStartDate)
               : null;
             // Per-card selection state. The card that's currently
@@ -1341,14 +1416,17 @@ export default function CalendarScreen({ navigation, route }) {
                         Selected → ✕ to collapse (absorbs the old
                         standalone Cancel button from the action
                         bar). Otherwise → ≡ + "Hold to drag" hint,
-                        replacing the top banner. */}
+                        replacing the top banner. Suggested cards
+                        (added / modified in review mode) hide the
+                        drag hint because drag is locked off until
+                        the rider accepts or dismisses. */}
                     {activity.completed ? (
                       <View style={s.checkDone}><Text style={s.checkMark}>{'\u2713'}</Text></View>
                     ) : isSelected ? (
                       <View style={s.actCloseBadge}>
                         <MaterialCommunityIcons name="close" size={14} color={colors.textMuted} />
                       </View>
-                    ) : (
+                    ) : isSuggested ? null : (
                       <View style={s.actDragHint}>
                         <MaterialCommunityIcons name="drag-horizontal-variant" size={16} color={colors.textFaint} />
                         <Text style={s.actDragHintText}>Hold to drag</Text>
@@ -1531,6 +1609,114 @@ export default function CalendarScreen({ navigation, route }) {
           onCancel={() => setUnavailabilityOpen(false)}
           onSave={() => { setUnavailabilityOpen(false); load(); }}
         />
+
+        {/* Unavailability manager — bottom sheet listing every saved
+            period (consecutive same-reason days are grouped). The
+            rider can tap × on any period to delete the whole range,
+            or tap "+ Add another period" to drop into the inline
+            range-selection mode on the calendar. */}
+        <Modal
+          visible={managerOpen}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setManagerOpen(false)}
+        >
+          <Pressable style={s.managerBackdrop} onPress={() => setManagerOpen(false)}>
+            <Pressable style={s.managerSheet} onPress={(e) => e.stopPropagation()}>
+              <View style={s.managerHandle} />
+              <View style={s.managerHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.managerTitle}>Days you can&apos;t ride</Text>
+                  <Text style={s.managerSub}>
+                    Travel, work, family — anything that keeps you off the bike. Your coach plans around these.
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setManagerOpen(false)} hitSlop={HIT}>
+                  <Text style={s.managerDone}>Done</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={s.managerScroll} contentContainerStyle={s.managerScrollContent}>
+                {unavailablePeriods.length === 0 ? (
+                  <Text style={s.managerEmpty}>
+                    No periods marked yet. Tap below to add one.
+                  </Text>
+                ) : (
+                  unavailablePeriods.map(period => {
+                    const isSingleDay = period.start === period.end;
+                    const fmt = (iso) => {
+                      const [y, m, d] = iso.split('-').map(Number);
+                      const dt = new Date(y, m - 1, d);
+                      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                      const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                      return `${days[dt.getDay()]} ${dt.getDate()} ${months[dt.getMonth()]}`;
+                    };
+                    const label = isSingleDay
+                      ? fmt(period.start)
+                      : `${fmt(period.start)} \u2192 ${fmt(period.end)}`;
+                    const dayCount = period.dates.length;
+                    return (
+                      <View key={period.start + '_' + period.end} style={s.managerPeriodCard}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.managerPeriodDates}>
+                            {label}
+                            <Text style={s.managerPeriodCount}> · {dayCount} day{dayCount === 1 ? '' : 's'}</Text>
+                          </Text>
+                          {period.reason ? (
+                            <Text style={s.managerPeriodReason} numberOfLines={2}>{period.reason}</Text>
+                          ) : (
+                            <Text style={s.managerPeriodReasonEmpty}>No reason added</Text>
+                          )}
+                        </View>
+                        <TouchableOpacity
+                          onPress={async () => {
+                            // Remove every day in this period one by
+                            // one. removeUnavailableDate already returns
+                            // the new array — we just trust the last
+                            // call's return value to refresh local
+                            // state. Could be a single batch op later;
+                            // periods are typically <14 days so the
+                            // overhead is negligible.
+                            let next = unavailableDates;
+                            for (const d of period.dates) {
+                              try {
+                                next = await removeUnavailableDate(d);
+                              } catch {}
+                            }
+                            setUnavailableDatesState(next || []);
+                          }}
+                          hitSlop={HIT}
+                          style={s.managerRemoveBtn}
+                          accessibilityLabel="Remove this unavailable period"
+                        >
+                          <MaterialCommunityIcons name="close" size={16} color={colors.textMid} />
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })
+                )}
+
+                <TouchableOpacity
+                  style={s.managerAddBtn}
+                  onPress={() => {
+                    setManagerOpen(false);
+                    // Drop straight into range-selection mode on the
+                    // calendar — same UX as tapping the empty-state
+                    // pill, just reachable from the manager.
+                    setRangeMode('awaiting_start');
+                    setRangeStart(null);
+                    setRangeEnd(null);
+                    setRangeReason('');
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="plus" size={16} color={colors.primary} />
+                  <Text style={s.managerAddText}>Add another period</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </SafeAreaView>
     </View>
   );
@@ -1895,4 +2081,57 @@ const s = StyleSheet.create({
   actStripBtnOpen: { backgroundColor: 'rgba(232,69,139,0.14)' },
   actStripBtnDelete: { backgroundColor: 'rgba(239,68,68,0.08)' },
   actStripBtnText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
+
+  // ── Unavailability manager drawer ─────────────────────────────────
+  // Bottom sheet listing every saved unavailable period with × to
+  // remove and a "+ Add another period" footer that drops into the
+  // inline range-selection mode on the calendar.
+  managerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  managerSheet: {
+    backgroundColor: colors.bg,
+    borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    paddingTop: 12, paddingBottom: 24,
+    maxHeight: '85%',
+    borderTopWidth: 0.5, borderColor: colors.border,
+  },
+  managerHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: colors.primary, opacity: 0.4,
+    alignSelf: 'center', marginBottom: 6,
+  },
+  managerHeader: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    paddingHorizontal: 20, paddingVertical: 12,
+    borderBottomWidth: 0.5, borderBottomColor: colors.border,
+  },
+  managerTitle: { fontSize: 17, fontWeight: '600', fontFamily: FF.semibold, color: colors.text },
+  managerSub: { fontSize: 12, fontFamily: FF.regular, color: colors.textMid, marginTop: 4, lineHeight: 17 },
+  managerDone: { fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary, paddingTop: 2 },
+  managerScroll: { maxHeight: '100%' },
+  managerScrollContent: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 8 },
+  managerEmpty: {
+    fontSize: 13, color: colors.textMuted, fontFamily: FF.regular,
+    textAlign: 'center', paddingVertical: 14, lineHeight: 19,
+  },
+  managerPeriodCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.32)',
+    borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    marginBottom: 8,
+  },
+  managerPeriodDates: { fontSize: 14, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
+  managerPeriodCount: { fontSize: 12, fontWeight: '400', fontFamily: FF.regular, color: colors.textMuted },
+  managerPeriodReason: { fontSize: 12, fontFamily: FF.regular, color: colors.textMid, marginTop: 4, lineHeight: 17 },
+  managerPeriodReasonEmpty: { fontSize: 12, fontFamily: FF.regular, color: colors.textFaint, marginTop: 4, fontStyle: 'italic' },
+  managerRemoveBtn: { padding: 6, borderRadius: 14 },
+  managerAddBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: 'rgba(232,69,139,0.08)',
+    borderWidth: 1, borderColor: 'rgba(232,69,139,0.32)',
+    borderStyle: 'dashed',
+    borderRadius: 12, paddingVertical: 12, marginTop: 4, marginBottom: 8,
+  },
+  managerAddText: { fontSize: 14, fontWeight: '500', fontFamily: FF.semibold, color: colors.primary },
 });

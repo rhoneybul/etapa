@@ -78,6 +78,7 @@ import SupportChatScreen   from './src/screens/SupportChatScreen';
 import ChangeCoachScreen   from './src/screens/ChangeCoachScreen';
 import PaywallScreen       from './src/screens/PaywallScreen';
 import BeginnerProgramScreen from './src/screens/BeginnerProgramScreen';
+import GettingStartedScreen  from './src/screens/GettingStartedScreen';
 import QuickPlanScreen       from './src/screens/QuickPlanScreen';
 import RegeneratePlanScreen  from './src/screens/RegeneratePlanScreen';
 import PlanVersionHistoryScreen from './src/screens/PlanVersionHistoryScreen';
@@ -461,6 +462,7 @@ function App() {
               <Stack.Screen name="ChangeCoach"    component={ChangeCoachScreen} />
               <Stack.Screen name="Paywall"        component={PaywallScreen} />
               <Stack.Screen name="BeginnerProgram" component={BeginnerProgramScreen} />
+              <Stack.Screen name="GettingStarted" component={GettingStartedScreen} />
               <Stack.Screen name="QuickPlan"      component={QuickPlanScreen} />
               <Stack.Screen name="RegeneratePlan" component={RegeneratePlanScreen} />
               <Stack.Screen name="PlanVersionHistory" component={PlanVersionHistoryScreen} />

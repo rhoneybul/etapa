@@ -96,6 +96,7 @@ export const api = {
     // The CheckInScreen header pill calls this directly — no AsyncStorage
     // fallback any more, the server is the source of truth.
     reschedule:   (id, isoDate)      => request('POST', `/api/checkins/${id}/reschedule`, { isoDate }),
+    optOutTip:    (tipId)            => request('POST', `/api/checkins/tip/${encodeURIComponent(tipId)}/opt-out`),
   },
   // Per-user check-in schedule (day, time, timezone, enabled).
   checkinPrefs: {

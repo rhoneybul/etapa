@@ -404,17 +404,21 @@ export default function ActivityDetailScreen({ navigation, route }) {
   const allBikeOptions = BIKE_KEYS; // ['road','gravel','mtb','ebike','indoor']
   const showBikeRow = isRide;
 
-  // Export is available on every ride that has enough metadata to
-  // generate a workout file — either a `structure` block (intervals
-  // / threshold / tempo with explicit warmup/main/cooldown) OR at
-  // minimum a duration so we can produce a steady-state file. This
-  // replaces the previous "indoor session detection" heuristic
-  // (subType matching + title regex) which mis-classified outdoor
-  // sessions a rider wanted to take indoors today, AND blocked
-  // genuinely indoor sessions that didn't happen to mention "indoor"
-  // in their title. Now: every ride exports if it can; the rider
-  // decides whether they're riding indoors or out.
-  const canExport = isRide
+  // Export is available only on indoor sessions — i.e. rides where
+  // the rider's selected bike for this session is the indoor trainer.
+  // Outdoor / gravel / MTB / e-bike rides hide the affordance because
+  // a .zwo file isn't useful when you're heading out the door. Riders
+  // who want to take an outdoor session indoors today can swap the
+  // bike chip to "indoor" first; that flips this flag and the export
+  // row appears.
+  //
+  // The previous "any ride with enough metadata" heuristic surfaced
+  // the row on every session, which read as noise on the 80% of rides
+  // that nobody was ever going to export. Per Apr 30 product call we
+  // gate it tightly to indoor-only for now and revisit if outdoor
+  // riders ask for it.
+  const isIndoorRide = isRide && activity?.bikeType === 'indoor';
+  const canExport = isIndoorRide
     && (!!activity?.structure || (typeof activity?.durationMins === 'number' && activity.durationMins > 0));
 
   // The export action is now a single "open the modal" affordance.

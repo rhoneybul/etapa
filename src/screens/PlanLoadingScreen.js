@@ -159,12 +159,12 @@ export default function PlanLoadingScreen({ navigation, route }) {
     if (elapsedSecs >= totalSec - 15) return 'Almost ready\u2026';
     return `~${estimatedReadyAt.current.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   })();
-  const etaSub = (() => {
-    const totalSec = ETA_TARGET_MS / 1000;
-    if (elapsedSecs >= totalSec) return 'Any moment now';
-    const remainingMin = Math.max(0, Math.ceil((totalSec - elapsedSecs) / 60));
-    return remainingMin <= 1 ? 'in under a minute' : `in about ${remainingMin} min`;
-  })();
+  // The "in about X min" sub-line under READY BY was removed — riders
+  // found it redundant next to the explicit clock-time. The derivation
+  // is left here as a comment in case we want to surface remaining time
+  // somewhere else (e.g. a lockscreen widget), but it's not currently
+  // rendered:
+  //   const remainingMin = Math.max(0, Math.ceil((ETA_TARGET_MS / 1000 - elapsedSecs) / 60));
 
   // Plan-generation abandon: user left before the plan finished generating.
   // This is its own important funnel stage — plan generation takes 10-30s
@@ -663,7 +663,12 @@ export default function PlanLoadingScreen({ navigation, route }) {
             <View style={s.etaStat}>
               <Text style={s.etaStatKey}>READY BY</Text>
               <Text style={[s.etaStatVal, s.etaStatValAccent]}>{etaLabel}</Text>
-              <Text style={s.etaStatSub}>{etaSub}</Text>
+              {/* Sub-line "in about X min" intentionally removed — riders
+                  flagged it as redundant noise alongside the explicit
+                  ready-by clock time. We keep the elapsed counter on the
+                  left for "is this still going?" reassurance, and the
+                  ready-by time on the right for "when am I getting it
+                  back?" — that's enough info without doubling up. */}
             </View>
           </View>
 

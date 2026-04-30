@@ -25,6 +25,8 @@ const {
   crisisResourcesPayload,
   sanitiseSuggestions,
 } = require('../lib/checkinSafety');
+const { getCatalog } = require('../lib/coachTipsCatalog');
+const { selectTips } = require('../lib/coachTipsSelector');
 const router = express.Router();
 
 const _fetch = typeof globalThis.fetch === 'function'
@@ -89,6 +91,44 @@ router.get('/', async (req, res, next) => {
       .limit(50);
     if (error) throw error;
     res.json({ checkins: (data || []).map(checkinToClient) });
+  } catch (err) { next(err); }
+});
+
+// ── POST /tip/:tipId/opt-out ───────────────────────────────────────────────
+// User opts out of a coach tip. Adds tipId to user_prefs.coachTipHistory.optedOutIds.
+// Must come before /:id routes to avoid parameter collision.
+router.post('/tip/:tipId/opt-out', async (req, res, next) => {
+  try {
+    const tipId = req.params.tipId;
+    if (!tipId) return res.status(400).json({ error: 'tipId required' });
+
+    // Load user prefs
+    const { data: userPrefs } = await supabase
+      .from('user_preferences')
+      .select('prefs')
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+    const prefs = userPrefs?.prefs || {};
+    const tipHistory = prefs.coachTipHistory || { sentIds: [], optedOutIds: [] };
+
+    // Add tipId to optedOutIds if not already there
+    const optedOutIds = tipHistory.optedOutIds || [];
+    if (!optedOutIds.includes(tipId)) {
+      optedOutIds.push(tipId);
+    }
+
+    // Update prefs
+    const updatedTipHistory = {
+      sentIds: tipHistory.sentIds || [],
+      optedOutIds,
+    };
+    const updatedPrefs = { ...prefs, coachTipHistory: updatedTipHistory };
+
+    await supabase
+      .from('user_preferences')
+      .upsert({ user_id: req.user.id, prefs: updatedPrefs }, { onConflict: 'user_id' });
+
+    res.json({ ok: true });
   } catch (err) { next(err); }
 });
 
@@ -206,9 +246,18 @@ router.post('/:id/respond', async (req, res, next) => {
     let suggestions = null;
     try {
       suggestions = await generateSuggestions(req.user.id, checkin, responses);
+      // Merge with any existing suggestions on the row (the coachIntro
+      // tips were written at create time — we mustn't blow them away
+      // when Claude's suggestions land at submit time). Keep coachIntro
+      // around so the rider can still see the warm intro alongside the
+      // structured plan changes.
+      const existingCoachIntro = checkin?.suggestions?.coachIntro || null;
+      const merged = existingCoachIntro
+        ? { coachIntro: existingCoachIntro, ...suggestions }
+        : suggestions;
       await supabase
         .from('coach_checkins')
-        .update({ suggestions })
+        .update({ suggestions: merged })
         .eq('id', checkinId);
     } catch (e) {
       console.warn('[checkins] generateSuggestions failed:', e?.message);
@@ -343,9 +392,16 @@ router.post('/:id/physio-notes', async (req, res, next) => {
           ...(checkin.responses || {}),
           physioNotes: String(notes),
         });
+        // Same merge guard as the main submit path — preserve the
+        // coachIntro that was written at create time so the warm
+        // intro stays alongside the regenerated structured changes.
+        const existingCoachIntro = checkin?.suggestions?.coachIntro || null;
+        const merged = existingCoachIntro
+          ? { coachIntro: existingCoachIntro, ...newSuggestions }
+          : newSuggestions;
         await supabase
           .from('coach_checkins')
-          .update({ suggestions: newSuggestions })
+          .update({ suggestions: merged })
           .eq('id', checkin.id);
       } catch (e) {
         console.warn('[checkins] post-physio suggestions failed:', e?.message);
@@ -646,6 +702,95 @@ async function sendCheckin(userId, { trigger = 'scheduled', force = false } = {}
 
   const id = uid();
   const now = new Date();
+
+  // Generate coach intro tips
+  let coachIntro = null;
+  try {
+    // Look up the plan config to get fitness_level and to count sessions
+    const { data: planConfig } = await supabase
+      .from('plan_configs')
+      .select('fitness_level')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const fitnessLevel = planConfig?.[0]?.fitness_level || 'beginner';
+
+    // Count completed sessions this week
+    const { data: thisWeekActivities } = await supabase
+      .from('activities')
+      .select('completed')
+      .eq('plan_id', plan.id)
+      .eq('week', weekNum)
+      .eq('user_id', userId);
+    const completedSessions = (thisWeekActivities || []).filter(a => a.completed).length;
+
+    // Count missed sessions (last 2 weeks)
+    const prevWeekNum = Math.max(1, weekNum - 1);
+    const { data: recentActivities } = await supabase
+      .from('activities')
+      .select('completed, type')
+      .eq('plan_id', plan.id)
+      .in('week', [prevWeekNum, weekNum])
+      .eq('user_id', userId)
+      .neq('type', 'rest'); // exclude rest days
+    const missedRecently = (recentActivities || []).filter(a => !a.completed).length;
+
+    // Get user's tip history
+    const { data: userPrefs } = await supabase
+      .from('user_preferences')
+      .select('prefs')
+      .eq('user_id', userId)
+      .maybeSingle();
+    const prefs = userPrefs?.prefs || {};
+    const tipHistory = prefs.coachTipHistory || { sentIds: [], optedOutIds: [] };
+
+    // Get user's location and current month for region/season-aware tips
+    const userLocation = prefs.location?.country || null;
+    const currentMonth = new Date().getMonth() + 1; // 1-12
+
+    // Select tips
+    const catalog = getCatalog();
+    const gearInventory = prefs.gearInventory || {};
+    const selectedTips = selectTips(catalog, {
+      level: fitnessLevel,
+      weeksIn: weekNum,
+      sentIds: tipHistory.sentIds || [],
+      optedOutIds: tipHistory.optedOutIds || [],
+      completedSessions,
+      missedRecently,
+      country: userLocation,
+      currentMonth: currentMonth,
+      gearInventory,
+    });
+
+    // Record sent tip ids in user_prefs
+    const newSentIds = [
+      ...(tipHistory.sentIds || []),
+      ...selectedTips.map(t => t.id),
+    ];
+    const updatedTipHistory = {
+      sentIds: newSentIds,
+      optedOutIds: tipHistory.optedOutIds || [],
+    };
+    const updatedPrefs = { ...prefs, coachTipHistory: updatedTipHistory };
+
+    await supabase
+      .from('user_preferences')
+      .upsert({ user_id: userId, prefs: updatedPrefs }, { onConflict: 'user_id' });
+
+    coachIntro = {
+      greeting: 'Hi from your coach,',
+      tips: selectedTips.map(t => ({
+        id: t.id,
+        category: t.category,
+        body: t.body,
+      })),
+    };
+  } catch (e) {
+    console.warn('[checkins] Failed to generate coach intro:', e.message);
+    // Fail gracefully — the check-in proceeds without the intro
+  }
+
   const row = {
     id,
     user_id: userId,
@@ -655,6 +800,7 @@ async function sendCheckin(userId, { trigger = 'scheduled', force = false } = {}
     scheduled_at: now.toISOString(),
     sent_at: now.toISOString(),
     trigger: force ? `${trigger}_force` : trigger,
+    suggestions: coachIntro ? { coachIntro } : null,
   };
   const { error } = await supabase.from('coach_checkins').insert(row);
   if (error) throw error;

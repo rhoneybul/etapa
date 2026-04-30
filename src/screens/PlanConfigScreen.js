@@ -6,7 +6,7 @@
  *  Step 4: Duration (if no target date) & start date
  */
 import React, { useEffect, useState, useRef } from 'react';
-import { View, ScrollView, Text, TouchableOpacity, StyleSheet, TextInput, Alert, Keyboard, Switch } from 'react-native';
+import { View, ScrollView, Text, TouchableOpacity, StyleSheet, TextInput, Alert, Keyboard, Switch, Modal, Pressable } from 'react-native';
 import { colors, fontFamily } from '../theme';
 import useScreenGuard from '../hooks/useScreenGuard';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -248,6 +248,24 @@ export default function PlanConfigScreen({ navigation, route }) {
   // Abandon tracking — set true right before advancing to PlanLoading. Used
   // by the beforeRemove listener to distinguish progress from back/close.
   const completedRef = useRef(false);
+
+  // Generate-button lock. Prevents the rider double-tapping the final
+  // "Generate my plan" button and accidentally kicking off two
+  // generations (the original tap was async-await, so a fast second
+  // tap would slip past the early returns and re-enter handleContinue
+  // before navigation.replace had fired). The ref is the synchronous
+  // guard inside handleContinue; the state drives the visible
+  // disabled / "Generating…" label on the button.
+  const submittingRef = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Inline edit drawers for the "regular ride" and "long ride day"
+  // summary pills on the Build-your-week step. Replaces the old
+  // setStep(3) / setStep(4) navigation that yanked the rider back
+  // to a previous step just to tweak one value. Now they edit in
+  // place via a bottom sheet, then keep building their week.
+  const [manageRidesOpen, setManageRidesOpen] = useState(false);
+  const [manageLongRideOpen, setManageLongRideOpen] = useState(false);
 
   // If coming from a plan adjustment, pre-fill from existing config and jump to step 3
   const adjustmentDefaults = adjustment && existingConfig ? {
@@ -740,6 +758,13 @@ export default function PlanConfigScreen({ navigation, route }) {
   };
 
   const handleContinue = async () => {
+    // Synchronous double-tap guard: if a previous handleContinue is
+    // already running (i.e. we're past the step-bump branch and on
+    // our way to PlanLoading) the second tap returns immediately.
+    // We check the ref (set sync below) BEFORE any async work to
+    // close the small window where a fast double-tap could slip past
+    // the disabled-button visual state in WizardShell.
+    if (submittingRef.current) return;
     if (step < TOTAL_STEPS) {
       if (step === 1) analytics.events.configStepCompleted(1, { fitnessLevel });
       if (step === 2) {
@@ -775,17 +800,26 @@ export default function PlanConfigScreen({ navigation, route }) {
       }
       if (step === 6 && coachId) {
         // Coach already chosen during the OnboardingTour (which now
-        // requires it). Skip the redundant step 7 picker entirely and
-        // run plan generation directly. If for some reason coachId
-        // isn't set (e.g. a legacy user reaching here without having
-        // done onboarding), we still advance to step 7 so they can
-        // pick before generating.
-        // fall through to completion logic below
+        // requires it). Skip the redundant step 7 picker but DO NOT
+        // skip step 8 — that's the weekly check-in opt-in, which
+        // matters for every rider regardless of whether they picked
+        // a coach earlier. The earlier version of this branch fell
+        // straight through to plan generation, which had the
+        // accidental effect of hiding the check-in question from
+        // anyone with a coach already set (which is most users).
+        setStep(8);
+        return;
       } else {
         setStep(step + 1);
         return;
       }
     }
+
+    // Lock the button as soon as we've committed to plan generation.
+    // ref is the sync guard for handleContinue's own re-entry check;
+    // state drives the WizardShell's disabled / "Generating…" UI.
+    submittingRef.current = true;
+    setSubmitting(true);
 
     // Step 8 (Weekly check-in) — save preferences before plan generation
     try {
@@ -868,6 +902,11 @@ export default function PlanConfigScreen({ navigation, route }) {
       navigation.replace('PlanLoading', { goal, config, requirePaywall, defaultPlan });
     } catch (err) {
       console.warn('[PlanConfig] navigation.replace(PlanLoading) failed:', err);
+      // Release the generate-button lock so the rider can retry.
+      // Without this they'd see a permanently disabled "Generating…"
+      // button and have to back out / restart the app.
+      submittingRef.current = false;
+      setSubmitting(false);
       // Surface the failure so the user doesn't sit on a dead screen.
       Alert.alert(
         'Couldn\'t start generation',
@@ -1114,10 +1153,13 @@ export default function PlanConfigScreen({ navigation, route }) {
               {recurringRides.length > 0 && (
                 <TouchableOpacity
                   style={s.buildWeekSummaryPill}
-                  onPress={() => setStep(3)}
+                  // Open the inline manage-rides drawer instead of
+                  // setStep(3) — the rider can edit / delete without
+                  // losing their place on the Build-your-week step.
+                  onPress={() => setManageRidesOpen(true)}
                   activeOpacity={0.7}
                   accessibilityLabel="Edit regular rides"
-                  accessibilityHint="Goes back to the regular-rides step where you can tap a ride to change it."
+                  accessibilityHint="Opens a panel to edit or remove your regular rides without leaving this step."
                 >
                   <Text style={s.buildWeekSummaryText}>
                     {recurringRides.length === 1
@@ -1130,9 +1172,12 @@ export default function PlanConfigScreen({ navigation, route }) {
               {effectiveLongRideDay && (
                 <TouchableOpacity
                   style={s.buildWeekSummaryPill}
-                  onPress={() => setStep(4)}
+                  // Same treatment — open the day-picker drawer in
+                  // place rather than navigating back to step 4.
+                  onPress={() => setManageLongRideOpen(true)}
                   activeOpacity={0.7}
                   accessibilityLabel="Change long-ride day"
+                  accessibilityHint="Opens a panel to change which day your long ride lands on."
                 >
                   <Text style={s.buildWeekSummaryText}>
                     Long ride · {DAYS.find(d => d.key === effectiveLongRideDay)?.short}
@@ -1622,7 +1667,7 @@ export default function PlanConfigScreen({ navigation, route }) {
     5: 'Build your week',
     6: (goal.targetDate || lockWeeksForTitle) ? 'When should it start?' : 'Duration & start date',
     7: 'Choose your coach',
-    8: 'Weekly check-in?',
+    8: 'A weekly check-in from your coach?',
   };
 
   const subtitles = {
@@ -1633,7 +1678,7 @@ export default function PlanConfigScreen({ navigation, route }) {
     5: 'Tap a day to place sessions. Stack as many as you like.',
     6: (goal.targetDate || lockWeeksForTitle) ? 'Pick a start date for your training plan' : 'How long and when to begin',
     7: 'Pick a coaching personality that fits your style',
-    8: 'A quick five-question note from your coach so they can shape next week around how this one went. You can change this any time in Settings.',
+    8: "Five quick questions from your coach each week so they can shape the next one around how this one went. Pick a day and time that fits your routine \u2014 or skip it and we won\'t bother you.",
   };
 
   if (_screenGuard.blocked) return _screenGuard.render();
@@ -1657,17 +1702,48 @@ export default function PlanConfigScreen({ navigation, route }) {
         onClose={() => navigation.popToTop()}
         onContinue={handleContinue}
         continueLabel={
-          step === TOTAL_STEPS
-            ? 'Generate my plan'
-            // Step 7 becomes the final step when the coach has
-            // already been picked in onboarding (we skip step 7 and step 8).
-            // Step 8 is always final (if not skipped). Show "Generate my plan"
-            // for the effective final step.
-            : (step === 7 && coachId ? 'Generate my plan' : 'Continue')
+          // While generation is in flight (post final-step tap), swap
+          // the label to "Generating…" so the rider has visual
+          // confirmation their tap was received and there's no doubt
+          // they should wait rather than retap.
+          submitting
+            ? 'Generating\u2026'
+            : step === TOTAL_STEPS
+              ? 'Generate my plan'
+              // Step 7 becomes the final step when the coach has
+              // already been picked in onboarding (we skip step 7 and step 8).
+              // Step 8 is always final (if not skipped). Show "Generate my plan"
+              // for the effective final step.
+              : (step === 7 && coachId ? 'Generate my plan' : 'Continue')
         }
-        continueDisabled={!canContinue()}
-        skipLabel={step === 3 ? 'Skip — I don\'t have regular rides' : undefined}
-        onSkip={step === 3 ? () => setStep(4) : undefined}
+        // Lock the button while generation is in flight so the rider
+        // can't double-tap and accidentally start two plan-gen runs.
+        continueDisabled={!canContinue() || submitting}
+        skipLabel={
+          step === 3
+            ? 'Skip — I don\'t have regular rides'
+            // Step 8: explicit skip affordance for the weekly check-in
+            // opt-in. Tapping Skip flips the toggle off and runs the
+            // same final-step handler as Continue would, so the rider
+            // doesn't have to fight the toggle to opt out.
+            : step === 8
+              ? "No thanks \u2014 don't send me check-ins"
+              : undefined
+        }
+        onSkip={
+          step === 3
+            ? () => setStep(4)
+            : step === 8
+              ? () => {
+                  setCheckinEnabled(false);
+                  // Tiny delay so React commits the state change before
+                  // handleContinue reads it. Without this the save
+                  // path could occasionally read the stale `true` and
+                  // schedule a check-in the rider just opted out of.
+                  setTimeout(() => handleContinue(), 0);
+                }
+              : undefined
+        }
       >
         {renderStep()}
       </WizardShell>
@@ -1679,6 +1755,128 @@ export default function PlanConfigScreen({ navigation, route }) {
         onDelete={deleteRecurringRideFromSheet}
         onCancel={closeRideSheet}
       />
+
+      {/* Manage regular rides — inline drawer triggered by the
+          "regular ride" Edit pill on the Build-your-week step.
+          Lists every recurring ride with edit + delete affordances,
+          plus a "+ add another" button. Tapping a card opens the
+          existing RecurringRideSheet stacked on top; the manage
+          drawer stays mounted underneath so closing the edit sheet
+          drops the rider straight back into the list. */}
+      <Modal
+        visible={manageRidesOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setManageRidesOpen(false)}
+      >
+        <Pressable style={s.drawerBackdrop} onPress={() => setManageRidesOpen(false)}>
+          <Pressable style={s.drawerSheet} onPress={(e) => e.stopPropagation()}>
+            <View style={s.drawerHandle} />
+            <View style={s.drawerHeader}>
+              <Text style={s.drawerTitle}>Regular rides</Text>
+              <TouchableOpacity onPress={() => setManageRidesOpen(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <Text style={s.drawerDone}>Done</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={s.drawerScroll} contentContainerStyle={s.drawerScrollContent} keyboardShouldPersistTaps="handled">
+              {recurringRides.length === 0 ? (
+                <Text style={s.drawerEmpty}>No regular rides yet. Add one and your plan will be built around it.</Text>
+              ) : (
+                recurringRides.map(ride => (
+                  <View key={ride.id} style={s.organisedCard}>
+                    <TouchableOpacity
+                      onPress={() => openEditRideSheet(ride)}
+                      activeOpacity={0.7}
+                      accessibilityLabel="Edit this regular ride"
+                    >
+                      <View style={s.organisedCardRow}>
+                        <View style={[s.organisedDayBadge, { backgroundColor: colors.primary + '18' }]}>
+                          <Text style={s.organisedDayBadgeText}>{DAYS.find(d => d.key === ride.day)?.short || ride.day}</Text>
+                        </View>
+                        <View style={s.organisedCardDetails}>
+                          {ride.durationMins ? <Text style={s.organisedDetail}>{ride.durationMins} min</Text> : null}
+                          {ride.distanceKm ? <Text style={s.organisedDetail}>{ride.distanceKm} km</Text> : null}
+                          {ride.elevationM ? <Text style={s.organisedDetail}>{ride.elevationM}m elev</Text> : null}
+                        </View>
+                      </View>
+                      {ride.notes ? <Text style={s.organisedNotes}>{ride.notes}</Text> : null}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={s.organisedRemoveHit}
+                      onPress={() => removeRecurringRide(ride.id)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityLabel="Remove this regular ride"
+                    >
+                      <Text style={s.organisedRemove}>{'\u00D7'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+
+              <TouchableOpacity style={s.organisedAddTrigger} onPress={openAddRideSheet} activeOpacity={0.7}>
+                <Text style={s.organisedAddTriggerPlus}>+</Text>
+                <Text style={s.organisedAddTriggerText}>Add a regular ride</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Manage long-ride day — inline drawer triggered by the "Long
+          ride · DAY" Edit pill. Same day-pill row that step 4 uses;
+          tapping a day commits the change and dismisses the drawer
+          so the rider doesn't have to hunt for a Save button. */}
+      <Modal
+        visible={manageLongRideOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setManageLongRideOpen(false)}
+      >
+        <Pressable style={s.drawerBackdrop} onPress={() => setManageLongRideOpen(false)}>
+          <Pressable style={s.drawerSheet} onPress={(e) => e.stopPropagation()}>
+            <View style={s.drawerHandle} />
+            <View style={s.drawerHeader}>
+              <Text style={s.drawerTitle}>Long ride day</Text>
+              <TouchableOpacity onPress={() => setManageLongRideOpen(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <Text style={s.drawerDone}>Done</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={s.drawerScrollContent}>
+              <Text style={s.drawerHint}>
+                Pick the day your longest ride should land on. Your coach will schedule your biggest session here each week.
+              </Text>
+              <View style={s.longRideDayRow}>
+                {DAYS.map(d => {
+                  const isSelected = effectiveLongRideDay === d.key;
+                  const hasRecurring = recurringRides.some(r => r.day === d.key);
+                  return (
+                    <TouchableOpacity
+                      key={d.key}
+                      style={[s.longRidePill, isSelected && s.longRidePillSelected, !isSelected && hasRecurring && s.longRidePillHint]}
+                      onPress={() => {
+                        handleSelectLongRideDay(d.key);
+                        // Close the drawer after a short tick so the
+                        // pink-fill state animation registers visually
+                        // before the sheet slides away.
+                        setTimeout(() => setManageLongRideOpen(false), 120);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[s.longRidePillText, isSelected && s.longRidePillTextSelected]}>{d.short}</Text>
+                      {hasRecurring && !isSelected && <View style={s.longRidePillHintDot} />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {recurringRides.length > 0 && (
+                <Text style={s.longRideDayHint}>
+                  Days with a dot already have a regular ride. You can pick the same day or a different one.
+                </Text>
+              )}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </>
   );
 }
@@ -2117,5 +2315,52 @@ const s = StyleSheet.create({
     marginTop: 12,
     paddingHorizontal: 16,
     lineHeight: 17,
+  },
+
+  // ── Inline edit drawers (Build-your-week step) ─────────────────────
+  // Two bottom-sheet drawers: regular-rides manager + long-ride day
+  // picker. Backdrop dims the wizard underneath; tap-outside or the
+  // header Done link dismisses. Sheet anchored to the bottom with
+  // rounded top corners + small handle to read as "swipeable" even
+  // though we don't bind a swipe gesture (tap-Done covers it).
+  drawerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  drawerSheet: {
+    backgroundColor: colors.bg,
+    borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    paddingTop: 12,
+    paddingBottom: 24,
+    maxHeight: '85%',
+    borderTopWidth: 0.5, borderColor: colors.border,
+  },
+  drawerHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: colors.primary, opacity: 0.4,
+    alignSelf: 'center',
+    marginBottom: 6,
+  },
+  drawerHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 10,
+    borderBottomWidth: 0.5, borderBottomColor: colors.border,
+  },
+  drawerTitle: {
+    fontSize: 17, fontWeight: '600', fontFamily: FF.semibold, color: colors.text,
+  },
+  drawerDone: {
+    fontSize: 15, fontWeight: '600', fontFamily: FF.semibold, color: colors.primary,
+  },
+  drawerScroll: { maxHeight: '100%' },
+  drawerScrollContent: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
+  drawerEmpty: {
+    fontSize: 13, color: colors.textMuted, fontFamily: FF.regular,
+    textAlign: 'center', paddingVertical: 14, lineHeight: 19,
+  },
+  drawerHint: {
+    fontSize: 13, color: colors.textMid, fontFamily: FF.regular,
+    lineHeight: 19, marginBottom: 16,
   },
 });
