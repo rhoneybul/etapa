@@ -17,7 +17,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Modal, Platform,
+  View, Text, TouchableOpacity, StyleSheet, Modal, Platform, Pressable,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fontFamily } from '../theme';
@@ -91,8 +91,9 @@ export default function RescheduleCheckInSheet({ visible, onCancel, onConfirm })
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onCancel} statusBarTranslucent>
-      <View style={s.backdrop}>
-        <View style={s.sheet}>
+      {/* Backdrop tap closes the sheet (cancels reschedule). Inner Pressable stops propagation so taps on the surface don't dismiss. */}
+      <Pressable style={s.backdrop} onPress={onCancel}>
+        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
           <View style={s.grab} />
 
           <View style={s.headerRow}>
@@ -182,8 +183,8 @@ export default function RescheduleCheckInSheet({ visible, onCancel, onConfirm })
           <TouchableOpacity style={s.cancelBtn} onPress={onCancel} activeOpacity={0.7}>
             <Text style={s.cancelText}>Cancel</Text>
           </TouchableOpacity>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }

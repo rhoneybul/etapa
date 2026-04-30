@@ -25,7 +25,7 @@
  *   onCancel()
  */
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable } from 'react-native';
 import { colors, fontFamily } from '../theme';
 import { computeBikeSwap, BIKE_LABELS } from '../utils/bikeSwap';
 
@@ -67,8 +67,9 @@ export default function BikeSwapModal({
   if (result.blocked) {
     return (
       <Modal visible transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
-        <View style={s.backdrop}>
-          <View style={s.sheet}>
+        {/* Backdrop tap closes the sheet (cancels). Inner Pressable stops propagation so taps on the surface don't dismiss. */}
+        <Pressable style={s.backdrop} onPress={onCancel}>
+          <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
             <View style={s.grab} />
             <Text style={[s.title, { color: '#F87171' }]}>This swap won't work well</Text>
             <Text style={s.body}>{result.blockReason}</Text>
@@ -89,8 +90,8 @@ export default function BikeSwapModal({
             <TouchableOpacity style={s.dangerLink} onPress={apply} activeOpacity={0.7}>
               <Text style={s.dangerLinkText}>Override anyway — use the trimmed version</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     );
   }
@@ -104,8 +105,9 @@ export default function BikeSwapModal({
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
-      <View style={s.backdrop}>
-        <View style={s.sheet}>
+      {/* Backdrop tap closes the sheet (cancels). Inner Pressable stops propagation so taps on the surface don't dismiss. */}
+      <Pressable style={s.backdrop} onPress={onCancel}>
+        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
           <View style={s.grab} />
           <Text style={s.title}>Switching to {toLabel.toLowerCase()}?</Text>
           <Text style={s.body}>
@@ -144,8 +146,8 @@ export default function BikeSwapModal({
           <TouchableOpacity style={s.cancelBtn} onPress={onCancel} activeOpacity={0.7}>
             <Text style={s.cancelText}>Cancel</Text>
           </TouchableOpacity>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }

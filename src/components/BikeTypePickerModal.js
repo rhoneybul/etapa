@@ -22,7 +22,7 @@
  *   onCancel()    dismissed without picking
  */
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fontFamily } from '../theme';
 import { BIKE_LABELS, BIKE_KEYS } from '../utils/bikeSwap';
@@ -58,8 +58,9 @@ export default function BikeTypePickerModal({ visible, activity, currentBike, on
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
-      <View style={s.backdrop}>
-        <View style={s.sheet}>
+      {/* Backdrop tap closes the sheet (cancels). Inner Pressable stops propagation so taps on the surface don't dismiss. */}
+      <Pressable style={s.backdrop} onPress={onCancel}>
+        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
           <View style={s.grab} />
           <Text style={s.title}>Switch bike for this session</Text>
           <Text style={s.subtitle}>
@@ -95,8 +96,8 @@ export default function BikeTypePickerModal({ visible, activity, currentBike, on
           <TouchableOpacity style={s.cancelBtn} onPress={onCancel} activeOpacity={0.7}>
             <Text style={s.cancelText}>Cancel</Text>
           </TouchableOpacity>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }

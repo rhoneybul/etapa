@@ -41,10 +41,20 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, ActivityIndicator,
+  View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, ActivityIndicator, Pressable,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system';
+// Use the legacy expo-file-system surface explicitly. The default
+// `expo-file-system` import path was deprecated in SDK 54 in favour
+// of the new File / Directory classes — and on the deprecated path
+// every call surfaces a verbose "Method writeAsStringAsync imported
+// from expo-file-system is deprecated" message that the rider was
+// seeing as a download error in the export modal. Importing from
+// `/legacy` opts us into the old surface intentionally and silences
+// the warning. A future PR can migrate to the new File / Directory
+// API outright; for now this stops the user-facing error and keeps
+// existing call sites unchanged.
+import * as FileSystem from 'expo-file-system/legacy';
 import { colors, fontFamily } from '../theme';
 import { buildWorkoutExportUrl } from '../services/api';
 import analytics from '../services/analyticsService';
@@ -270,11 +280,16 @@ export default function ExportInstructionsModal({ visible, activity, planId, onC
       }
 
       // 5) Write the file. writeAsStringAsync defaults to UTF-8, which
-      // is what the .zwo XML wants.
+      // is what the .zwo XML wants. We deliberately do NOT surface the
+      // raw error message — the legacy FileSystem API was leaking long
+      // deprecation paragraphs into the user-facing error pane (riders
+      // were seeing the full "expo-file-system imported from..." text
+      // in red). Keep the message short and actionable.
       try {
         await FileSystem.writeAsStringAsync(localUri, content);
       } catch (err) {
-        setErrorMsg(`Couldn\'t write the file to your device. ${err?.message || ''}`.trim());
+        console.warn('[export-modal] writeAsStringAsync failed:', err?.message || err);
+        setErrorMsg("Couldn't save the workout file to your device. Please try again, or restart the app if it keeps happening.");
         setPhase('error');
         return;
       }
@@ -350,8 +365,9 @@ export default function ExportInstructionsModal({ visible, activity, planId, onC
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onCancel} statusBarTranslucent>
-      <View style={s.backdrop}>
-        <View style={s.sheet}>
+      {/* Backdrop tap closes the sheet (cancels). Inner Pressable stops propagation so taps on the surface don't dismiss. */}
+      <Pressable style={s.backdrop} onPress={onCancel}>
+        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
           <View style={s.grab} />
 
           <View style={s.headerRow}>
@@ -469,8 +485,8 @@ export default function ExportInstructionsModal({ visible, activity, planId, onC
               </>
             )}
           </ScrollView>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }

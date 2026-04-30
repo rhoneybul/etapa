@@ -29,7 +29,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ScrollView,
-  KeyboardAvoidingView, Platform, Keyboard, Alert,
+  KeyboardAvoidingView, Platform, Keyboard, Alert, Pressable,
 } from 'react-native';
 import { colors, fontFamily } from '../theme';
 
@@ -140,12 +140,13 @@ export default function RecurringRideSheet({
       onRequestClose={handleCancel}
       statusBarTranslucent
     >
-      <View style={s.backdrop}>
+      {/* Backdrop tap closes the sheet (cancels). Inner Pressable stops propagation so taps on the surface don't dismiss. */}
+      <Pressable style={s.backdrop} onPress={handleCancel}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={s.kav}
         >
-          <View style={s.sheet}>
+          <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
             <View style={s.grab} />
             <View style={s.header}>
               <TouchableOpacity onPress={handleCancel} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -277,9 +278,9 @@ export default function RecurringRideSheet({
                 <Text style={s.ghostBtnText}>Cancel</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </Pressable>
         </KeyboardAvoidingView>
-      </View>
+      </Pressable>
     </Modal>
   );
 }

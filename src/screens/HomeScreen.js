@@ -3530,28 +3530,40 @@ const s = StyleSheet.create({
   },
 
   // ── Weekly check-in banner ────────────────────────────────────────
+  // Tightened padding pass (Apr 30): the dismiss × was previously top-
+  // aligned against `flex-start` while the body text wrapped tall,
+  // pulling the × visually away from the title and leaving an awkward
+  // empty corner under it. New layout: row centres on the cross-axis,
+  // horizontal padding 16 / vertical 14 for balanced breathing room,
+  // and the × shrinks to a tighter tap target tied to its glyph.
   checkinBanner: {
     marginHorizontal: 16, marginTop: 12, marginBottom: 4,
-    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: colors.primary + '14',
     borderRadius: 14,
     borderWidth: 0.5, borderColor: colors.primary + '55',
-    padding: 14,
+    paddingVertical: 14, paddingHorizontal: 16,
   },
-  checkinBannerLeft: { flex: 1 },
+  checkinBannerLeft: { flex: 1, paddingRight: 4 },
   checkinBannerEyebrow: {
     fontSize: 9, fontWeight: '600', color: colors.primary,
-    letterSpacing: 0.6, fontFamily: FF.semibold, marginBottom: 4,
+    letterSpacing: 0.6, fontFamily: FF.semibold, marginBottom: 6,
   },
   checkinBannerTitle: {
-    fontSize: 14, fontWeight: '600', color: colors.text,
-    fontFamily: FF.semibold, marginBottom: 3,
+    fontSize: 15, fontWeight: '600', color: colors.text,
+    fontFamily: FF.semibold, marginBottom: 4,
   },
   checkinBannerBody: {
-    fontSize: 12, color: colors.textMid, fontFamily: FF.regular, lineHeight: 17,
+    fontSize: 13, color: colors.textMid, fontFamily: FF.regular, lineHeight: 18,
   },
-  checkinBannerDismiss: { padding: 4 },
-  checkinBannerX: { fontSize: 14, color: colors.textMuted },
+  // Dismiss × — tighter target now that the row is vertically centred.
+  // Padding 6 keeps the tap area generous via hitSlop on the parent
+  // without bloating the visible button.
+  checkinBannerDismiss: {
+    padding: 6,
+    marginRight: -4, // visually nudges the × flush with the right edge
+  },
+  checkinBannerX: { fontSize: 14, color: colors.textMuted, lineHeight: 14 },
   upcomingCardActions: {
     flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8,
   },

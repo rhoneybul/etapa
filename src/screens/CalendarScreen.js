@@ -47,6 +47,12 @@ export default function CalendarScreen({ navigation, route }) {
   // they read clearly as "blocked" without being aggressive about it.
   const [unavailableDates, setUnavailableDatesState] = useState([]);
   const [unavailabilityOpen, setUnavailabilityOpen] = useState(false);
+
+  // Range selection mode for marking unavailable days
+  const [rangeMode, setRangeMode] = useState(null); // null | 'awaiting_start' | 'awaiting_end' | 'review'
+  const [rangeStart, setRangeStart] = useState(null); // YYYY-MM-DD string or null
+  const [rangeEnd, setRangeEnd] = useState(null); // YYYY-MM-DD string or null
+  const [rangeReason, setRangeReason] = useState(''); // reason string
   // Built once per render — { 'YYYY-MM-DD': true } so day-cell rendering
   // can lookup in O(1) without iterating the array per cell.
   const unavailableSet = useMemo(() => {
@@ -504,6 +510,74 @@ export default function CalendarScreen({ navigation, route }) {
       });
   };
 
+  // Handle day cell tap while in range mode
+  const handleRangeDayTap = useCallback((tappedDate) => {
+    const isoDate = `${tappedDate.getFullYear()}-${String(tappedDate.getMonth() + 1).padStart(2, '0')}-${String(tappedDate.getDate()).padStart(2, '0')}`;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Past dates can't be selected
+    if (tappedDate < today) {
+      return;
+    }
+
+    if (rangeMode === 'awaiting_start') {
+      setRangeStart(isoDate);
+      setRangeMode('awaiting_end');
+    } else if (rangeMode === 'awaiting_end') {
+      // If tapping before rangeStart, reset to new start
+      if (isoDate < rangeStart) {
+        setRangeStart(isoDate);
+        setRangeMode('awaiting_end');
+      } else {
+        setRangeEnd(isoDate);
+        setRangeMode('review');
+      }
+    }
+  }, [rangeMode, rangeStart]);
+
+  // Save the selected range to unavailableDates
+  const handleSaveRange = useCallback(async () => {
+    if (!rangeStart || !rangeEnd) return;
+
+    const dates = [];
+    const current = new Date(rangeStart);
+    const end = new Date(rangeEnd);
+
+    while (current <= end) {
+      dates.push(current.toISOString().slice(0, 10));
+      current.setDate(current.getDate() + 1);
+    }
+
+    // Persist to storage via addUnavailableDates with the reason
+    const { addUnavailableDates } = await import('../services/storageService');
+    const savedDates = await addUnavailableDates(dates, rangeReason.trim());
+
+    // Update local state with persisted result
+    setUnavailableDatesState(savedDates);
+
+    // Exit range mode
+    setRangeMode(null);
+    setRangeStart(null);
+    setRangeEnd(null);
+    setRangeReason('');
+  }, [rangeStart, rangeEnd, rangeReason]);
+
+  // Format range dates for display (e.g. "Mon 4 May → Fri 8 May (5 days)")
+  const formatRangeDates = (startStr, endStr) => {
+    const start = new Date(startStr);
+    const end = new Date(endStr);
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    const startStr2 = `${dayNames[start.getDay()]} ${start.getDate()} ${monthNames[start.getMonth()]}`;
+    const endStr2 = `${dayNames[end.getDay()]} ${end.getDate()} ${monthNames[end.getMonth()]}`;
+
+    const diffDays = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+    return `${startStr2} → ${endStr2} (${diffDays} day${diffDays !== 1 ? 's' : ''})`;
+  };
+
   // When pendingChanges arrives, jump to the EARLIEST affected calendar
   // date AND select it so the day-detail panel below the grid auto-shows
   // what the coach is proposing.
@@ -821,25 +895,80 @@ export default function CalendarScreen({ navigation, route }) {
 
         {/* "+ Mark unavailable" pill — sits below the month nav rather
             than in the header proper because the header is already
-            tight (back arrow + title). Tap opens the UnavailabilitySheet
-            which lets the rider tag travel / work / family days the
-            coach should plan around. We hide it in review mode so the
-            review CTAs don't compete for attention. */}
+            tight (back arrow + title). Tap enters range mode where the
+            rider taps a start date, then an end date, and can add a reason.
+            Range dates are added to the local unavailable list.
+            We hide it in review mode so the review CTAs don't compete for attention. */}
         {!reviewMode && (
           <View style={s.unavailRow}>
             <TouchableOpacity
               style={s.unavailPill}
-              onPress={() => setUnavailabilityOpen(true)}
+              onPress={() => {
+                if (!rangeMode) {
+                  setRangeMode('awaiting_start');
+                  setRangeStart(null);
+                  setRangeEnd(null);
+                  setRangeReason('');
+                } else {
+                  // Cancel range mode
+                  setRangeMode(null);
+                  setRangeStart(null);
+                  setRangeEnd(null);
+                  setRangeReason('');
+                }
+              }}
               activeOpacity={0.7}
               hitSlop={HIT}
             >
               <MaterialCommunityIcons name="calendar-remove" size={13} color={colors.primary} />
               <Text style={s.unavailPillText}>
-                {unavailableDates.length > 0
+                {rangeMode === 'awaiting_start'
+                  ? 'Tap a start date'
+                  : rangeMode === 'awaiting_end'
+                  ? 'Now tap an end date'
+                  : unavailableDates.length > 0
                   ? `Unavailable · ${unavailableDates.length}`
                   : '+ Mark unavailable'}
               </Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Range review panel — appears when start and end dates are selected */}
+        {rangeMode === 'review' && rangeStart && rangeEnd && (
+          <View style={s.rangeReviewPanel}>
+            <View style={s.rangeReviewLeft}>
+              <Text style={s.rangeReviewText}>
+                {formatRangeDates(rangeStart, rangeEnd)}
+              </Text>
+            </View>
+            <TextInput
+              style={s.rangeReasonInput}
+              placeholder="Add a reason (optional)"
+              placeholderTextColor={colors.textFaint}
+              value={rangeReason}
+              onChangeText={setRangeReason}
+              maxLength={60}
+            />
+            <View style={s.rangeReviewButtons}>
+              <TouchableOpacity
+                style={s.rangeButtonCancel}
+                onPress={() => {
+                  setRangeMode(null);
+                  setRangeStart(null);
+                  setRangeEnd(null);
+                  setRangeReason('');
+                }}
+              >
+                <Text style={s.rangeButtonCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.rangeButtonSave}
+                onPress={handleSaveRange}
+              >
+                <Text style={s.rangeButtonSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -916,6 +1045,21 @@ export default function CalendarScreen({ navigation, route }) {
                 const cellDragGesture = (dragTarget && dragPlan?.startDate)
                   ? makeDragGesture(dragTarget, dragTarget._planId, dragPlan.startDate)
                   : null;
+
+                // Range selection state for this cell
+                const isRangeStartCell = !!isoForCell && isoForCell === rangeStart;
+                const isRangeEndCell = !!isoForCell && isoForCell === rangeEnd;
+                const isInRange = !!isoForCell && rangeStart && rangeEnd && isoForCell >= rangeStart && isoForCell <= rangeEnd;
+                const isRangeLeftEdge = isInRange && isoForCell === rangeStart;
+                const isRangeRightEdge = isInRange && isoForCell === rangeEnd;
+
+                // Past date check for range mode
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const cellDate = day ? new Date(year, month, day) : null;
+                const isPastDate = cellDate && cellDate < today;
+                const isRangeSelectable = !isPastDate && rangeMode;
+
                 const cellInner = (
                   <TouchableOpacity
                     // Key includes year/month so cells remount on month
@@ -940,10 +1084,16 @@ export default function CalendarScreen({ navigation, route }) {
                       // to see). When `isSelected` is true we skip the
                       // override — the pink fill carries enough signal.
                       isUnavailable && !isSelected(day) && s.dayCellUnavailable,
+                      // Range selection highlight
+                      (isRangeStartCell || isRangeEndCell) && s.dayCellRangeEdge,
+                      isInRange && !isRangeStartCell && !isRangeEndCell && s.dayCellInRange,
+                      isPastDate && rangeMode && s.dayCellPastDisabled,
                     ]}
                     onPress={() => {
                       if (!day) return;
-                      if (movingActivity) {
+                      if (rangeMode) {
+                        handleRangeDayTap(new Date(year, month, day));
+                      } else if (movingActivity) {
                         handlePlaceActivity(new Date(year, month, day));
                       } else {
                         const tappedDate = new Date(year, month, day);
@@ -960,7 +1110,7 @@ export default function CalendarScreen({ navigation, route }) {
                         }
                       }
                     }}
-                    disabled={!day}
+                    disabled={!day || (isPastDate && rangeMode)}
                     activeOpacity={0.7}
                   >
                     {day ? (
@@ -1160,21 +1310,32 @@ export default function CalendarScreen({ navigation, route }) {
                         {activity.durationMins ? `${activity.durationMins} min` : ''}
                         {activity.effort ? ` \u00B7 ${activity.effort}` : ''}
                       </Text>
-                      {/* Modified — show the before-state on a second
-                          line so the rider can read both sides of the
-                          change at a glance. We don't try to be smart
-                          about which fields actually changed; the AI
-                          may have shifted multiple at once and surfacing
-                          all of them is cheaper than guessing wrong. */}
-                      {diffKind === 'modified' && activity._diffPrev && (
-                        <Text style={s.actDiffMeta}>
-                          was: {activity._diffPrev.distanceKm ? formatDistance(activity._diffPrev.distanceKm) : ''}
-                          {activity._diffPrev.distanceKm && activity._diffPrev.durationMins ? ' \u00B7 ' : ''}
-                          {activity._diffPrev.durationMins ? `${activity._diffPrev.durationMins} min` : ''}
-                          {activity._diffPrev.effort ? ` \u00B7 ${activity._diffPrev.effort}` : ''}
-                          {' \u2192 now'}
-                        </Text>
-                      )}
+                      {/* Modified — show the diff in plain English on a
+                          second line. Format: "Coach suggested: [old] →
+                          [new]" with the old values in faint grey and
+                          the new values in accent pink. Replaces the
+                          old orange italic "was: ... → now" treatment
+                          which left the sentence hanging and used a
+                          warning colour for what is just a proposed
+                          change (not an error). */}
+                      {diffKind === 'modified' && activity._diffPrev && (() => {
+                        const fmtParts = (a) => [
+                          a?.distanceKm ? formatDistance(a.distanceKm) : null,
+                          a?.durationMins ? `${a.durationMins} min` : null,
+                          a?.effort || null,
+                        ].filter(Boolean).join(' \u00B7 ');
+                        const before = fmtParts(activity._diffPrev);
+                        const after = fmtParts(activity);
+                        if (!before && !after) return null;
+                        return (
+                          <Text style={s.actDiffMeta}>
+                            <Text style={s.actDiffPrefix}>Coach suggested: </Text>
+                            <Text style={s.actDiffOld}>{before || '—'}</Text>
+                            <Text style={s.actDiffArrow}>{' \u2192 '}</Text>
+                            <Text style={s.actDiffNew}>{after || '—'}</Text>
+                          </Text>
+                        );
+                      })()}
                     </View>
                     {/* Right-side affordance. Completed → check.
                         Selected → ✕ to collapse (absorbs the old
@@ -1427,6 +1588,17 @@ const s = StyleSheet.create({
     color: colors.textFaint,
   },
 
+  // Range selection cells
+  dayCellRangeEdge: {
+    backgroundColor: 'rgba(232,69,139,0.2)',
+  },
+  dayCellInRange: {
+    backgroundColor: 'rgba(232,69,139,0.08)',
+  },
+  dayCellPastDisabled: {
+    opacity: 0.4,
+  },
+
   // "+ Mark unavailable" row — sits between the month nav and the day
   // headers. Right-aligned so it doesn't compete with the month title.
   unavailRow: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 16, marginBottom: 6 },
@@ -1437,6 +1609,32 @@ const s = StyleSheet.create({
     borderWidth: 0.5, borderColor: colors.primary + '50',
   },
   unavailPillText: { fontSize: 11, color: colors.primary, fontFamily: FF.medium, fontWeight: '500' },
+
+  // Range review panel — inline editing before save
+  rangeReviewPanel: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 16, paddingVertical: 10, marginBottom: 8,
+    backgroundColor: colors.surface, borderRadius: 12,
+    borderWidth: 1, borderColor: colors.primary + '30',
+  },
+  rangeReviewLeft: { flex: 0.4 },
+  rangeReviewText: { fontSize: 12, fontWeight: '500', fontFamily: FF.medium, color: colors.text },
+  rangeReasonInput: {
+    flex: 1, fontSize: 12, padding: 8, borderRadius: 8,
+    backgroundColor: colors.bg, borderWidth: 0.5, borderColor: colors.border,
+    color: colors.text, fontFamily: FF.regular,
+  },
+  rangeReviewButtons: { flexDirection: 'row', gap: 8 },
+  rangeButtonCancel: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg,
+  },
+  rangeButtonCancelText: { fontSize: 12, fontWeight: '500', color: colors.textMid, fontFamily: FF.medium },
+  rangeButtonSave: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+    backgroundColor: colors.primary,
+  },
+  rangeButtonSaveText: { fontSize: 12, fontWeight: '600', color: '#fff', fontFamily: FF.semibold },
   goalFlag: { marginTop: 2 },
   goalFlagSelected: { opacity: 0.9 },
   goalFlagDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary },
@@ -1650,10 +1848,19 @@ const s = StyleSheet.create({
     borderStyle: 'dashed', borderColor: colors.border,
     opacity: 0.55,
   },
+  // Coach-suggested diff line. Reads as "Coach suggested: <old> → <new>".
+  // The orange/italic treatment (was a warning palette) was misleading —
+  // a proposed change isn't an error, and orange against the dark
+  // surface read as "something went wrong". New treatment: muted prefix,
+  // faint-grey for the previous values, pink accent for the new values.
   actDiffMeta: {
-    fontSize: 11, color: '#F59E0B', fontFamily: FF.regular,
-    marginTop: 4, fontStyle: 'italic',
+    fontSize: 11, color: colors.textMuted, fontFamily: FF.regular,
+    marginTop: 4, lineHeight: 16,
   },
+  actDiffPrefix: { color: colors.textMuted, fontFamily: FF.medium, fontWeight: '500' },
+  actDiffOld:    { color: colors.textFaint, fontFamily: FF.regular },
+  actDiffArrow:  { color: colors.textFaint, fontFamily: FF.regular },
+  actDiffNew:    { color: colors.primary, fontFamily: FF.medium, fontWeight: '500' },
 
   // Right-side affordances on the activity card.
   // actDragHint: muted ≡ + "Hold to drag" caption, replaces the top

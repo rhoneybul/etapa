@@ -19,7 +19,7 @@
  */
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView,
+  View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Pressable,
 } from 'react-native';
 import { colors, fontFamily } from '../theme';
 
@@ -55,8 +55,9 @@ export default function ComingSoon({ config }) {
         statusBarTranslucent
         onRequestClose={() => setModalVisible(false)}
       >
-        <View style={s.modalOverlay}>
-          <View style={s.modalSheet}>
+        {/* Backdrop tap closes the sheet (cancels). Inner Pressable stops propagation so taps on the surface don't dismiss. */}
+        <Pressable style={s.modalOverlay} onPress={() => setModalVisible(false)}>
+          <Pressable style={s.modalSheet} onPress={(e) => e.stopPropagation()}>
             <View style={s.handle} />
             <Text style={s.modalTitle}>{title}</Text>
             <Text style={s.modalSub}>
@@ -82,8 +83,8 @@ export default function ComingSoon({ config }) {
             >
               <Text style={s.closeBtnText}>Got it</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </>
   );

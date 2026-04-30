@@ -208,6 +208,15 @@ export default function SettingsScreen({ navigation }) {
     try {
       const tz = Intl?.DateTimeFormat?.()?.resolvedOptions?.()?.timeZone || 'UTC';
       await api.checkinPrefs.save({ ...next, timezone: tz });
+      // Keep the legacy `coach_checkin` preference in lock-step with the
+      // Weekly check-in toggle. We removed the standalone Coach
+      // Check-ins selector (it was duplicating this control), but the
+      // server still reads coach_checkin in some flows — flip it to
+      // 'weekly' when on, 'none' when off so behaviour stays
+      // consistent for older server paths.
+      const desired = next?.enabled ? 'weekly' : 'none';
+      setPreferences(prev => ({ ...prev, coach_checkin: desired }));
+      api.preferences.update({ coach_checkin: desired }).catch(() => {});
     } catch {}
     setSavingCheckin(false);
   }, []);
@@ -1134,47 +1143,13 @@ export default function SettingsScreen({ navigation }) {
               />
             )}
           </View>
-          <View style={s.divider} />
-          <TouchableOpacity
-            style={s.row}
-            onPress={() => {
-              if (!subscription?.active) {
-                goPaywall({ fromHome: true, nextScreen: 'Home' });
-                return;
-              }
-              // 'Daily' / after_session was retired — the structured
-              // weekly check-in replaces both the per-session push and
-              // the old Monday summary. We now offer just Weekly / Off.
-              Alert.alert('Coach Check-ins', 'How often would you like check-ins from your coach?', [
-                {
-                  text: 'Weekly',
-                  onPress: async () => {
-                    setPreferences(prev => ({ ...prev, coach_checkin: 'weekly' }));
-                    await api.preferences.update({ coach_checkin: 'weekly' });
-                  },
-                },
-                {
-                  text: 'Off',
-                  onPress: async () => {
-                    setPreferences(prev => ({ ...prev, coach_checkin: 'none' }));
-                    await api.preferences.update({ coach_checkin: 'none' });
-                  },
-                  style: 'destructive',
-                },
-                { text: 'Cancel', style: 'cancel' },
-              ]);
-            }}
-          >
-            <View style={s.rowLeft}>
-              <View>
-                <Text style={s.rowTitle}>Coach Check-ins</Text>
-                <Text style={s.rowSub}>
-                  {preferences?.coach_checkin === 'none' ? 'Off' : 'Weekly'}
-                </Text>
-              </View>
-            </View>
-            <Text style={s.chevron}>{'\u203A'}</Text>
-          </TouchableOpacity>
+          {/* "Coach Check-ins" Weekly/Off selector was removed — it
+              duplicated the Weekly check-in card below. The Weekly
+              check-in (with day-of-week + time-of-day) is now the
+              single source of truth for coach-driven nudges. We keep
+              writing `coach_checkin: 'weekly'|'none'` server-side
+              tied to the Weekly check-in toggle so existing clients
+              don't break, but it's no longer user-configurable here. */}
 
           {/* Test push row — user-initiated diagnostic. Tap fires a
               server-side push at their own device so they can verify

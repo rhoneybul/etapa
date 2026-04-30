@@ -347,8 +347,21 @@ export default function PaywallScreen({ navigation, route }) {
   };
 
   const handleClose = () => {
-    // If we can go back, just go back.
-    // Otherwise dismiss the paywall and start the free preview.
+    // Critical UX: when the user dismisses the paywall after a plan was
+    // just created, we must NOT goBack() — that would pop us into the
+    // PlanLoading screen (already torn down) or land on Home without
+    // the `freshPlanId` guard, flashing the empty "Get started"
+    // welcome state for the brief moment between focus and plan
+    // hydration. Instead, route explicitly to nextScreen carrying
+    // freshPlanId so HomeScreen's loading state takes over until
+    // the new plan is visible.
+    if (nextParams?.freshPlanId) {
+      navigation.replace(nextScreen, { ...nextParams, freePreview: true });
+      return;
+    }
+    // Fallback: no fresh plan in flight — preserve the existing
+    // back-or-replace behaviour for paywalls opened from settings,
+    // feature gates, etc.
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {

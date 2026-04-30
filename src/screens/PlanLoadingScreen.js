@@ -120,6 +120,16 @@ export default function PlanLoadingScreen({ navigation, route }) {
     const sec = Math.max(120, Math.min(540, 60 + estimatedActivities * 4));
     return sec * 1000;
   })();
+  // Single source of truth for the "expected total minutes" value used
+  // in both the subtitle ("Takes about X minutes") AND the live "in
+  // about Y min" remaining-time card. Without this, the subtitle was
+  // using Math.round and the remaining card was using Math.ceil — so
+  // for any plan whose ETA wasn't a clean multiple of 60s the two
+  // labels disagreed by a minute (subtitle "4 minutes", remaining "5
+  // min") right out of the gate. We use Math.ceil here so we never
+  // under-promise: better to say "5 min" and finish in 4:30 than to
+  // promise 4 and overrun. Floored at 1 to keep the copy readable.
+  const EXPECTED_TOTAL_MIN = Math.max(1, Math.ceil(ETA_TARGET_MS / 60000));
   const [elapsedSecs, setElapsedSecs] = useState(0);
   const estimatedReadyAt = useRef(new Date(Date.now() + ETA_TARGET_MS));
   useEffect(() => {
@@ -624,9 +634,12 @@ export default function PlanLoadingScreen({ navigation, route }) {
             <Text style={s.subtitle}>{(() => {
               // Size-aware copy: a 30-activity plan reads "about 2 min",
               // a 108-activity plan reads "about 6 min". Plain English,
-              // no precision-creep ("5 min 24 sec" is hostile).
-              const m = Math.round(ETA_TARGET_MS / 1000 / 60);
-              const word = m <= 1 ? 'a minute or two' : `about ${m} minutes`;
+              // no precision-creep ("5 min 24 sec" is hostile). Reads
+              // from the shared EXPECTED_TOTAL_MIN so this label and
+              // the live "in about X min" remaining card always agree.
+              const word = EXPECTED_TOTAL_MIN <= 1
+                ? 'a minute or two'
+                : `about ${EXPECTED_TOTAL_MIN} minutes`;
               return `Takes ${word} — your AI coach is structuring your weeks around your goals.`;
             })()}</Text>
             <Text style={s.message}>{message}</Text>

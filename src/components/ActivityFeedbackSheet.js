@@ -56,7 +56,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, Modal, StyleSheet, TextInput,
-  KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Keyboard,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fontFamily } from '../theme';
@@ -101,6 +101,20 @@ export default function ActivityFeedbackSheet({
   const [effort, setEffort] = useState(null); // 'way_too_easy' | ...
   const [feel, setFeel] = useState(null);     // 'strong' | 'ok' | 'off'
   const [note, setNote] = useState('');
+  // Focus state on the note textarea — drives the small "Done" link
+  // shown next to the field label so the rider has a deliberate way
+  // to dismiss the keyboard. Multiline inputs don't get a Done key on
+  // the system keyboard, so we surface our own.
+  const [noteFocused, setNoteFocused] = useState(false);
+  // Ref to the ScrollView so we can scroll the Save button into view
+  // when the note input gains focus (keyboard up). Without this the
+  // button can sit below the keyboard edge on shorter phones.
+  const scrollRef = useRef(null);
+  // Soft cap on the optional note. 500 chars is enough for two solid
+  // sentences without becoming a journal entry. We show the live count
+  // under the field so the rider knows there's a limit before they
+  // hit it.
+  const NOTE_MAX = 500;
 
   // Two-phase state — 'form' until Save, then 'loading' while Haiku
   // generates the coach reaction, then 'reaction' once it lands. We keep
@@ -188,6 +202,7 @@ export default function ActivityFeedbackSheet({
               keyboard gently — same pattern as the organised-ride modal
               in WeekViewScreen. */}
           <ScrollView
+            ref={scrollRef}
             keyboardDismissMode="on-drag"
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
@@ -321,8 +336,24 @@ export default function ActivityFeedbackSheet({
             {/* ── Optional note ── two-line textarea. Placeholder primes
                 the rider with concrete examples so they answer in
                 plain words rather than the formal tone the old
-                check-in screen pulled out. */}
-            <Text style={[s.qLabel, { marginTop: 18 }]}>Anything to add? (optional)</Text>
+                check-in screen pulled out.
+
+                The label row also carries a small "Done" affordance
+                that surfaces while the input is focused — multiline
+                TextInputs don't render a Done key on the system
+                keyboard, so we provide our own. */}
+            <View style={s.noteLabelRow}>
+              <Text style={s.qLabel}>Anything to add? (optional)</Text>
+              {noteFocused ? (
+                <TouchableOpacity
+                  onPress={() => Keyboard.dismiss()}
+                  hitSlop={HIT}
+                  accessibilityLabel="Dismiss keyboard"
+                >
+                  <Text style={s.noteDoneLink}>Done</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
             <TextInput
               style={s.noteInput}
               placeholder="legs heavy on the climbs, found a great new road"
@@ -330,10 +361,34 @@ export default function ActivityFeedbackSheet({
               value={note}
               onChangeText={setNote}
               multiline
-              maxLength={300}
+              maxLength={NOTE_MAX}
+              onFocus={() => {
+                setNoteFocused(true);
+                // Scroll the input + Save button into view when the
+                // keyboard opens. Two RAFs to wait for layout settle.
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    scrollRef.current?.scrollToEnd?.({ animated: true });
+                  });
+                });
+              }}
+              onBlur={() => setNoteFocused(false)}
             />
-
-            <Text style={s.footerCaption}>This goes straight to your coach</Text>
+            {/* Live char counter — appears once the rider starts typing.
+                Subtle muted colour until they're within 50 of the cap,
+                then warms to a faint pink so they know they're close
+                to hitting the limit. */}
+            <View style={s.noteCounterRow}>
+              <Text style={s.footerCaption}>This goes straight to your coach</Text>
+              <Text
+                style={[
+                  s.noteCounter,
+                  note.length > NOTE_MAX - 50 && s.noteCounterWarn,
+                ]}
+              >
+                {note.length}/{NOTE_MAX}
+              </Text>
+            </View>
 
             <TouchableOpacity
               style={[s.saveBtn, saving && s.saveBtnDisabled]}
@@ -452,10 +507,35 @@ const s = StyleSheet.create({
     fontSize: 14, color: colors.text, fontFamily: FF.regular,
     minHeight: 60, textAlignVertical: 'top',
   },
+  // Label row above the optional-note input. Holds the question label
+  // on the left and a small "Done" link on the right that's only
+  // visible while the input is focused — gives multiline text input a
+  // way to dismiss the keyboard since the system one doesn't render a
+  // Done key on its own.
+  noteLabelRow: {
+    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
+    marginTop: 18, marginBottom: 10,
+  },
+  noteDoneLink: {
+    fontSize: 13, fontWeight: '600', fontFamily: FF.semibold,
+    color: colors.primary,
+    paddingHorizontal: 4, paddingBottom: 2,
+  },
+  // Caption row + char counter. Caption stays muted; counter sits on
+  // the right and warms to pink when the rider is within 50 chars of
+  // the cap so they know they're close to the limit.
+  noteCounterRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 8, marginBottom: 4,
+  },
+  noteCounter: {
+    fontSize: 11, color: colors.textFaint, fontFamily: FF.regular,
+    fontVariant: ['tabular-nums'],
+  },
+  noteCounterWarn: { color: colors.primary },
 
   footerCaption: {
     fontSize: 11, color: colors.textMuted, fontFamily: FF.regular,
-    marginTop: 12, marginBottom: 4,
   },
 
   saveBtn: {

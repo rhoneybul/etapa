@@ -54,6 +54,223 @@ const WAS_THIS_WRONG = {
 };
 const wasThisWrongLabel = (lang) => WAS_THIS_WRONG[lang] || WAS_THIS_WRONG.English;
 
+// ── Chat UI Strings (localized per language) ─────────────────────────
+// Covers header, empty state, input, suggestions, pending status, and labels.
+// All coach reply content stays server-driven and untouched.
+const CHAT_STRINGS = {
+  English: {
+    scopeLabelPlan: 'Your plan',
+    scopeLabelWeek: (n) => `Week ${n}`,
+    clear: 'Clear',
+    askYourCoach: 'Ask your coach',
+    chatWithYourCoach: 'Chat with your coach',
+    emptyStateBodyWeek: (n) => `Ask anything about week ${n} — session advice, nutrition, recovery, pacing, or adjustments.`,
+    emptyStateBodyPlan: 'Ask anything about your training plan — session advice, nutrition, recovery, pacing, or adjustments.',
+    inputPlaceholder: 'Ask your coach anything...',
+    weeklyLimitReached: 'Weekly limit reached — check back soon',
+    resend: 'Resend',
+    pendingThinking: 'Thinking…',
+    pendingLookingAtPlan: 'Looking at your plan…',
+    pendingGettingRight: "Getting this right — coaches don't rush…",
+    pendingStillGoing: "Still going. You can leave the chat — we'll send you a notification when your coach replies.",
+    suggestionsWeek: [
+      'How should I pace this week?',
+      'Is this week too hard for me?',
+      'What should I eat before the long ride?',
+      'Can I swap Tuesday and Thursday?',
+    ],
+    suggestionsPlan: [
+      'How is my plan structured?',
+      'Am I training enough for my goal?',
+      'What should I focus on this month?',
+      'How will the taper work?',
+    ],
+    coachLabel: 'Coach',
+  },
+  Spanish: {
+    scopeLabelPlan: 'Tu plan',
+    scopeLabelWeek: (n) => `Semana ${n}`,
+    clear: 'Limpiar',
+    askYourCoach: 'Pregunta a tu entrenador',
+    chatWithYourCoach: 'Conversa con tu entrenador',
+    emptyStateBodyWeek: (n) => `Pregunta lo que quieras sobre la semana ${n} — consejos de sesión, nutrición, recuperación, ritmo o cambios.`,
+    emptyStateBodyPlan: 'Pregunta lo que quieras sobre tu plan de entrenamiento — consejos de sesión, nutrición, recuperación, ritmo o cambios.',
+    inputPlaceholder: 'Pregunta a tu entrenador lo que quieras...',
+    weeklyLimitReached: 'Límite semanal alcanzado — vuelve pronto',
+    resend: 'Reenviar',
+    pendingThinking: 'Pensando…',
+    pendingLookingAtPlan: 'Mirando tu plan…',
+    pendingGettingRight: 'Consiguiendo hacerlo bien — los entrenadores no tienen prisa…',
+    pendingStillGoing: 'Seguimos aquí. Puedes salir del chat — te enviaremos una notificación cuando tu entrenador responda.',
+    suggestionsWeek: [
+      '¿Cómo debería mantener el ritmo esta semana?',
+      '¿Es esta semana demasiado dura para mí?',
+      '¿Qué debería comer antes del paseo largo?',
+      '¿Puedo cambiar martes y jueves?',
+    ],
+    suggestionsPlan: [
+      '¿Cómo está estructurado mi plan?',
+      '¿Estoy entrenando lo suficiente para mi objetivo?',
+      '¿En qué debería enfocarme este mes?',
+      '¿Cómo funcionará la fase de descarga?',
+    ],
+    coachLabel: 'Entrenador',
+  },
+  Catalan: {
+    scopeLabelPlan: 'El teu pla',
+    scopeLabelWeek: (n) => `Setmana ${n}`,
+    clear: 'Neteja',
+    askYourCoach: 'Pregunta al teu entrenador',
+    chatWithYourCoach: 'Conversa amb el teu entrenador',
+    emptyStateBodyWeek: (n) => `Pregunta el que vulguis sobre la setmana ${n} — consells de sessió, nutrició, recuperació, ritme o ajustos.`,
+    emptyStateBodyPlan: 'Pregunta el que vulguis sobre el teu pla d\'entrenament — consells de sessió, nutrició, recuperació, ritme o ajustos.',
+    inputPlaceholder: 'Pregunta al teu entrenador el que vulguis...',
+    weeklyLimitReached: 'Límit setmanal assolit — torna aviat',
+    resend: 'Reenviar',
+    pendingThinking: 'Pensant…',
+    pendingLookingAtPlan: 'Mirant el teu pla…',
+    pendingGettingRight: 'Buscant fer-ho bé — els entrenadors no es facen pressa…',
+    pendingStillGoing: 'Seguim aquí. Pots deixar el chat — et notificarem quan el teu entrenador respongui.',
+    suggestionsWeek: [
+      'Com hauria de mantenir el ritme aquesta setmana?',
+      'És aquesta setmana massa dura per a mi?',
+      'Què hauria de menjar abans de la sortida llarga?',
+      'Puc canviar dimarts i dijous?',
+    ],
+    suggestionsPlan: [
+      'Com està estructurat el meu pla?',
+      'Estic entrenant prou per al meu objectiu?',
+      'En què hauria de centrar-me aquest mes?',
+      'Com funcionarà la fase de descàrrega?',
+    ],
+    coachLabel: 'Entrenador',
+  },
+  Danish: {
+    scopeLabelPlan: 'Din plan',
+    scopeLabelWeek: (n) => `Uge ${n}`,
+    clear: 'Ryd',
+    askYourCoach: 'Spørg din træner',
+    chatWithYourCoach: 'Chat med din træner',
+    emptyStateBodyWeek: (n) => `Spørg hvad som helst om uge ${n} — øvelsesråd, ernæring, restitution, tempo eller justeringer.`,
+    emptyStateBodyPlan: 'Spørg hvad som helst om din træningsplan — øvelsesråd, ernæring, restitution, tempo eller justeringer.',
+    inputPlaceholder: 'Spørg din træner hvad som helst...',
+    weeklyLimitReached: 'Ugentlig grænse nået — kom snart tilbage',
+    resend: 'Gensend',
+    pendingThinking: 'Tænker…',
+    pendingLookingAtPlan: 'Kigger på din plan…',
+    pendingGettingRight: 'Får det til at stemme — trænere har travlt…',
+    pendingStillGoing: 'Stadig i gang. Du kan forlade chatten — vi sender dig en notifikation når din træner svarer.',
+    suggestionsWeek: [
+      'Hvordan skulle jeg tempo denne uge?',
+      'Er denne uge for hård for mig?',
+      'Hvad skulle jeg spise før den lange tur?',
+      'Kan jeg skifte tirsdag og torsdag?',
+    ],
+    suggestionsPlan: [
+      'Hvordan er min plan struktureret?',
+      'Træner jeg nok til mit mål?',
+      'Hvad skulle jeg fokusere på denne måned?',
+      'Hvordan virker den progressive nedtrapning?',
+    ],
+    coachLabel: 'Træner',
+  },
+  German: {
+    scopeLabelPlan: 'Dein Plan',
+    scopeLabelWeek: (n) => `Woche ${n}`,
+    clear: 'Löschen',
+    askYourCoach: 'Frag deinen Trainer',
+    chatWithYourCoach: 'Chat mit deinem Trainer',
+    emptyStateBodyWeek: (n) => `Frag alles über Woche ${n} — Trainingstipps, Ernährung, Erholung, Tempo oder Anpassungen.`,
+    emptyStateBodyPlan: 'Frag alles über deinen Trainingsplan — Trainingstipps, Ernährung, Erholung, Tempo oder Anpassungen.',
+    inputPlaceholder: 'Frag deinen Trainer alles...',
+    weeklyLimitReached: 'Wöchentliches Limit erreicht — komm bald zurück',
+    resend: 'Erneut senden',
+    pendingThinking: 'Überlege…',
+    pendingLookingAtPlan: 'Schau mir deinen Plan an…',
+    pendingGettingRight: 'Mache es richtig — Trainer haben keine Eile…',
+    pendingStillGoing: 'Läuft noch. Du kannst den Chat verlassen — wir senden dir eine Benachrichtigung, wenn dein Trainer antwortet.',
+    suggestionsWeek: [
+      'Wie sollte ich diese Woche das Tempo halten?',
+      'Ist diese Woche zu hart für mich?',
+      'Was sollte ich vor der langen Fahrt essen?',
+      'Kann ich Dienstag und Donnerstag tauschen?',
+    ],
+    suggestionsPlan: [
+      'Wie ist mein Plan strukturiert?',
+      'Trainiere ich genug für mein Ziel?',
+      'Worauf sollte ich mich diesen Monat konzentrieren?',
+      'Wie funktioniert das Tapering?',
+    ],
+    coachLabel: 'Trainer',
+  },
+  French: {
+    scopeLabelPlan: 'Ton plan',
+    scopeLabelWeek: (n) => `Semaine ${n}`,
+    clear: 'Effacer',
+    askYourCoach: 'Pose une question à ton coach',
+    chatWithYourCoach: 'Discute avec ton coach',
+    emptyStateBodyWeek: (n) => `Pose toute question sur la semaine ${n} — conseils de séance, nutrition, récupération, allure ou ajustements.`,
+    emptyStateBodyPlan: 'Pose toute question sur ton plan d\'entraînement — conseils de séance, nutrition, récupération, allure ou ajustements.',
+    inputPlaceholder: 'Pose une question à ton coach...',
+    weeklyLimitReached: 'Limite hebdomadaire atteinte — reviens bientôt',
+    resend: 'Renvoyer',
+    pendingThinking: 'Réflexion…',
+    pendingLookingAtPlan: 'Je regarde ton plan…',
+    pendingGettingRight: 'Je fais les choses bien — les coaches ne se pressent pas…',
+    pendingStillGoing: 'Ça y est. Tu peux quitter le chat — nous t\'enverrons une notification quand ton coach répondra.',
+    suggestionsWeek: [
+      'Comment devrais-je maintenir l\'allure cette semaine ?',
+      'Cette semaine est-elle trop difficile pour moi ?',
+      'Que devrais-je manger avant la longue sortie ?',
+      'Puis-je échanger mardi et jeudi ?',
+    ],
+    suggestionsPlan: [
+      'Comment mon plan est-il structuré ?',
+      'M\'entraîne-je assez pour mon objectif ?',
+      'Sur quoi devrais-je me concentrer ce mois ?',
+      'Comment fonctionnera l\'affutage ?',
+    ],
+    coachLabel: 'Coach',
+  },
+  Italian: {
+    scopeLabelPlan: 'Il tuo piano',
+    scopeLabelWeek: (n) => `Settimana ${n}`,
+    clear: 'Cancella',
+    askYourCoach: 'Chiedi al tuo allenatore',
+    chatWithYourCoach: 'Parla con il tuo allenatore',
+    emptyStateBodyWeek: (n) => `Chiedi quello che vuoi sulla settimana ${n} — consigli sulla sessione, nutrizione, recupero, ritmo o aggiustamenti.`,
+    emptyStateBodyPlan: 'Chiedi quello che vuoi sul tuo piano d\'allenamento — consigli sulla sessione, nutrizione, recupero, ritmo o aggiustamenti.',
+    inputPlaceholder: 'Chiedi al tuo allenatore quello che vuoi...',
+    weeklyLimitReached: 'Limite settimanale raggiunto — torna presto',
+    resend: 'Rinvia',
+    pendingThinking: 'Sto pensando…',
+    pendingLookingAtPlan: 'Sto guardando il tuo piano…',
+    pendingGettingRight: 'Lo sto facendo bene — gli allenatori non hanno fretta…',
+    pendingStillGoing: 'Sto ancora lavorando. Puoi lasciare la chat — ti manderemo una notifica quando il tuo allenatore risponde.',
+    suggestionsWeek: [
+      'Come dovrei mantenere il ritmo questa settimana?',
+      'Questa settimana è troppo dura per me?',
+      'Cosa dovrei mangiare prima della lunga uscita?',
+      'Posso scambiare martedì e giovedì?',
+    ],
+    suggestionsPlan: [
+      'Come è strutturato il mio piano?',
+      'Mi sto allenando abbastanza per il mio obiettivo?',
+      'Su cosa dovrei concentrarmi questo mese?',
+      'Come funziona l\'assottigliamento?',
+    ],
+    coachLabel: 'Allenatore',
+  },
+};
+
+// Helper to look up translated strings, with fallback to English
+const tr = (lang, key, ...args) => {
+  const strings = CHAT_STRINGS[lang] || CHAT_STRINGS.English;
+  const value = strings[key];
+  if (typeof value === 'function') return value(...args);
+  return value || CHAT_STRINGS.English[key];
+};
+
 const FF = fontFamily;
 
 /**
@@ -285,10 +502,10 @@ export default function CoachChatScreen({ navigation, route }) {
     if (!ts) return null;
     const elapsedMs = pendingTick - ts;
     if (elapsedMs < 1500) return null;
-    if (elapsedMs < 4000) return 'Thinking…';
-    if (elapsedMs < 8000) return 'Looking at your plan…';
-    if (elapsedMs < 15000) return 'Getting this right — coaches don\'t rush…';
-    return "Still going. You can leave the chat — we'll send you a notification when your coach replies.";
+    if (elapsedMs < 4000) return tr(chatLanguage, 'pendingThinking');
+    if (elapsedMs < 8000) return tr(chatLanguage, 'pendingLookingAtPlan');
+    if (elapsedMs < 15000) return tr(chatLanguage, 'pendingGettingRight');
+    return tr(chatLanguage, 'pendingStillGoing');
   };
   // Hydrate the chat-language preference whenever the active coach
   // changes. Falls back to the coach's primary language (first entry in
@@ -1332,7 +1549,7 @@ export default function CoachChatScreen({ navigation, route }) {
     setLastFailedMsg(null);
   };
 
-  const scopeLabel = weekNum ? `Week ${weekNum}` : 'Your plan';
+  const scopeLabel = weekNum ? tr(chatLanguage, 'scopeLabelWeek', weekNum) : tr(chatLanguage, 'scopeLabelPlan');
 
   if (_screenGuard.blocked) return _screenGuard.render();
 
@@ -1385,7 +1602,7 @@ export default function CoachChatScreen({ navigation, route }) {
                 </>
               ) : (
                 <>
-                  <Text style={s.headerTitle}>Ask your coach</Text>
+                  <Text style={s.headerTitle}>{tr(chatLanguage, 'askYourCoach')}</Text>
                   <Text style={s.headerScope}>{scopeLabel}</Text>
                 </>
               );
@@ -1393,7 +1610,7 @@ export default function CoachChatScreen({ navigation, route }) {
           </View>
           {messages.length > 0 ? (
             <TouchableOpacity onPress={handleClearChat} hitSlop={HIT}>
-              <Text style={s.clearBtn}>Clear</Text>
+              <Text style={s.clearBtn}>{tr(chatLanguage, 'clear')}</Text>
             </TouchableOpacity>
           ) : <View style={{ width: 40 }} />}
         </View>
@@ -1519,22 +1736,12 @@ export default function CoachChatScreen({ navigation, route }) {
                 <View style={s.emptyIcon}>
                   <Text style={s.emptyIconText}>?</Text>
                 </View>
-                <Text style={s.emptyTitle}>Chat with your coach</Text>
+                <Text style={s.emptyTitle}>{tr(chatLanguage, 'chatWithYourCoach')}</Text>
                 <Text style={s.emptyDesc}>
-                  Ask anything about {weekNum ? `week ${weekNum}` : 'your training plan'} {'\u2014'} session advice, nutrition, recovery, pacing, or adjustments.
+                  {weekNum ? tr(chatLanguage, 'emptyStateBodyWeek', weekNum) : tr(chatLanguage, 'emptyStateBodyPlan')}
                 </Text>
                 <View style={s.suggestions}>
-                  {(weekNum ? [
-                    'How should I pace this week?',
-                    'Is this week too hard for me?',
-                    'What should I eat before the long ride?',
-                    'Can I swap Tuesday and Thursday?',
-                  ] : [
-                    'How is my plan structured?',
-                    'Am I training enough for my goal?',
-                    'What should I focus on this month?',
-                    'How will the taper work?',
-                  ]).map((q, i) => (
+                  {(weekNum ? tr(chatLanguage, 'suggestionsWeek') : tr(chatLanguage, 'suggestionsPlan')).map((q, i) => (
                     <TouchableOpacity
                       key={i}
                       style={s.suggestionChip}
@@ -1588,7 +1795,7 @@ export default function CoachChatScreen({ navigation, route }) {
                         Clipboard.setStringAsync(msg.content);
                       }},
                       ...(isUser ? [{
-                        text: 'Resend',
+                        text: tr(chatLanguage, 'resend'),
                         onPress: () => handleResend(msg.content),
                       }] : []),
                       { text: 'Cancel', style: 'cancel' },
@@ -1603,7 +1810,7 @@ export default function CoachChatScreen({ navigation, route }) {
                   style={[s.bubble, msg.role === 'user' ? s.bubbleUser : s.bubbleCoach]}
                 >
                   {msg.role === 'assistant' && (
-                    <Text style={s.bubbleLabel}>{getCoach(planConfig?.coachId)?.name || 'Coach'}</Text>
+                    <Text style={s.bubbleLabel}>{getCoach(planConfig?.coachId)?.name || tr(chatLanguage, 'coachLabel')}</Text>
                   )}
                   {msg.role === 'assistant' ? (
                     // Pending + no text yet: thinking spinner with
@@ -1650,7 +1857,7 @@ export default function CoachChatScreen({ navigation, route }) {
                           disabled={sending}
                         >
                           <MaterialCommunityIcons name="refresh" size={12} color="rgba(255,255,255,0.65)" />
-                          <Text style={s.bubbleResendText}>Resend</Text>
+                          <Text style={s.bubbleResendText}>{tr(chatLanguage, 'resend')}</Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -1766,7 +1973,7 @@ export default function CoachChatScreen({ navigation, route }) {
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
                     <MaterialCommunityIcons name="refresh" size={12} color="rgba(255,255,255,0.85)" />
-                    <Text style={s.retryPillText}>Resend</Text>
+                    <Text style={s.retryPillText}>{tr(chatLanguage, 'resend')}</Text>
                   </TouchableOpacity>
                 )}
                 {/* (Resend now lives inline inside the user bubble — see
@@ -1900,7 +2107,7 @@ export default function CoachChatScreen({ navigation, route }) {
               style={s.input}
               value={input}
               onChangeText={setInput}
-              placeholder={limits?.remaining === 0 ? 'Weekly limit reached — check back soon' : 'Ask your coach anything...'}
+              placeholder={limits?.remaining === 0 ? tr(chatLanguage, 'weeklyLimitReached') : tr(chatLanguage, 'inputPlaceholder')}
               placeholderTextColor={colors.textFaint}
               multiline
               maxLength={1000}

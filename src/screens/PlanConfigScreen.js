@@ -6,7 +6,7 @@
  *  Step 4: Duration (if no target date) & start date
  */
 import React, { useEffect, useState, useRef } from 'react';
-import { View, ScrollView, Text, TouchableOpacity, StyleSheet, TextInput, Alert, Keyboard } from 'react-native';
+import { View, ScrollView, Text, TouchableOpacity, StyleSheet, TextInput, Alert, Keyboard, Switch } from 'react-native';
 import { colors, fontFamily } from '../theme';
 import useScreenGuard from '../hooks/useScreenGuard';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -18,9 +18,10 @@ import RecurringRideSheet from '../components/RecurringRideSheet';
 import { COACHES } from '../data/coaches';
 import analytics from '../services/analyticsService';
 import { getActivityIcon } from '../utils/sessionLabels';
+import { api } from '../services/api';
 
 const FF = fontFamily;
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 
 // Bars indicator: 1 bar = beginner … 4 bars = expert
 const LEVEL_BARS = { beginner: 1, intermediate: 2, advanced: 3, expert: 4 };
@@ -236,6 +237,14 @@ export default function PlanConfigScreen({ navigation, route }) {
   // other pre-fill reads so handleContinue can reference it in scope.
   const prefillLongestRideKm = route.params?.prefillLongestRideKm ?? intake?.longestRideKm ?? null;
 
+  // Picker phase step count, passed from PlanPickerScreen so this
+  // screen's progress bar continues from where the picker left off
+  // (e.g. picker had 5 steps → config begins displaying step 6/12).
+  // Defaults to 0 when this screen is reached without a picker phase
+  // (legacy entry points / direct deep-link / adjustments) so the
+  // bar fills as `step / TOTAL_STEPS` like before.
+  const priorPhaseSteps = Number(route.params?.priorPhaseSteps) || 0;
+
   // Abandon tracking — set true right before advancing to PlanLoading. Used
   // by the beforeRemove listener to distinguish progress from back/close.
   const completedRef = useRef(false);
@@ -323,6 +332,11 @@ export default function PlanConfigScreen({ navigation, route }) {
       .catch(() => {});
     return () => { alive = false; };
   }, []);
+
+  // Weekly check-in preferences (step 8)
+  const [checkinEnabled, setCheckinEnabled] = useState(true);
+  const [checkinDayOfWeek, setCheckinDayOfWeek] = useState(0); // 0 = Sunday
+  const [checkinTimeOfDay, setCheckinTimeOfDay] = useState('18:00');
 
   // Activity search (for cross-training)
   const [activitySearch, setActivitySearch] = useState('');
@@ -718,6 +732,10 @@ export default function PlanConfigScreen({ navigation, route }) {
       return true;
     }
     if (step === 7) return !!coachId;
+    if (step === 8) {
+      if (!checkinEnabled) return true;
+      return /^\d{2}:\d{2}$/.test(checkinTimeOfDay);
+    }
     return false;
   };
 
@@ -767,6 +785,30 @@ export default function PlanConfigScreen({ navigation, route }) {
         setStep(step + 1);
         return;
       }
+    }
+
+    // Step 8 (Weekly check-in) — save preferences before plan generation
+    try {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      await api.checkinPrefs.save({
+        enabled: checkinEnabled,
+        dayOfWeek: checkinDayOfWeek,
+        timeOfDay: checkinTimeOfDay,
+        timezone,
+      });
+    } catch (err) {
+      // Fail silently — don't block plan generation if save fails
+      console.warn('[PlanConfig] Failed to save check-in prefs:', err);
+    }
+
+    // Keep the legacy coach_checkin preference in sync
+    try {
+      await api.preferences.update({
+        coach_checkin: checkinEnabled ? 'weekly' : 'none',
+      });
+    } catch (err) {
+      // Fail silently
+      console.warn('[PlanConfig] Failed to update legacy coach_checkin pref:', err);
     }
 
     const availableDays = Object.keys(dayAssignments);
@@ -1399,6 +1441,100 @@ export default function PlanConfigScreen({ navigation, route }) {
       );
     }
 
+    // ── Step 8: Weekly check-in ────────────────────────────────────────────
+    if (step === 8) {
+      return (
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <View style={s.checkinCard}>
+            <View style={s.checkinRow}>
+              <View style={s.checkinLeft}>
+                <Text style={s.checkinLabel}>Send me a weekly check-in</Text>
+              </View>
+              <Switch
+                value={checkinEnabled}
+                onValueChange={setCheckinEnabled}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            {checkinEnabled && (
+              <>
+                <View style={s.checkinDivider} />
+                <View style={s.checkinContent}>
+                  <Text style={s.checkinSub}>Day of week</Text>
+                  <View style={s.dayPillRow}>
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => {
+                      const selected = checkinDayOfWeek === i;
+                      return (
+                        <TouchableOpacity
+                          key={d}
+                          onPress={() => setCheckinDayOfWeek(i)}
+                          style={{
+                            width: 38, height: 38, borderRadius: 19,
+                            backgroundColor: selected ? colors.primary : colors.surfaceLight,
+                            borderWidth: 0.5,
+                            borderColor: selected ? colors.primary : colors.border,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={{
+                            fontSize: 12, fontWeight: '600',
+                            color: selected ? '#fff' : colors.textMid,
+                            fontFamily: fontFamily.semibold,
+                          }}>
+                            {d.slice(0, 1)}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={[s.checkinSub, { marginTop: 16 }]}>Time of day (HH:MM, 24h)</Text>
+                  <TextInput
+                    style={{
+                      backgroundColor: colors.surfaceLight,
+                      borderWidth: 0.5,
+                      borderColor: colors.border,
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      fontSize: 15,
+                      color: colors.text,
+                      fontFamily: fontFamily.regular,
+                    }}
+                    value={checkinTimeOfDay}
+                    onChangeText={(t) => setCheckinTimeOfDay(t)}
+                    onBlur={() => {
+                      // Light validation — accept "HH:MM" / "H:MM" / "HHMM"
+                      let t = String(checkinTimeOfDay || '').replace(/[^0-9:]/g, '');
+                      if (/^\d{4}$/.test(t)) t = `${t.slice(0, 2)}:${t.slice(2)}`;
+                      if (!/^\d{1,2}:\d{2}$/.test(t)) t = '18:00';
+                      const [hh, mm] = t.split(':').map(n => parseInt(n, 10) || 0);
+                      const clean = `${String(Math.min(23, hh)).padStart(2, '0')}:${String(Math.min(59, mm)).padStart(2, '0')}`;
+                      setCheckinTimeOfDay(clean);
+                    }}
+                    placeholder="18:00"
+                    placeholderTextColor={colors.textFaint}
+                    keyboardType="numbers-and-punctuation"
+                    maxLength={5}
+                  />
+                </View>
+              </>
+            )}
+          </View>
+
+          <Text style={s.checkinCaption}>
+            Default Sunday at 6 PM. Plenty of riders prefer Monday morning — pick whatever fits your week.
+          </Text>
+
+          <View style={{ height: 20 }} />
+        </ScrollView>
+      );
+    }
+
   };
 
   // ── Date helpers ──────────────────────────────────────────────────────────
@@ -1486,6 +1622,7 @@ export default function PlanConfigScreen({ navigation, route }) {
     5: 'Build your week',
     6: (goal.targetDate || lockWeeksForTitle) ? 'When should it start?' : 'Duration & start date',
     7: 'Choose your coach',
+    8: 'Weekly check-in?',
   };
 
   const subtitles = {
@@ -1496,6 +1633,7 @@ export default function PlanConfigScreen({ navigation, route }) {
     5: 'Tap a day to place sessions. Stack as many as you like.',
     6: (goal.targetDate || lockWeeksForTitle) ? 'Pick a start date for your training plan' : 'How long and when to begin',
     7: 'Pick a coaching personality that fits your style',
+    8: 'A quick five-question note from your coach so they can shape next week around how this one went. You can change this any time in Settings.',
   };
 
   if (_screenGuard.blocked) return _screenGuard.render();
@@ -1511,8 +1649,8 @@ export default function PlanConfigScreen({ navigation, route }) {
   return (
     <>
       <WizardShell
-        step={step}
-        totalSteps={TOTAL_STEPS}
+        step={priorPhaseSteps + step}
+        totalSteps={priorPhaseSteps + TOTAL_STEPS}
         title={titles[step]}
         subtitle={subtitles[step]}
         onBack={handleBack}
@@ -1521,11 +1659,11 @@ export default function PlanConfigScreen({ navigation, route }) {
         continueLabel={
           step === TOTAL_STEPS
             ? 'Generate my plan'
-            // Step 6 becomes the effective last step when the coach has
-            // already been picked in onboarding (we skip step 7). Show
-            // the same final-step label so the user knows the next tap
-            // commits and starts plan generation.
-            : (step === 6 && coachId ? 'Generate my plan' : 'Continue')
+            // Step 7 becomes the final step when the coach has
+            // already been picked in onboarding (we skip step 7 and step 8).
+            // Step 8 is always final (if not skipped). Show "Generate my plan"
+            // for the effective final step.
+            : (step === 7 && coachId ? 'Generate my plan' : 'Continue')
         }
         continueDisabled={!canContinue()}
         skipLabel={step === 3 ? 'Skip — I don\'t have regular rides' : undefined}
@@ -1928,4 +2066,56 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginTop: 4,
   },
   coachCheckMark: { fontSize: 13, color: '#fff', fontWeight: '700' },
+
+  // ── Weekly check-in card (step 8) ──────────────────────────────────────
+  checkinCard: {
+    marginBottom: 10,
+    marginTop: 4,
+    padding: 16,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 0.5,
+    borderColor: colors.border,
+  },
+  checkinRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  checkinLeft: {
+    flex: 1,
+  },
+  checkinLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+    fontFamily: FF.semibold,
+  },
+  checkinDivider: {
+    height: 0.5,
+    backgroundColor: colors.border,
+    marginVertical: 12,
+  },
+  checkinContent: {
+    paddingHorizontal: 0,
+  },
+  checkinSub: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textMid,
+    fontFamily: FF.semibold,
+    marginBottom: 8,
+  },
+  dayPillRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  checkinCaption: {
+    fontSize: 12,
+    color: colors.textMid,
+    fontFamily: FF.regular,
+    marginTop: 12,
+    paddingHorizontal: 16,
+    lineHeight: 17,
+  },
 });

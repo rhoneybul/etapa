@@ -31,7 +31,7 @@
  * intake-recommended flow and the "+ New plan" (no recommendation) flow.
  */
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Keyboard, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Keyboard, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily, useBottomInset } from '../theme';
 import DatePicker from '../components/DatePicker';
@@ -146,15 +146,26 @@ function computeRecommendation({ intent, longestRide }) {
 
 // ── Small UI blocks ────────────────────────────────────────────────────────
 
+// Smooth progress bar (was a row of segmented dots, but we now reflect
+// the FULL journey — picker + plan-config — in one bar, and 12+ tiny
+// dots looked busy). Same visual treatment as WizardShell so the bar
+// reads continuously across both screens. `step` and `total` are the
+// overall journey position, not the picker-only count, so reaching the
+// review step shows e.g. ~42% rather than 100%.
 function ProgressDots({ step, total }) {
+  const pct = total > 0 ? Math.min(100, Math.max(0, (step / total) * 100)) : 0;
   return (
-    <View style={s.progressRow}>
-      {Array.from({ length: total }).map((_, i) => (
-        <View key={i} style={[s.progressBar, i < step ? s.progressBarActive : null]} />
-      ))}
+    <View style={s.progressTrack}>
+      <View style={[s.progressFill, { width: `${pct}%` }]} />
     </View>
   );
 }
+
+// Plan-config (PlanConfigScreen) has 7 steps. We import this here so the
+// picker's progress bar can preview the rest of the journey rather than
+// reading 100% complete on the review step. If config's step count
+// changes, bump this constant in lock-step.
+const CONFIG_PHASE_STEPS = 7;
 
 function Choice({ title, sub, highlighted, loading, disabled, unavailable, onPress }) {
   // `loading` = this card is the one the user just tapped; we show a small
@@ -242,6 +253,11 @@ export default function PlanPickerScreen({ navigation, route }) {
   // Lets each "next step" handler know to return to review instead of
   // marching forward through the rest of the flow.
   const [editingFromReview, setEditingFromReview] = useState(false);
+  // Which field is being edited in the inline drawer (null, 'intent',
+  // 'cyclingType', 'event', 'longestRide', or 'trainingLength'). When set,
+  // a bottom-sheet Modal overlays the review screen. Replaced the old jump-back
+  // navigation pattern to keep the user context (review screen remains visible behind dimmed backdrop).
+  const [editingFieldDrawer, setEditingFieldDrawer] = useState(null);
   // Which option card the user is currently tapping — drives the inline
   // spinner + highlight. When set, sibling cards are disabled so a
   // panicked double-tap can't fire two different picks. Reset to null
@@ -398,6 +414,10 @@ export default function PlanPickerScreen({ navigation, route }) {
   const onPickIntent = (key) => {
     setIntent(key);
     analytics.events.planPickerAnswered?.({ question: 'intent', choice: key });
+    // When the user picks intent from inside the edit drawer (review
+    // screen), DON'T auto-advance — they'll close the drawer with Done
+    // when they're satisfied. Just commit the choice and stay put.
+    if (editingFieldDrawer) return;
     ackThen(key, () => {
       if (editingFromReview) {
         // Edge case: user changed intent on review. Flow is completely
@@ -412,14 +432,24 @@ export default function PlanPickerScreen({ navigation, route }) {
 
   // Multi-select cycling type. Tapping a chip toggles it in/out of the
   // Cycling type is now SINGLE-SELECT. Earlier multi-select (so the
-  // plan could pick a different bike per session) was confusing for
-  // riders and produced "mixed" plans that didn't read native to any
-  // one type. The rider now picks one primary type during onboarding,
-  // can change it later in Settings, and can still swap the bike on
-  // any individual session via the bike chip + BikeTypePickerModal.
+  // Multi-select toggle: the rider can pick every bike they ride.
+  // Adds the key if it's not in the list, removes it if it is. The
+  // legacy single `cyclingType` is still derived (first selection, or
+  // 'mixed' when 2+) for any downstream reader that hasn't been
+  // updated to read `cyclingTypes`. Per-session bike swaps remain
+  // available later via the bike chip + BikeTypePickerModal.
   const onToggleCyclingType = (key) => {
-    setCyclingTypes([key]); // single-element array preserves data shape
-    analytics.events.planPickerAnswered?.({ question: 'cycling_type', choice: key });
+    setCyclingTypes(prev => {
+      const present = prev.includes(key);
+      const next = present ? prev.filter(k => k !== key) : [...prev, key];
+      analytics.events.planPickerAnswered?.({
+        question: 'cycling_type',
+        choice: key,
+        action: present ? 'unselect' : 'select',
+        selectedCount: next.length,
+      });
+      return next;
+    });
   };
 
   // Footer Continue press from step 2 (cycling types). Kept separate from
@@ -455,6 +485,9 @@ export default function PlanPickerScreen({ navigation, route }) {
     setCustomKm('');
     setLongestRide(key);
     analytics.events.planPickerAnswered?.({ question: 'longest_ride', choice: key });
+    // From inside the edit drawer, just commit and stay put — Done
+    // dismisses. No auto-advance underneath the drawer.
+    if (editingFieldDrawer) return;
     ackThen(key, () => {
       if (intent === 'event') {
         // Event: longest ride is the last question → review.
@@ -533,6 +566,8 @@ export default function PlanPickerScreen({ navigation, route }) {
   const onPickDuration = (key) => {
     setTrainingLen(key);
     analytics.events.planPickerAnswered?.({ question: 'training_length', choice: key });
+    // From inside the edit drawer, just commit and stay. Done dismisses.
+    if (editingFieldDrawer) return;
     ackThen(key, () => advanceOrReturn(5));
   };
 
@@ -548,6 +583,18 @@ export default function PlanPickerScreen({ navigation, route }) {
     // Skip from anywhere inside the questions drops to PlanSelection with
     // no recommendation. The user has effectively given up on the intake.
     navigation.replace('PlanSelection');
+  };
+
+  // Drawer controls — inline editing from the review screen.
+  // Instead of navigating back to the field's full-screen step, we open
+  // a bottom-sheet Modal that overlays the review. The form renders the
+  // SAME inputs/handlers, just without the progress bar or Continue button.
+  const openEditDrawer = (field) => {
+    setEditingFieldDrawer(field);
+  };
+
+  const closeEditDrawer = () => {
+    setEditingFieldDrawer(null);
   };
 
   // ── Build intake + route to PlanSelection with recommendation ───────────
@@ -653,6 +700,11 @@ export default function PlanPickerScreen({ navigation, route }) {
             prefillWeeks: weeks,
             prefillLevel: intake.userLevel,
             prefillLongestRideKm: intake.longestRideKm,
+            // Tell PlanConfig how many picker steps preceded so its
+            // progress bar continues from there instead of resetting
+            // to step 1 of N (which made the bar look like it had gone
+            // backwards mid-journey).
+            priorPhaseSteps: totalSteps,
           });
         } catch {
           navigation.replace('GoalSetup', { requirePaywall, intake });
@@ -689,6 +741,7 @@ export default function PlanPickerScreen({ navigation, route }) {
           prefillWeeks: weeks,
           prefillLevel: intake.userLevel,
           prefillLongestRideKm: intake.longestRideKm,
+          priorPhaseSteps: totalSteps,
         });
       } catch {
         navigation.replace('QuickPlan', { requirePaywall, intake });
@@ -854,14 +907,136 @@ export default function PlanPickerScreen({ navigation, route }) {
     };
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────
-  // Longest-ride question body — factored out because it renders at step 2
-  // (non-event branch) AND step 4 (event branch, as the final question).
-  const renderLongestRide = () => (
+  // ── Drawer form renderers (reused by both step and drawer) ──────────────
+  // These helpers render ONLY the form/inputs for a specific field — no
+  // progress bar, no header, no Continue button. Used both in the inline
+  // step views (which add their own header + Continue) and the drawer
+  // (which wraps the form in a Modal with Done button).
+
+  // Intent form — choice list of INTENT_OPTIONS
+  const renderIntentForm = () => (
+    <View style={s.choiceGroup}>
+      {INTENT_OPTIONS.map(o => (
+        <Choice
+          key={o.key}
+          title={o.title}
+          sub={o.sub}
+          loading={pendingKey === o.key}
+          disabled={pendingKey !== null && pendingKey !== o.key}
+          onPress={() => onPickIntent(o.key)}
+        />
+      ))}
+    </View>
+  );
+
+  // Cycling type form — multi-select CheckCard list (no Continue button in drawer)
+  const renderCyclingTypeForm = () => (
+    <View style={s.cyclingTypeList}>
+      {CYCLING_TYPE_OPTIONS.map(o => (
+        <CheckCard
+          key={o.key}
+          label={o.label}
+          description={o.description}
+          checked={cyclingTypes.includes(o.key)}
+          onPress={() => onToggleCyclingType(o.key)}
+        />
+      ))}
+    </View>
+  );
+
+  // Event details form — text inputs + race lookup + date picker
+  const renderEventForm = () => (
     <>
-      {renderQuestionHeader()}
-      <Text style={s.title}>Your longest recent ride?</Text>
-      <Text style={s.subtitle}>Honest answer — we&apos;ll pitch the plan to match.</Text>
+      <Text style={s.fieldLabel}>Event name (optional)</Text>
+      <TextInput
+        style={s.input}
+        placeholder="e.g. Traka 360, London to Brighton, or leave blank"
+        placeholderTextColor={colors.textFaint}
+        value={eventName}
+        onChangeText={setEventName}
+        returnKeyType="search"
+        onSubmitEditing={handleRaceLookup}
+      />
+      <TouchableOpacity
+        style={[s.lookupBtn, !eventName.trim() && s.lookupBtnDisabled]}
+        onPress={handleRaceLookup}
+        disabled={!eventName.trim() || raceLooking}
+        activeOpacity={0.8}
+      >
+        <Text style={s.lookupBtnText}>
+          {raceLooking ? 'Looking up…' : 'Look up race details'}
+        </Text>
+      </TouchableOpacity>
+      {raceResult && !raceResult.found && (
+        <Text style={s.lookupMissText}>
+          Couldn&apos;t find that race — fill the fields in manually.
+        </Text>
+      )}
+      {raceResult?.found && (() => {
+        const filled = [];
+        if (raceResult.distanceKm) filled.push('distance');
+        if (raceResult.elevationM) filled.push('elevation');
+        if (raceResult.eventDate)  filled.push('race date');
+        const list =
+          filled.length === 0 ? null :
+          filled.length === 1 ? filled[0] :
+          filled.length === 2 ? `${filled[0]} and ${filled[1]}` :
+          `${filled.slice(0, -1).join(', ')} and ${filled[filled.length - 1]}`;
+        return (
+          <Text style={s.lookupHitText}>
+            {list
+              ? `Found it — filled in ${list}. Double-check below.`
+              : 'Found it. Double-check the fields below.'}
+          </Text>
+        );
+      })()}
+
+      <Text style={s.fieldLabel}>Distance (km, optional)</Text>
+      <TextInput
+        style={s.input}
+        placeholder="e.g. 100"
+        placeholderTextColor={colors.textFaint}
+        value={targetDistance}
+        onChangeText={setTargetDistance}
+        keyboardType="numeric"
+        returnKeyType="next"
+      />
+
+      <Text style={s.fieldLabel}>Elevation gain (m, optional)</Text>
+      <TextInput
+        style={s.input}
+        placeholder="e.g. 2500"
+        placeholderTextColor={colors.textFaint}
+        value={targetElevation}
+        onChangeText={setTargetElevation}
+        keyboardType="numeric"
+        returnKeyType="next"
+      />
+
+      <Text style={s.fieldLabel}>Target time (hours, optional)</Text>
+      <TextInput
+        style={s.input}
+        placeholder="e.g. 5.5"
+        placeholderTextColor={colors.textFaint}
+        value={targetTime}
+        onChangeText={setTargetTime}
+        keyboardType="decimal-pad"
+        returnKeyType="done"
+        onSubmitEditing={() => Keyboard.dismiss()}
+      />
+
+      <Text style={s.fieldLabel}>Race date (optional)</Text>
+      <DatePicker
+        value={eventDate}
+        onChange={onPickEventDate}
+        minDate={new Date().toISOString().slice(0, 10)}
+      />
+    </>
+  );
+
+  // Longest ride form — choice list + custom km input
+  const renderLongestRideForm = () => (
+    <>
       <View style={s.choiceGroup}>
         {getLongestRideOptions(intent).map(o => (
           <Choice
@@ -905,12 +1080,64 @@ export default function PlanPickerScreen({ navigation, route }) {
     </>
   );
 
+  // Training length form — choice list
+  const renderTrainingLengthForm = () => {
+    const opts = isEvent ? DURATION_OPTIONS_EVENT : DURATION_OPTIONS_NONEVENT;
+    const recommendedKey = (() => {
+      if (!isEvent || weeksUntilEvent == null) return '12';
+      for (const k of ['12', '8', '4']) {
+        if (weeksUntilEvent >= Number(k)) return k;
+      }
+      return 'to_date';
+    })();
+    return (
+      <View style={s.choiceGroup}>
+        {opts.map(o => {
+          const fits = durationFitsEvent(o.key);
+          const sub = !fits
+            ? 'Event is sooner than this'
+            : (o.key === recommendedKey ? 'Recommended' : o.sub);
+          return (
+            <Choice
+              key={o.key}
+              title={o.title}
+              sub={sub}
+              loading={pendingKey === o.key}
+              disabled={pendingKey !== null && pendingKey !== o.key}
+              unavailable={!fits}
+              onPress={() => onPickDuration(o.key)}
+            />
+          );
+        })}
+      </View>
+    );
+  };
+
+  // ── Render ──────────────────────────────────────────────────────────────
+  // Longest-ride question body — factored out because it renders at step 2
+  // (non-event branch) AND step 4 (event branch, as the final question).
+  const renderLongestRide = () => (
+    <>
+      {renderQuestionHeader()}
+      <Text style={s.title}>Your longest recent ride?</Text>
+      <Text style={s.subtitle}>Honest answer — we&apos;ll pitch the plan to match.</Text>
+      {renderLongestRideForm()}
+    </>
+  );
+
   const renderQuestionHeader = () => (
     <View style={s.headerRow}>
       <TouchableOpacity onPress={onBack} style={s.headerBtn} hitSlop={HIT}>
         <Text style={s.headerBtnText}>{step === 0 ? '' : '‹ Back'}</Text>
       </TouchableOpacity>
-      <ProgressDots step={Math.min(step, totalSteps)} total={totalSteps} />
+      {/* Show progress across the FULL journey (intake + plan-config),
+          not just the picker. Reaching the picker review now reads as
+          ~40% rather than 100% so the rider knows there's more to come.
+          Plan-config picks up where this leaves off. */}
+      <ProgressDots
+        step={Math.min(step, totalSteps)}
+        total={totalSteps + CONFIG_PHASE_STEPS}
+      />
       <TouchableOpacity onPress={onSkip} style={s.headerBtn} hitSlop={HIT}>
         <Text style={s.headerSkip}>Skip</Text>
       </TouchableOpacity>
@@ -1001,43 +1228,23 @@ export default function PlanPickerScreen({ navigation, route }) {
             {renderQuestionHeader()}
             <Text style={s.title}>What brings you here?</Text>
             <Text style={s.subtitle}>Tell us what you&apos;re after and we&apos;ll help you pick the right plan.</Text>
-            <View style={s.choiceGroup}>
-              {INTENT_OPTIONS.map(o => (
-                <Choice
-                  key={o.key}
-                  title={o.title}
-                  sub={o.sub}
-                  loading={pendingKey === o.key}
-                  disabled={pendingKey !== null && pendingKey !== o.key}
-                  onPress={() => onPickIntent(o.key)}
-                />
-              ))}
-            </View>
+            {renderIntentForm()}
           </>
         )}
 
-        {/* Q2 — cycling type. SINGLE-select (was multi-select). The
-            rider picks the bike that defines the plan's vocabulary
-            and pacing; per-session swaps stay available later via
-            the bike chip on every ride. Reuses CheckCard for visual
-            consistency with the training-types step but treats the
-            tap as a radio select (clears prior selection). */}
+        {/* Q2 — cycling type. MULTI-select. Riders pick every bike
+            they actually ride; the plan generator uses the full list
+            to vary terminology and session types. CheckCard renders
+            a check tick when included; tapping again removes. The
+            legacy single `cyclingType` is derived downstream as
+            'mixed' when 2+ are picked. Per-session bike swaps stay
+            available later via the bike chip + BikeTypePickerModal. */}
         {step === 2 && (
           <>
             {renderQuestionHeader()}
             <Text style={s.title}>What kind of cycling?</Text>
-            <Text style={s.subtitle}>Pick the one that fits most of your riding. You can change it in Settings later, and swap the bike on any single session if you ride mixed.</Text>
-            <View style={s.cyclingTypeList}>
-              {CYCLING_TYPE_OPTIONS.map(o => (
-                <CheckCard
-                  key={o.key}
-                  label={o.label}
-                  description={o.description}
-                  checked={cyclingTypes[0] === o.key}
-                  onPress={() => onToggleCyclingType(o.key)}
-                />
-              ))}
-            </View>
+            <Text style={s.subtitle}>Pick all that apply — road, gravel, mountain bike, e-bike, indoor. The plan adapts to whatever you ride. Change it any time in Settings.</Text>
+            {renderCyclingTypeForm()}
             <View style={s.cyclingTypeFooter}>
               <TouchableOpacity
                 style={[s.primaryBtn, cyclingTypes.length === 0 && s.primaryBtnDisabled]}
@@ -1046,7 +1253,11 @@ export default function PlanPickerScreen({ navigation, route }) {
                 activeOpacity={0.85}
               >
                 <Text style={s.primaryBtnText}>
-                  {cyclingTypes.length === 0 ? 'Pick one' : 'Continue'}
+                  {cyclingTypes.length === 0
+                    ? 'Pick at least one'
+                    : cyclingTypes.length === 1
+                    ? 'Continue'
+                    : `Continue with ${cyclingTypes.length}`}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1062,95 +1273,7 @@ export default function PlanPickerScreen({ navigation, route }) {
             <Text style={s.title}>Tell us about your event or goal</Text>
             <Text style={s.subtitle}>Give us at least a name, a distance, or a date — whatever you&apos;ve got.</Text>
 
-            <Text style={s.fieldLabel}>Event name (optional)</Text>
-            <TextInput
-              style={s.input}
-              placeholder="e.g. Traka 360, London to Brighton, or leave blank"
-              placeholderTextColor={colors.textFaint}
-              value={eventName}
-              onChangeText={setEventName}
-              returnKeyType="search"
-              onSubmitEditing={handleRaceLookup}
-            />
-            <TouchableOpacity
-              style={[s.lookupBtn, !eventName.trim() && s.lookupBtnDisabled]}
-              onPress={handleRaceLookup}
-              disabled={!eventName.trim() || raceLooking}
-              activeOpacity={0.8}
-            >
-              <Text style={s.lookupBtnText}>
-                {raceLooking ? 'Looking up…' : 'Look up race details'}
-              </Text>
-            </TouchableOpacity>
-            {raceResult && !raceResult.found && (
-              <Text style={s.lookupMissText}>
-                Couldn&apos;t find that race — fill the fields in manually.
-              </Text>
-            )}
-            {raceResult?.found && (() => {
-              // Call out which fields we filled in so users know the
-              // date came from the lookup too (not just distance +
-              // elevation). Keeps expectations honest when the LLM
-              // returns a best-guess date — user can override anything
-              // that looks off.
-              const filled = [];
-              if (raceResult.distanceKm) filled.push('distance');
-              if (raceResult.elevationM) filled.push('elevation');
-              if (raceResult.eventDate)  filled.push('race date');
-              const list =
-                filled.length === 0 ? null :
-                filled.length === 1 ? filled[0] :
-                filled.length === 2 ? `${filled[0]} and ${filled[1]}` :
-                `${filled.slice(0, -1).join(', ')} and ${filled[filled.length - 1]}`;
-              return (
-                <Text style={s.lookupHitText}>
-                  {list
-                    ? `Found it — filled in ${list}. Double-check below.`
-                    : 'Found it. Double-check the fields below.'}
-                </Text>
-              );
-            })()}
-
-            <Text style={s.fieldLabel}>Distance (km, optional)</Text>
-            <TextInput
-              style={s.input}
-              placeholder="e.g. 100"
-              placeholderTextColor={colors.textFaint}
-              value={targetDistance}
-              onChangeText={setTargetDistance}
-              keyboardType="numeric"
-              returnKeyType="next"
-            />
-
-            <Text style={s.fieldLabel}>Elevation gain (m, optional)</Text>
-            <TextInput
-              style={s.input}
-              placeholder="e.g. 2500"
-              placeholderTextColor={colors.textFaint}
-              value={targetElevation}
-              onChangeText={setTargetElevation}
-              keyboardType="numeric"
-              returnKeyType="next"
-            />
-
-            <Text style={s.fieldLabel}>Target time (hours, optional)</Text>
-            <TextInput
-              style={s.input}
-              placeholder="e.g. 5.5"
-              placeholderTextColor={colors.textFaint}
-              value={targetTime}
-              onChangeText={setTargetTime}
-              keyboardType="decimal-pad"
-              returnKeyType="done"
-              onSubmitEditing={() => Keyboard.dismiss()}
-            />
-
-            <Text style={s.fieldLabel}>Race date (optional)</Text>
-            <DatePicker
-              value={eventDate}
-              onChange={onPickEventDate}
-              minDate={new Date().toISOString().slice(0, 10)}
-            />
+            {renderEventForm()}
 
             <TouchableOpacity
               style={[s.primaryBtn, !canAdvanceEventStep && s.primaryBtnDisabled, { marginTop: 20 }]}
@@ -1165,22 +1288,7 @@ export default function PlanPickerScreen({ navigation, route }) {
         {step === 3 && !isEvent && renderLongestRide()}
 
         {/* Step 4 — duration */}
-        {step === 4 && (() => {
-          const opts = isEvent ? DURATION_OPTIONS_EVENT : DURATION_OPTIONS_NONEVENT;
-          // Move the "Recommended" flag to the longest viable fixed
-          // option when the event is closer than 12 weeks away. Without
-          // this, "12 weeks — Recommended" sits greyed out while a
-          // shorter plan is the actual sensible pick. Falls back to 12
-          // (the default recommendation) when the event is far enough
-          // away OR there's no event date.
-          const recommendedKey = (() => {
-            if (!isEvent || weeksUntilEvent == null) return '12';
-            for (const k of ['12', '8', '4']) {
-              if (weeksUntilEvent >= Number(k)) return k;
-            }
-            return 'to_date';
-          })();
-          return (
+        {step === 4 && (
           <>
             {renderQuestionHeader()}
             <Text style={s.title}>
@@ -1193,32 +1301,9 @@ export default function PlanPickerScreen({ navigation, route }) {
                     : "We'll work backwards from your event date.")
                 : "Pick a horizon — you can always extend it."}
             </Text>
-            <View style={s.choiceGroup}>
-              {opts.map(o => {
-                const fits = durationFitsEvent(o.key);
-                // Swap the descriptive sub for a plain-English reason
-                // when the option won't fit the event date. Keeps the
-                // "why is this greyed out" answer visible on the card
-                // itself instead of forcing users to guess.
-                const sub = !fits
-                  ? 'Event is sooner than this'
-                  : (o.key === recommendedKey ? 'Recommended' : o.sub);
-                return (
-                  <Choice
-                    key={o.key}
-                    title={o.title}
-                    sub={sub}
-                    loading={pendingKey === o.key}
-                    disabled={pendingKey !== null && pendingKey !== o.key}
-                    unavailable={!fits}
-                    onPress={() => onPickDuration(o.key)}
-                  />
-                );
-              })}
-            </View>
+            {renderTrainingLengthForm()}
           </>
-          );
-        })()}
+        )}
 
         {/* Step 5 — longest ride (event branch) OR review (non-event) */}
         {step === 5 && isEvent && renderLongestRide()}
@@ -1229,6 +1314,65 @@ export default function PlanPickerScreen({ navigation, route }) {
 
       </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Inline edit drawer — overlays the review screen with a bottom-sheet
+          Modal. The user taps Edit on a pill, the drawer slides up showing
+          the SAME form for that field (reused from the step renderers),
+          makes changes, and taps Done to close. Never leaves the review
+          screen or its context, so editing feels lightweight + local. */}
+      {editingFieldDrawer && (
+        <Modal
+          visible={!!editingFieldDrawer}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={closeEditDrawer}
+        >
+          {/* Backdrop — tapping closes the drawer */}
+          <Pressable
+            style={s.drawerBackdrop}
+            onPress={closeEditDrawer}
+          />
+
+          {/* Drawer surface — anchored to bottom with rounded corners */}
+          <Pressable
+            style={s.drawer}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {/* Drag handle + header */}
+            <View style={s.drawerHeader}>
+              <View style={s.drawerHandle} />
+              <Text style={s.drawerTitle}>
+                {editingFieldDrawer === 'intent' && "What brings you here?"}
+                {editingFieldDrawer === 'cyclingType' && "What kind of cycling?"}
+                {editingFieldDrawer === 'event' && "Tell us about your event"}
+                {editingFieldDrawer === 'longestRide' && "Your longest recent ride"}
+                {editingFieldDrawer === 'trainingLength' && "How long should the plan be?"}
+              </Text>
+              <TouchableOpacity
+                style={s.drawerDone}
+                onPress={closeEditDrawer}
+                hitSlop={HIT}
+              >
+                <Text style={s.drawerDoneText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Form body — scroll if needed */}
+            <ScrollView
+              style={s.drawerScroll}
+              contentContainerStyle={s.drawerContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {editingFieldDrawer === 'intent' && renderIntentForm()}
+              {editingFieldDrawer === 'cyclingType' && renderCyclingTypeForm()}
+              {editingFieldDrawer === 'event' && renderEventForm()}
+              {editingFieldDrawer === 'longestRide' && renderLongestRideForm()}
+              {editingFieldDrawer === 'trainingLength' && renderTrainingLengthForm()}
+            </ScrollView>
+          </Pressable>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 
@@ -1294,7 +1438,7 @@ export default function PlanPickerScreen({ navigation, route }) {
             <TouchableOpacity
               key={p.field}
               style={s.pill}
-              onPress={() => setStep(editStepForField(p.field))}
+              onPress={() => openEditDrawer(p.field)}
               activeOpacity={0.75}
             >
               <Text style={s.pillText}>{p.label}</Text>
@@ -1432,6 +1576,12 @@ const s = StyleSheet.create({
   progressRow: { flexDirection: 'row', flex: 1, gap: 6, marginHorizontal: 12 },
   progressBar: { flex: 1, height: 3, borderRadius: 2, backgroundColor: colors.border },
   progressBarActive: { backgroundColor: colors.primary },
+  // Smooth journey-progress bar (replaces the segmented dots when we
+  // expanded progress to span both phases). Matches WizardShell's
+  // bar visually so the user sees one continuous fill from intent →
+  // generate.
+  progressTrack: { flex: 1, height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden', marginHorizontal: 12 },
+  progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 2 },
 
   // Question body
   title: {
@@ -1663,4 +1813,81 @@ const s = StyleSheet.create({
   lookupBtnText: { color: colors.primary, fontSize: 13, fontFamily: FF.semibold, fontWeight: '500' },
   lookupMissText: { fontSize: 12, color: colors.textMid, fontFamily: FF.regular, marginTop: 8 },
   lookupHitText: { fontSize: 12, color: colors.primary, fontFamily: FF.medium, fontWeight: '500', marginTop: 8 },
+
+  // Inline drawer for editing fields from the review screen. Instead of
+  // navigating back to the step's full-screen view, a Modal slides up
+  // showing just the form for that field. Dark backdrop dims the review
+  // screen behind; swiping/tapping outside closes it.
+  drawerBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  drawer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: colors.bg,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '85%',
+    flexDirection: 'column',
+  },
+  drawerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  // Small drag handle visual at the top of the drawer. Absolutely
+  // positioned so it doesn't push the header row down — alignSelf is
+  // ignored on absolute children, so we centre via left:50% + a
+  // negative marginLeft equal to half the handle width (20px).
+  drawerHandle: {
+    position: 'absolute',
+    top: 8,
+    left: '50%',
+    marginLeft: -20,
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.primary,
+    opacity: 0.4,
+  },
+  drawerTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontFamily: FF.semibold,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  drawerDone: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  drawerDoneText: {
+    fontSize: 15,
+    fontFamily: FF.semibold,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  // ScrollView inside the drawer — allows form content to scroll if it
+  // exceeds the available height
+  drawerScroll: {
+    flex: 1,
+  },
+  drawerContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
 });

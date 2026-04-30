@@ -21,7 +21,7 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, TextInput, StyleSheet, Modal, ScrollView, Platform, Alert,
+  View, Text, TouchableOpacity, TextInput, StyleSheet, Modal, ScrollView, Platform, Alert, Pressable,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fontFamily } from '../theme';
@@ -125,8 +125,9 @@ export default function UnavailabilitySheet({ visible, onCancel, onSave }) {
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onCancel} statusBarTranslucent>
-      <View style={s.backdrop}>
-        <View style={s.sheet}>
+      {/* Backdrop tap closes the sheet (cancels). Inner Pressable stops propagation so taps on the surface don't dismiss. */}
+      <Pressable style={s.backdrop} onPress={onCancel}>
+        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
           <View style={s.grab} />
 
           <View style={s.headerRow}>
@@ -219,8 +220,8 @@ export default function UnavailabilitySheet({ visible, onCancel, onSave }) {
               <Text style={s.primaryBtnText}>Save</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }

@@ -13,10 +13,16 @@ export const colors = {
   borderLight:  '#1A1A1E',   // faint divider
 
   // ── Text ─────────────────────────────────────────────────────────────────
+  // Greyscale ramp lifted across the board (Apr 30) so secondary text
+  // remains readable in bright sunlight / glare on a phone screen.
+  // Previous values were too close to the dark surface — riders
+  // reported squinting at labels and captions on outdoor screenshots.
+  // The new ramp keeps the visual hierarchy (primary > mid > muted >
+  // faint) but each step is ~25-30 luminance points lighter.
   text:         '#FFFFFF',   // pure white primary text
-  textMid:      '#A0A0A8',   // secondary text
-  textMuted:    '#606068',   // labels / captions
-  textFaint:    '#35353D',   // placeholders / disabled
+  textMid:      '#C8C8D0',   // secondary text (was #A0A0A8)
+  textMuted:    '#8E8E96',   // labels / captions (was #606068)
+  textFaint:    '#5A5A62',   // placeholders / disabled (was #35353D)
 
   // ── Primary accent — maglia rosa ─────────────────────────────────────────
   primary:      '#E8458B',
